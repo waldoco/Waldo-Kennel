@@ -32,8 +32,8 @@ Initial baseline checks are intentionally narrow and load-bearing:
 | --- | --- | --- |
 | 1 | Packaged UI reaches a reviewable Plan or an actionable terminal failure; no indefinite waiting; provider/model and frozen grant remain exact. | Passed for verified native Codex path; actionable-failure and restart lineage remain covered by focused tests. |
 | 2 | One live post-work invocation plus restart yields one authoritative observation for unchanged Attempt/artifact/check identity; changed input forces a distinct check; uncertainty blocks duplicate effects. | Daemon-owned path implemented; live post-work rehearsal remains Phase 5. |
-| 3 | Result summarizes changed artifacts, checks, criterion verdicts, uncertainty and next safe action; rework creates successor lineage; acceptance remains owner-only. | Open. |
-| 4 | Combined package proves UI journey, restart, offline/unavailable, failed check, return/focus, restore fence, and clean shutdown. | Open. |
+| 3 | Result summarizes changed artifacts, checks, criterion verdicts, uncertainty and next safe action; rework creates successor lineage; acceptance remains owner-only. | Passed in daemon projection and focused/full frontend gates; live changed-artifact check remains rehearsal work. |
+| 4 | Combined package proves UI journey, restart, offline/unavailable, failed check, return/focus, restore fence, and clean shutdown. | Partial: final package/API journey and prior UI inspection passed; final-hash screenshot and full negative/restart matrix remain open. |
 | 5 | Reversible real repo improvement is demonstrated from user Outcome through Result with no hidden setup and explicit owner decision left open. | Open. |
 
 This document is updated at phase boundaries with exact evidence and blockers;
