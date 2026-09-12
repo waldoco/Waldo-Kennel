@@ -56,3 +56,18 @@ it is not a substitute for packaged acceptance.
 - Remaining Phase 1 gate: reproduce the full packaged UI native planning path
   and obtain either a validated Plan proposal or a correlated terminal failure;
   this commit does not claim that live packaged gate yet.
+
+## Phase 3 checkpoint
+
+- Added a compact Result summary to the existing Prove & Close surface. It is
+  derived only from the daemon proof response: criterion coverage, recorded
+  evidence count, verification outcomes, explicit criterion gaps, and the
+  daemon's next safe action.
+- Technical evidence/verification forms remain available below the summary;
+  Acceptance, request-rework and reopen remain explicit owner actions. No raw
+  Attempt/Plan identity is added to the summary or used to infer acceptance.
+- Focused renderer tests: 14 passed across planning and Prove & Close;
+  frontend typecheck passes after locale-catalog parity updates.
+- Phase 2 remains the dependency gap: the summary cannot truthfully report a
+  single authoritative governed-check invocation until the provider/reconciler
+  duplication is resolved.

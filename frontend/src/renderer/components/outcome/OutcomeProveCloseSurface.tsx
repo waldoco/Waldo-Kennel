@@ -180,6 +180,8 @@ export function OutcomeProveCloseSurface({ outcomeId }: Props) {
 				<p className="mt-1 text-muted-foreground text-xs">{t("outcome.proof.binding", { revision: proof.contractRevision.number })}</p>
 			</header>
 
+			<ResultSummary proof={proof} />
+
 			<div className="flex flex-col gap-4">
 				{proof.criteria.map((criterion) => (
 					<CriterionCard
@@ -222,6 +224,27 @@ export function OutcomeProveCloseSurface({ outcomeId }: Props) {
 
 			{failure && <ProofFailure message={failure.message} onRetry={proofQuery.refetch} />}
 		</div>
+	);
+}
+
+function ResultSummary({ proof }: { proof: OutcomeProofRecord }) {
+	const { t } = useTranslation();
+	const evidenceCount = proof.criteria.reduce((total, criterion) => total + criterion.evidence.length, 0);
+	const verificationCount = proof.criteria.reduce((total, criterion) => total + criterion.verifications.length, 0);
+	const passedCount = proof.criteria.reduce((total, criterion) => total + criterion.verifications.filter((run) => run.result === "passed").length, 0);
+	const gaps = proof.criteria.filter((criterion) => criterion.gap).map((criterion) => criterion.gap as string);
+	return (
+		<section className="grid gap-3 rounded-md border border-border bg-card/50 p-4 sm:grid-cols-3" data-testid="outcome-result-summary">
+			<div className="sm:col-span-3">
+				<h3 className="text-sm font-medium">{t("outcome.proof.resultSummary")}</h3>
+				<p className="mt-1 text-sm text-muted-foreground">{proof.nextAction}</p>
+			</div>
+			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.criteriaSummary")}</p><p className="mt-1 text-sm">{proof.criteria.filter((criterion) => criterion.ready).length}/{proof.criteria.length} {t("outcome.proof.criteriaReady")}</p></div>
+			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.evidenceSummaryLabel")}</p><p className="mt-1 text-sm">{evidenceCount} {t("outcome.proof.evidenceRecorded")}</p></div>
+			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.verificationSummaryLabel")}</p><p className="mt-1 text-sm">{passedCount}/{verificationCount} {t("outcome.proof.verificationsPassed")}</p></div>
+			{gaps.length > 0 && <div className="sm:col-span-3"><p className="text-xs uppercase tracking-wide text-warning">{t("outcome.proof.limitations")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{gaps.map((gap) => <li key={gap}>{gap}</li>)}</ul></div>}
+			<p className="text-xs text-muted-foreground sm:col-span-3">{t("outcome.proof.acceptanceOwnerOnly")}</p>
+		</section>
 	);
 }
 
