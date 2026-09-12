@@ -71,3 +71,19 @@ it is not a substitute for packaged acceptance.
 - Phase 2 remains the dependency gap: the summary cannot truthfully report a
   single authoritative governed-check invocation until the provider/reconciler
   duplication is resolved.
+
+## Phase 4 checkpoint
+
+- Local packaged candidate built successfully from code checkpoint
+  `7f2ef4e9c4ed2fd580576a571814a0cb09fc1d65`; package identity remains
+  `in.heywaldo.kennel`, `Kennel`, version `0.10.3`.
+- Embedded daemon SHA-256:
+  `b4c5d0b2159bb527418bcb677a908fde45e5b0d58d9cc1aba33505326ca19ae3`.
+- `app.asar` SHA-256:
+  `03a2d426e8f93b9cf61a7af625aa0deb2ea840b09d0cb5b380de6a12a0989f2d`.
+- Disposable package launch reached a healthy loopback daemon and rendered
+  the configured-unavailable reasoning state (`PROVIDER_NOT_READY`) without
+  fallback. The full Project→Plan→execution journey was not rerun on this
+  fresh profile in this checkpoint; no packaged acceptance is claimed.
+- The candidate was stopped through its own launch session. No unrelated
+  Kennel process was stopped and no release artifact was published.
