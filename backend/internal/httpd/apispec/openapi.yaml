@@ -10219,6 +10219,65 @@ components:
       - sources
       - changedSources
       type: object
+    ControllersOutcomeResultArtifactResponse:
+      properties:
+        changed:
+          type: boolean
+        digest:
+          type: string
+        revision:
+          type: string
+        sourceRef:
+          type: string
+      required:
+      - revision
+      - sourceRef
+      - digest
+      - changed
+      type: object
+    ControllersOutcomeResultCheckResponse:
+      properties:
+        artifactRevision:
+          type: string
+        command:
+          type: string
+        criterionId:
+          type: string
+        detail:
+          type: string
+        uncertain:
+          type: boolean
+        verdict:
+          type: string
+      required:
+      - criterionId
+      - command
+      - artifactRevision
+      - verdict
+      - uncertain
+      type: object
+    ControllersOutcomeResultSummaryResponse:
+      properties:
+        artifacts:
+          items:
+            $ref: '#/components/schemas/ControllersOutcomeResultArtifactResponse'
+          type: array
+        checks:
+          items:
+            $ref: '#/components/schemas/ControllersOutcomeResultCheckResponse'
+          type: array
+        nextSafeAction:
+          type: string
+        uncertainty:
+          items:
+            type: string
+          type: array
+      required:
+      - artifacts
+      - checks
+      - uncertainty
+      - nextSafeAction
+      type: object
     ControllersOutcomeRunCommandRequest:
       properties:
         action:
@@ -12675,6 +12734,8 @@ components:
           type:
           - "null"
           - string
+        result:
+          $ref: '#/components/schemas/ControllersOutcomeResultSummaryResponse'
         status:
           type: string
       required:
@@ -12682,6 +12743,7 @@ components:
       - contractRevision
       - status
       - nextAction
+      - result
       - criteria
       - decisions
       - corrections

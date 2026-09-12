@@ -1973,6 +1973,7 @@
 	"outcome.proof.verificationsPassed": "passed",
 	"outcome.proof.limitations": "Limitations and gaps",
 	"outcome.proof.acceptanceOwnerOnly": "Only you can accept, request rework, or reopen this Outcome.",
+	"outcome.proof.nextAction": "Next safe action",
 	"outcome.proof.reopenTitle": "Reopen this accepted outcome",
 	"outcome.proof.decisionTitle": "Owner decision",
 	"outcome.proof.decisionBoundary": "Evidence and verification inform this decision. Only your explicit acceptance closes the outcome.",

@@ -68,9 +68,17 @@ it is not a substitute for packaged acceptance.
   Attempt/Plan identity is added to the summary or used to infer acceptance.
 - Focused renderer tests: 14 passed across planning and Prove & Close;
   frontend typecheck passes after locale-catalog parity updates.
-- Phase 2 remains the dependency gap: the summary cannot truthfully report a
-  single authoritative governed-check invocation until the provider/reconciler
-  duplication is resolved.
+- The daemon proof response now includes a structured `result` projection with
+  retained artifact revision/source/digest/change facts, daemon-owned check
+  command and artifact binding, verdict/detail, explicit uncertainty, and the
+  next safe action. The renderer shows those facts in Result rather than only
+  counts, while still keeping technical evidence/verification forms available.
+- Ordinary rework/reopen keeps the correction lineage and explicit owner-only
+  decision path. Contract re-entry no longer asks the owner to type a raw
+  contract ID; non-contract re-entry still requires the exact target identity.
+- Focused renderer tests: 5 passed for Prove & Close; frontend typecheck
+  passes. Full frontend and packaged rebuild remain to be rerun after this
+  API projection change.
 
 ## Phase 4 checkpoint
 

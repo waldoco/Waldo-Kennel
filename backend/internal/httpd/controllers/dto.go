@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/devimport"
@@ -2792,12 +2794,42 @@ type CriterionProofResponse struct {
 	Verifications      []VerificationRunResponse `json:"verifications"`
 }
 
+// OutcomeResultArtifactResponse is the user-facing identity of one retained
+// artifact generation referenced by proof. The digest is content identity, not
+// a claim that the artifact was accepted.
+type OutcomeResultArtifactResponse struct {
+	Revision  string `json:"revision"`
+	SourceRef string `json:"sourceRef"`
+	Digest    string `json:"digest"`
+	Changed   bool   `json:"changed"`
+}
+
+// OutcomeResultCheckResponse summarizes one daemon-owned deterministic check.
+// Uncertainty is explicit: an interrupted or unmeasurable check is not a red
+// verdict and must not be presented as one.
+type OutcomeResultCheckResponse struct {
+	CriterionID      string `json:"criterionId"`
+	Command          string `json:"command"`
+	ArtifactRevision string `json:"artifactRevision"`
+	Verdict          string `json:"verdict"`
+	Detail           string `json:"detail,omitempty"`
+	Uncertain        bool   `json:"uncertain"`
+}
+
+type OutcomeResultSummaryResponse struct {
+	Artifacts      []OutcomeResultArtifactResponse `json:"artifacts"`
+	Checks         []OutcomeResultCheckResponse    `json:"checks"`
+	Uncertainty    []string                        `json:"uncertainty"`
+	NextSafeAction string                          `json:"nextSafeAction"`
+}
+
 // OutcomeProofResponse is the daemon-derived Prove & Close read model.
 type OutcomeProofResponse struct {
 	OutcomeID   string                       `json:"outcomeId"`
 	Contract    ContractRevisionResponse     `json:"contractRevision"`
 	Status      string                       `json:"status"`
 	NextAction  string                       `json:"nextAction"`
+	Result      OutcomeResultSummaryResponse `json:"result"`
 	Criteria    []CriterionProofResponse     `json:"criteria"`
 	Decisions   []AcceptanceDecisionResponse `json:"decisions"`
 	Corrections []OutcomeCorrectionResponse  `json:"corrections"`
@@ -2818,6 +2850,7 @@ func outcomeProofResponse(view outcomevc.ProofView) OutcomeProofResponse {
 	response := OutcomeProofResponse{
 		OutcomeID: string(view.OutcomeID), Contract: contractRevisionResponse(view.Contract),
 		Status: string(view.Status), NextAction: view.NextAction,
+		Result:      OutcomeResultSummaryResponse{Artifacts: []OutcomeResultArtifactResponse{}, Checks: []OutcomeResultCheckResponse{}, Uncertainty: []string{}, NextSafeAction: view.NextAction},
 		Criteria:    make([]CriterionProofResponse, 0, len(view.Criteria)),
 		Decisions:   make([]AcceptanceDecisionResponse, 0, len(view.Decisions)),
 		Corrections: make([]OutcomeCorrectionResponse, 0, len(view.Corrections)),
@@ -2840,6 +2873,29 @@ func outcomeProofResponse(view outcomevc.ProofView) OutcomeProofResponse {
 		}
 		for _, verification := range criterion.Verifications {
 			item.Verifications = append(item.Verifications, verificationRunResponse(verification))
+		}
+		for _, evidence := range criterion.Evidence {
+			if evidence.SourceType == domain.EvidenceSourceArtifact {
+				response.Result.Artifacts = append(response.Result.Artifacts, OutcomeResultArtifactResponse{
+					Revision: evidence.SubjectRevision, SourceRef: evidence.SourceRef, Digest: evidence.ContentDigest,
+					Changed: strings.Contains(strings.ToLower(evidence.Summary), "changed"),
+				})
+			}
+			if evidence.SourceType == domain.EvidenceSourceDeterministicCheck {
+				check := OutcomeResultCheckResponse{CriterionID: string(evidence.CriterionID), Command: evidence.SourceRef, ArtifactRevision: evidence.SubjectRevision, Detail: evidence.Summary}
+				for _, verification := range criterion.Verifications {
+					if slices.Contains(verification.EvidenceItemIDs, evidence.ID) {
+						check.Verdict = string(verification.Result)
+						check.Detail = verification.Detail
+						check.Uncertain = strings.Contains(strings.ToLower(verification.Detail), "unknown") || strings.Contains(strings.ToLower(verification.Detail), "could not be confirmed")
+						break
+					}
+				}
+				if check.Uncertain || strings.Contains(strings.ToLower(evidence.Summary), "unknown") || strings.Contains(strings.ToLower(evidence.Summary), "could not be confirmed") {
+					response.Result.Uncertainty = append(response.Result.Uncertainty, check.Detail)
+				}
+				response.Result.Checks = append(response.Result.Checks, check)
+			}
 		}
 		response.Criteria = append(response.Criteria, item)
 	}
