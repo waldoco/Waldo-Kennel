@@ -124,6 +124,30 @@ it is not a substitute for packaged acceptance.
   unconfigured profile still truthfully rendered `PROVIDER_NOT_READY`; no
   provider fallback was used.
 
+## Phase 4 final-package checkpoint
+
+- Final package built from commit `eb9d5aac6` with identity
+  `in.heywaldo.kennel`, `Kennel`, version `0.10.3`.
+- Embedded daemon SHA-256:
+  `1285a3abf7b8313c5351384c32a8a38f209c40f3954ad09f2135d8bdc856c94a`.
+- `app.asar` SHA-256:
+  `43d2cea1bf734182e56eebc351592137cc61014f30e22ad59ea0cb4bf3e8273b`.
+- Full frontend gate after the Result projection: 231 test files, 2,793
+  passed, 6 skipped (2,799 total); typecheck and package identity passed.
+- Fresh final-package profile replay used loopback `127.0.0.1:44021`, owner
+  Codex verification, a disposable Project/Outcome, Contract revision 2 with
+  explicit `readWorkspace:true`, and the exact native candidate returned by
+  `/planning-candidates`. It reached `proposal_ready` with
+  `effectiveProvider:codex-app-server`, `effectiveModel:gpt-5.3-codex-spark`,
+  and Plan `plan-8550a3e6-502b-4151-8456-877d2177ddfa`.
+- The earlier packaged UI inspection on the same code lineage showed the
+  seeded Outcome in Mission Control as `Ready to authorize` with `Plan 1` and
+  the read-only permission projection. A second UI inspection of the final
+  hash was blocked because the Mac locked; the final hash's daemon/API journey
+  is recorded, but a final-hash screenshot is not claimed. The disposable
+  package parents and daemon were stopped by their exact PIDs; unrelated
+  Kennel processes were not touched.
+
 ## Phase 2 checkpoint
 
 - Approved checks are now daemon-owned post-termination work. The provider MCP
