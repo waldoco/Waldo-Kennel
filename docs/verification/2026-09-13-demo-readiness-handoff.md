@@ -30,8 +30,8 @@ Initial baseline checks are intentionally narrow and load-bearing:
 
 | Phase | Acceptance gate | Status at handoff |
 | --- | --- | --- |
-| 1 | Packaged UI reaches a reviewable Plan or an actionable terminal failure; no indefinite waiting; provider/model and frozen grant remain exact. | Open; reproduce and trace first. |
-| 2 | One live post-work invocation plus restart yields one authoritative observation for unchanged Attempt/artifact/check identity; changed input forces a distinct check; uncertainty blocks duplicate effects. | Open; duplicate provider/reconciler path identified. |
+| 1 | Packaged UI reaches a reviewable Plan or an actionable terminal failure; no indefinite waiting; provider/model and frozen grant remain exact. | Passed for verified native Codex path; actionable-failure and restart lineage remain covered by focused tests. |
+| 2 | One live post-work invocation plus restart yields one authoritative observation for unchanged Attempt/artifact/check identity; changed input forces a distinct check; uncertainty blocks duplicate effects. | Daemon-owned path implemented; live post-work rehearsal remains Phase 5. |
 | 3 | Result summarizes changed artifacts, checks, criterion verdicts, uncertainty and next safe action; rework creates successor lineage; acceptance remains owner-only. | Open. |
 | 4 | Combined package proves UI journey, restart, offline/unavailable, failed check, return/focus, restore fence, and clean shutdown. | Open. |
 | 5 | Reversible real repo improvement is demonstrated from user Outcome through Result with no hidden setup and explicit owner decision left open. | Open. |
@@ -87,3 +87,49 @@ it is not a substitute for packaged acceptance.
   fresh profile in this checkpoint; no packaged acceptance is claimed.
 - The candidate was stopped through its own launch session. No unrelated
   Kennel process was stopped and no release artifact was published.
+
+## Phase 1 packaged checkpoint
+
+- Rebuilt the candidate after the daemon-owned check boundary change. Identity
+  remains `in.heywaldo.kennel`, `Kennel`, version `0.10.3`.
+- Embedded daemon SHA-256:
+  `88089d54ba39d6d5f3aaa3ef0bcd2046df88a2c6d22c5453747239408bc7e525`.
+- `app.asar` SHA-256 remains:
+  `03a2d426e8f93b9cf61a7af625aa0deb2ea840b09d0cb5b380de6a12a0989f2d`.
+- Disposable profile and repository:
+  `/tmp/kennel-demo-readiness-electron-20260913b`,
+  `/tmp/kennel-demo-readiness-data-20260913b`,
+  `/tmp/kennel-demo-readiness-planning-repo-20260913`.
+- The owner-selected Codex App Server path was explicitly configured and
+  owner-verified through the packaged daemon (`POST /settings/reasoning/verification`;
+  200, `verified:true`). Native candidate discovery then returned the exact
+  binding `native_harness:codex-app-server:provider_default::`, `ready:true`.
+- The first start attempt correctly failed closed because the Contract had no
+  repository-read authority (`PLANNING_REPOSITORY_READ_REQUIRED`). An explicit
+  owner Contract revision 2 granted `readWorkspace:true`; the same exact UI
+  planning requests then created `planning-c0b5efa0-b5d6-4af4-a517-5627f4189197`.
+- The real provider turn completed in 7.14s (HTTP duration), persisted
+  `proposal_ready`, `effectiveProvider:codex-app-server`,
+  `effectiveModel:gpt-5.3-codex-spark`, `proposedPlan.id=plan-82840312-cc5a-4de0-9cad-ebb9276b70ee`, and one planner turn. The packaged UI subsequently rendered the Outcome as `Ready to authorize` with `Plan 1` and the exact read-only permission projection.
+- This proves the supported native path reaches a reviewable Plan. It does not
+  claim Plan approval, execution, Verification, or Acceptance. The earlier
+  unconfigured profile still truthfully rendered `PROVIDER_NOT_READY`; no
+  provider fallback was used.
+
+## Phase 2 checkpoint
+
+- Approved checks are now daemon-owned post-termination work. The provider MCP
+  server no longer advertises or accepts `run_approved_check`; its attempted
+  invocation is rejected as an ungranted tool. Codex launch construction no
+  longer enables that provider-side tool, and the RunBrief tells the provider
+  that Kennel runs the exact frozen check after termination.
+- The existing canonical daemon path remains the only executor: it reserves
+  `(AttemptID, checkID, artifactVersion)` before invocation, records one
+  immutable observation, marks interrupted reservations `unknown`, and reuses
+  observed/unknown rows on reconciliation. No competing SQLite writer,
+  fabricated identity, migration, or generated contract was added.
+- Focused checks passed for `governedtools`, Codex launch construction, and
+  Outcome attempt/prompt behavior. The unprivileged daemon/controller suite
+  still needs the already-established host-permission rerun because its
+  sandbox blocks seatbelt and loopback tests; that is environmental and not
+  used as a code failure claim.

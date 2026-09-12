@@ -264,9 +264,9 @@ func governedRepositoryArgs(policy domain.AttemptExecutionPolicy, workspace, dat
 	if policy.Has(domain.CapabilityWorktreeWrite) {
 		enabledTools = append(enabledTools, "write_text_file")
 	}
-	if policy.Has(domain.CapabilityWorktreeExec) {
-		enabledTools = append(enabledTools, "run_approved_check")
-	}
+	// Approved checks are daemon-owned post-termination work. Do not expose a
+	// provider-side executor: it would race the durable Attempt/check/artifact
+	// reservation path and could run the same exact check twice.
 	quotedTools := make([]string, 0, len(enabledTools))
 	for _, name := range enabledTools {
 		quotedTools = append(quotedTools, strconv.Quote(name))
