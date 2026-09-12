@@ -38,3 +38,21 @@ Initial baseline checks are intentionally narrow and load-bearing:
 
 This document is updated at phase boundaries with exact evidence and blockers;
 it is not a substitute for packaged acceptance.
+
+## Phase 1 checkpoint
+
+- Live `TestLiveCodexPacketIntelligence` passed against the signed-in Codex
+  app-server path in 5.47s, proving the native structured transport can return
+  a bounded packet response with provider/model/session provenance.
+- Focused service, daemon, governed-tools, Codex app-server, SQLite store and
+  controller tests pass with host permissions. The unprivileged baseline
+  falsely failed sandbox/socket tests, so those results are not used as code
+  failures.
+- Fixed the owner-facing gap where a recovered or failed provider turn left
+  `lastFailureCode`/`lastFailureDetail` durable but invisible. Mission Control
+  now shows the actionable failure and offers a fresh planning session while
+  preserving the old session and its request lineage.
+- Renderer regression: `MissionPlanningConversation.test.tsx` — 9 tests pass.
+- Remaining Phase 1 gate: reproduce the full packaged UI native planning path
+  and obtain either a validated Plan proposal or a correlated terminal failure;
+  this commit does not claim that live packaged gate yet.
