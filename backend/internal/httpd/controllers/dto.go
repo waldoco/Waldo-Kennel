@@ -2814,6 +2814,7 @@ type OutcomeResultCheckResponse struct {
 	Uncertain        bool   `json:"uncertain"`
 }
 
+// OutcomeResultSummaryResponse projects artifact evidence and verification facts for owner review.
 type OutcomeResultSummaryResponse struct {
 	Artifacts      []OutcomeResultArtifactResponse `json:"artifacts"`
 	Checks         []OutcomeResultCheckResponse    `json:"checks"`

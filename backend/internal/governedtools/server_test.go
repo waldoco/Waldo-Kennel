@@ -1,7 +1,6 @@
 package governedtools
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,17 +50,17 @@ func TestRepositoryToolsEnforceReadWriteAndLeaseBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	readOnly := testServer(t, root, false, false)
-	if got, err := readOnly.call(context.Background(), "read_text_file", map[string]interface{}{"path": "source.txt"}); err != nil || got != "evidence" {
+	if got, err := readOnly.call("read_text_file", map[string]interface{}{"path": "source.txt"}); err != nil || got != "evidence" {
 		t.Fatalf("read = %q, %v", got, err)
 	}
-	if _, err := readOnly.call(context.Background(), "write_text_file", map[string]interface{}{"path": "report.md", "content": "no"}); err == nil {
+	if _, err := readOnly.call("write_text_file", map[string]interface{}{"path": "report.md", "content": "no"}); err == nil {
 		t.Fatal("read-only policy allowed write")
 	}
-	if _, err := readOnly.call(context.Background(), "read_text_file", map[string]interface{}{"path": "../outside"}); err == nil {
+	if _, err := readOnly.call("read_text_file", map[string]interface{}{"path": "../outside"}); err == nil {
 		t.Fatal("reader escaped workspace")
 	}
 	writer := testServer(t, root, true, false)
-	if _, err := writer.call(context.Background(), "write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
+	if _, err := writer.call("write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
 		t.Fatal(err)
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "report.md")); err != nil || string(b) != "bounded" {
@@ -80,7 +79,7 @@ func TestApprovedChecksAreNotExposedToProviderMCP(t *testing.T) {
 			t.Fatal("provider MCP advertised daemon-owned approved check executor")
 		}
 	}
-	if _, err := server.call(context.Background(), "run_approved_check", map[string]interface{}{"check_id": "check-1"}); err == nil {
+	if _, err := server.call("run_approved_check", map[string]interface{}{"check_id": "check-1"}); err == nil {
 		t.Fatal("provider MCP invoked daemon-owned approved check executor")
 	}
 }
@@ -93,14 +92,14 @@ func TestRepositoryToolsProtectGitCustodyAndSymlinkBoundary(t *testing.T) {
 	outside := t.TempDir()
 	server := testServer(t, root, true, false)
 	for _, path := range []string{".git", ".git/config", "nested/.git/config", ".GIT/config", "nested/.GiT/config"} {
-		if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{"path": path, "content": "corrupt"}); err == nil {
+		if _, err := server.call("write_text_file", map[string]interface{}{"path": path, "content": "corrupt"}); err == nil {
 			t.Fatalf("write to custody path %q succeeded", path)
 		}
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{"path": "escape/pwned", "content": "no"}); err == nil {
+	if _, err := server.call("write_text_file", map[string]interface{}{"path": "escape/pwned", "content": "no"}); err == nil {
 		t.Fatal("write followed an escaping directory symlink")
 	}
 	if _, err := os.Stat(filepath.Join(outside, "pwned")); !os.IsNotExist(err) {
@@ -133,10 +132,10 @@ func TestRepositoryToolsDoNotWidenWriteOnlyPolicyIntoRead(t *testing.T) {
 			t.Fatalf("write-only policy advertised %q", name)
 		}
 	}
-	if _, err := server.call(context.Background(), "read_text_file", map[string]interface{}{"path": "source.txt"}); err == nil {
+	if _, err := server.call("read_text_file", map[string]interface{}{"path": "source.txt"}); err == nil {
 		t.Fatal("write-only policy allowed direct read invocation")
 	}
-	if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
+	if _, err := server.call("write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
 		t.Fatalf("write-only policy lost approved write: %v", err)
 	}
 }
@@ -163,7 +162,7 @@ func TestRepositoryWriteResistsConcurrentDirectorySymlinkSwap(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 300; i++ {
-		_, _ = server.call(context.Background(), "write_text_file", map[string]interface{}{"path": "changing/pwned", "content": "bounded"})
+		_, _ = server.call("write_text_file", map[string]interface{}{"path": "changing/pwned", "content": "bounded"})
 	}
 	<-done
 	if _, err := os.Stat(filepath.Join(outside, "pwned")); !os.IsNotExist(err) {
@@ -188,7 +187,7 @@ func TestRepositoryWritePreservesExistingExecutableMode(t *testing.T) {
 		}
 	}
 	server := testServer(t, root, true, false)
-	if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{
+	if _, err := server.call("write_text_file", map[string]interface{}{
 		"path": "verify.sh", "content": "#!/bin/sh\nexit 0\n",
 	}); err != nil {
 		t.Fatal(err)

@@ -38,12 +38,12 @@ type response struct {
 
 // Server serves only the repository tools represented by one frozen policy.
 type Server struct {
-	Policy            domain.AttemptExecutionPolicy
-	WorkspaceRoot     string
-	SessionID         domain.SessionID
-	In                io.Reader
-	Out               io.Writer
-	root              *os.Root
+	Policy        domain.AttemptExecutionPolicy
+	WorkspaceRoot string
+	SessionID     domain.SessionID
+	In            io.Reader
+	Out           io.Writer
+	root          *os.Root
 }
 
 // Serve runs the bounded MCP server until its stdio input closes.
@@ -86,7 +86,7 @@ func (s Server) Serve(ctx context.Context) error {
 		}
 		var id interface{}
 		_ = json.Unmarshal(req.ID, &id)
-		result, callErr := s.handle(ctx, req)
+		result, callErr := s.handle(req)
 		res := response{JSONRPC: "2.0", ID: id, Result: result}
 		if callErr != nil {
 			res.Result = nil
@@ -99,7 +99,7 @@ func (s Server) Serve(ctx context.Context) error {
 	return scanner.Err()
 }
 
-func (s *Server) handle(ctx context.Context, req request) (interface{}, error) {
+func (s *Server) handle(req request) (interface{}, error) {
 	switch req.Method {
 	case "initialize":
 		return map[string]interface{}{"protocolVersion": "2025-06-18", "capabilities": map[string]interface{}{"tools": map[string]interface{}{}}, "serverInfo": map[string]interface{}{"name": "kennel-governed-repository", "version": "1"}}, nil
@@ -115,7 +115,7 @@ func (s *Server) handle(ctx context.Context, req request) (interface{}, error) {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return nil, err
 		}
-		text, err := s.call(ctx, p.Name, p.Arguments)
+		text, err := s.call(p.Name, p.Arguments)
 		if err != nil {
 			message := err.Error()
 			if text != "" {
@@ -160,7 +160,7 @@ func stringArg(args map[string]interface{}, key string) (string, error) {
 	return v, nil
 }
 
-func (s *Server) call(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+func (s *Server) call(name string, args map[string]interface{}) (string, error) {
 	switch name {
 	case "list_repository":
 		if !s.Policy.Has(domain.CapabilityWorktreeRead) {
