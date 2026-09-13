@@ -2,9 +2,13 @@
 set -euo pipefail
 
 include_package=true
+include_race=true
 case "${1:-}" in
 	"") ;;
-	--core) include_package=false ;;
+	--core)
+		include_package=false
+		include_race=false
+		;;
 	*)
 		echo "usage: $0 [--core]" >&2
 		exit 2
@@ -19,7 +23,11 @@ cd "$repo_root"
 (
 	cd backend
 	go build ./...
-	go test ./...
+	if [[ "$include_race" == "true" ]]; then
+		go test -race ./...
+	else
+		go test ./...
+	fi
 	go vet ./...
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --path-mode=abs
 )
