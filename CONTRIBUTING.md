@@ -70,7 +70,9 @@ gate: platform-neutral foundation checks run on Linux, while macOS is reserved
 for Seatbelt and packaged-app checks. Additional commits do not spend more
 minutes automatically. For an already-ready or bot PR, a maintainer can dispatch
 `foundation` manually on the exact branch only when a complete run has genuine
-decision value.
+decision value. Enable the manual `deep_race` input only for release candidates
+or changes to concurrency, scheduling, storage, recovery, or other load-bearing
+daemon paths; it runs the full Go race suite before allowing macOS packaging.
 
 Releases are cut only from tested `main` by the designated release conductor. A merge to `beta` is not a release or deployment authorization.
 

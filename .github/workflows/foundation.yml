@@ -10,6 +10,12 @@ on:
     branches: [beta]
     types: [ready_for_review]
   workflow_dispatch:
+    inputs:
+      deep_race:
+        description: Run the full Go race suite before macOS packaging
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -50,7 +56,11 @@ jobs:
 
   macos-product:
     name: macos-product
-    needs: foundation-core
+    needs: [foundation-core, foundation-race]
+    if: >-
+      always() &&
+      needs.foundation-core.result == 'success' &&
+      (needs.foundation-race.result == 'success' || needs.foundation-race.result == 'skipped')
     runs-on: macos-latest
     timeout-minutes: 12
     steps:
@@ -83,3 +93,20 @@ jobs:
         run: |
           npm --prefix frontend run package
           npm --prefix frontend run package:identity
+
+  foundation-race:
+    name: foundation-race
+    if: github.event_name == 'workflow_dispatch' && inputs.deep_race
+    needs: foundation-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Full Go race suite
+        run: cd backend && go test -race ./...
