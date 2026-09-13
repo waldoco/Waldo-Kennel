@@ -1,6 +1,6 @@
 module github.com/Pin4sf/Waldo-Kennel/backend
 
-go 1.25.7
+go 1.26.0
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
@@ -20,7 +20,7 @@ require (
 	github.com/swaggest/openapi-go v0.2.61
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/sync v0.20.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.51.0
 )
