@@ -181,8 +181,9 @@ The live `gh release list` check on 2026-09-13 returned no releases; there is
 no downloadable GitHub release at this checkpoint. The DMG maker
 attempt stalled; a packaged application build does not establish a completed
 installer, signing/notarization, or an install/update release. Installation/update
-publication, CI enforcement and private security reporting still need maintainer
-work; follow the [launch checklist](../ROADMAP.md#public-release-readiness) and
-[open issues](https://github.com/waldoco/Waldo-Kennel/issues).
+publication and signing/notarization still need maintainer work. Hosted CI and
+private vulnerability reporting are enforced; negative/cancellation/retention CI
+evidence and a private-report response drill remain open. Follow the
+[launch checklist](../ROADMAP.md#public-release-readiness) and [open issues](https://github.com/waldoco/Waldo-Kennel/issues).
 The [roadmap](../ROADMAP.md) defines later milestones. Contributors start from
 current `beta`; maintainers promote tested work to `main` separately.
