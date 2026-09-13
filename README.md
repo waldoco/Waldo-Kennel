@@ -81,6 +81,9 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md), pick a focused
 [milestones](https://github.com/waldoco/Waldo-Kennel/milestones).
 Branches and implementation PRs start from and target `beta`; maintainers
 promote tested integration through a separate `beta` → `main` PR.
+Questions belong in [Discussions](https://github.com/waldoco/Waldo-Kennel/discussions),
+security reports follow [SECURITY.md](SECURITY.md), and community participation
+follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 [AGENTS.md](AGENTS.md) owns the engineering rules and current authority order.
 [STATUS.md](docs/STATUS.md) records implementation and verification;

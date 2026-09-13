@@ -8,7 +8,7 @@ name: foundation
 on:
   pull_request:
     branches: [beta]
-    types: [ready_for_review]
+    types: [opened, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       deep_race:
@@ -27,12 +27,18 @@ concurrency:
 jobs:
   foundation-core:
     name: foundation-core
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
