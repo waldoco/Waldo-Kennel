@@ -70,7 +70,7 @@ func (s seatbelt) Command(ctx context.Context, req Request, root string) (*exec.
 	if req.Argv[0] == "python3" {
 		resolvedBinary, resolveErr := filepath.EvalSymlinks(resolved)
 		if resolveErr != nil {
-			return nil, fmt.Errorf("%w: resolve developer runtime for %q: %v", ErrInvalidCommand, resolved, resolveErr)
+			return nil, fmt.Errorf("%w: resolve developer runtime for %q: %w", ErrInvalidCommand, resolved, resolveErr)
 		}
 		resolvedRuntime, ok := developerRuntimeForBinary(resolvedBinary)
 		if !ok {

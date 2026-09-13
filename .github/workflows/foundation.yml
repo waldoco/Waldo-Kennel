@@ -42,6 +42,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
       - name: Bootstrap dependencies
         run: npm run bootstrap
       - name: Foundation gate
@@ -49,6 +50,7 @@ jobs:
 
   macos-product:
     name: macos-product
+    needs: foundation-core
     runs-on: macos-latest
     timeout-minutes: 12
     steps:
@@ -67,6 +69,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
       - name: Install packaged-app dependencies
         run: |
           npm --prefix packages/kennel-island ci
@@ -75,6 +78,8 @@ jobs:
       - name: Verify macOS Seatbelt boundary
         run: cd backend && go test ./internal/governedcheck
       - name: Build packaged macOS app
+        env:
+          KENNEL_RELEASE_REPO: ${{ github.repository }}
         run: |
           npm --prefix frontend run package
           npm --prefix frontend run package:identity
