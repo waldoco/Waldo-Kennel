@@ -780,7 +780,7 @@ func renderRunBriefPrompt(revision domain.ContractRevision, unit domain.WorkUnit
 			}
 		}
 	}
-	b.WriteString("\nUse only the governed repository tools Kennel exposes for repository reads, writes, and approved checks. If a required operation is not exposed, stop and report the exact missing affordance.\n")
+	b.WriteString("\nUse only the governed repository tools Kennel exposes for repository reads and writes. Approved checks are not provider tools: Kennel runs each exact approved check through the daemon after you terminate, so do not reconstruct or execute one yourself. If a required repository operation is not exposed, stop and report the exact missing affordance.\n")
 	if len(unit.StopConditions) > 0 {
 		b.WriteString("Stop conditions:\n")
 		for _, stop := range unit.StopConditions {

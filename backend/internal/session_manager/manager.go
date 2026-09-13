@@ -3519,8 +3519,8 @@ func (m *Manager) aoSkillPointer() string {
 	commandsGlob := filepath.ToSlash(filepath.Join(dir, "commands", "*.md"))
 	browserFile := filepath.ToSlash(filepath.Join(dir, "commands", "browser.md"))
 	previewFile := filepath.ToSlash(filepath.Join(dir, "commands", "preview.md"))
-	return "\n\n" + "## Using the ao CLI\n\n" +
-		"When using `ao`, read `" + skillFile + "` and only the relevant file under `" + commandsGlob + "`; do not load unrelated command guides.\n\n" +
+	return "\n\n" + "## Using the kennel CLI\n\n" +
+		"When using `kennel`, read `" + skillFile + "` and only the relevant file under `" + commandsGlob + "`; do not load unrelated command guides.\n\n" +
 		"## Kennel desktop Browser panel\n\n" +
 		"For frontend work, read `" + previewFile + "` before previewing or starting an app: open static HTML or Markdown directly; Never create or modify `package.json` or install dependencies solely to display static files. Do not create `.kennel/launch.json` unless the user asks. Automatically open the primary requested browser-displayable artifact immediately after creating or materially updating it, but do not replace an active application preview with a supporting asset. " +
 		"For page inspection or interaction, read `" + browserFile + "` and use `kennel browser` from this Kennel session. Browser network capture is optional and off by default; follow that guide and never enable it for routine browser actions. " +
