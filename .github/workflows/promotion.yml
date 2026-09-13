@@ -40,5 +40,5 @@ jobs:
             refs/heads/beta:refs/remotes/origin/beta \
             refs/heads/main:refs/remotes/origin/main
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/beta)"
-          git merge-base --is-ancestor origin/main HEAD
-
+          shared_ancestor="$(git merge-base origin/main HEAD)"
+          git diff --quiet "$shared_ancestor" origin/main
