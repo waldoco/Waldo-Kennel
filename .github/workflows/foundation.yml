@@ -19,9 +19,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  foundation:
-    runs-on: macos-latest
-    timeout-minutes: 45
+  foundation-core:
+    name: foundation-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -29,10 +30,51 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+            frontend/acp-runtime/package-lock.json
+            packages/cloud-client/package-lock.json
+            packages/kennel-island/package-lock.json
+            packages/product-ui/package-lock.json
+            scripts/package-lock.json
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: backend/go.mod
       - name: Bootstrap dependencies
         run: npm run bootstrap
       - name: Foundation gate
-        run: npm run test:foundation
+        run: npm run test:foundation:core
+
+  macos-product:
+    name: macos-product
+    runs-on: macos-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            frontend/acp-runtime/package-lock.json
+            packages/kennel-island/package-lock.json
+            packages/product-ui/package-lock.json
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+      - name: Install packaged-app dependencies
+        run: |
+          npm --prefix packages/kennel-island ci
+          npm --prefix packages/product-ui ci
+          npm --prefix frontend ci
+      - name: Verify macOS Seatbelt boundary
+        run: cd backend && go test ./internal/governedcheck
+      - name: Build packaged macOS app
+        run: |
+          npm --prefix frontend run package
+          npm --prefix frontend run package:identity

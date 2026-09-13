@@ -8,11 +8,12 @@
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Pin4sf/Waldo-Kennel.git"
+		"url": "https://github.com/waldoco/Waldo-Kennel.git"
 	},
 	"scripts": {
 		"bootstrap": "bash ./scripts/bootstrap.sh",
 		"test:foundation": "bash ./scripts/test-foundation.sh",
+		"test:foundation:core": "bash ./scripts/test-foundation.sh --core",
 		"audit:production": "bash ./scripts/audit-production.sh",
 		"lint": "cd backend && go test ./... && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --path-mode=abs",
 		"test:island": "npm --prefix packages/kennel-island test",

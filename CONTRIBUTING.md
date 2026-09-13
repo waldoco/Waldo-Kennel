@@ -18,7 +18,7 @@ scope, authority documents and shared-file ownership are clear.
 
 1. **Read the contract** — [AGENTS.md](AGENTS.md) (layout, commands, hard rules, PR hygiene)
 2. **Check current truth** — [docs/STATUS.md](docs/STATUS.md), then use [ROADMAP.md](ROADMAP.md) for direction
-3. **Pick something focused** — [open issues](https://github.com/Pin4sf/Waldo-Kennel/issues); check the [milestones](https://github.com/Pin4sf/Waldo-Kennel/milestones) and issue dependencies
+3. **Pick something focused** — [open issues](https://github.com/waldoco/Waldo-Kennel/issues); check the [milestones](https://github.com/waldoco/Waldo-Kennel/milestones) and issue dependencies
 4. **Coordinate scope** — comment on the issue with your proposed slice and check for overlapping work
 5. **Open a clear PR** — narrow change, link the issue, user-visible impact, tests
 6. **Iterate** — address review; maintainers merge
@@ -66,9 +66,11 @@ Kennel uses `beta` as its integration branch:
 Hosted foundation CI is intentionally opt-in to preserve the project's limited
 Actions budget. Open implementation PRs as drafts; after local narrow checks and
 review are complete, mark the final head **Ready for review** to request one full
-macOS gate. Additional commits do not spend more minutes automatically. For an
-already-ready or bot PR, a maintainer can dispatch `foundation` manually on the
-exact branch only when a complete run has genuine decision value.
+gate: platform-neutral foundation checks run on Linux, while macOS is reserved
+for Seatbelt and packaged-app checks. Additional commits do not spend more
+minutes automatically. For an already-ready or bot PR, a maintainer can dispatch
+`foundation` manually on the exact branch only when a complete run has genuine
+decision value.
 
 Releases are cut only from tested `main` by the designated release conductor. A merge to `beta` is not a release or deployment authorization.
 
