@@ -63,6 +63,13 @@ Kennel uses `beta` as its integration branch:
 4. Coordinate shared files, generated API artifacts, and migration numbers with the integration owner before editing.
 5. Maintainers test the integrated `beta` branch and promote it through a separate `beta` -> `main` PR.
 
+Hosted foundation CI is intentionally opt-in to preserve the project's limited
+Actions budget. Open implementation PRs as drafts; after local narrow checks and
+review are complete, mark the final head **Ready for review** to request one full
+macOS gate. Additional commits do not spend more minutes automatically. For an
+already-ready or bot PR, a maintainer can dispatch `foundation` manually on the
+exact branch only when a complete run has genuine decision value.
+
 Releases are cut only from tested `main` by the designated release conductor. A merge to `beta` is not a release or deployment authorization.
 
 ## Code of Conduct

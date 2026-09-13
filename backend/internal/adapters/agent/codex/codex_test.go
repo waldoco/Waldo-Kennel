@@ -1152,7 +1152,7 @@ func TestGetRestoreCommandRejectsDifferentWorkspaceThanFrozenPolicy(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = (&Plugin{}).GetRestoreCommand(context.Background(), ports.RestoreConfig{
+	_, _, err = (&Plugin{resolvedBinary: "codex"}).GetRestoreCommand(context.Background(), ports.RestoreConfig{
 		DataDir:         canonicalTempDir(t),
 		ExecutionPolicy: &policy,
 		Session: ports.SessionRef{ID: "session-mismatch", WorkspacePath: canonicalTempDir(t), Metadata: map[string]string{
