@@ -59,6 +59,17 @@ export function MissionPlanningConversation({
 		if (failedAction === "cancel") cancel.reset();
 	}
 
+	function startAnotherPlanningSession() {
+		if (!activeSession) return;
+		setIgnoredSessionId(activeSession.id);
+		setCandidateId("");
+		setContextMode("repository_read");
+		setEditingContext(false);
+		setMessage("");
+		delete requestKeys.current.message;
+		delete requestKeys.current.proposal;
+	}
+
 	useEffect(() => {
 		setCandidateId("");
 		setContextMode("repository_read");
@@ -135,6 +146,12 @@ export function MissionPlanningConversation({
 
 			{activeSession && visiblePlanning && (
 				<>
+					{activeSession.waitingOn === "owner" && activeSession.lastFailureCode && (
+						<div className="flex flex-wrap items-center gap-2 text-sm text-destructive" role="alert" data-testid="planning-provider-failure">
+							<span>{activeSession.lastFailureDetail ?? activeSession.lastFailureCode}</span>
+							<Button onClick={startAnotherPlanningSession} size="sm" type="button" variant="outline">{t("planning.startAnother")}</Button>
+						</div>
+					)}
 					<div className="flex flex-wrap items-center gap-2 text-xs" data-testid="planning-session-status">
 						<Badge variant={activeSession.status === "proposal_ready" ? "success" : "accent"}>{t(`planning.status.${activeSession.status}`)}</Badge>
 						{activeSession.waitingOn === "provider" && <span className="text-muted-foreground">{t("planning.waiting")}</span>}
@@ -168,7 +185,7 @@ export function MissionPlanningConversation({
 					)}
 					{activeSession.status === "proposal_ready" && visiblePlanning.proposedPlan && <p className="text-sm text-muted-foreground">{t("planning.proposalReady")}</p>}
 					{["cancelled", "superseded", "proposal_ready"].includes(activeSession.status) && (
-						<Button onClick={() => { setIgnoredSessionId(activeSession.id); setCandidateId(""); setContextMode("repository_read"); setEditingContext(false); }} size="sm" type="button" variant="outline">{t("planning.startAnother")}</Button>
+						<Button onClick={startAnotherPlanningSession} size="sm" type="button" variant="outline">{t("planning.startAnother")}</Button>
 					)}
 				</>
 			)}

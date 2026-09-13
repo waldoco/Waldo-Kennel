@@ -769,7 +769,7 @@ func renderRunBriefPrompt(revision domain.ContractRevision, unit domain.WorkUnit
 	if len(unit.Checks) > 0 {
 		b.WriteString("\nApproved executable checks:\n")
 		b.WriteString("Kennel, not this worker, decides which exact commands are executable.\n")
-		b.WriteString("Use the governed repository run_approved_check tool with the check id. Do not reconstruct or run these vectors through another execution surface.\n")
+		b.WriteString("Kennel will run this exact approved check after the provider terminates, under the daemon-owned Attempt/check/artifact reservation. Do not reconstruct or run it through a provider tool.\n")
 		for _, check := range unit.Checks {
 			b.WriteString("Check " + check.ID.String() + " for criterion " + check.CriterionID.String() + ":\n")
 			b.WriteString("- working directory: isolated worktree root\n")

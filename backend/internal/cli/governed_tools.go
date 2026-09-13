@@ -22,13 +22,9 @@ func newGovernedToolsCommand(ctx *commandContext) *cobra.Command {
 		if err := json.Unmarshal(raw, &policy); err != nil {
 			return fmt.Errorf("decode governed policy: %w", err)
 		}
-		uncertainty, err := governedtools.NewUncertaintyStore(dataDir)
-		if err != nil {
-			return err
-		}
 		return (governedtools.Server{
 			Policy: policy, WorkspaceRoot: workspace, SessionID: domain.SessionID(sessionID),
-			In: ctx.deps.In, Out: ctx.deps.Out, UncertaintySink: uncertainty, UncertaintySource: uncertainty,
+			In: ctx.deps.In, Out: ctx.deps.Out,
 		}).Serve(cmd.Context())
 	}}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "leased workspace root")

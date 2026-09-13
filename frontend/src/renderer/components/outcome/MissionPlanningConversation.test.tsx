@@ -118,6 +118,19 @@ describe("MissionPlanningConversation", () => {
 		expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
 	});
 
+	it("renders a durable provider failure and offers a fresh session without hiding the old lineage", async () => {
+		getMock.mockImplementation(async (url: string) => {
+			if (url.endsWith("/planning-candidates")) return { data: { candidates: [candidate] }, error: undefined };
+			return { data: { planning: { session: { id: "failed-session", outcomeId: "out-1", contractRevisionId: "cr-3", contractRevisionNumber: 3, revision: 3, status: "active", waitingOn: "owner", contextMode: "repository_read", contextDigest: "ctx", planningGrantDigest: "grant", binding: candidate.binding, lastFailureCode: "PLANNING_REPLY_AMBIGUOUS", lastFailureDetail: "The daemon restarted before the planning reply was recorded.", createdAt: "2026-09-11T00:00:00Z", updatedAt: "2026-09-11T00:00:00Z" }, turns: [] } }, error: undefined };
+		});
+		const user = userEvent.setup();
+		renderConversation();
+		expect(await screen.findByTestId("planning-provider-failure")).toHaveTextContent("The daemon restarted before the planning reply was recorded.");
+		await user.click(screen.getByRole("button", { name: "Start another planning session" }));
+		expect(screen.queryByTestId("planning-provider-failure")).not.toBeInTheDocument();
+		expect(screen.getByTestId("planning-start")).toBeInTheDocument();
+	});
+
 	it("starts a fresh session when the cached session belongs to an older Contract revision", async () => {
 		getMock.mockImplementation(async (url: string) => {
 			if (url.endsWith("/planning-candidates")) return { data: { candidates: [candidate] }, error: undefined };

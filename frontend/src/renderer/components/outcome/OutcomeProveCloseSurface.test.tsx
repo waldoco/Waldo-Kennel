@@ -26,6 +26,11 @@ function proofEnvelope(status = "ready_for_acceptance") {
 			},
 			status,
 			nextAction: status === "accepted" ? "Accepted. Reopen explicitly if needed." : "Review the current proof and explicitly accept or request rework.",
+			result: {
+				artifacts: [{ revision: "artifact-v2", sourceRef: "README.md", digest: "b".repeat(64) }],
+				checks: [{ criterionId: "crit-1", command: "grep -Fx review README.md", artifactRevision: "artifact-v2", verdict: "failed", detail: "check exited 1", uncertain: false }],
+				uncertainty: [], nextSafeAction: "Review the changed artifact and request rework if needed.",
+			},
 			criteria: [{
 				criterionId: "crit-1", contractRevisionId: "cr-1", position: 1, text: "One block survives restart.", ready: true,
 				evidence: [{
@@ -64,6 +69,8 @@ describe("OutcomeProveCloseSurface", () => {
 		expect(await screen.findByText("One block survives restart.")).toBeDefined();
 		expect(screen.getByTestId("proof-evidence-ev-1").textContent).toContain("restart-walkthrough");
 		expect(screen.getByTestId("proof-verification-ver-1").textContent).toMatch(/owner walkthrough/i);
+		expect(screen.getByTestId("outcome-result-artifacts").textContent).toContain("README.md");
+		expect(screen.getByTestId("outcome-result-checks").textContent).toContain("grep -Fx review README.md");
 
 		await user.type(screen.getByTestId("proof-decision-summary"), "I reviewed the current criterion.");
 		await user.click(screen.getByTestId("proof-accept"));
