@@ -15,7 +15,7 @@ require (
 	github.com/openai/openai-go/v3 v3.56.0
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/spf13/cobra v1.10.1
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.0.10
 	github.com/swaggest/jsonschema-go v0.3.79
 	github.com/swaggest/openapi-go v0.2.61
 	github.com/yuin/goldmark v1.8.2
