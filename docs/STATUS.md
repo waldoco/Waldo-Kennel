@@ -183,6 +183,6 @@ attempt stalled; a packaged application build does not establish a completed
 installer, signing/notarization, or an install/update release. Installation/update
 publication, CI enforcement and private security reporting still need maintainer
 work; follow the [launch checklist](../ROADMAP.md#public-release-readiness) and
-[open issues](https://github.com/Pin4sf/Waldo-Kennel/issues).
+[open issues](https://github.com/waldoco/Waldo-Kennel/issues).
 The [roadmap](../ROADMAP.md) defines later milestones. Contributors start from
 current `beta`; maintainers promote tested work to `main` separately.

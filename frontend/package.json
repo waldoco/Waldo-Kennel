@@ -6,11 +6,11 @@
 	"description": "Kennel desktop outcome orchestration workspace",
 	"author": "Kennel",
 	"license": "Apache-2.0",
-	"homepage": "https://github.com/Pin4sf/Waldo-Kennel",
+	"homepage": "https://github.com/waldoco/Waldo-Kennel",
 	"main": ".vite/build/main.js",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Pin4sf/Waldo-Kennel.git"
+		"url": "https://github.com/waldoco/Waldo-Kennel.git"
 	},
 	"scripts": {
 		"build:acp-runtime": "node ./scripts/build-acp-runtime.mjs",

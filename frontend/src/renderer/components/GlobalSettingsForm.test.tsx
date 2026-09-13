@@ -434,7 +434,7 @@ describe("GlobalSettingsForm", () => {
 		expect(copied).not.toContain("## Type");
 		expect(copied).not.toContain("Generated locally by Kennel");
 		expect(openExternal).toHaveBeenCalledWith(
-			expect.stringContaining("https://github.com/Pin4sf/Waldo-Kennel/issues/new"),
+			expect.stringContaining("https://github.com/waldoco/Waldo-Kennel/issues/new"),
 		);
 		expect(open).not.toHaveBeenCalled();
 		expect(screen.getByLabelText("Title")).toHaveValue("");
