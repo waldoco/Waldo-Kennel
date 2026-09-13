@@ -36,7 +36,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Pin4sf/Waldo-Kennel.git",
+    "url": "https://github.com/waldoco/Waldo-Kennel.git",
     "directory": "packages/cloud-client"
   }
 }

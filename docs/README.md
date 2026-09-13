@@ -6,7 +6,7 @@ architecture and historical evidence serve different purposes.
 | Need | Start here |
 | --- | --- |
 | Understand or run Kennel | [Project README](../README.md), [development guide](development.md) |
-| Find contribution work | [Contributing](../CONTRIBUTING.md), [issues](https://github.com/Pin4sf/Waldo-Kennel/issues), [milestones](https://github.com/Pin4sf/Waldo-Kennel/milestones) |
+| Find contribution work | [Contributing](../CONTRIBUTING.md), [issues](https://github.com/waldoco/Waldo-Kennel/issues), [milestones](https://github.com/waldoco/Waldo-Kennel/milestones) |
 | Know what works and remains open | [Current status](STATUS.md) |
 | Understand direction | [Public roadmap](../ROADMAP.md) |
 | Change product or kernel behavior | [AGENTS.md authority order](../AGENTS.md#canonical-read-order) |

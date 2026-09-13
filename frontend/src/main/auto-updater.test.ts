@@ -621,7 +621,7 @@ describe("startAutoUpdates", () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { module, updaterEvents } = await importAutoUpdater();
     const err = new Error(
-      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
+      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
     );
 
     await module.checkForUpdatesNow(stateDir);
@@ -638,7 +638,7 @@ describe("startAutoUpdates", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { module, autoUpdater, updaterEvents } = await importAutoUpdater();
     const err = new Error(
-      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
+      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
     );
     autoUpdater.downloadUpdate.mockImplementationOnce(() => {
       updaterEvents.get("error")?.(err);
@@ -657,7 +657,7 @@ describe("startAutoUpdates", () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { module, autoUpdater } = await importAutoUpdater();
     const err = new Error(
-      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
+      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
     );
     autoUpdater.checkForUpdates.mockRejectedValueOnce(err);
 
@@ -674,7 +674,7 @@ describe("startAutoUpdates", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { module, autoUpdater } = await importAutoUpdater();
     const err = new Error(
-      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
+      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
     );
     autoUpdater.downloadUpdate.mockRejectedValueOnce(err);
 
@@ -690,7 +690,7 @@ describe("startAutoUpdates", () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { module, updaterEvents } = await importAutoUpdater();
     const err = new Error(
-      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
+      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
     );
 
     await module.checkForUpdatesNow(stateDir);
@@ -709,7 +709,7 @@ describe("startAutoUpdates", () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { module, autoUpdater, updaterEvents } = await importAutoUpdater();
     const err = new Error(
-      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
+      'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml):\nHttpError: 404 "method: GET url: https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/latest-mac.yml"',
     );
 
     await module.checkForUpdatesNow(stateDir);
@@ -728,7 +728,7 @@ describe("startAutoUpdates", () => {
   it("still surfaces non-manifest 404 errors", async () => {
     const { module, updaterEvents } = await importAutoUpdater();
     const err = new Error(
-      'HttpError: 404 "method: GET url: https://github.com/Pin4sf/Waldo-Kennel/releases/download/v0.10.1/some-file.png"',
+      'HttpError: 404 "method: GET url: https://github.com/waldoco/Waldo-Kennel/releases/download/v0.10.1/some-file.png"',
     );
 
     await module.checkForUpdatesNow(stateDir);

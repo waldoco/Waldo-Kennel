@@ -2,7 +2,7 @@
 
 - **Status:** Canonical authority for v1 Work/kernel implementation
 - **Date:** 2026-09-04
-- **Target repository:** `Pin4sf/Waldo-Kennel`
+- **Target repository:** `waldoco/Waldo-Kennel`
 - **Integration branch:** `beta`
 - **Provider baseline:** PR #92 merged; Codex, Claude Code, OpenCode, Cursor, Pi
 - **Supersedes for Work/kernel semantics:** earlier review packets, prototypes, first-outcome handoffs, and the old interpretation that Outcome composition replaces a WorkUnit graph

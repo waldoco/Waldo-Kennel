@@ -33,6 +33,6 @@ describe("packaged Kennel identity", () => {
 		const publishers = config.publishers as Array<{
 			config?: { repository?: { owner?: string; name?: string } };
 		}>;
-		expect(publishers[0]?.config?.repository).toEqual({ owner: "Pin4sf", name: "Waldo-Kennel" });
+		expect(publishers[0]?.config?.repository).toEqual({ owner: "waldoco", name: "Waldo-Kennel" });
 	});
 });

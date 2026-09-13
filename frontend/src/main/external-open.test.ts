@@ -3,7 +3,7 @@ import { isAllowedAppExternalURL, openAllowedAppExternalURL } from "./external-o
 
 describe("isAllowedAppExternalURL", () => {
 	it("allows web and mail handoff URLs from the app renderer", () => {
-		expect(isAllowedAppExternalURL("https://github.com/Pin4sf/Waldo-Kennel/issues/new")).toBe(true);
+		expect(isAllowedAppExternalURL("https://github.com/waldoco/Waldo-Kennel/issues/new")).toBe(true);
 		expect(isAllowedAppExternalURL("http://localhost:5173/help")).toBe(true);
 		expect(isAllowedAppExternalURL("mailto:prateek@untrivial.ai?subject=AO%20feedback")).toBe(true);
 	});

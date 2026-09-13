@@ -14,7 +14,7 @@ This contract prevents a Kennel development build, packaged app, daemon, updater
 | Electron `userData` | `~/.kennel/electron` |
 | Daemon data / run file | `~/.kennel/data`, `~/.kennel/running.json` |
 | Updater cache | `kennel-updater` |
-| Release owner/repository | `Pin4sf/Waldo-Kennel` |
+| Release owner/repository | `waldoco/Waldo-Kennel` |
 | Runtime environment variables | `KENNEL_*` |
 | Default loopback / dev / opt-in LAN port | `3031` / `3032` / `3041` |
 | Generated branches | `kennel/` |
