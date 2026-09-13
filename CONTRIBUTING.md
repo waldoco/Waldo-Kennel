@@ -76,10 +76,12 @@ daemon paths; it runs the full Go race suite before allowing macOS packaging.
 
 Releases are cut only from tested `main` by the designated release conductor. A merge to `beta` is not a release or deployment authorization.
 
-## Code of Conduct
+## Community standards
 
-Be respectful, constructive and assume good intent. Keep technical disagreement
-focused on evidence, behavior and product invariants. Do not put credentials,
-private repository content or vulnerability details in a public issue.
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+Questions belong in [Discussions](https://github.com/waldoco/Waldo-Kennel/discussions),
+and vulnerabilities must use the private process in [SECURITY.md](SECURITY.md).
+Repository roles and the `beta` to `main` promotion boundary are described in
+[GOVERNANCE.md](GOVERNANCE.md).
 
 Thanks for making Waldo Kennel better for the next person who shows up.

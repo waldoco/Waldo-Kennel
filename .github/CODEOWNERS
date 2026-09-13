@@ -1,0 +1,11 @@
+# Default stewardship. This requests review from the current repository owner
+# without making CODEOWNER approval a merge requirement until the maintainer
+# group has an explicitly agreed ownership map.
+* @Pin4sf
+
+# Changes to repository governance and security policy always request owner review.
+/.github/ @Pin4sf
+/CODE_OF_CONDUCT.md @Pin4sf
+/GOVERNANCE.md @Pin4sf
+/SECURITY.md @Pin4sf
+

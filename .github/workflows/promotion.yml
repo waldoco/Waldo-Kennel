@@ -1,0 +1,44 @@
+# A main PR is a release-line promotion, not another implementation lane.
+# This inexpensive check prevents arbitrary branches or stale beta snapshots
+# from being merged to main.
+name: promotion
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promotion-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  promotion-source:
+    name: promotion-source
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Require the current beta tip
+        env:
+          ACTUAL_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          ACTUAL_HEAD_REF: ${{ github.head_ref }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$ACTUAL_HEAD_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$ACTUAL_HEAD_REF" = "beta"
+          git fetch --no-tags origin \
+            refs/heads/beta:refs/remotes/origin/beta \
+            refs/heads/main:refs/remotes/origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/beta)"
+          git merge-base --is-ancestor origin/main HEAD
+
