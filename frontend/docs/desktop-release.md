@@ -1,6 +1,6 @@
 # Desktop release runbook
 
-> Kennel foundation notice (2026-08-18): this is a retained AO release donor, not an executable Kennel release procedure. Repository names, asset names, tags, credentials, environments, and approval steps below describe the upstream process and must not be run against Kennel. The current package identity targets `Pin4sf/Waldo-Kennel`, but the F0-F6 gate does not deploy or publish. Write and review a Kennel-specific release migration before the first release; preserve the one-publisher and macOS verification rules when doing so.
+> Kennel foundation notice (2026-08-18): this is a retained AO release donor, not an executable Kennel release procedure. Repository names, asset names, tags, credentials, environments, and approval steps below describe the upstream process and must not be run against Kennel. The current package identity targets `waldoco/Waldo-Kennel`, but the F0-F6 gate does not deploy or publish. Write and review a Kennel-specific release migration before the first release; preserve the one-publisher and macOS verification rules when doing so.
 
 How to cut a stable desktop release, end to end. Written from the v0.10.3 cut
 (2026-07-12), which bumps the version on `main` via a PR and tags the merge
@@ -10,7 +10,7 @@ on `main`; the PR-based flow below supersedes it.
 ## How releases work
 
 - **Stable** releases are triggered by pushing a `desktop-vX.Y.Z` tag to
-  `Pin4sf/Waldo-Kennel`. `.github/workflows/frontend-release.yml`
+  `waldoco/Waldo-Kennel`. `.github/workflows/frontend-release.yml`
   builds on four runners (macOS arm64, macOS Intel, Windows, Linux), signs and
   notarizes the macOS builds, and publishes a GitHub Release.
 - **Nightly** releases run on a schedule via `frontend-nightly.yml` with no
@@ -62,7 +62,7 @@ manually; that is how the 28-29 Jul misdiagnosis happened.
 
 ## Prerequisites
 
-- Push access to `Pin4sf/Waldo-Kennel` (the tag push is the trigger).
+- Push access to `waldoco/Waldo-Kennel` (the tag push is the trigger).
 - Authenticated `gh` CLI for the notes/verify steps.
 - A release approver available (see "Who can approve" below); the build jobs
   wait on the `release` environment until someone approves.
@@ -73,7 +73,7 @@ manually; that is how the 28-29 Jul misdiagnosis happened.
 ## Cutting a stable release
 
 Throughout, `X.Y.Z` is the new version (e.g. `0.10.2`) and `upstream` is the
-`Pin4sf/Waldo-Kennel` remote.
+`waldoco/Waldo-Kennel` remote.
 
 ### 1. Decide the version and review what ships
 
@@ -99,7 +99,7 @@ git checkout -b release-X.Y.Z upstream/main
 git add frontend/package.json
 git commit -m "chore(release): stamp desktop app version X.Y.Z"
 git push <your-remote> release-X.Y.Z
-gh pr create -R Pin4sf/Waldo-Kennel --base main \
+gh pr create -R waldoco/Waldo-Kennel --base main \
   --head <owner>:release-X.Y.Z \
   --title "chore(release): stamp desktop app version X.Y.Z"
 ```
@@ -125,17 +125,17 @@ approver either clicks "Review deployments" > approve in the run page, or from
 the CLI:
 
 ```bash
-run_id=$(gh run list -R Pin4sf/Waldo-Kennel --workflow frontend-release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
-gh api repos/Pin4sf/Waldo-Kennel/actions/runs/$run_id/pending_deployments \
+run_id=$(gh run list -R waldoco/Waldo-Kennel --workflow frontend-release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+gh api repos/waldoco/Waldo-Kennel/actions/runs/$run_id/pending_deployments \
   --jq '.[] | {env: .environment.id, can_approve: .current_user_can_approve}'
-gh api -X POST repos/Pin4sf/Waldo-Kennel/actions/runs/$run_id/pending_deployments \
+gh api -X POST repos/waldoco/Waldo-Kennel/actions/runs/$run_id/pending_deployments \
   -F 'environment_ids[]=<env id from above>' -f state=approved -f comment='Release X.Y.Z approved'
 ```
 
 Then wait (roughly 30 minutes; macOS notarization dominates):
 
 ```bash
-gh run watch $run_id -R Pin4sf/Waldo-Kennel --exit-status --interval 60
+gh run watch $run_id -R waldoco/Waldo-Kennel --exit-status --interval 60
 ```
 
 The workflow retries transient macOS sign/notary flakes on its own. The
@@ -148,27 +148,27 @@ The publisher creates the release with an empty body. Generate the standard
 What's Changed / New Contributors / Full Changelog body and attach it:
 
 ```bash
-gh api repos/Pin4sf/Waldo-Kennel/releases/generate-notes \
+gh api repos/waldoco/Waldo-Kennel/releases/generate-notes \
   -f tag_name=vX.Y.Z -f previous_tag_name=v<last-stable> --jq '.body' > /tmp/notes.md
-gh release edit vX.Y.Z -R Pin4sf/Waldo-Kennel --notes-file /tmp/notes.md
+gh release edit vX.Y.Z -R waldoco/Waldo-Kennel --notes-file /tmp/notes.md
 ```
 
 ### 6. Verify
 
 ```bash
 # published, not draft/prerelease, 17 assets:
-gh release view vX.Y.Z -R Pin4sf/Waldo-Kennel \
+gh release view vX.Y.Z -R waldoco/Waldo-Kennel \
   --json isDraft,isPrerelease,assets --jq '{isDraft,isPrerelease,count:(.assets|length)}'
 # latest points at the new release:
-gh api repos/Pin4sf/Waldo-Kennel/releases/latest --jq '.tag_name'
+gh api repos/waldoco/Waldo-Kennel/releases/latest --jq '.tag_name'
 # updater feed carries the new version:
-curl -sL https://github.com/Pin4sf/Waldo-Kennel/releases/latest/download/latest-mac.yml | head -3
+curl -sL https://github.com/waldoco/Waldo-Kennel/releases/latest/download/latest-mac.yml | head -3
 ```
 
 Verify the macOS artifacts with the shared script rather than by hand:
 
 ```bash
-gh release download vX.Y.Z -R Pin4sf/Waldo-Kennel \
+gh release download vX.Y.Z -R waldoco/Waldo-Kennel \
   --pattern 'agent-orchestrator-darwin-*.zip' --dir /tmp/relcheck
 frontend/scripts/verify-mac-artifact.sh /tmp/relcheck/agent-orchestrator-darwin-arm64.zip
 ```
@@ -233,7 +233,7 @@ pusher who is not an approver still needs one of the five. Repo admins can
 bypass the gate. The current list is readable by anyone with repo access:
 
 ```bash
-gh api repos/Pin4sf/Waldo-Kennel/environments/release \
+gh api repos/waldoco/Waldo-Kennel/environments/release \
   --jq '.protection_rules[] | select(.type=="required_reviewers") | .reviewers[].reviewer.login'
 ```
 

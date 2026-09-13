@@ -213,3 +213,83 @@ func (f *fakeProofManager) AcceptContributorBatch(_ context.Context, parentID do
 	}
 	return f.acceptBatch(parentID, in)
 }
+
+func TestOutcomeResultUsesStructuredVerdictsInsteadOfNarrative(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		verdict   domain.VerificationResult
+		detail    string
+		uncertain bool
+	}{
+		{"passed with false termination flag", domain.VerificationPassed, "terminationUnknown=false", false},
+		{"failed with unknown in output", domain.VerificationFailed, "unknown command", false},
+		{"inconclusive without magic words", domain.VerificationInconclusive, "result changed while checking", true},
+		{"evidence awaiting verification", "", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := proofFixture()
+			fixture.Criteria[0].Evidence = []domain.EvidenceItem{{ID: "e-check", CriterionID: "crit-proof", SourceType: domain.EvidenceSourceDeterministicCheck, SourceRef: "test-command", SubjectRevision: "artifact-1", Summary: "unknown is ordinary command output"}}
+			if tc.verdict != "" {
+				fixture.Criteria[0].Verifications = []domain.VerificationRun{{EvidenceItemIDs: []domain.EvidenceItemID{"e-check"}, Result: tc.verdict, Detail: tc.detail}}
+			}
+			body, status := resultProofResponse(fixture)
+			if status != http.StatusOK {
+				t.Fatalf("status=%d body=%s", status, body)
+			}
+			var decoded struct {
+				Proof struct {
+					Result struct {
+						Checks []struct {
+							Verdict   string
+							Uncertain bool
+						}
+						Uncertainty []string
+					}
+				}
+			}
+			if err := json.Unmarshal(body, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			result := decoded.Proof.Result
+			if len(result.Checks) != 1 || result.Checks[0].Uncertain != tc.uncertain || result.Checks[0].Verdict != string(tc.verdict) {
+				t.Fatalf("checks=%+v", result.Checks)
+			}
+			if (len(result.Uncertainty) > 0) != tc.uncertain {
+				t.Fatalf("uncertainty=%v", result.Uncertainty)
+			}
+		})
+	}
+}
+
+func TestOutcomeResultDoesNotInferArtifactMutationFromSummary(t *testing.T) {
+	fixture := proofFixture()
+	fixture.Criteria[0].Evidence = []domain.EvidenceItem{{SourceType: domain.EvidenceSourceArtifact, SourceRef: "report.md", SubjectRevision: "artifact-1", Summary: "The report is unchanged", ContentDigest: "digest-1"}}
+	body, status := resultProofResponse(fixture)
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%s", status, body)
+	}
+	var decoded struct {
+		Proof struct {
+			Result struct{ Artifacts []map[string]any }
+		}
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	artifacts := decoded.Proof.Result.Artifacts
+	if len(artifacts) != 1 || artifacts[0]["revision"] != "artifact-1" || artifacts[0]["digest"] != "digest-1" {
+		t.Fatalf("artifacts=%v", artifacts)
+	}
+	if _, present := artifacts[0]["changed"]; present {
+		t.Fatalf("unmeasured mutation must not be claimed: %v", artifacts)
+	}
+}
+
+func resultProofResponse(fixture outcomevc.ProofView) ([]byte, int) {
+	manager := &fakeProofManager{get: func(context.Context, domain.OutcomeID) (outcomevc.ProofView, error) { return fixture, nil }}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := httpd.NewRouterWithControl(config.Config{}, log, nil, httpd.APIDeps{Proof: manager}, httpd.ControlDeps{})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/outcomes/out-proof/proof", nil))
+	return response.Body.Bytes(), response.Code
+}

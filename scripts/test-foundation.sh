@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+include_package=true
+include_race=true
+case "${1:-}" in
+	"") ;;
+	--core)
+		include_package=false
+		include_race=false
+		;;
+	*)
+		echo "usage: $0 [--core]" >&2
+		exit 2
+		;;
+esac
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
@@ -9,15 +23,22 @@ cd "$repo_root"
 (
 	cd backend
 	go build ./...
-	go test ./...
+	if [[ "$include_race" == "true" ]]; then
+		go test -race ./...
+	else
+		go test ./...
+	fi
 	go vet ./...
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --path-mode=abs
 )
 
 npm run shared:check
 npm run test:island
 npm --prefix frontend run typecheck
 npm --prefix frontend test
-npm --prefix frontend run build
+if [[ "$include_package" == "true" ]]; then
+	npm --prefix frontend run build
+fi
 node --test scripts/kennel-e2e-pod-gate.test.mjs
 
 npm run sqlc

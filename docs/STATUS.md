@@ -1,10 +1,11 @@
 # Kennel status
 
-Checkpoint dated 2026-09-12, based on `beta` revision
-`f2132a83c6a09145cd38234d55097128815de432`, combining Issue #115 governed
-repository tools, the shell/onboarding/Mission UI lane, and terminal-session
-restore and desktop-disposal fixes. Branch publication is separate from
-packaged runtime verification and release readiness.
+Checkpoint dated 2026-09-13, based on `beta` revision
+`f12b9b62b09379247384f6c791070090d5ab3ff4` (PR #128), with native-planning
+failure feedback, daemon-only approved checks and a partial Result projection.
+The [demo-readiness handoff](verification/2026-09-13-demo-readiness-handoff.md)
+records each tested source revision and package hash. Branch publication is
+separate from packaged runtime verification and release readiness.
 This page separates implementation, recorded verification and remaining launch
 work. It does not claim a release or owner Acceptance.
 
@@ -23,16 +24,23 @@ work. It does not claim a release or owner Acceptance.
   restart/replay fences. The normal frontend Start request uses the approved
   Plan identity and request key, not a mutable Project provider preference.
 - Codex governed Attempts receive a private, frozen-policy repository surface:
-  bounded listing/text reads, scoped text writes when granted, and execution of
-  exact approved check IDs. The allocated workspace root is frozen into the
-  admission snapshot; provider-native execution remains read-only, while a
-  required positively allowlisted Kennel MCP carries the narrow write/check
-  authority. Generic shell, unified-exec, web and plugin surfaces are disabled;
-  unsupported policy shapes and unverified App Server injection fail closed.
+  bounded listing/text reads and scoped text writes when granted. The allocated
+  workspace root is frozen into the admission snapshot; provider-native
+  execution remains read-only, while a required positively allowlisted Kennel
+  MCP carries narrow repository authority. Approved checks run only through
+  the daemon's post-termination reservation/observation path; the provider MCP
+  neither advertises nor accepts `run_approved_check`. Generic shell,
+  unified-exec, web and plugin surfaces are disabled; unsupported policy shapes
+  and unverified App Server injection fail closed.
 - Work is the default destination. Plan/graph views and attached Attempt
   supervision expose daemon facts; provider Sessions remain technical detail.
   Kennel Island starts with the desktop when the display supports it; its
   persisted visibility preference remains owner-controlled in Settings.
+- Mission Control exposes durable planning failure details and a fresh-session
+  action while preserving prior lineage. The partial Result surface projects
+  daemon artifact/check/criterion facts, uncertainty and the next safe action.
+  Technical proof forms and explicit owner review decisions remain available;
+  ordinary non-contract rework still requires a raw target identity.
 - Codex, Claude Code, OpenCode, Cursor and Pi are active execution-provider
   identities; this does not establish every role's live conformance.
 
@@ -42,6 +50,18 @@ Retained-artifact, governed-check, supplied-document, proof and handoff primitiv
 exist, but complete integration and live closure are still open below.
 
 ## Recorded launch verification
+
+The [2026-09-13 handoff](verification/2026-09-13-demo-readiness-handoff.md)
+records packaged native Codex planning reaching `proposal_ready` through
+API-assisted configuration, Contract setup and planning requests. An earlier
+UI inspection rendered the resulting Plan as `Ready to authorize`; the final
+package's second UI inspection was blocked by the locked Mac. This is not a
+UI-only planning/execution/Result/rework journey or five-harness conformance.
+The handoff records frontend gates and package hashes at their tested commits;
+subsequent review repairs require their own exact-HEAD checks. Live post-work
+check provenance, changed-input/negative paths, full restart/return behavior and
+the real-repository demo remain open. Historical checkpoints below retain their
+original scopes and do not extend those claims.
 
 The checkpoint includes direct OpenAI/Anthropic reasoning configuration,
 Contract-bound interactive planning, and native Codex read-only packet-mode
@@ -101,8 +121,9 @@ package build passed, as recorded in that follow-up. That package was not
 launched. These results do not prove the fixes through the combined UI lane;
 UI-driven quit and restart behavior remains runtime-unverified. The follow-up
 also records the
-exact Issue #35 delta, including the still-open duplicate check invocation
-between the provider tool and terminal reconciliation.
+then-current Issue #35 delta. Its duplicate provider/reconciler check path
+has since been removed in source; the live post-work/restart canary for the
+single daemon-owned path remains open in the newer handoff.
 
 The [combined desktop verification](verification/2026-09-12-demo-integration.md)
 records a separate packaged UI run at code revision
@@ -135,9 +156,9 @@ packaged journey and owner-acceptance gates remain distinct.
 
 | Priority | Area | Current gap |
 | --- | --- | --- |
-| 1 | Native planning and daemon recovery | Combined packaged UI remained “Waiting for the agent” and the daemon exited before a Plan existed. Root cause is not established; prove planning completion and recovery before claiming the full demo journey. |
-| 2 | Autonomous proof and closure | Automatic artifact retention and deterministic Evidence/Verification passed one bounded canary. Unify provider-tool and reconciler check invocation (currently the command runs twice), complete provenance and live negative/rework paths, and preserve separate owner Acceptance. |
-| 3 | Evidence and Result experience | Complete a cohesive Result summary and ordinary rework flow; prove retained downstream WorkUnit output materialization in a real multi-unit canary. Existing backend proof and retention are not full Result acceptance. |
+| 1 | Native planning and daemon recovery | API-assisted packaged native Codex planning reached a reviewable Plan; actionable failure feedback is implemented. Prove the complete UI-only path and negative/restart lineage on the final package before claiming the demo journey. |
+| 2 | Autonomous proof and closure | Automatic artifact retention and deterministic Evidence/Verification passed one earlier bounded canary. Checks now have one daemon-owned executor in source; prove its live post-work/restart and changed-input/unknown-effect behavior, complete provenance and negative/rework paths, and preserve separate owner Acceptance. |
+| 3 | Evidence and Result experience | A partial daemon-derived artifact/check/criterion Result summary exists. Complete ordinary rework beyond raw non-contract target IDs and verify the packaged Result/rework path; prove retained downstream WorkUnit output materialization in a real multi-unit canary. |
 | 4 | Mission Control | Complete the direct WorkUnit DAG projection and integrated Board/List navigation while retaining the session Kanban beneath the graph. |
 | 5 | Parallel scheduling | Replace the intentional concurrency-`1` Project fence only after durable WorkspaceLease, dependency, integration, recovery and cleanup gates prove safe. |
 | 6 | Session continuity | Decide and implement historical-session inspection or engagement beyond the currently engageable active session. |
@@ -156,11 +177,12 @@ A zero-exit provider session is only one part of this journey.
 
 ## Public release readiness
 
-There are no published release artifacts at this checkpoint. The DMG maker
+The live `gh release list` check on 2026-09-13 returned no releases; there is
+no downloadable GitHub release at this checkpoint. The DMG maker
 attempt stalled; a packaged application build does not establish a completed
 installer, signing/notarization, or an install/update release. Installation/update
 publication, CI enforcement and private security reporting still need maintainer
 work; follow the [launch checklist](../ROADMAP.md#public-release-readiness) and
-[open issues](https://github.com/Pin4sf/Waldo-Kennel/issues).
+[open issues](https://github.com/waldoco/Waldo-Kennel/issues).
 The [roadmap](../ROADMAP.md) defines later milestones. Contributors start from
 current `beta`; maintainers promote tested work to `main` separately.

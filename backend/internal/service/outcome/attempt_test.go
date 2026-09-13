@@ -407,7 +407,7 @@ func TestStartAttemptDeliversExactAssignedContractAndApprovedCheckMaterial(t *te
 	if strings.Contains(req.Prompt, unrelatedText) {
 		t.Fatalf("spawn prompt widened criterion scope:\n%s", req.Prompt)
 	}
-	if !strings.Contains(req.Prompt, "run_approved_check") || !strings.Contains(req.Prompt, "Do not reconstruct or run these vectors through another execution surface") {
+	if !strings.Contains(req.Prompt, "Kennel will run this exact approved check after the provider terminates") || !strings.Contains(req.Prompt, "Do not reconstruct or run it through a provider tool") {
 		t.Fatalf("spawn prompt did not distinguish verification ownership from worker authority:\n%s", req.Prompt)
 	}
 	if req.ExecutionPolicy == nil || req.ExecutionPolicy.ContractRevisionNumber != revision.Number || req.ExecutionPolicy.PlanRevisionID != planID || req.ExecutionPolicy.WorkUnitID != unit.ID || req.ExecutionPolicy.RunBriefCoreDigest != plan.RunBriefCoreDigest {

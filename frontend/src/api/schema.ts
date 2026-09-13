@@ -3322,6 +3322,25 @@ export interface components {
             /** @enum {string} */
             state: "selected" | "approved";
         };
+        ControllersOutcomeResultArtifactResponse: {
+            digest: string;
+            revision: string;
+            sourceRef: string;
+        };
+        ControllersOutcomeResultCheckResponse: {
+            artifactRevision: string;
+            command: string;
+            criterionId: string;
+            detail?: string;
+            uncertain: boolean;
+            verdict: string;
+        };
+        ControllersOutcomeResultSummaryResponse: {
+            artifacts: components["schemas"]["ControllersOutcomeResultArtifactResponse"][];
+            checks: components["schemas"]["ControllersOutcomeResultCheckResponse"][];
+            nextSafeAction: string;
+            uncertainty: string[];
+        };
         ControllersOutcomeRunCommandRequest: {
             /** @enum {string} */
             action: "start" | "pause" | "resume" | "cancel";
@@ -4245,6 +4264,7 @@ export interface components {
             outcomeId: string;
             /** Format: date-time */
             proofHorizon?: null | string;
+            result: components["schemas"]["ControllersOutcomeResultSummaryResponse"];
             status: string;
         };
         OutcomeResponse: {

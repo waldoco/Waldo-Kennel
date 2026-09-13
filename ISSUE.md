@@ -6,7 +6,7 @@ This file records verified follow-ups discovered while implementing a feature. I
 
 ## Escalated: repository-wide lint baseline
 
-- GitHub issue: [#75 Restore the clean repo-wide lint baseline](https://github.com/Pin4sf/Waldo-Kennel/issues/75)
+- GitHub issue: [#75 Restore the clean repo-wide lint baseline](https://github.com/waldoco/Waldo-Kennel/issues/75)
 - Status: open; not caused by issue #32.
 - Evidence: `npm run lint` exits 1 with 20 findings on both the issue #32 branch and a clean checkout of `origin/beta` at `296b92a4d822c221ed586a24e13cfa110381419c`.
 - Breakdown: 1 errorlint, 1 goimports, 1 prealloc, 16 revive, and 1 staticcheck finding.
@@ -14,14 +14,14 @@ This file records verified follow-ups discovered while implementing a feature. I
 
 ## Existing integration follow-ups
 
-These observations are already covered by [#40 Integrate Work with Home through shared intake and ResponsibilityLink](https://github.com/Pin4sf/Waldo-Kennel/issues/40), so they do not need duplicate GitHub issues:
+These observations are already covered by [#40 Integrate Work with Home through shared intake and ResponsibilityLink](https://github.com/waldoco/Waldo-Kennel/issues/40), so they do not need duplicate GitHub issues:
 
 - An unconfirmed `IntakeSession` is durable and readable after a daemon restart, but the Work board does not yet discover and resume it automatically.
 - `ResponsibilityLink` accepts the Home source responsibility as an opaque identifier. Resolving and presenting the canonical Home-side responsibility belongs to the separate Work/Home consumption layer.
 
 ## Escalated: governed Project Waldo provider execution
 
-- GitHub issue: [#82 Wire governed Project Waldo provider replies and same-Attempt continuation](https://github.com/Pin4sf/Waldo-Kennel/issues/82)
+- GitHub issue: [#82 Wire governed Project Waldo provider replies and same-Attempt continuation](https://github.com/waldoco/Waldo-Kennel/issues/82)
 - Status: open; discovered while verifying issue #77 against the locked Task 2 continuation contract.
 - Evidence: the durable Project conversation, context, policy, and receipt contracts are implemented, but production constructs the continuation service without a canonical-facts or replacement executor adapter. The live Electron send path therefore persists the user turn and explicitly starts no provider response.
 - Boundary: issue #77 must remain fail-closed and must not fabricate provider replies, fencing, replacement identity, or caller-supplied canonical bindings. Issue #82 owns the daemon/session-manager integration for provider-backed replies and safe same-Attempt rollover.
@@ -31,7 +31,7 @@ These observations are already covered by [#40 Integrate Work with Home through 
 
 - During the branch push, GitHub reported unresolved Dependabot alerts on the default branch, including critical and high-severity alerts.
 - These alerts predate issue #32 and were not introduced by this branch.
-- Triage belongs in the repository's maintainer-only [Dependabot security dashboard](https://github.com/Pin4sf/Waldo-Kennel/security/dependabot). Do not copy untriaged vulnerability details into a public GitHub issue; open a scoped public issue only after maintainers determine that disclosure is safe.
+- Triage belongs in the repository's maintainer-only [Dependabot security dashboard](https://github.com/waldoco/Waldo-Kennel/security/dependabot). Do not copy untriaged vulnerability details into a public GitHub issue; open a scoped public issue only after maintainers determine that disclosure is safe.
 
 ## Closed by issue #32
 

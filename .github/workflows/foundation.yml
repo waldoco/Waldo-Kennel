@@ -1,27 +1,112 @@
 # Binding foundation gate. Local-first CI: scripts/test-foundation.sh remains the
-# authoritative gate run locally (`npm run bootstrap && npm run test:foundation`);
-# this workflow mirrors it for when hosted Actions are re-enabled for the account.
+# authoritative gate run locally (`npm run bootstrap && npm run test:foundation`).
+# Hosted execution is deliberately requested only when a PR is ready for the
+# expensive final gate; ordinary pushes and dependency refreshes must not spend
+# Actions minutes by default.
 name: foundation
 
 on:
-  push:
-    branches: [beta]
   pull_request:
     branches: [beta]
+    types: [ready_for_review]
+  workflow_dispatch:
+    inputs:
+      deep_race:
+        description: Run the full Go race suite before macOS packaging
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  foundation:
-    runs-on: macos-latest
-    timeout-minutes: 45
+  foundation-core:
+    name: foundation-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
-      - uses: actions/setup-go@v5
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+            frontend/acp-runtime/package-lock.json
+            packages/cloud-client/package-lock.json
+            packages/kennel-island/package-lock.json
+            packages/product-ui/package-lock.json
+            scripts/package-lock.json
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
       - name: Bootstrap dependencies
         run: npm run bootstrap
       - name: Foundation gate
-        run: npm run test:foundation
+        run: npm run test:foundation:core
+
+  macos-product:
+    name: macos-product
+    needs: [foundation-core, foundation-race]
+    if: >-
+      always() &&
+      needs.foundation-core.result == 'success' &&
+      (needs.foundation-race.result == 'success' || needs.foundation-race.result == 'skipped')
+    runs-on: macos-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            frontend/acp-runtime/package-lock.json
+            packages/kennel-island/package-lock.json
+            packages/product-ui/package-lock.json
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Install packaged-app dependencies
+        run: |
+          npm --prefix packages/kennel-island ci
+          npm --prefix packages/product-ui ci
+          npm --prefix frontend ci
+      - name: Verify macOS Seatbelt boundary
+        run: cd backend && go test ./internal/governedcheck
+      - name: Build packaged macOS app
+        env:
+          KENNEL_RELEASE_REPO: ${{ github.repository }}
+        run: |
+          npm --prefix frontend run package
+          npm --prefix frontend run package:identity
+
+  foundation-race:
+    name: foundation-race
+    if: github.event_name == 'workflow_dispatch' && inputs.deep_race
+    needs: foundation-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Full Go race suite
+        run: cd backend && go test -race ./...

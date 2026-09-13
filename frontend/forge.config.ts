@@ -221,7 +221,7 @@ const config: ForgeConfig = {
 					bin: EXECUTABLE_NAME,
 					icon: "assets/icon.png",
 					maintainer: PRODUCT_NAME,
-					homepage: "https://github.com/Pin4sf/Waldo-Kennel",
+					homepage: "https://github.com/waldoco/Waldo-Kennel",
 					mimeType: [AUTH_PROTOCOL_MIME_TYPE],
 				},
 			},
@@ -233,7 +233,7 @@ const config: ForgeConfig = {
 					icon: "assets/icon.png",
 					// rpmbuild rejects a spec with an empty License field.
 					license: "Apache-2.0",
-					homepage: "https://github.com/Pin4sf/Waldo-Kennel",
+					homepage: "https://github.com/waldoco/Waldo-Kennel",
 					mimeType: [AUTH_PROTOCOL_MIME_TYPE],
 				},
 			},

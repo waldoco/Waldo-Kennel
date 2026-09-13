@@ -17,7 +17,7 @@ Provider CLIs such as Codex or Claude Code are discovered locally and retain the
 ## Checkout and bootstrap
 
 ```sh
-git clone --branch beta https://github.com/Pin4sf/Waldo-Kennel.git
+git clone --branch beta https://github.com/waldoco/Waldo-Kennel.git
 cd Waldo-Kennel
 npm run bootstrap
 ```

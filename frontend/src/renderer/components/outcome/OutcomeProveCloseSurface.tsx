@@ -176,9 +176,10 @@ export function OutcomeProveCloseSurface({ outcomeId }: Props) {
 						{t(STATUS_LABEL_KEYS[proof.status] ?? "outcome.proof.statusActive")}
 					</Badge>
 				</div>
-				<p className="mt-1 text-muted-foreground text-sm">{proof.nextAction}</p>
 				<p className="mt-1 text-muted-foreground text-xs">{t("outcome.proof.binding", { revision: proof.contractRevision.number })}</p>
 			</header>
+
+			<ResultSummary proof={proof} />
 
 			<div className="flex flex-col gap-4">
 				{proof.criteria.map((criterion) => (
@@ -212,7 +213,7 @@ export function OutcomeProveCloseSurface({ outcomeId }: Props) {
 					</label>
 					{proof.status !== "accepted" && proof.status !== "ready_for_acceptance" && <span />}
 				</div>
-				<ReentryFields contractId={proof.contractRevision.id} targetId={reentryTargetId} targetType={reentryTargetType} onTargetId={setReentryTargetId} onTargetType={setReentryTargetType} />
+				<ReentryFields targetId={reentryTargetId} targetType={reentryTargetType} onTargetId={setReentryTargetId} onTargetType={setReentryTargetType} />
 				<div className="mt-4 flex flex-wrap gap-2">
 					{proof.status === "ready_for_acceptance" && <Button data-testid="proof-accept" disabled={pending || !decisionSummary.trim()} onClick={() => void decide("accept")}><CheckCircle2 aria-hidden="true" className="size-3.5" />{t("outcome.proof.accept")}</Button>}
 					{proof.status !== "accepted" && <Button data-testid="proof-request-rework" disabled={pending || !decisionSummary.trim() || !reentryReady} onClick={() => void decide("request_rework")} variant="outline"><CircleAlert aria-hidden="true" className="size-3.5" />{t("outcome.proof.requestRework")}</Button>}
@@ -222,6 +223,31 @@ export function OutcomeProveCloseSurface({ outcomeId }: Props) {
 
 			{failure && <ProofFailure message={failure.message} onRetry={proofQuery.refetch} />}
 		</div>
+	);
+}
+
+function ResultSummary({ proof }: { proof: OutcomeProofRecord }) {
+	const { t } = useTranslation();
+	const evidenceCount = proof.criteria.reduce((total, criterion) => total + criterion.evidence.length, 0);
+	const verificationCount = proof.criteria.reduce((total, criterion) => total + criterion.verifications.length, 0);
+	const passedCount = proof.criteria.reduce((total, criterion) => total + criterion.verifications.filter((run) => run.result === "passed").length, 0);
+	const gaps = proof.criteria.filter((criterion) => criterion.gap).map((criterion) => criterion.gap as string);
+	const result = proof.result ?? { artifacts: [], checks: [], uncertainty: [], nextSafeAction: proof.nextAction };
+	return (
+		<section className="grid gap-3 rounded-md border border-border bg-card/50 p-4 sm:grid-cols-3" data-testid="outcome-result-summary">
+			<div className="sm:col-span-3">
+				<h3 className="text-sm font-medium">{t("outcome.proof.resultSummary")}</h3>
+			</div>
+			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.criteriaSummary")}</p><p className="mt-1 text-sm">{proof.criteria.filter((criterion) => criterion.ready).length}/{proof.criteria.length} {t("outcome.proof.criteriaReady")}</p></div>
+			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.evidenceSummaryLabel")}</p><p className="mt-1 text-sm">{evidenceCount} {t("outcome.proof.evidenceRecorded")}</p></div>
+			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.verificationSummaryLabel")}</p><p className="mt-1 text-sm">{passedCount}/{verificationCount} {t("outcome.proof.verificationsPassed")}</p></div>
+			{gaps.length > 0 && <div className="sm:col-span-3"><p className="text-xs uppercase tracking-wide text-warning">{t("outcome.proof.limitations")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{gaps.map((gap) => <li key={gap}>{gap}</li>)}</ul></div>}
+			{result.artifacts.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-artifacts"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.artifact")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.artifacts.map((artifact) => <li key={`${artifact.revision}-${artifact.digest}`}>{artifact.sourceRef} · {artifact.revision}</li>)}</ul></div>}
+			{result.checks.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-checks"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.verification")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.checks.map((check) => <li key={`${check.criterionId}-${check.artifactRevision}-${check.command}`}>{check.command} · {check.verdict || "unconfirmed"}{check.uncertain ? " · uncertainty blocks a verdict" : ""}</li>)}</ul></div>}
+			{result.uncertainty.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-uncertainty"><p className="text-xs uppercase tracking-wide text-warning">{t("outcome.proof.limitations")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.uncertainty.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+			<div className="sm:col-span-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.nextAction")}</p><p className="mt-1 text-sm">{result.nextSafeAction}</p></div>
+			<p className="text-xs text-muted-foreground sm:col-span-3">{t("outcome.proof.acceptanceOwnerOnly")}</p>
+		</section>
 	);
 }
 
@@ -308,7 +334,7 @@ function CriterionCard({ criterion, evidenceDraft, onEvidenceDraft, onSubmitEvid
 	);
 }
 
-function ReentryFields({ contractId, targetId, targetType, onTargetId, onTargetType }: { contractId: string; targetId: string; targetType: "attempt" | "work_unit" | "plan" | "contract"; onTargetId: (value: string) => void; onTargetType: (value: "attempt" | "work_unit" | "plan" | "contract") => void }) {
+function ReentryFields({ targetId, targetType, onTargetId, onTargetType }: { targetId: string; targetType: "attempt" | "work_unit" | "plan" | "contract"; onTargetId: (value: string) => void; onTargetType: (value: "attempt" | "work_unit" | "plan" | "contract") => void }) {
 	const { t } = useTranslation();
 	return (
 		<div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -316,10 +342,10 @@ function ReentryFields({ contractId, targetId, targetType, onTargetId, onTargetT
 				{t("outcome.proof.reentryTarget")}
 				<select className="h-9 rounded-md border border-input bg-background px-2 text-foreground" onChange={(event) => onTargetType(event.target.value as typeof targetType)} value={targetType}><option value="contract">{t("outcome.proof.targetContract")}</option><option value="plan">{t("outcome.proof.targetPlan")}</option><option value="work_unit">{t("outcome.proof.targetWorkUnit")}</option><option value="attempt">{t("outcome.proof.targetAttempt")}</option></select>
 			</label>
-			<label className="flex flex-col gap-1 text-xs text-muted-foreground">
+			{targetType === "contract" ? <p className="self-end text-xs text-muted-foreground">{t("outcome.proof.targetContract")}</p> : <label className="flex flex-col gap-1 text-xs text-muted-foreground">
 				{t("outcome.proof.reentryId")}
-				<Input onChange={(event) => onTargetId(event.target.value)} placeholder={targetType === "contract" ? contractId : t("outcome.proof.reentryIdRequired")} value={targetId} />
-			</label>
+				<Input onChange={(event) => onTargetId(event.target.value)} placeholder={t("outcome.proof.reentryIdRequired")} value={targetId} />
+			</label>}
 		</div>
 	);
 }

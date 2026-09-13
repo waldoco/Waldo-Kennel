@@ -3,7 +3,6 @@
 package governedtools
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,7 +38,7 @@ func TestRepositoryWritePreservesExecutableModeUnderRestrictiveUmask(t *testing.
 		t.Fatal(err)
 	}
 	server := testServer(t, root, true, false)
-	if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{
+	if _, err := server.call("write_text_file", map[string]interface{}{
 		"path": "verify.sh", "content": "#!/bin/sh\nexit 0\n",
 	}); err != nil {
 		t.Fatal(err)

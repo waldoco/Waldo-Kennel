@@ -1,9 +1,6 @@
 package governedtools
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
-	"github.com/Pin4sf/Waldo-Kennel/backend/internal/governedcheck"
-	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 )
 
 func testPolicy(write, exec bool) domain.AttemptExecutionPolicy {
@@ -43,12 +38,6 @@ func testServer(t *testing.T, root string, write, exec bool) Server {
 	}
 	t.Cleanup(func() { _ = opened.Close() })
 	server := Server{Policy: policy, WorkspaceRoot: root, root: opened}
-	if exec {
-		server.SessionID = "test-session"
-		store := &recordingUncertaintySink{}
-		server.UncertaintySink = store
-		server.UncertaintySource = store
-	}
 	return server
 }
 
@@ -61,17 +50,17 @@ func TestRepositoryToolsEnforceReadWriteAndLeaseBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	readOnly := testServer(t, root, false, false)
-	if got, err := readOnly.call(context.Background(), "read_text_file", map[string]interface{}{"path": "source.txt"}); err != nil || got != "evidence" {
+	if got, err := readOnly.call("read_text_file", map[string]interface{}{"path": "source.txt"}); err != nil || got != "evidence" {
 		t.Fatalf("read = %q, %v", got, err)
 	}
-	if _, err := readOnly.call(context.Background(), "write_text_file", map[string]interface{}{"path": "report.md", "content": "no"}); err == nil {
+	if _, err := readOnly.call("write_text_file", map[string]interface{}{"path": "report.md", "content": "no"}); err == nil {
 		t.Fatal("read-only policy allowed write")
 	}
-	if _, err := readOnly.call(context.Background(), "read_text_file", map[string]interface{}{"path": "../outside"}); err == nil {
+	if _, err := readOnly.call("read_text_file", map[string]interface{}{"path": "../outside"}); err == nil {
 		t.Fatal("reader escaped workspace")
 	}
 	writer := testServer(t, root, true, false)
-	if _, err := writer.call(context.Background(), "write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
+	if _, err := writer.call("write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
 		t.Fatal(err)
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "report.md")); err != nil || string(b) != "bounded" {
@@ -79,26 +68,19 @@ func TestRepositoryToolsEnforceReadWriteAndLeaseBoundary(t *testing.T) {
 	}
 }
 
-func TestApprovedCheckToolExecutesOnlyFrozenVector(t *testing.T) {
+func TestApprovedChecksAreNotExposedToProviderMCP(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got []string
 	server := testServer(t, root, true, true)
-	server.RunCheck = func(_ context.Context, req governedcheck.Request) (governedcheck.Result, error) {
-		got = append([]string(nil), req.Argv...)
-		return governedcheck.Result{ExitCode: 0, EnforcedBy: "test-fence", Output: "PASS"}, nil
+	for _, advertised := range server.tools() {
+		if advertised["name"] == "run_approved_check" {
+			t.Fatal("provider MCP advertised daemon-owned approved check executor")
+		}
 	}
-	text, err := server.call(context.Background(), "run_approved_check", map[string]interface{}{"check_id": "check-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(got, " ") != "go test ./..." || !strings.Contains(text, "enforced_by=test-fence") {
-		t.Fatalf("vector=%q output=%q", got, text)
-	}
-	if _, err := server.call(context.Background(), "run_approved_check", map[string]interface{}{"check_id": "other"}); err == nil {
-		t.Fatal("unapproved check executed")
+	if _, err := server.call("run_approved_check", map[string]interface{}{"check_id": "check-1"}); err == nil {
+		t.Fatal("provider MCP invoked daemon-owned approved check executor")
 	}
 }
 
@@ -110,14 +92,14 @@ func TestRepositoryToolsProtectGitCustodyAndSymlinkBoundary(t *testing.T) {
 	outside := t.TempDir()
 	server := testServer(t, root, true, false)
 	for _, path := range []string{".git", ".git/config", "nested/.git/config", ".GIT/config", "nested/.GiT/config"} {
-		if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{"path": path, "content": "corrupt"}); err == nil {
+		if _, err := server.call("write_text_file", map[string]interface{}{"path": path, "content": "corrupt"}); err == nil {
 			t.Fatalf("write to custody path %q succeeded", path)
 		}
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{"path": "escape/pwned", "content": "no"}); err == nil {
+	if _, err := server.call("write_text_file", map[string]interface{}{"path": "escape/pwned", "content": "no"}); err == nil {
 		t.Fatal("write followed an escaping directory symlink")
 	}
 	if _, err := os.Stat(filepath.Join(outside, "pwned")); !os.IsNotExist(err) {
@@ -150,10 +132,10 @@ func TestRepositoryToolsDoNotWidenWriteOnlyPolicyIntoRead(t *testing.T) {
 			t.Fatalf("write-only policy advertised %q", name)
 		}
 	}
-	if _, err := server.call(context.Background(), "read_text_file", map[string]interface{}{"path": "source.txt"}); err == nil {
+	if _, err := server.call("read_text_file", map[string]interface{}{"path": "source.txt"}); err == nil {
 		t.Fatal("write-only policy allowed direct read invocation")
 	}
-	if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
+	if _, err := server.call("write_text_file", map[string]interface{}{"path": "report.md", "content": "bounded"}); err != nil {
 		t.Fatalf("write-only policy lost approved write: %v", err)
 	}
 }
@@ -180,7 +162,7 @@ func TestRepositoryWriteResistsConcurrentDirectorySymlinkSwap(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 300; i++ {
-		_, _ = server.call(context.Background(), "write_text_file", map[string]interface{}{"path": "changing/pwned", "content": "bounded"})
+		_, _ = server.call("write_text_file", map[string]interface{}{"path": "changing/pwned", "content": "bounded"})
 	}
 	<-done
 	if _, err := os.Stat(filepath.Join(outside, "pwned")); !os.IsNotExist(err) {
@@ -205,7 +187,7 @@ func TestRepositoryWritePreservesExistingExecutableMode(t *testing.T) {
 		}
 	}
 	server := testServer(t, root, true, false)
-	if _, err := server.call(context.Background(), "write_text_file", map[string]interface{}{
+	if _, err := server.call("write_text_file", map[string]interface{}{
 		"path": "verify.sh", "content": "#!/bin/sh\nexit 0\n",
 	}); err != nil {
 		t.Fatal(err)
@@ -223,97 +205,5 @@ func TestRepositoryWritePreservesExistingExecutableMode(t *testing.T) {
 		t.Fatalf("git diff mode check: %v: %s", err, output)
 	} else if strings.Contains(string(output), "mode change") {
 		t.Fatalf("atomic overwrite changed Git executable mode: %s", output)
-	}
-}
-
-type recordingUncertaintySink struct {
-	facts   []ports.GovernedCheckUncertainty
-	clears  []domain.SessionID
-	current *ports.GovernedCheckUncertainty
-}
-
-func (s *recordingUncertaintySink) ClearGovernedCheckUncertainty(_ context.Context, sessionID domain.SessionID) error {
-	s.clears = append(s.clears, sessionID)
-	s.current = nil
-	return nil
-}
-
-func (s *recordingUncertaintySink) RecordGovernedCheckUncertainty(_ context.Context, fact ports.GovernedCheckUncertainty) error {
-	s.facts = append(s.facts, fact)
-	s.current = &fact
-	return nil
-}
-
-func (s *recordingUncertaintySink) GovernedCheckUncertainty(_ context.Context, sessionID domain.SessionID) (ports.GovernedCheckUncertainty, bool, error) {
-	if s.current == nil || s.current.SessionID != sessionID {
-		return ports.GovernedCheckUncertainty{}, false, nil
-	}
-	return *s.current, true, nil
-}
-
-func TestServeRecordsUnknownTerminationAndRefusesLaterEffects(t *testing.T) {
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "report.md"), []byte("original"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	policy, err := testPolicy(true, true).BindWorkspaceRoot(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	requests := []map[string]any{
-		{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "run_approved_check", "arguments": map[string]any{"check_id": "check-1"}}},
-		{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "write_text_file", "arguments": map[string]any{"path": "report.md", "content": "changed"}}},
-		{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": map[string]any{"name": "run_approved_check", "arguments": map[string]any{"check_id": "check-1"}}},
-	}
-	var input bytes.Buffer
-	for _, request := range requests {
-		if err := json.NewEncoder(&input).Encode(request); err != nil {
-			t.Fatal(err)
-		}
-	}
-	var output bytes.Buffer
-	sink := &recordingUncertaintySink{}
-	runs := 0
-	server := Server{
-		Policy: policy, WorkspaceRoot: root, SessionID: "session-1", In: &input, Out: &output,
-		UncertaintySink: sink, UncertaintySource: sink,
-		RunCheck: func(context.Context, governedcheck.Request) (governedcheck.Result, error) {
-			runs++
-			return governedcheck.Result{ExitCode: -1, EnforcedBy: "test-fence", TerminationUnknown: true}, nil
-		},
-	}
-	if err := server.Serve(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if runs != 1 {
-		t.Fatalf("check invocations = %d, want exactly 1 after uncertainty latch", runs)
-	}
-	if len(sink.facts) != 2 || sink.facts[1].SessionID != "session-1" || !sink.facts[1].TerminationUnknown || len(sink.clears) != 0 {
-		t.Fatalf("recorded uncertainty = %+v", sink.facts)
-	}
-	if text := output.String(); !strings.Contains(text, "termination_unknown=true") || strings.Count(text, `"isError":true`) != 3 {
-		t.Fatalf("MCP output did not surface and latch uncertainty: %s", text)
-	}
-	content, err := os.ReadFile(filepath.Join(root, "report.md"))
-	if err != nil || string(content) != "original" {
-		t.Fatalf("post-uncertainty write changed report: %q, %v", content, err)
-	}
-
-	var restartInput, restartOutput bytes.Buffer
-	if err := json.NewEncoder(&restartInput).Encode(requests[1]); err != nil {
-		t.Fatal(err)
-	}
-	restarted := Server{
-		Policy: policy, WorkspaceRoot: root, SessionID: "session-1",
-		In: &restartInput, Out: &restartOutput, UncertaintySink: sink, UncertaintySource: sink,
-	}
-	if err := restarted.Serve(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(restartOutput.String(), "effects blocked by unknown check termination") {
-		t.Fatalf("restarted MCP server did not restore uncertainty latch: %s", restartOutput.String())
 	}
 }

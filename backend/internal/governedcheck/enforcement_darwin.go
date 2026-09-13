@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -65,12 +66,63 @@ func (s seatbelt) Command(ctx context.Context, req Request, root string) (*exec.
 	if err != nil {
 		return nil, fmt.Errorf("%w: executable %q is not on the check path", ErrInvalidCommand, req.Argv[0])
 	}
-	argv := append([]string{"-p", s.profile(), "-D", "WORKSPACE=" + root, resolved}, req.Argv[1:]...)
+	developerRuntime := "/Library/Developer/CommandLineTools"
+	if req.Argv[0] == "python3" {
+		resolvedBinary, resolveErr := filepath.EvalSymlinks(resolved)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("%w: resolve developer runtime for %q: %w", ErrInvalidCommand, resolved, resolveErr)
+		}
+		resolvedRuntime, ok := developerRuntimeForBinary(resolvedBinary)
+		if !ok {
+			return nil, fmt.Errorf("%w: Python binary %q is outside an allowed developer root", ErrInvalidCommand, resolvedBinary)
+		}
+		developerRuntime = resolvedRuntime
+	}
+	argv := append([]string{"-p", s.profile(), "-D", "WORKSPACE=" + root, "-D", "DEVELOPER_RUNTIME=" + developerRuntime, resolved}, req.Argv[1:]...)
 	cmd := exec.CommandContext(ctx, sandboxExecPath, argv...)
 	cmd.Dir = root
 	cmd.Env = safeEnvironment(req.Environment)
 	cmd.Env[0] = "PATH=" + path
 	return cmd, nil
+}
+
+func developerRuntimeForBinary(binary string) (string, bool) {
+	binary = filepath.Clean(binary)
+	const commandLineToolsRoot = "/Library/Developer/CommandLineTools"
+	if pathWithin(commandLineToolsRoot, binary) {
+		return commandLineToolsRoot, true
+	}
+	const xcodeMarker = ".app/Contents/Developer/"
+	markerIndex := strings.Index(binary, xcodeMarker)
+	if markerIndex < 0 {
+		return "", false
+	}
+	root := binary[:markerIndex+len(xcodeMarker)-1]
+	if !allowedDeveloperRuntime(root) || !pathWithin(root, binary) {
+		return "", false
+	}
+	return root, true
+}
+
+func pathWithin(root, target string) bool {
+	relative, err := filepath.Rel(root, target)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func allowedDeveloperRuntime(root string) bool {
+	root = filepath.Clean(root)
+	if root == "/Library/Developer/CommandLineTools" {
+		return true
+	}
+	if filepath.Base(root) != "Developer" || filepath.Base(filepath.Dir(root)) != "Contents" {
+		return false
+	}
+	app := filepath.Dir(filepath.Dir(root))
+	if filepath.Dir(app) != "/Applications" {
+		return false
+	}
+	name := filepath.Base(app)
+	return name == "Xcode.app" || (strings.HasPrefix(name, "Xcode_") && strings.HasSuffix(name, ".app"))
 }
 
 func (s seatbelt) profile() string {
@@ -88,7 +140,7 @@ func (s seatbelt) profile() string {
 		// These roots are executable runtime resources, not owner workspace
 		// data; without them an approved Python check is reported as a false
 		// work failure before its script starts.
-		`(allow file-read* (subpath "/System") (subpath "/usr/lib") (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/share") (subpath "/dev") (subpath "/private/preboot") (subpath "/private/var/db/dyld") (subpath "/Library/Apple") (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))`,
+		`(allow file-read* (subpath "/System") (subpath "/usr/lib") (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/share") (subpath "/dev") (subpath "/private/preboot") (subpath "/private/var/db/dyld") (subpath "/Library/Apple") (subpath "/Library/Developer/CommandLineTools") (subpath (param "DEVELOPER_RUNTIME")))`,
 		"(allow process-exec)",
 		"(allow process-fork)",
 		"(allow sysctl-read)",

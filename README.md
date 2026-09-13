@@ -26,7 +26,7 @@ Install the [development toolchain](docs/development.md#toolchain): Node.js
 macOS/Linux. Provider CLIs need their own installation and authentication.
 
 ```sh
-git clone --branch beta https://github.com/Pin4sf/Waldo-Kennel.git
+git clone --branch beta https://github.com/waldoco/Waldo-Kennel.git
 cd Waldo-Kennel
 npm run bootstrap
 npm --prefix frontend run dev
@@ -77,8 +77,8 @@ configuration and execution-provider readiness are separate boundaries.
 ## Contribute
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), pick a focused
-[issue](https://github.com/Pin4sf/Waldo-Kennel/issues), and check the
-[milestones](https://github.com/Pin4sf/Waldo-Kennel/milestones).
+[issue](https://github.com/waldoco/Waldo-Kennel/issues), and check the
+[milestones](https://github.com/waldoco/Waldo-Kennel/milestones).
 Branches and implementation PRs start from and target `beta`; maintainers
 promote tested integration through a separate `beta` → `main` PR.
 
