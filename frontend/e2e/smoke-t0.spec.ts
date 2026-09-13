@@ -31,7 +31,9 @@ test("renderer: packaged bundle launches and paints @T0 @INS", async ({ page }) 
 	// on-image install itself stays in the pod INS script.
 	await installFakeBridge(page, { version: "9.9.9-test" });
 	await page.goto("/");
-	await expect(page.getByTestId("board")).toBeVisible();
+	// Work launch mode: `/` redirects to the Outcome-first Work destination.
+	await expect(page).toHaveURL(/#\/work/);
+	await expect(page.getByTestId("work-shell")).toBeVisible();
 	await page.goto("/#/settings");
 	await expect(page.getByTestId("settings-page")).toBeVisible();
 	await page.getByRole("button", { name: "Updates" }).click();
@@ -56,12 +58,11 @@ test("renderer: update settings surface renders (feed/checksum checks are pod) @
 // #2483 INS-002.
 test("renderer: first-run home renders with the app launched @T0 @INS", async ({ page }) => {
 	// "Empty data dir" is a pod-side precondition; under dev:web the mock
-	// fixtures are always present, so the BoardWelcome empty state can't render
-	// and we assert the home board surface + a mounted daemon-status indicator
-	// (proof the shell booted). The empty-state testid (`board-welcome`) is wired
-	// for the real empty-dir pod run.
+	// fixtures are always present, so we assert the Work destination shell plus
+	// a mounted daemon-status indicator (proof the shell booted).
 	await page.goto("/");
-	await expect(page.getByTestId("board")).toBeVisible();
+	await expect(page).toHaveURL(/#\/work/);
+	await expect(page.getByTestId("work-shell")).toBeVisible();
 	await expect(page.getByTestId("daemon-status")).toBeAttached();
 	await expect(page.getByText("Projects")).toBeVisible();
 });
@@ -98,7 +99,7 @@ test("renderer: reflects the daemon reaching ready on app start @T0 @DMN", async
 });
 
 // #2483 DMN-002.
-test("renderer: daemon health reflected with a hydrated board @T0 @DMN", async ({ page }) => {
+test("renderer: daemon health reflected with a hydrated workspace @T0 @DMN", async ({ page }) => {
 	// A responsive daemon → the renderer is ready AND has data to paint: the
 	// board hydrates with sessions rather than an error/empty shell.
 	//
@@ -113,7 +114,10 @@ test("renderer: daemon health reflected with a hydrated board @T0 @DMN", async (
 	});
 	await page.goto("/");
 	await expect(page.getByTestId("daemon-status")).toHaveAttribute("data-state", "ready");
-	await expect(page.getByTestId("board-session-card").first()).toBeVisible();
+	// Hydration proxy in Work launch mode: the daemon-backed workspace snapshot
+	// must paint the fake project and its session in the sidebar.
+	await expect(page.locator('[data-sidebar="menu-button"]').filter({ hasText: "fake-proj" }).first()).toBeVisible();
+	await expect(page.getByText("Active worker")).toBeVisible();
 });
 
 // #2483 DMN-005.
@@ -125,11 +129,11 @@ test("renderer: daemon stop surfaced cleanly with no renderer crash @T0 @DMN", a
 	await installFakeBridge(page, { daemonState: "stopped" });
 	await page.goto("/");
 	await expect(page.getByTestId("daemon-status")).toHaveAttribute("data-state", "stopped");
-	await expect(page.getByTestId("board")).toBeVisible();
+	await expect(page.getByTestId("work-shell")).toBeVisible();
 });
 
 // #2483 DMN-009.
-test("renderer: board state rehydrates after a renderer relaunch @T0 @DMN", async ({ page }) => {
+test("renderer: workspace state rehydrates after a renderer relaunch @T0 @DMN", async ({ page }) => {
 	// The real DMN-009 ("create state, restart the daemon, all state survives") is
 	// a daemon/storage persistence check for the pod. The renderer slice we can
 	// lock: state present on the board rehydrates after a full renderer relaunch
@@ -145,21 +149,18 @@ test("renderer: board state rehydrates after a renderer relaunch @T0 @DMN", asyn
 		workers: [{ id: "dmn009", title: "Persisted worker", status: "working" }],
 	});
 	await page.goto("/");
-	const firstCard = page.getByTestId("board-session-card").first();
-	await expect(firstCard).toBeVisible();
-	const before = await firstCard.textContent();
+	await expect(page.getByText("Persisted worker")).toBeVisible();
 
 	await page.reload();
 	await expect(page.getByTestId("daemon-status")).toHaveAttribute("data-state", "ready");
-	await expect(page.getByTestId("board-session-card").first()).toBeVisible();
-	expect(await page.getByTestId("board-session-card").first().textContent()).toBe(before);
+	await expect(page.getByText("Persisted worker")).toBeVisible();
 });
 
 // ── BRD: board ──────────────────────────────────────────────────────────────
 
 // #2483 BRD-001.
-test("renderer: board renders all status columns @T0 @BRD", async ({ page }) => {
-	await page.goto("/");
+test("renderer: board renders all status columns @T0 @BRD @legacy-board", async ({ page }) => {
+	await page.goto("/#/projects/kennel-design");
 	const columns = page.getByTestId("board-column");
 	await expect(columns).toHaveCount(4);
 	// Left→right flow in the landed Figma board vocabulary.
@@ -170,25 +171,30 @@ test("renderer: board renders all status columns @T0 @BRD", async ({ page }) => 
 });
 
 // #2483 BRD-012.
-test("renderer: route nav home to board to session detail and back @T0 @BRD", async ({ page }) => {
-	// home (global board)
+test("renderer: route nav work to project outcomes to session detail and back @T0 @BRD", async ({ page }) => {
+	// home redirects to the Work destination
 	await page.goto("/");
-	await expect(page.getByTestId("board")).toBeVisible();
+	await expect(page).toHaveURL(/#\/work/);
+	await expect(page.getByTestId("work-shell")).toBeVisible();
 
-	// → project board
+	// → project Outcomes overview
 	await page.locator('[data-sidebar="menu-button"]').filter({ hasText: "kennel-design" }).first().click();
-	await expect(page).toHaveURL(/projects\/kennel-design/);
-	await expect(page.getByTestId("board")).toBeVisible();
+	await expect(page).toHaveURL(/#\/work\?/);
+	expect(page.url()).toContain("view=outcomes");
+	expect(page.url()).toContain("project=kennel-design");
+	await expect(page.getByTestId("outcomes-overview-surface")).toBeVisible();
 
-	// → session detail (open the first card on the board)
-	await page.getByTestId("board-session-card").first().click();
+	// → session detail (deep link; session cards now live under an Outcome's
+	// Act & Observe lineage)
+	await page.goto("/#/projects/kennel-design/sessions/demo-working");
 	await expect(page).toHaveURL(/sessions\//);
 	await expect(page.getByTestId("session-detail")).toBeVisible();
 
-	// ← back to the project board
+	// ← back to the project Outcomes overview
 	await page.goBack();
-	await expect(page).toHaveURL(/projects\/kennel-design$/);
-	await expect(page.getByTestId("board")).toBeVisible();
+	await expect(page).toHaveURL(/#\/work\?/);
+	expect(page.url()).toContain("project=kennel-design");
+	await expect(page.getByTestId("outcomes-overview-surface")).toBeVisible();
 });
 
 // ── SET: settings ────────────────────────────────────────────────────────────

@@ -32,7 +32,8 @@
 		"test": "vitest run --config vite.renderer.config.ts",
 		"test:e2e": "playwright test",
 		"test:e2e:renderer": "playwright test --grep \"@T0|@P0\"",
-		"api:ts": "openapi-typescript ../backend/internal/httpd/apispec/openapi.yaml -o src/api/schema.ts"
+		"api:ts": "openapi-typescript ../backend/internal/httpd/apispec/openapi.yaml -o src/api/schema.ts",
+		"dev:web:legacy-board": "VITE_NO_ELECTRON=1 VITE_KENNEL_WORK_LAUNCH=0 vite --config vite.renderer.config.ts"
 	},
 	"devDependencies": {
 		"@electron-forge/cli": "^7.8.0",
