@@ -176,7 +176,6 @@ export function OutcomeProveCloseSurface({ outcomeId }: Props) {
 						{t(STATUS_LABEL_KEYS[proof.status] ?? "outcome.proof.statusActive")}
 					</Badge>
 				</div>
-				<p className="mt-1 text-muted-foreground text-sm">{proof.nextAction}</p>
 				<p className="mt-1 text-muted-foreground text-xs">{t("outcome.proof.binding", { revision: proof.contractRevision.number })}</p>
 			</header>
 
@@ -238,13 +237,12 @@ function ResultSummary({ proof }: { proof: OutcomeProofRecord }) {
 		<section className="grid gap-3 rounded-md border border-border bg-card/50 p-4 sm:grid-cols-3" data-testid="outcome-result-summary">
 			<div className="sm:col-span-3">
 				<h3 className="text-sm font-medium">{t("outcome.proof.resultSummary")}</h3>
-				<p className="mt-1 text-sm text-muted-foreground">{proof.nextAction}</p>
 			</div>
 			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.criteriaSummary")}</p><p className="mt-1 text-sm">{proof.criteria.filter((criterion) => criterion.ready).length}/{proof.criteria.length} {t("outcome.proof.criteriaReady")}</p></div>
 			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.evidenceSummaryLabel")}</p><p className="mt-1 text-sm">{evidenceCount} {t("outcome.proof.evidenceRecorded")}</p></div>
 			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.verificationSummaryLabel")}</p><p className="mt-1 text-sm">{passedCount}/{verificationCount} {t("outcome.proof.verificationsPassed")}</p></div>
 			{gaps.length > 0 && <div className="sm:col-span-3"><p className="text-xs uppercase tracking-wide text-warning">{t("outcome.proof.limitations")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{gaps.map((gap) => <li key={gap}>{gap}</li>)}</ul></div>}
-			{result.artifacts.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-artifacts"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.artifact")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.artifacts.map((artifact) => <li key={`${artifact.revision}-${artifact.digest}`}>{artifact.sourceRef} · {artifact.revision}{artifact.changed ? " · changed while checking" : ""}</li>)}</ul></div>}
+			{result.artifacts.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-artifacts"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.artifact")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.artifacts.map((artifact) => <li key={`${artifact.revision}-${artifact.digest}`}>{artifact.sourceRef} · {artifact.revision}</li>)}</ul></div>}
 			{result.checks.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-checks"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.verification")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.checks.map((check) => <li key={`${check.criterionId}-${check.artifactRevision}-${check.command}`}>{check.command} · {check.verdict || "unconfirmed"}{check.uncertain ? " · uncertainty blocks a verdict" : ""}</li>)}</ul></div>}
 			{result.uncertainty.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-uncertainty"><p className="text-xs uppercase tracking-wide text-warning">{t("outcome.proof.limitations")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.uncertainty.map((item) => <li key={item}>{item}</li>)}</ul></div>}
 			<div className="sm:col-span-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.nextAction")}</p><p className="mt-1 text-sm">{result.nextSafeAction}</p></div>

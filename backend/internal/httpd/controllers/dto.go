@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/devimport"
@@ -2801,7 +2800,6 @@ type OutcomeResultArtifactResponse struct {
 	Revision  string `json:"revision"`
 	SourceRef string `json:"sourceRef"`
 	Digest    string `json:"digest"`
-	Changed   bool   `json:"changed"`
 }
 
 // OutcomeResultCheckResponse summarizes one daemon-owned deterministic check.
@@ -2878,20 +2876,19 @@ func outcomeProofResponse(view outcomevc.ProofView) OutcomeProofResponse {
 			if evidence.SourceType == domain.EvidenceSourceArtifact {
 				response.Result.Artifacts = append(response.Result.Artifacts, OutcomeResultArtifactResponse{
 					Revision: evidence.SubjectRevision, SourceRef: evidence.SourceRef, Digest: evidence.ContentDigest,
-					Changed: strings.Contains(strings.ToLower(evidence.Summary), "changed"),
 				})
 			}
 			if evidence.SourceType == domain.EvidenceSourceDeterministicCheck {
-				check := OutcomeResultCheckResponse{CriterionID: string(evidence.CriterionID), Command: evidence.SourceRef, ArtifactRevision: evidence.SubjectRevision, Detail: evidence.Summary}
+				check := OutcomeResultCheckResponse{CriterionID: string(evidence.CriterionID), Command: evidence.SourceRef, ArtifactRevision: evidence.SubjectRevision, Detail: evidence.Summary, Uncertain: true}
 				for _, verification := range criterion.Verifications {
 					if slices.Contains(verification.EvidenceItemIDs, evidence.ID) {
 						check.Verdict = string(verification.Result)
 						check.Detail = verification.Detail
-						check.Uncertain = strings.Contains(strings.ToLower(verification.Detail), "unknown") || strings.Contains(strings.ToLower(verification.Detail), "could not be confirmed")
+						check.Uncertain = verification.Result == domain.VerificationInconclusive
 						break
 					}
 				}
-				if check.Uncertain || strings.Contains(strings.ToLower(evidence.Summary), "unknown") || strings.Contains(strings.ToLower(evidence.Summary), "could not be confirmed") {
+				if check.Uncertain {
 					response.Result.Uncertainty = append(response.Result.Uncertainty, check.Detail)
 				}
 				response.Result.Checks = append(response.Result.Checks, check)

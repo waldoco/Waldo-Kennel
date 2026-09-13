@@ -30,9 +30,9 @@ Initial baseline checks are intentionally narrow and load-bearing:
 
 | Phase | Acceptance gate | Status at handoff |
 | --- | --- | --- |
-| 1 | Packaged UI reaches a reviewable Plan or an actionable terminal failure; no indefinite waiting; provider/model and frozen grant remain exact. | Passed for verified native Codex path; actionable-failure and restart lineage remain covered by focused tests. |
+| 1 | Packaged UI reaches a reviewable Plan or an actionable terminal failure; no indefinite waiting; provider/model and frozen grant remain exact. | Partial: API-assisted native Codex setup reached a Plan rendered by the packaged UI; the complete UI-only planning journey and live failure/restart lineage remain open. |
 | 2 | One live post-work invocation plus restart yields one authoritative observation for unchanged Attempt/artifact/check identity; changed input forces a distinct check; uncertainty blocks duplicate effects. | Daemon-owned path implemented; live post-work rehearsal remains Phase 5. |
-| 3 | Result summarizes changed artifacts, checks, criterion verdicts, uncertainty and next safe action; rework creates successor lineage; acceptance remains owner-only. | Passed in daemon projection and focused/full frontend gates; live changed-artifact check remains rehearsal work. |
+| 3 | Result summarizes changed artifacts, checks, criterion verdicts, uncertainty and next safe action; rework creates successor lineage; acceptance remains owner-only. | Partial: daemon projection and frontend checks pass; non-contract rework still requires raw target IDs, and live artifact-change/rework journeys remain open. |
 | 4 | Combined package proves UI journey, restart, offline/unavailable, failed check, return/focus, restore fence, and clean shutdown. | Partial: final package/API journey and prior UI inspection passed; final-hash screenshot and full negative/restart matrix remain open. |
 | 5 | Reversible real repo improvement is demonstrated from user Outcome through Result with no hidden setup and explicit owner decision left open. | Open. |
 
@@ -165,3 +165,16 @@ it is not a substitute for packaged acceptance.
   still needs the already-established host-permission rerun because its
   sandbox blocks seatbelt and loopback tests; that is environmental and not
   used as a code failure claim.
+
+## Publication review correction
+
+- Result uncertainty now derives from the structured verification verdict (or
+  missing verification), never a word search over check output. In particular,
+  `terminationUnknown=false` no longer makes a passed check appear uncertain.
+- Removed the unmeasured artifact `changed` projection: artifact evidence
+  summaries such as “unchanged” cannot establish mutation during checking.
+  Revision, reference and digest remain visible; a measured artifact-change
+  projection remains an open Result gate.
+- HTTP projection regressions cover passed, failed, inconclusive and absent
+  verdicts plus unchanged artifact prose. All failed against the prior DTO
+  behavior before the fix.

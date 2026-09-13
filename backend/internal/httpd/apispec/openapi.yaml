@@ -10221,8 +10221,6 @@ components:
       type: object
     ControllersOutcomeResultArtifactResponse:
       properties:
-        changed:
-          type: boolean
         digest:
           type: string
         revision:
@@ -10233,7 +10231,6 @@ components:
       - revision
       - sourceRef
       - digest
-      - changed
       type: object
     ControllersOutcomeResultCheckResponse:
       properties:

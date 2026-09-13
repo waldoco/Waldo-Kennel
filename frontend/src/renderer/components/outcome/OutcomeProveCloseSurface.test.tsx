@@ -27,8 +27,8 @@ function proofEnvelope(status = "ready_for_acceptance") {
 			status,
 			nextAction: status === "accepted" ? "Accepted. Reopen explicitly if needed." : "Review the current proof and explicitly accept or request rework.",
 			result: {
-				artifacts: [{ revision: "artifact-v2", sourceRef: "README.md", digest: "b".repeat(64), changed: true }],
-				checks: [{ criterionId: "crit-1", command: "grep -Fx review README.md", artifactRevision: "artifact-v2", verdict: "failed", detail: "result changed while checking", uncertain: false }],
+				artifacts: [{ revision: "artifact-v2", sourceRef: "README.md", digest: "b".repeat(64) }],
+				checks: [{ criterionId: "crit-1", command: "grep -Fx review README.md", artifactRevision: "artifact-v2", verdict: "failed", detail: "check exited 1", uncertain: false }],
 				uncertainty: [], nextSafeAction: "Review the changed artifact and request rework if needed.",
 			},
 			criteria: [{

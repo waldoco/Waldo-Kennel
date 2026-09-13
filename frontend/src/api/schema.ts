@@ -3323,7 +3323,6 @@ export interface components {
             state: "selected" | "approved";
         };
         ControllersOutcomeResultArtifactResponse: {
-            changed: boolean;
             digest: string;
             revision: string;
             sourceRef: string;
