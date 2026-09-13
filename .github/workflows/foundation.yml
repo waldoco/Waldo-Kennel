@@ -8,7 +8,7 @@ name: foundation
 on:
   pull_request:
     branches: [beta]
-    types: [ready_for_review]
+    types: [opened, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       deep_race:
@@ -27,6 +27,7 @@ concurrency:
 jobs:
   foundation-core:
     name: foundation-core
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
