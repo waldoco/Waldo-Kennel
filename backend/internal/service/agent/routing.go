@@ -23,6 +23,14 @@ func (s *Service) RoutingSnapshot(ctx context.Context, projectID domain.ProjectI
 		installed[info.ID] = info
 	}
 
+	generationRaw, err := json.Marshal(struct {
+		Supported any
+		Installed any
+	}{inventory.Supported, inventory.Installed})
+	if err != nil {
+		return ports.RoutingInventorySnapshot{}, fmt.Errorf("encode routing generation: %w", err)
+	}
+	generationID := string(domain.DigestSHA256(generationRaw))
 	candidates := make([]domain.RoutingCandidate, 0, len(inventory.Supported))
 	for _, supported := range inventory.Supported {
 		harness := domain.AgentHarness(supported.ID)
@@ -77,8 +85,9 @@ func (s *Service) RoutingSnapshot(ctx context.Context, projectID domain.ProjectI
 		return ports.RoutingInventorySnapshot{}, fmt.Errorf("encode routing inventory: %w", err)
 	}
 	return ports.RoutingInventorySnapshot{
-		SnapshotID: string(domain.DigestSHA256(encoded)),
-		Candidates: candidates,
+		GenerationID: generationID,
+		SnapshotID:   string(domain.DigestSHA256(encoded)),
+		Candidates:   candidates,
 	}, nil
 }
 

@@ -192,6 +192,9 @@ func migrate(db *sql.DB) error {
 	if err := reconcilePlanningPlanImmutability(db); err != nil {
 		return fmt.Errorf("reconcile planning Plan immutability: %w", err)
 	}
+	if err := reconcileAdmissionSchema(db); err != nil {
+		return fmt.Errorf("reconcile admission schema: %w", err)
+	}
 	// A degraded profile can acquire the planning tables only during the
 	// reconciliation above, after the first CDC restoration pass.
 	if err := restoreChangeLogWriters(db); err != nil {
@@ -1698,3 +1701,31 @@ WHERE type = 'table' AND name = 'sessions'`,
 
 //go:embed schema/outcome_deletion_guards.sql
 var outcomeDeletionGuardsDDL string
+
+//go:embed schema/admission_packets.sql
+var admissionPacketsDDL string
+
+// reconcileAdmissionSchema conditionally installs admission evidence after
+// burned-ledger repairs. It defers rather than inventing missing Outcome state.
+func reconcileAdmissionSchema(db *sql.DB) error {
+	for _, table := range []string{"outcomes", "plan_revisions", "work_units", "attempts"} {
+		var present int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&present); err != nil {
+			return err
+		}
+		if present == 0 {
+			return nil
+		}
+	}
+	var budgetColumn int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('work_units') WHERE name='execution_budget_json'`).Scan(&budgetColumn); err != nil {
+		return err
+	}
+	if budgetColumn == 0 {
+		if _, err := db.Exec(`ALTER TABLE work_units ADD COLUMN execution_budget_json TEXT CHECK (execution_budget_json IS NULL OR json_valid(execution_budget_json))`); err != nil {
+			return err
+		}
+	}
+	_, err := db.Exec(admissionPacketsDDL)
+	return err
+}

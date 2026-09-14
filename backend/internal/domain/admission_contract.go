@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -124,6 +125,41 @@ func (b AdmissionBudget) Validate() error {
 	return nil
 }
 
+type RoutingAdmissionReceipt struct {
+	GenerationID string             `json:"generationId"`
+	SnapshotID   string             `json:"snapshotId"`
+	Preference   RoutingPreference  `json:"preference"`
+	Candidates   []RoutingCandidate `json:"candidates"`
+	Digest       string             `json:"digest"`
+}
+
+func (r RoutingAdmissionReceipt) payload() RoutingAdmissionReceipt {
+	r.Digest = ""
+	r.Candidates = append([]RoutingCandidate(nil), r.Candidates...)
+	sort.Slice(r.Candidates, func(i, j int) bool { return r.Candidates[i].ID < r.Candidates[j].ID })
+	return r
+}
+func (r RoutingAdmissionReceipt) ComputedDigest() (string, error) {
+	raw, err := json.Marshal(r.payload())
+	if err != nil {
+		return "", err
+	}
+	return string(DigestSHA256(raw)), nil
+}
+func (r RoutingAdmissionReceipt) Validate() error {
+	if strings.TrimSpace(r.GenerationID) == "" || strings.TrimSpace(r.SnapshotID) == "" {
+		return fmt.Errorf("routing receipt identity incomplete")
+	}
+	want, err := r.ComputedDigest()
+	if err != nil {
+		return err
+	}
+	if want != r.Digest {
+		return fmt.Errorf("routing receipt digest mismatch")
+	}
+	return nil
+}
+
 type ReadinessReceipt struct {
 	Producer  string `json:"producer"`
 	Version   string `json:"version"`
@@ -155,21 +191,25 @@ func (w WorkspaceRequirements) Validate() error {
 // ApprovedExecutableSpec is immutable approval authority. It deliberately has
 // no Attempt, fence, session, concrete root, or runtime-input identity.
 type ApprovedExecutableSpec struct {
-	CompilerPolicyVersion  string                `json:"compilerPolicyVersion"`
-	OutcomeID              OutcomeID             `json:"outcomeId"`
-	ContractRevisionNumber int64                 `json:"contractRevisionNumber"`
-	PlanRevisionID         PlanRevisionID        `json:"planRevisionId"`
-	WorkUnitID             WorkUnitID            `json:"workUnitId"`
-	RunBriefCoreDigest     string                `json:"runBriefCoreDigest"`
-	Binding                ExecutionBinding      `json:"binding"`
-	NativeMappingVersion   string                `json:"nativeMappingVersion"`
-	RequiredCapabilities   []string              `json:"requiredCapabilities"`
-	Grants                 []CapabilityGrant     `json:"grants"`
-	ApprovedChecks         []ApprovedCheck       `json:"approvedChecks,omitempty"`
-	Workspace              WorkspaceRequirements `json:"workspace"`
-	Budget                 AdmissionBudget       `json:"budget"`
-	AdmissionReceipts      []ReadinessReceipt    `json:"admissionReceipts"`
-	Digest                 string                `json:"digest"`
+	CompilerPolicyVersion   string                  `json:"compilerPolicyVersion"`
+	OutcomeID               OutcomeID               `json:"outcomeId"`
+	ContractRevisionNumber  int64                   `json:"contractRevisionNumber"`
+	PlanRevisionID          PlanRevisionID          `json:"planRevisionId"`
+	WorkUnitID              WorkUnitID              `json:"workUnitId"`
+	RunBriefCoreDigest      string                  `json:"runBriefCoreDigest"`
+	Binding                 ExecutionBinding        `json:"binding"`
+	NativeMappingVersion    string                  `json:"nativeMappingVersion"`
+	RequiredCapabilities    []string                `json:"requiredCapabilities"`
+	Grants                  []CapabilityGrant       `json:"grants"`
+	ApprovedChecks          []ApprovedCheck         `json:"approvedChecks,omitempty"`
+	Workspace               WorkspaceRequirements   `json:"workspace"`
+	Budget                  AdmissionBudget         `json:"budget"`
+	AdmissionReceipts       []ReadinessReceipt      `json:"admissionReceipts"`
+	RoutingReceipt          RoutingAdmissionReceipt `json:"routingReceipt"`
+	DocumentContextID       DocumentContextID       `json:"documentContextId,omitempty"`
+	DocumentContextRevision int64                   `json:"documentContextRevision,omitempty"`
+	DocumentContextDigest   string                  `json:"documentContextDigest,omitempty"`
+	Digest                  string                  `json:"digest"`
 }
 
 func (s ApprovedExecutableSpec) payload() ApprovedExecutableSpec { s.Digest = ""; return s }
@@ -195,7 +235,16 @@ func (s ApprovedExecutableSpec) Validate() error {
 	if err := s.Workspace.Validate(); err != nil {
 		return err
 	}
+	if (s.DocumentContextID.IsZero()) != (s.DocumentContextRevision == 0 || strings.TrimSpace(s.DocumentContextDigest) == "") {
+		return fmt.Errorf("document context identity is incomplete")
+	}
+	if !s.DocumentContextID.IsZero() && (s.DocumentContextRevision < 1 || strings.TrimSpace(s.DocumentContextDigest) == "") {
+		return fmt.Errorf("document context identity is incomplete")
+	}
 	if err := s.Budget.Validate(); err != nil {
+		return err
+	}
+	if err := s.RoutingReceipt.Validate(); err != nil {
 		return err
 	}
 	if len(s.AdmissionReceipts) == 0 {
@@ -214,6 +263,29 @@ func (s ApprovedExecutableSpec) Validate() error {
 	return nil
 }
 
+type LaunchFacts struct {
+	AttemptID               AttemptID          `json:"attemptId"`
+	FenceID                 string             `json:"fenceId"`
+	SessionID               string             `json:"sessionId"`
+	CanonicalWorkspaceRoot  string             `json:"canonicalWorkspaceRoot"`
+	SpecDigest              string             `json:"specDigest"`
+	ReadinessReceipts       []ReadinessReceipt `json:"readinessReceipts"`
+	DocumentContextID       DocumentContextID  `json:"documentContextId,omitempty"`
+	DocumentContextRevision int64              `json:"documentContextRevision,omitempty"`
+	DocumentContextDigest   string             `json:"documentContextDigest,omitempty"`
+	InputArtifactVersions   []string           `json:"inputArtifactVersions"`
+	PolicyDigest            string             `json:"policyDigest"`
+}
+
+func (f LaunchFacts) Digest() (string, error) {
+	raw, err := json.Marshal(f)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+
 // WorkspaceBoundLaunchPacket binds one approved spec to exact runtime facts.
 // The spec remains approval authority; this packet can only bind or narrow it.
 type WorkspaceBoundLaunchPacket struct {
@@ -225,6 +297,7 @@ type WorkspaceBoundLaunchPacket struct {
 	CanonicalWorkspaceRoot   string                 `json:"canonicalWorkspaceRoot"`
 	InputArtifactVersions    []string               `json:"inputArtifactVersions"`
 	CurrentReadinessReceipts []ReadinessReceipt     `json:"currentReadinessReceipts"`
+	LaunchFacts              LaunchFacts            `json:"launchFacts"`
 	LaunchFactsDigest        string                 `json:"launchFactsDigest"`
 	Policy                   AttemptExecutionPolicy `json:"policy"`
 	Digest                   string                 `json:"digest"`
@@ -248,6 +321,19 @@ func (p WorkspaceBoundLaunchPacket) Validate() error {
 	}
 	if p.AttemptID.IsZero() || strings.TrimSpace(p.FenceID) == "" || strings.TrimSpace(p.SessionID) == "" || strings.TrimSpace(p.CanonicalWorkspaceRoot) == "" || strings.TrimSpace(p.LaunchFactsDigest) == "" {
 		return fmt.Errorf("runtime binding is incomplete")
+	}
+	wantFacts := LaunchFacts{AttemptID: p.AttemptID, FenceID: p.FenceID, SessionID: p.SessionID, CanonicalWorkspaceRoot: p.CanonicalWorkspaceRoot, SpecDigest: p.SpecDigest, ReadinessReceipts: p.CurrentReadinessReceipts, DocumentContextID: p.Spec.DocumentContextID, DocumentContextRevision: p.Spec.DocumentContextRevision, DocumentContextDigest: p.Spec.DocumentContextDigest, InputArtifactVersions: p.InputArtifactVersions}
+	policyDigest, err := p.Policy.Digest()
+	if err != nil {
+		return err
+	}
+	wantFacts.PolicyDigest = policyDigest
+	factsDigest, err := p.LaunchFacts.Digest()
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(p.LaunchFacts, wantFacts) || p.LaunchFactsDigest != factsDigest {
+		return fmt.Errorf("launch facts mismatch")
 	}
 	if len(p.CurrentReadinessReceipts) == 0 {
 		return fmt.Errorf("current readiness receipts are required")

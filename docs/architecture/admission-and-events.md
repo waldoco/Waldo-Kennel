@@ -251,3 +251,39 @@ This slice does not persist verdicts, wire approval or Attempt start, add genera
 W1.0 chooses approval without workspace reservation. Approval consumes an immutable `ApprovedExecutableSpec`. Its digest binds Outcome/Contract/Plan/WorkUnit attribution, RunBrief core digest, local harness/model, compiler and native-mapping versions, normalized required capabilities and grants, daemon-run checks, workspace kind and lease subject, versioned budget/accounting semantics, and stable admission receipt identities. The spec contains no concrete root, Attempt, fence, or session identity.
 
 Attempt start derives an immutable `WorkspaceBoundLaunchPacket`. Its digest binds the approved spec and spec digest to the exact Attempt, fence, session, canonical workspace root, input artifact versions, current typed readiness receipts, launch facts, and workspace-bound `AttemptExecutionPolicy`. Validation cross-checks attribution and permits only binding or narrowing; the launch packet cannot widen capabilities, grants, checks, or budgets. No W1.0 persistence, service, or port wiring is implied.
+
+## W1.1 shared evaluator and launch crash boundary
+
+W1.1 implements one Go-owned admission evaluator. The same evaluation semantics are used to decide Plan intelligence/routing eligibility, whether approval is enabled, and whether an approved Plan remains fresh at Attempt start. Approval atomically persists the admitted `AdmissionVerdict` and one immutable `ApprovedExecutableSpec` per WorkUnit. Runtime readiness may only reject or stale that authority, never widen it.
+
+Attempt admission first creates the Attempt and fence. Session preparation then creates the session identity, canonical workspace, approved inputs, and workspace-bound policy without starting a provider. A mandatory callback persists the separately digested `WorkspaceBoundLaunchPacket`, referencing the approved spec digest, before either the TUI runtime or Chat controller can start. Persistence failure rolls back prepared session/workspace state and launches no provider. There is no pre-approval lease.
+
+W1.1 adds migration `0137_admission_packets.sql`. It adds no generated API or UI surface. Budget enforcement, richer semantic coherence, retry policy, and event projection remain W1.2-W1.4 work; the W1.1 evaluator only fails closed on the invariants the current canonical records can prove.
+
+### W1.1 budget policy seam
+
+Each proposed WorkUnit freezes a resolved `ExecutionBudget`: wall-time per Attempt, retry limit per WorkUnit successor lineage, and either an enforced token limit or an explicit unsupported-accounting state. It also freezes source (`policy_default` or `user_override`) and policy id/version/digest. The immutable daemon policy owns recommended defaults and ceilings; evaluator admission rejects missing budgets, policy identity mismatch, or values above ceilings. Token use is cumulative across every Attempt in the WorkUnit lineage. W1.1 records the shape and provenance; W1.2 enforces limits and emits threshold events.
+
+The production default/ceiling table remains intentionally unresolved. Until a named policy with reviewed numeric values is wired, current proposed Plans receive no resolved budget and admission rejects them with the budget reason codes. Tests use a test-only policy and do not establish product values.
+
+The launch packet's `session_id` intentionally has no foreign key. Session seed rows are rollback/GC state, while launch evidence must remain append-only across session cleanup. Every read cross-checks SQL identity columns against the JSON packet and validates the embedded spec. Recovery reads this packet alongside session refs: no packet means preparation did not cross the launch boundary; a valid packet without a bound/running session means launch is unconfirmed; a matching session ref plus runtime facts determines running or later states.
+
+The daemon loads the production policy only from the durable data-directory file `admission-policy.json`. The file must decode to a valid named/versioned `AdmissionPolicy`; absence leaves the policy nil and all budget-bearing proposal admission fails closed. No numeric fallback is compiled into the daemon.
+
+For heterogeneous Plans, admission groups WorkUnits by distinct frozen provider/model preference, asks the routing inventory for each preference, and requires every returned snapshot to carry the same coherent snapshot identity. A mid-evaluation inventory-version change rejects instead of mixing views.
+
+`admission-policy.json` is read once during daemon startup; edits take effect only after restart. The daemon account must own the file and operators should restrict it to owner read/write (0600). W1.1 does not mutate or chmod operator-managed configuration; it rejects unsafe file type or mode at startup. OS-specific numeric owner-ID enforcement remains a configuration-hardening follow-up.
+
+Routing snapshots expose both a coherent base `generation_id` and a preference-specific `snapshot_id`. Heterogeneous provider/model checks may have different filtered snapshot IDs, but every view in one admission evaluation must share the exact generation ID; model support, defaults, candidate identity and capability facts remain inside each persisted receipt/spec input.
+
+The policy loader rejects symlinks, non-regular files, unknown JSON fields, trailing JSON values, and any group/other permission bits. Operators must create the restart-only file as daemon-owned mode 0600.
+
+AdmissionPolicy.digest is the SHA-256 of the complete canonical typed policy payload with both policy digest fields blanked. Validation recomputes it and requires the resolved default budget to bind that exact digest.
+
+Approved specs include a typed routing receipt containing the nonempty generation ID, filtered snapshot ID, exact preference and normalized candidate identity/readiness/capability/default/model-support facts. Its digest is recomputable and candidate ordering is canonical. Snapshot ID never substitutes for generation identity.
+
+Workspace-bound packets carry typed canonical LaunchFacts rather than an opaque hash claim. Validation reconstructs the facts from packet attribution, receipts, document identity, workspace, policy and ordered input versions, then recomputes both the facts digest and outer packet digest.
+
+`LaunchPrepared` is machine proof only for an exact W1.1-admitted Plan/WorkUnit with durable verdict/spec evidence and no bound session or launch packet. A no-packet Attempt with any bound session is classified legacy and retains beta liveness/stop-proof custody semantics; packet absence alone can never release a possibly live legacy writer.
+
+Legacy/unknown launch state never treats owner confirmation as provider-stop proof. Reconcile and replace require machine-terminated bound-session evidence, including for succeeded Attempts with complete retained results. An unavailable admission store classifies as legacy/unknown, never prepared.

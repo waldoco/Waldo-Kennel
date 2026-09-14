@@ -447,6 +447,10 @@ func Run() error {
 	} else {
 		log.Info("Waldo reasoning is configured", "provider", reasoning.Provider, "model", reasoning.Model)
 	}
+	admissionPolicy, policyErr := loadAdmissionPolicy(cfg.DataDir)
+	if policyErr != nil {
+		return fmt.Errorf("load admission policy: %w", policyErr)
+	}
 	outcomeSvc := outcomevc.New(store, nil).
 		WithPlanning(intelligenceProvider, agentSvc).
 		WithRepositoryContextLimits(settingsSvc).
@@ -459,6 +463,7 @@ func Run() error {
 		WithProofStore(store).
 		WithDelivery(store, artifactContent).
 		WithAnalystSessionReaper(reaper)
+	outcomeSvc.AdmissionPolicy = admissionPolicy
 	if recovered, recoveryErr := outcomeSvc.RecoverInterruptedPlanning(ctx); recoveryErr != nil {
 		return fmt.Errorf("recover interrupted Outcome planning: %w", recoveryErr)
 	} else if recovered > 0 {
@@ -497,7 +502,8 @@ func Run() error {
 	// recovery; the canonical analyzer itself never spawns one.
 	intakeAnalyzer := intelligencesvc.NewIntakeAnalyzer(intelligenceProvider, store, nil).
 		WithRepositoryContextSource(store).
-		WithRepositoryContextLimits(settingsSvc)
+		WithRepositoryContextLimits(settingsSvc).
+		WithAdmissionEvaluator(outcomeSvc)
 	intakeSvc := intakevc.New(store, intakeAnalyzer, nil).WithAnalystSessionReaper(reaper)
 	// Order matters. Expiry runs FIRST: it closes asks whose deadline passed
 	// while the daemon was down and returns their intakes to a retryable

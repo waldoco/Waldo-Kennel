@@ -61,3 +61,9 @@ This log records choices most likely to regress. Accepted ADRs retain deeper rat
 **Decision:** More providers, parallel orchestration, portable memory, teams, and richer channels extend the same loop only after their dependencies are proven.
 
 **Why:** Future product value should remain visible without entering or weakening the core path prematurely.
+
+## D13. Resolved execution budgets carry policy provenance
+
+**Decision:** Every proposed WorkUnit carries an immutable resolved execution budget with source and policy id/version/digest. A named, versioned daemon policy owns defaults and ceilings. Missing budgets reject rather than borrowing hidden runtime defaults; token precision is omitted when negotiated accounting is unsupported, while wall-time and retry bounds remain required.
+
+**Why:** Replacements must not reset lineage limits, and approval must show the exact effective values it authorized. Production default and ceiling numbers remain intentionally unresolved until the reviewed policy table lands; W1.1 contains no invented numeric defaults.

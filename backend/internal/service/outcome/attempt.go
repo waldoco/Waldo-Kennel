@@ -110,6 +110,7 @@ type AttemptView struct {
 	// write) is simply absent from the map; absence is observability,
 	// never an error.
 	ProtocolProvenance map[domain.AttemptSessionRefID]domain.ChatProtocolProvenance
+	LaunchPacket       *domain.WorkspaceBoundLaunchPacket
 	Presentation       domain.AttemptPresentation
 }
 
@@ -271,17 +272,40 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 			map[string]any{"detail": err.Error(), "planId": plan.ID, "workUnitId": unit.ID})
 	}
 
-	projectID, ok, err := s.store.GetOutcomeProjectID(ctx, outcomeID)
+	projectID, found, err := s.store.GetOutcomeProjectID(ctx, outcomeID)
 	if err != nil {
 		return AttemptView{}, err
 	}
-	if !ok {
+	if !found {
 		return AttemptView{}, apierr.NotFound("PROJECT_NOT_FOUND", "Register that Project before starting Attempts")
 	}
-	if err := s.probeReadiness(ctx, projectID, binding, &policy); err != nil {
+	if s.admission == nil {
+		return AttemptView{}, apierr.Internal("ADMISSION_STORE_UNWIRED", "Admission persistence is unavailable in this environment")
+	}
+	approvedSpec, found, err := s.admission.GetApprovedExecutableSpec(ctx, plan.ID, unit.ID)
+	if err != nil {
 		return AttemptView{}, err
 	}
-
+	if !found {
+		return AttemptView{}, apierr.Conflict("ATTEMPT_ADMISSION_MISSING", "The approved Plan has no executable admission spec", nil)
+	}
+	// Validate supplied material before replaying the frozen admission identity so
+	// document-specific refusals remain actionable and no changed bytes launch.
+	documents, hasDocuments, err := s.approvedDocumentsForAdmission(ctx, outcomeID)
+	if err != nil {
+		return AttemptView{}, err
+	}
+	staged, err := s.EvaluateAdmissionStage(ctx, ports.AdmissionStageInput{Stage: ports.AdmissionStageStart, ProjectID: projectID, Outcome: &outcomeRecord, Contract: &revision, Plan: &plan})
+	if err != nil {
+		return AttemptView{}, err
+	}
+	currentVerdict := (admissionEvaluator{now: s.clock, policy: s.AdmissionPolicy}).revalidate(approvedSpec, staged.Verdict)
+	if currentVerdict.Status != domain.AdmissionAdmitted {
+		if err := s.admission.AppendAdmissionEvaluation(ctx, currentVerdict); err != nil {
+			return AttemptView{}, err
+		}
+		return AttemptView{}, apierr.Conflict("ATTEMPT_ADMISSION_STALE", "Execution admission changed after approval; replan and approve again", map[string]any{"reasons": currentVerdict.Reasons})
+	}
 	// A successor may not be admitted until its predecessors' exact results are
 	// retained, complete and frozen. Resolving here, before the fence is taken,
 	// means a blocked successor never holds custody it cannot use — and the
@@ -293,10 +317,6 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 	// A supplied-document Outcome stages its approved snapshot the same way,
 	// at the same seam, under the same refusal: unreviewed or edited material
 	// never reaches a provider.
-	documents, hasDocuments, err := s.approvedDocumentsForAdmission(ctx, outcomeID)
-	if err != nil {
-		return AttemptView{}, err
-	}
 	var documentInputs *ports.AttemptDocumentInputs
 	if hasDocuments {
 		documentInputs = &ports.AttemptDocumentInputs{
@@ -340,11 +360,40 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 		return AttemptView{}, err
 	}
 
+	fence, found, err := s.store.OpenFenceForSubject(ctx, domain.FenceSubjectForProject(projectID))
+	if err != nil || !found || fence.AttemptID != attempt.ID {
+		if err == nil {
+			err = errors.New("attempt fence is missing after admission")
+		}
+		return AttemptView{}, s.admitPrelaunchFailure(ctx, outcomeID, unit, attempt, err)
+	}
 	spawned, err := s.spawner.Spawn(ctx, ports.AttemptSpawnRequest{
 		ProjectID: projectID, Harness: binding.Provider, ModelSelection: binding.ModelSelection, Model: binding.Model,
 		ExecutionPolicy: &policy,
 		Prompt:          prompt, DisplayName: fmt.Sprintf("%s · %s · attempt %d", outcomeRecord.Title, unit.Title, attempt.Number),
 		Inputs: inputs, Documents: documentInputs,
+		BeforeProviderLaunch: func(ctx context.Context, session domain.SessionRecord, bound domain.AttemptExecutionPolicy) error {
+			readinessReceipt, readinessErr := s.probeReadiness(ctx, projectID, binding, &bound)
+			if readinessErr != nil {
+				return readinessErr
+			}
+			versions := inputArtifactVersions(inputs)
+			packet := domain.WorkspaceBoundLaunchPacket{Spec: approvedSpec, SpecDigest: approvedSpec.Digest, AttemptID: attempt.ID, FenceID: fence.ID, SessionID: string(session.ID), CanonicalWorkspaceRoot: bound.WorkspaceRoot, InputArtifactVersions: versions, CurrentReadinessReceipts: []domain.ReadinessReceipt{readinessReceipt}, Policy: bound}
+			policyDigest, digestErr := bound.Digest()
+			if digestErr != nil {
+				return digestErr
+			}
+			packet.LaunchFacts = domain.LaunchFacts{AttemptID: attempt.ID, FenceID: fence.ID, SessionID: string(session.ID), CanonicalWorkspaceRoot: bound.WorkspaceRoot, SpecDigest: approvedSpec.Digest, ReadinessReceipts: packet.CurrentReadinessReceipts, DocumentContextID: approvedSpec.DocumentContextID, DocumentContextRevision: approvedSpec.DocumentContextRevision, DocumentContextDigest: approvedSpec.DocumentContextDigest, InputArtifactVersions: versions, PolicyDigest: policyDigest}
+			packet.LaunchFactsDigest, digestErr = packet.LaunchFacts.Digest()
+			if digestErr != nil {
+				return digestErr
+			}
+			packet.Digest, digestErr = packet.ComputedDigest()
+			if digestErr != nil {
+				return digestErr
+			}
+			return s.admission.PersistWorkspaceBoundLaunchPacket(ctx, packet)
+		},
 	})
 	if err != nil {
 		// Input provisioning happens before any provider process exists, so
@@ -442,24 +491,23 @@ func (s *Service) admitUnresolved(ctx context.Context, attemptID domain.AttemptI
 	return unresolved
 }
 
-func (s *Service) probeReadiness(ctx context.Context, projectID domain.ProjectID, binding domain.ExecutionBinding, policy *domain.AttemptExecutionPolicy) error {
+func (s *Service) probeReadiness(ctx context.Context, projectID domain.ProjectID, binding domain.ExecutionBinding, policy *domain.AttemptExecutionPolicy) (domain.ReadinessReceipt, error) {
 	readiness, err := s.spawner.ProfileReadiness(ctx, projectID, binding, policy)
 	if err != nil {
 		var unsupported *ports.ExecutionPolicyUnsupportedError
 		if errors.As(err, &unsupported) {
-			return apierr.Conflict(CodeAttemptExecutionPolicyUnsupported, "The selected provider cannot enforce this approved WorkUnit policy", map[string]any{"harness": binding.Provider, "capability": unsupported.Capability, "detail": unsupported.Detail})
+			return domain.ReadinessReceipt{}, apierr.Conflict(CodeAttemptExecutionPolicyUnsupported, "The selected provider cannot enforce this approved WorkUnit policy", map[string]any{"harness": binding.Provider, "capability": unsupported.Capability, "detail": unsupported.Detail})
 		}
 		if errors.Is(err, ports.ErrAgentBinaryNotFound) {
-			return apierr.Conflict(CodeAgentBinaryNotFound, "The authorized agent binary is not installed on this machine", map[string]any{"harness": binding.Provider})
+			return domain.ReadinessReceipt{}, apierr.Conflict(CodeAgentBinaryNotFound, "The authorized agent binary is not installed on this machine", map[string]any{"harness": binding.Provider})
 		}
-		return err
+		return domain.ReadinessReceipt{}, err
 	}
 	if !readiness.Ready {
-		return apierr.Conflict(CodeAgentProfileNotReady, "The authorized agent profile/model is not ready to launch", map[string]any{
-			"harness": binding.Provider, "modelSelection": binding.ModelSelection, "model": binding.Model, "detail": readiness.Detail,
-		})
+		return domain.ReadinessReceipt{}, apierr.Conflict(CodeAgentProfileNotReady, "The authorized agent profile/model is not ready to launch", map[string]any{"harness": binding.Provider, "modelSelection": binding.ModelSelection, "model": binding.Model, "detail": readiness.Detail})
 	}
-	return nil
+	digest := domain.DigestSHA256([]byte(string(binding.Provider) + "\x00" + readiness.Detail))
+	return domain.ReadinessReceipt{Producer: "provider_profile", Version: "w1.1-v1", ReceiptID: string(digest), Digest: string(digest)}, nil
 }
 
 // CancelAttempt records a governed cancellation request for an attempt.
@@ -654,8 +702,16 @@ func (s *Service) readModel(ctx context.Context, outcomeRecord domain.Outcome, a
 			provenance[ref.ID] = rec
 		}
 	}
+	var launchPacket *domain.WorkspaceBoundLaunchPacket
+	if s.admission != nil {
+		if packet, found, err := s.admission.GetWorkspaceBoundLaunchPacket(ctx, attempt.ID); err != nil {
+			return AttemptView{}, err
+		} else if found {
+			launchPacket = &packet
+		}
+	}
 	return AttemptView{
-		Outcome: outcomeRecord, Attempt: attempt, Sessions: sessions, Observations: observations, Receipts: receipts, Fence: fence,
+		Outcome: outcomeRecord, Attempt: attempt, Sessions: sessions, Observations: observations, Receipts: receipts, Fence: fence, LaunchPacket: launchPacket,
 		ProtocolProvenance: provenance,
 		Presentation:       domain.DeriveAttemptPresentation(attempt.Status, facts, unresolvedAdmission, unresolvedCheckTermination, domain.LivenessPolicy{Now: s.clock(), StaleHeartbeatAfter: s.staleHeartbeat}),
 	}, nil
@@ -728,6 +784,10 @@ func (s *Service) admitPrelaunchFailure(ctx context.Context, outcomeID domain.Ou
 }
 
 func prelaunchRefusal(unit domain.WorkUnit, attemptID domain.AttemptID, cause error) *apierr.Error {
+	var existing *apierr.Error
+	if errors.As(cause, &existing) {
+		return existing
+	}
 	if errors.Is(cause, ports.ErrAttemptInputProvisioning) {
 		return materializationFailed(unit, attemptID, cause)
 	}

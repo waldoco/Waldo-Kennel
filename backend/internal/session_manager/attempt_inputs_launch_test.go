@@ -151,3 +151,30 @@ func TestSpawn_WithoutAdmittedInputsDoesNotConsultTheProvisioner(t *testing.T) {
 		t.Fatalf("runtime creations = %d, want the ordinary launch to proceed", runtime.created)
 	}
 }
+
+func TestSpawn_PersistsBoundLaunchPacketBeforeProviderLaunch(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer"}
+	runtime := &fakeRuntime{}
+	agent := &recordingAgent{}
+	m := New(Deps{Runtime: runtime, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: func(string) (string, error) { return "/bin/true", nil }})
+	binding := domain.ExecutionBinding{Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault}
+	policy := &domain.AttemptExecutionPolicy{OutcomeID: "out", PlanRevisionID: "plan", WorkUnitID: "wu", ContractRevisionNumber: 1, RunBriefCoreDigest: "brief", RequiredCapabilities: []string{domain.CapabilityWorktreeRead}, Grants: []domain.CapabilityGrant{{ID: "read", Name: domain.CapabilityWorktreeRead, Scope: "worktree/*"}}}
+	called := false
+	_, _, _, err := m.Spawn(context.Background(), ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding, ExecutionPolicy: policy, BeforeProviderLaunch: func(_ context.Context, rec domain.SessionRecord, bound domain.AttemptExecutionPolicy) error {
+		called = true
+		if rec.ID == "" || bound.WorkspaceRoot == "" {
+			t.Fatalf("callback missing prepared identity/root: rec=%+v policy=%+v", rec, bound)
+		}
+		if runtime.created != 0 {
+			t.Fatalf("provider launched before packet persistence")
+		}
+		return fmt.Errorf("simulated durable write failure")
+	}})
+	if err == nil || !called {
+		t.Fatalf("spawn err=%v called=%v", err, called)
+	}
+	if runtime.created != 0 {
+		t.Fatalf("provider launched despite persistence failure")
+	}
+}

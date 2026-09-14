@@ -277,8 +277,8 @@ func TestContinueAuthorizedRuns_ReadinessFailureIsActionableAndNotBlindlyRetried
 	if err := h.svc.ContinueAuthorizedRuns(ctx); err != nil {
 		t.Fatalf("continuation after deliberate retry: %v", err)
 	}
-	if calls := h.spawner.spawnCalls(); calls != 1 {
-		t.Fatalf("providers launched = %d, want the new generation to supersede the blocker", calls)
+	if calls := h.spawner.spawnCalls(); calls != 2 {
+		t.Fatalf("workspace preparations = %d, want failed generation plus the new generation", calls)
 	}
 }
 
@@ -308,8 +308,10 @@ func TestContinueAuthorizedRuns_ReconstructsPrelaunchBlockerAfterRestart(t *test
 	// Simulate a daemon restart after FailAttemptBeforeLaunch committed but
 	// before continuation copied its typed blocker onto the run intent.
 	restarted := outcome.New(h.store, nil).
+		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(h.spawner, newFakeHeartbeats()).
 		WithRunIntents(h.intents)
+	restarted.AdmissionPolicy = testAdmissionPolicy()
 	if err := restarted.ContinueAuthorizedRuns(ctx); err != nil {
 		t.Fatalf("restart continuation: %v", err)
 	}
@@ -353,8 +355,10 @@ func TestContinueAuthorizedRuns_DoesNotCarryRecoveredFailureIntoNewerGeneration(
 	h.mustCommand(t, domain.RunCommandPause, "rk-pause")
 	h.mustCommand(t, domain.RunCommandResume, "rk-resume")
 	restarted := outcome.New(h.store, nil).
+		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(h.spawner, newFakeHeartbeats()).
 		WithRunIntents(h.intents)
+	restarted.AdmissionPolicy = testAdmissionPolicy()
 	if err := restarted.ContinueAuthorizedRuns(ctx); err != nil {
 		t.Fatalf("new-generation continuation: %v", err)
 	}
@@ -425,6 +429,7 @@ func TestContinueAuthorizedRuns_RejectsInvalidTypedPrelaunchFacts(t *testing.T) 
 			restarted := outcome.New(h.store, nil).
 				WithExecution(h.spawner, newFakeHeartbeats()).
 				WithRunIntents(h.intents)
+			restarted.AdmissionPolicy = testAdmissionPolicy()
 			err := restarted.ContinueAuthorizedRuns(ctx)
 			if err == nil || !strings.Contains(err.Error(), tc.errorContains) {
 				t.Fatalf("continuation error = %v, want %q", err, tc.errorContains)
@@ -450,8 +455,10 @@ func TestContinueAuthorizedRuns_DoesNotInventFailureFromLegacyUntypedObservation
 	h.store.mu.Unlock()
 
 	restarted := outcome.New(h.store, nil).
+		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(h.spawner, newFakeHeartbeats()).
 		WithRunIntents(h.intents)
+	restarted.AdmissionPolicy = testAdmissionPolicy()
 	if err := restarted.ContinueAuthorizedRuns(ctx); err != nil {
 		t.Fatalf("legacy continuation: %v", err)
 	}

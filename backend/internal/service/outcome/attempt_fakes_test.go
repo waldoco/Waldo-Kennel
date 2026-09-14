@@ -498,11 +498,11 @@ func (f *fakeSpawner) setReadiness(readiness ports.AgentProfileReadiness) {
 
 func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (ports.AttemptSpawnResult, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.spawned = append(f.spawned, req)
 	if f.spawnErr != nil {
 		err := f.spawnErr
 		f.spawnErr = nil
+		f.mu.Unlock()
 		return ports.AttemptSpawnResult{}, err
 	}
 	f.sessionN++
@@ -517,8 +517,15 @@ func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (p
 		},
 	}
 	bound, err := req.ExecutionPolicy.BindWorkspaceRoot(rec.Metadata.WorkspacePath)
+	f.mu.Unlock()
 	if err != nil {
 		return ports.AttemptSpawnResult{}, err
+	}
+	if req.BeforeProviderLaunch == nil {
+		return ports.AttemptSpawnResult{}, errors.New("missing prelaunch persistence callback")
+	}
+	if err := req.BeforeProviderLaunch(context.Background(), rec, bound); err != nil {
+		return ports.AttemptSpawnResult{}, &ports.AttemptPrelaunchError{Stage: "before_provider_launch", Err: err}
 	}
 	return ports.AttemptSpawnResult{Session: domain.Session{SessionRecord: rec}, ExecutionPolicy: &bound, CompletionBoundary: f.completionBoundary}, nil
 }

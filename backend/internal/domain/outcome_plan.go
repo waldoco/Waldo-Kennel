@@ -92,7 +92,8 @@ type WorkUnit struct {
 	// unit. EvidenceChecks above stay prose for the provider to read; these
 	// are what Kennel itself runs and records as independent observation.
 	// Empty is valid: not every WorkUnit can be proved by a command.
-	Checks []ApprovedCheck
+	Checks          []ApprovedCheck
+	ExecutionBudget ExecutionBudget
 }
 
 // Validate checks the work unit's structural and binding invariants.

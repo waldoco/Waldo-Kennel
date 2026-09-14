@@ -938,6 +938,19 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (rec domain.
 		}
 	}
 
+	// Governed execution has one crash boundary: persist the workspace-bound
+	// launch packet after preparation and before either controller can start.
+	if cfg.ExecutionPolicy != nil {
+		if cfg.BeforeProviderLaunch == nil {
+			m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
+			return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: governed launch persistence callback is missing", id)
+		}
+		if err := cfg.BeforeProviderLaunch(ctx, rec, *cfg.ExecutionPolicy); err != nil {
+			m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
+			return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: persist governed launch packet: %w", id, err)
+		}
+	}
+
 	// Everything above is shared: project, harness, prompts, seed row, worktree,
 	// provisioning, attachments. From here the two modes launch different
 	// controllers, and exactly one of them runs.

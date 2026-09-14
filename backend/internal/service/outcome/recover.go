@@ -46,13 +46,21 @@ func (s *Service) RecoverAttempt(ctx context.Context, outcomeID domain.OutcomeID
 	if err != nil {
 		return RecoveryView{}, err
 	}
+	launchState, err := s.launchRecoveryState(ctx, attempt)
+	if err != nil {
+		return RecoveryView{}, apierr.Conflict(CodeAttemptCustodyUnproven, "Launch evidence is inconsistent; custody remains held", map[string]any{"detail": err.Error()})
+	}
+	// A packet without a matching bound/running session proves only that the
+	// crash boundary was crossed. Provider launch is unconfirmed, so custody
+	// stays held unless later machine evidence or explicit owner containment
+	// proves it safe to release.
 	switch in.Action {
 	case RecoveryActionContain:
-		return s.containAttempt(ctx, attempt)
+		return s.containAttempt(ctx, attempt, launchState)
 	case RecoveryActionReconcile:
-		return s.reconcileAttempt(ctx, in, attempt)
+		return s.reconcileAttempt(ctx, in, attempt, launchState)
 	case RecoveryActionReplace:
-		return s.recoveryReplace(ctx, in, attempt)
+		return s.recoveryReplace(ctx, in, attempt, launchState)
 	case RecoveryActionAttention:
 		return s.recoveryAttention(ctx, attempt)
 	}
@@ -61,7 +69,7 @@ func (s *Service) RecoverAttempt(ctx context.Context, outcomeID domain.OutcomeID
 
 // containAttempt records suspicion. It mutates NO stored status: containment
 // is an observation, and the open fence already blocks duplicate admission.
-func (s *Service) containAttempt(ctx context.Context, attempt domain.Attempt) (RecoveryView, error) {
+func (s *Service) containAttempt(ctx context.Context, attempt domain.Attempt, launchState LaunchRecoveryState) (RecoveryView, error) {
 	switch attempt.Status {
 	case domain.AttemptQueued, domain.AttemptRunning, domain.AttemptPaused:
 	default:
@@ -69,7 +77,7 @@ func (s *Service) containAttempt(ctx context.Context, attempt domain.Attempt) (R
 			fmt.Sprintf("Attempt already ended as %s; nothing to contain", attempt.Status),
 			map[string]any{"status": string(attempt.Status)})
 	}
-	payload := mustJSON(map[string]any{"reason": "liveness suspect"})
+	payload := mustJSON(map[string]any{"reason": "liveness suspect", "launchState": launchState})
 	if _, err := s.store.AppendAttemptObservation(ctx, attempt.ID, domain.ObservationAttemptContained, payload, s.clock()); err != nil {
 		return RecoveryView{}, err
 	}
@@ -109,9 +117,13 @@ func (s *Service) proveProviderStopped(facts attemptFacts, ownerConfirmed bool) 
 }
 
 // refuseUnprovenCustody records the escalation receipt and refuses release.
-func (s *Service) refuseUnprovenCustody(ctx context.Context, attempt domain.Attempt) error {
+func (s *Service) refuseUnprovenCustody(ctx context.Context, attempt domain.Attempt, launchState LaunchRecoveryState) error {
+	payload := mustJSON(map[string]any{"launchState": launchState, "evidence": "provider stop unproven"})
+	if _, err := s.store.AppendAttemptObservation(ctx, attempt.ID, domain.ObservationRecoveryAttention, payload, s.clock()); err != nil {
+		return err
+	}
 	receipt, rErr := s.recordReceipt(ctx, attempt.ID, domain.RecoveryNeedsAttention, map[string]any{
-		"evidence": "cannot prove the bound provider stopped — terminate it or confirm containment",
+		"evidence": "cannot prove the bound provider stopped — terminate it or confirm containment", "launchState": launchState,
 	})
 	if rErr != nil {
 		return fmt.Errorf("record unproven-custody receipt for %s: %w", attempt.ID, rErr)
@@ -133,15 +145,18 @@ func (s *Service) maybeRecordOwnerContainment(ctx context.Context, attempt domai
 
 // reconcileAttempt auto-verdicts from durable evidence. Every custody release
 // requires proved provider stop; anything else escalates without deciding.
-func (s *Service) reconcileAttempt(ctx context.Context, in RecoveryInput, attempt domain.Attempt) (RecoveryView, error) {
-	if attempt.Status == domain.AttemptSucceeded {
-		return s.accountSucceededCustody(ctx, attempt)
-	}
+func (s *Service) reconcileAttempt(ctx context.Context, in RecoveryInput, attempt domain.Attempt, launchState LaunchRecoveryState) (RecoveryView, error) {
 	facts, err := s.heartbeatFacts(ctx, attempt.ID)
 	if err != nil {
 		return RecoveryView{}, err
 	}
-	if attempt.Status == domain.AttemptRunning && facts.alive() {
+	if attempt.Status == domain.AttemptSucceeded {
+		if launchState == LaunchLegacy && !facts.terminated() {
+			return RecoveryView{}, s.refuseUnprovenCustody(ctx, attempt, launchState)
+		}
+		return s.accountSucceededCustody(ctx, attempt)
+	}
+	if (launchState == LaunchRunning || launchState == LaunchLegacy) && attempt.Status == domain.AttemptRunning && facts.alive() {
 		receipt, err := s.recordReceipt(ctx, attempt.ID, domain.RecoveryResumed, map[string]any{
 			"evidence": "bound session present, signalled, not terminated",
 		})
@@ -158,14 +173,18 @@ func (s *Service) reconcileAttempt(ctx context.Context, in RecoveryInput, attemp
 	if err != nil {
 		return RecoveryView{}, err
 	}
-	proof := s.proveProviderStopped(facts, in.ConfirmProviderStopped)
+	ownerConfirmed := in.ConfirmProviderStopped && launchState != LaunchLegacy
+	proof := s.proveProviderStopped(facts, ownerConfirmed)
+	if launchState == LaunchPrepared {
+		proof = custodyProof{reason: "launch packet absent; provider boundary not crossed", proven: true}
+	}
 	if unknownCheck {
 		// Provider termination cannot prove that a detached check process tree
 		// ended. Only the owner's explicit containment assertion reconciles it.
-		proof = s.proveProviderStopped(attemptFacts{}, in.ConfirmProviderStopped)
+		proof = s.proveProviderStopped(attemptFacts{}, ownerConfirmed)
 	}
 	if !proof.proven {
-		return RecoveryView{}, s.refuseUnprovenCustody(ctx, attempt)
+		return RecoveryView{}, s.refuseUnprovenCustody(ctx, attempt, launchState)
 	}
 	if err := s.maybeRecordOwnerContainment(ctx, attempt, proof); err != nil {
 		return RecoveryView{}, err
@@ -233,27 +252,31 @@ func (s *Service) accountTerminalCustody(ctx context.Context, attempt domain.Att
 
 // recoveryReplace forces the lost verdict and hands custody back so the next
 // StartAttempt may issue a fresh fence. Replacement is always a NEW row.
-func (s *Service) recoveryReplace(ctx context.Context, in RecoveryInput, attempt domain.Attempt) (RecoveryView, error) {
-	// A succeeded Attempt has already passed the immutable-result boundary. It
-	// does not need a fresh provider-stop assertion; recovery may only repair
-	// the fence left behind by a crash after classification.
-	if attempt.Status == domain.AttemptSucceeded {
-		return s.accountSucceededCustody(ctx, attempt)
-	}
+func (s *Service) recoveryReplace(ctx context.Context, in RecoveryInput, attempt domain.Attempt, launchState LaunchRecoveryState) (RecoveryView, error) {
 	facts, fErr := s.heartbeatFacts(ctx, attempt.ID)
 	if fErr != nil {
 		return RecoveryView{}, fErr
+	}
+	if attempt.Status == domain.AttemptSucceeded {
+		if launchState == LaunchLegacy && !facts.terminated() {
+			return RecoveryView{}, s.refuseUnprovenCustody(ctx, attempt, launchState)
+		}
+		return s.accountSucceededCustody(ctx, attempt)
 	}
 	unknownCheck, err := s.resolveGovernedCheckTerminationUnknown(ctx, attempt.ID, domain.SessionID(facts.sessionID))
 	if err != nil {
 		return RecoveryView{}, err
 	}
-	proof := s.proveProviderStopped(facts, in.ConfirmProviderStopped)
+	ownerConfirmed := in.ConfirmProviderStopped && launchState != LaunchLegacy
+	proof := s.proveProviderStopped(facts, ownerConfirmed)
+	if launchState == LaunchPrepared {
+		proof = custodyProof{reason: "launch packet absent; provider boundary not crossed", proven: true}
+	}
 	if unknownCheck {
-		proof = s.proveProviderStopped(attemptFacts{}, in.ConfirmProviderStopped)
+		proof = s.proveProviderStopped(attemptFacts{}, ownerConfirmed)
 	}
 	if !proof.proven {
-		return RecoveryView{}, s.refuseUnprovenCustody(ctx, attempt)
+		return RecoveryView{}, s.refuseUnprovenCustody(ctx, attempt, launchState)
 	}
 	if err := s.maybeRecordOwnerContainment(ctx, attempt, proof); err != nil {
 		return RecoveryView{}, err
@@ -482,6 +505,13 @@ func (s *Service) heartbeatFacts(ctx context.Context, attemptID domain.AttemptID
 	}
 	if !ok || s.heartbeats == nil {
 		return attemptFacts{}, nil
+	}
+	if s.admission != nil {
+		if packet, found, err := s.admission.GetWorkspaceBoundLaunchPacket(ctx, attemptID); err != nil {
+			return attemptFacts{}, err
+		} else if found && packet.SessionID != ref.SessionID {
+			return attemptFacts{}, fmt.Errorf("launch packet/session identity mismatch")
+		}
 	}
 	rec, present, err := s.heartbeats.GetSession(ctx, domain.SessionID(ref.SessionID))
 	if err != nil {

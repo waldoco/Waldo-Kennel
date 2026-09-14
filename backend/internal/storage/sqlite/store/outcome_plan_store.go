@@ -97,17 +97,11 @@ WHERE outcome_id = ? AND number = ?`, plan.OutcomeID, plan.ContractRevisionNumbe
 		if err != nil {
 			return domain.PlanRevision{}, fmt.Errorf("plan %s work unit %s stop conditions: %w", plan.ID, unit.ID, err)
 		}
-		if err := txq.CreateWorkUnit(ctx, gen.CreateWorkUnitParams{
-			ID:                      unit.ID,
-			PlanRevisionID:          plan.ID,
-			Kind:                    string(unit.Kind),
-			Title:                   unit.Title,
-			ContractRevisionNumber:  unit.ContractRevisionNumber,
-			OutputSummary:           unit.OutputSummary,
-			EvidenceChecks:          checks,
-			VerificationRequirement: unit.VerificationRequirement,
-			StopConditions:          stops,
-		}); err != nil {
+		budgetJSON, err := json.Marshal(unit.ExecutionBudget)
+		if err != nil {
+			return domain.PlanRevision{}, fmt.Errorf("plan %s work unit %s budget: %w", plan.ID, unit.ID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO work_units (id,plan_revision_id,kind,title,contract_revision_number,output_summary,evidence_checks,verification_requirement,stop_conditions,execution_budget_json) VALUES (?,?,?,?,?,?,?,?,?,?)`, unit.ID, plan.ID, string(unit.Kind), unit.Title, unit.ContractRevisionNumber, unit.OutputSummary, checks, unit.VerificationRequirement, stops, string(budgetJSON)); err != nil {
 			return domain.PlanRevision{}, fmt.Errorf("create work unit %s: %w", unit.ID, err)
 		}
 
@@ -422,6 +416,16 @@ SELECT routing_decisions_json FROM plan_revisions WHERE id = ?`, plan.ID).Scan(&
 
 	for index := range plan.WorkUnits {
 		unit := &plan.WorkUnits[index]
+
+		var budgetJSON sql.NullString
+		if err := s.readDB.QueryRowContext(ctx, `SELECT execution_budget_json FROM work_units WHERE id=? AND plan_revision_id=?`, unit.ID, plan.ID).Scan(&budgetJSON); err != nil {
+			return fmt.Errorf("get execution budget for work unit %s: %w", unit.ID, err)
+		}
+		if budgetJSON.Valid && budgetJSON.String != "" {
+			if err := json.Unmarshal([]byte(budgetJSON.String), &unit.ExecutionBudget); err != nil {
+				return fmt.Errorf("decode execution budget for work unit %s: %w", unit.ID, err)
+			}
+		}
 
 		var provider string
 		var modelSelection sql.NullString

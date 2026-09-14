@@ -12,7 +12,11 @@ func i64p(v int64) *int64                    { return &v }
 func planp(v PlanRevisionID) *PlanRevisionID { return &v }
 func spec(t *testing.T) ApprovedExecutableSpec {
 	t.Helper()
-	s := ApprovedExecutableSpec{CompilerPolicyVersion: "compiler/v1", OutcomeID: "out", ContractRevisionNumber: 1, PlanRevisionID: "plan", WorkUnitID: "wu", RunBriefCoreDigest: strings.Repeat("a", 64), Binding: ExecutionBinding{Provider: HarnessCodex, ModelSelection: ExecutionBindingModelProviderDefault}, NativeMappingVersion: "codex/v1", RequiredCapabilities: []string{CapabilityWorktreeRead}, Grants: []CapabilityGrant{{ID: "g", Name: CapabilityWorktreeRead, Scope: "worktree/*"}}, Workspace: WorkspaceRequirements{Kind: WorkspaceGitWorktree, LeaseSubject: "project:p"}, Budget: AdmissionBudget{PolicyVersion: "b1", AccountingVersion: "a1", WallTimeLimit: time.Hour, RetryLimit: intp(1), RetryLineageScope: AdmissionRetryLineageWorkUnit}, AdmissionReceipts: []ReadinessReceipt{{Producer: "codex_probe", Version: "v1", ReceiptID: "r1", Digest: "abc"}}}
+	s := ApprovedExecutableSpec{CompilerPolicyVersion: "compiler/v1", OutcomeID: "out", ContractRevisionNumber: 1, PlanRevisionID: "plan", WorkUnitID: "wu", RunBriefCoreDigest: strings.Repeat("a", 64), Binding: ExecutionBinding{Provider: HarnessCodex, ModelSelection: ExecutionBindingModelProviderDefault}, NativeMappingVersion: "codex/v1", RequiredCapabilities: []string{CapabilityWorktreeRead}, Grants: []CapabilityGrant{{ID: "g", Name: CapabilityWorktreeRead, Scope: "worktree/*"}}, Workspace: WorkspaceRequirements{Kind: WorkspaceGitWorktree, LeaseSubject: "project:p"}, Budget: AdmissionBudget{PolicyVersion: "b1", AccountingVersion: "a1", WallTimeLimit: time.Hour, RetryLimit: intp(1), RetryLineageScope: AdmissionRetryLineageWorkUnit}, RoutingReceipt: func() RoutingAdmissionReceipt {
+		r := RoutingAdmissionReceipt{GenerationID: "g", SnapshotID: "s", Preference: RoutingPreference{Provider: "codex"}, Candidates: []RoutingCandidate{{ID: "codex", Provider: "codex"}}}
+		r.Digest, _ = r.ComputedDigest()
+		return r
+	}(), AdmissionReceipts: []ReadinessReceipt{{Producer: "codex_probe", Version: "v1", ReceiptID: "r1", Digest: "abc"}}}
 	d, e := s.ComputedDigest()
 	if e != nil {
 		t.Fatal(e)
@@ -24,7 +28,10 @@ func launch(t *testing.T) WorkspaceBoundLaunchPacket {
 	t.Helper()
 	s := spec(t)
 	p := AttemptExecutionPolicy{OutcomeID: s.OutcomeID, PlanRevisionID: s.PlanRevisionID, WorkUnitID: s.WorkUnitID, ContractRevisionNumber: s.ContractRevisionNumber, RunBriefCoreDigest: s.RunBriefCoreDigest, WorkspaceRoot: "/tmp/wu", RequiredCapabilities: append([]string(nil), s.RequiredCapabilities...), Grants: append([]CapabilityGrant(nil), s.Grants...), ApprovedChecks: append([]ApprovedCheck(nil), s.ApprovedChecks...)}
-	x := WorkspaceBoundLaunchPacket{Spec: s, SpecDigest: s.Digest, AttemptID: "attempt", FenceID: "fence", SessionID: "session", CanonicalWorkspaceRoot: "/tmp/wu", InputArtifactVersions: []string{"artifact:v1"}, CurrentReadinessReceipts: []ReadinessReceipt{{Producer: "codex_probe", Version: "v1", ReceiptID: "live", Digest: "def"}}, LaunchFactsDigest: "facts", Policy: p}
+	x := WorkspaceBoundLaunchPacket{Spec: s, SpecDigest: s.Digest, AttemptID: "attempt", FenceID: "fence", SessionID: "session", CanonicalWorkspaceRoot: "/tmp/wu", InputArtifactVersions: []string{"artifact:v1"}, CurrentReadinessReceipts: []ReadinessReceipt{{Producer: "codex_probe", Version: "v1", ReceiptID: "live", Digest: "def"}}, Policy: p}
+	policyDigest, _ := p.Digest()
+	x.LaunchFacts = LaunchFacts{AttemptID: x.AttemptID, FenceID: x.FenceID, SessionID: x.SessionID, CanonicalWorkspaceRoot: x.CanonicalWorkspaceRoot, SpecDigest: x.SpecDigest, ReadinessReceipts: x.CurrentReadinessReceipts, InputArtifactVersions: x.InputArtifactVersions, PolicyDigest: policyDigest}
+	x.LaunchFactsDigest, _ = x.LaunchFacts.Digest()
 	d, e := x.ComputedDigest()
 	if e != nil {
 		t.Fatal(e)
@@ -163,5 +170,52 @@ func TestBudgetAndMetadataDefenses(t *testing.T) {
 	}
 	if len(SortedAdmissionReasonCodes()) != 28 {
 		t.Fatal("reason count")
+	}
+}
+
+func TestLaunchFactsTamperFailsEvenWhenOuterDigestIsRehashed(t *testing.T) {
+	x := launch(t)
+	x.LaunchFacts.CanonicalWorkspaceRoot = "/tampered"
+	x.Digest, _ = x.ComputedDigest()
+	if err := x.Validate(); err == nil {
+		t.Fatal("tampered typed facts accepted")
+	}
+}
+func TestLaunchFactsDigestDependsOnCanonicalInputOrdering(t *testing.T) {
+	x := launch(t)
+	first, _ := x.LaunchFacts.Digest()
+	x.LaunchFacts.InputArtifactVersions = []string{"b", "a"}
+	second, _ := x.LaunchFacts.Digest()
+	if first == second {
+		t.Fatal("ordered inputs did not affect digest")
+	}
+}
+func TestRoutingReceiptDigestCanonicalAndBindsCandidateModelFacts(t *testing.T) {
+	a := RoutingAdmissionReceipt{GenerationID: "g", SnapshotID: "s", Preference: RoutingPreference{Provider: "codex", Model: "m"}, Candidates: []RoutingCandidate{{ID: "b", Provider: "b", Models: map[string]CapabilitySupport{"m": CapabilitySupported}}, {ID: "a", Provider: "a"}}}
+	a.Digest, _ = a.ComputedDigest()
+	b := a
+	b.Candidates = []RoutingCandidate{a.Candidates[1], a.Candidates[0]}
+	d, _ := b.ComputedDigest()
+	if d != a.Digest {
+		t.Fatal("ordering changed digest")
+	}
+	b = a
+	for i := range b.Candidates {
+		if b.Candidates[i].Models != nil {
+			b.Candidates[i].Models["m"] = CapabilityUnsupported
+		}
+	}
+	if err := b.Validate(); err == nil {
+		t.Fatal("model mutation accepted")
+	}
+}
+func TestRoutingReceiptValidationDoesNotReorderCaller(t *testing.T) {
+	r := RoutingAdmissionReceipt{GenerationID: "g", SnapshotID: "s", Candidates: []RoutingCandidate{{ID: "z"}, {ID: "a"}}}
+	r.Digest, _ = r.ComputedDigest()
+	if err := r.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if r.Candidates[0].ID != "z" {
+		t.Fatal("validation mutated candidate order")
 	}
 }
