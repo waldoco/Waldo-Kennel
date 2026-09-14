@@ -241,6 +241,47 @@ describe("OutcomeRunSurface", () => {
 		expect(screen.getByTestId("outcome-run-board")).toBeInTheDocument();
 	});
 
+	it("opens the selected WorkUnit's execution detail with attempt lineage and result navigation", async () => {
+		const user = userEvent.setup();
+		const onReviewProof = vi.fn();
+		getMock.mockImplementation((url: string) => {
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plan") return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/attempts") return Promise.resolve({ data: { attempts: [attemptEnvelope().attempt] }, error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/proof") {
+				return Promise.resolve({
+					data: {
+						proof: {
+							outcomeId: "out-1",
+							result: {
+							changes: [
+								{ workUnitId: "wu-1", attemptId: "att-1", files: [{ path: "src/ledger.ts", changeKind: "modified", digest: "d1" }], truncated: false, retentionState: "available", artifactVersion: 1 },
+								{ workUnitId: "wu-2", attemptId: "att-2", files: [{ path: "docs/notes.md", changeKind: "added", digest: "d2" }], truncated: false, retentionState: "available", artifactVersion: 1 },
+								],
+							},
+						},
+					},
+					error: undefined,
+				});
+			}
+			return Promise.resolve({ data: undefined, error: { code: "NOT_FOUND", message: url } });
+		});
+		renderSurface({ onReviewProof });
+
+		const schedule = await screen.findByTestId("outcome-run-schedule");
+		expect(within(schedule).queryByTestId("mission-unit-execution-detail")).not.toBeInTheDocument();
+		await user.click(within(schedule).getByRole("button", { name: /Deliver Local Focus Ledger —/ }));
+		const detail = await screen.findByTestId("mission-unit-execution-detail");
+		expect(within(detail).getByText(/Attempt #1 · running/)).toBeInTheDocument();
+		expect(within(detail).getByRole("button", { name: "Engage" })).toBeInTheDocument();
+		// Only this WorkUnit's measured changes surface; other units' files stay out.
+		const changes = within(detail).getByTestId("mission-unit-changes");
+		expect(within(changes).getByText(/src\/ledger\.ts · modified/)).toBeInTheDocument();
+		expect(within(changes).queryByText(/docs\/notes\.md/)).toBeNull();
+		await user.click(within(detail).getByRole("button", { name: "View Outcome result and receipts" }));
+		expect(onReviewProof).toHaveBeenCalledTimes(1);
+	});
+
 	it("distinguishes unconfirmed from dead and routes contain/reconcile through recovery", async () => {
 		const user = userEvent.setup();
 		getMock.mockImplementation((url: string) => {
