@@ -29,8 +29,21 @@ function proofEnvelope(status = "ready_for_acceptance") {
 			result: {
 				artifacts: [{ revision: "artifact-v2", sourceRef: "README.md", digest: "b".repeat(64) }],
 				checks: [{ criterionId: "crit-1", command: "grep -Fx review README.md", artifactRevision: "artifact-v2", verdict: "failed", detail: "check exited 1", uncertain: false }],
+				changes: [{
+					attemptId: "attempt-2", workUnitId: "wu-1", artifactVersion: "artifact-v2", retentionState: "retained", truncated: false,
+					files: [
+						{ path: "README.md", changeKind: "modified", digest: "b".repeat(64) },
+						{ path: "notes/todo.md", changeKind: "added", digest: "c".repeat(64) },
+					],
+				}],
 				uncertainty: [], nextSafeAction: "Review the changed artifact and request rework if needed.",
 			},
+			reentryTargets: [
+				{ targetType: "contract", targetId: "cr-1", label: "Contract revision 1" },
+				{ targetType: "plan", targetId: "plan-1", label: "Current plan" },
+				{ targetType: "work_unit", targetId: "wu-1", label: "Record one block" },
+				{ targetType: "attempt", targetId: "attempt-2", label: "Record one block (succeeded)" },
+			],
 			criteria: [{
 				criterionId: "crit-1", contractRevisionId: "cr-1", position: 1, text: "One block survives restart.", ready: true,
 				evidence: [{
@@ -159,6 +172,23 @@ describe("OutcomeProveCloseSurface", () => {
 		));
 	});
 
+	it("shows the measured change list and offers only daemon-derived re-entry targets", async () => {
+		const user = userEvent.setup();
+		renderSurface();
+		const changes = await screen.findByTestId("outcome-result-changes");
+		expect(changes.textContent).toContain("README.md");
+		expect(changes.textContent).toContain("modified");
+		expect(changes.textContent).toContain("notes/todo.md");
+		expect(changes.textContent).toContain("added");
+
+		await user.type(screen.getByTestId("proof-decision-summary"), "Replay the failed attempt.");
+		await user.selectOptions(screen.getByLabelText("Re-enter at"), "attempt");
+		const identitySelect = screen.getByLabelText("Target identity") as HTMLSelectElement;
+		const options = Array.from(identitySelect.options).map((option) => option.textContent);
+		expect(options).toContain("Record one block (succeeded)");
+		expect(options.some((label) => label === "Current plan")).toBe(false);
+	});
+
 	it("requires the exact non-contract re-entry identity before reopening", async () => {
 		const user = userEvent.setup();
 		getMock.mockResolvedValue({ data: proofEnvelope("accepted"), error: undefined });
@@ -169,7 +199,7 @@ describe("OutcomeProveCloseSurface", () => {
 		await user.selectOptions(screen.getByLabelText("Re-enter at"), "attempt");
 		expect(reopen.disabled).toBe(true);
 
-		await user.type(screen.getByLabelText("Target identity"), "attempt-2");
+		await user.selectOptions(screen.getByLabelText("Target identity"), "attempt-2");
 		expect(reopen.disabled).toBe(false);
 		await user.click(reopen);
 		await waitFor(() => expect(postMock).toHaveBeenCalledWith(

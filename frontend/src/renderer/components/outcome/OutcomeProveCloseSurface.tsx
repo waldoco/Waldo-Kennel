@@ -213,7 +213,7 @@ export function OutcomeProveCloseSurface({ outcomeId }: Props) {
 					</label>
 					{proof.status !== "accepted" && proof.status !== "ready_for_acceptance" && <span />}
 				</div>
-				<ReentryFields targetId={reentryTargetId} targetType={reentryTargetType} onTargetId={setReentryTargetId} onTargetType={setReentryTargetType} />
+				<ReentryFields targetId={reentryTargetId} targetType={reentryTargetType} targets={proof.reentryTargets ?? []} onTargetId={setReentryTargetId} onTargetType={(next) => { setReentryTargetType(next); setReentryTargetId(""); }} />
 				<div className="mt-4 flex flex-wrap gap-2">
 					{proof.status === "ready_for_acceptance" && <Button data-testid="proof-accept" disabled={pending || !decisionSummary.trim()} onClick={() => void decide("accept")}><CheckCircle2 aria-hidden="true" className="size-3.5" />{t("outcome.proof.accept")}</Button>}
 					{proof.status !== "accepted" && <Button data-testid="proof-request-rework" disabled={pending || !decisionSummary.trim() || !reentryReady} onClick={() => void decide("request_rework")} variant="outline"><CircleAlert aria-hidden="true" className="size-3.5" />{t("outcome.proof.requestRework")}</Button>}
@@ -232,7 +232,7 @@ function ResultSummary({ proof }: { proof: OutcomeProofRecord }) {
 	const verificationCount = proof.criteria.reduce((total, criterion) => total + criterion.verifications.length, 0);
 	const passedCount = proof.criteria.reduce((total, criterion) => total + criterion.verifications.filter((run) => run.result === "passed").length, 0);
 	const gaps = proof.criteria.filter((criterion) => criterion.gap).map((criterion) => criterion.gap as string);
-	const result = proof.result ?? { artifacts: [], checks: [], uncertainty: [], nextSafeAction: proof.nextAction };
+	const result = proof.result ?? { artifacts: [], checks: [], changes: [], uncertainty: [], nextSafeAction: proof.nextAction };
 	return (
 		<section className="grid gap-3 rounded-md border border-border bg-card/50 p-4 sm:grid-cols-3" data-testid="outcome-result-summary">
 			<div className="sm:col-span-3">
@@ -243,6 +243,7 @@ function ResultSummary({ proof }: { proof: OutcomeProofRecord }) {
 			<div><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.verificationSummaryLabel")}</p><p className="mt-1 text-sm">{passedCount}/{verificationCount} {t("outcome.proof.verificationsPassed")}</p></div>
 			{gaps.length > 0 && <div className="sm:col-span-3"><p className="text-xs uppercase tracking-wide text-warning">{t("outcome.proof.limitations")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{gaps.map((gap) => <li key={gap}>{gap}</li>)}</ul></div>}
 			{result.artifacts.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-artifacts"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.artifact")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.artifacts.map((artifact) => <li key={`${artifact.revision}-${artifact.digest}`}>{artifact.sourceRef} · {artifact.revision}</li>)}</ul></div>}
+			{result.changes.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-changes"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.whatChanged")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.changes.flatMap((change) => change.files.slice(0, 10).map((file) => <li key={`${change.attemptId}-${file.path}`}>{file.path} · {file.changeKind}</li>))}</ul>{result.changes.some((change) => change.truncated || change.files.length > 10) && <p className="mt-1 text-xs text-muted-foreground">{t("outcome.proof.changesMore")}</p>}</div>}
 			{result.checks.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-checks"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.verification")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.checks.map((check) => <li key={`${check.criterionId}-${check.artifactRevision}-${check.command}`}>{check.command} · {check.verdict || "unconfirmed"}{check.uncertain ? " · uncertainty blocks a verdict" : ""}</li>)}</ul></div>}
 			{result.uncertainty.length > 0 && <div className="sm:col-span-3" data-testid="outcome-result-uncertainty"><p className="text-xs uppercase tracking-wide text-warning">{t("outcome.proof.limitations")}</p><ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{result.uncertainty.map((item) => <li key={item}>{item}</li>)}</ul></div>}
 			<div className="sm:col-span-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t("outcome.proof.nextAction")}</p><p className="mt-1 text-sm">{result.nextSafeAction}</p></div>
@@ -334,8 +335,11 @@ function CriterionCard({ criterion, evidenceDraft, onEvidenceDraft, onSubmitEvid
 	);
 }
 
-function ReentryFields({ targetId, targetType, onTargetId, onTargetType }: { targetId: string; targetType: "attempt" | "work_unit" | "plan" | "contract"; onTargetId: (value: string) => void; onTargetType: (value: "attempt" | "work_unit" | "plan" | "contract") => void }) {
+type ReentryTarget = NonNullable<OutcomeProofRecord["reentryTargets"]>[number];
+
+function ReentryFields({ targetId, targetType, targets, onTargetId, onTargetType }: { targetId: string; targetType: "attempt" | "work_unit" | "plan" | "contract"; targets: ReentryTarget[]; onTargetId: (value: string) => void; onTargetType: (value: "attempt" | "work_unit" | "plan" | "contract") => void }) {
 	const { t } = useTranslation();
+	const candidates = targets.filter((target) => target.targetType === targetType);
 	return (
 		<div className="mt-3 grid gap-2 sm:grid-cols-2">
 			<label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -344,7 +348,10 @@ function ReentryFields({ targetId, targetType, onTargetId, onTargetType }: { tar
 			</label>
 			{targetType === "contract" ? <p className="self-end text-xs text-muted-foreground">{t("outcome.proof.targetContract")}</p> : <label className="flex flex-col gap-1 text-xs text-muted-foreground">
 				{t("outcome.proof.reentryId")}
-				<Input onChange={(event) => onTargetId(event.target.value)} placeholder={t("outcome.proof.reentryIdRequired")} value={targetId} />
+				<select aria-label={t("outcome.proof.reentryId")} className="h-9 rounded-md border border-input bg-background px-2 text-foreground" onChange={(event) => onTargetId(event.target.value)} value={targetId}>
+					<option value="">{t("outcome.proof.reentryIdRequired")}</option>
+					{candidates.map((target) => <option key={target.targetId} value={target.targetId}>{target.label}</option>)}
+				</select>
 			</label>}
 		</div>
 	);

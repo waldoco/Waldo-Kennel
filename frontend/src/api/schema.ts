@@ -3322,10 +3322,28 @@ export interface components {
             /** @enum {string} */
             state: "selected" | "approved";
         };
+        ControllersOutcomeReentryTargetResponse: {
+            label: string;
+            targetId: string;
+            targetType: string;
+        };
         ControllersOutcomeResultArtifactResponse: {
             digest: string;
             revision: string;
             sourceRef: string;
+        };
+        ControllersOutcomeResultChangeFileResponse: {
+            changeKind: string;
+            digest?: string;
+            path: string;
+        };
+        ControllersOutcomeResultChangesResponse: {
+            artifactVersion: string;
+            attemptId: string;
+            files: components["schemas"]["ControllersOutcomeResultChangeFileResponse"][];
+            retentionState: string;
+            truncated: boolean;
+            workUnitId: string;
         };
         ControllersOutcomeResultCheckResponse: {
             artifactRevision: string;
@@ -3337,6 +3355,7 @@ export interface components {
         };
         ControllersOutcomeResultSummaryResponse: {
             artifacts: components["schemas"]["ControllersOutcomeResultArtifactResponse"][];
+            changes: components["schemas"]["ControllersOutcomeResultChangesResponse"][];
             checks: components["schemas"]["ControllersOutcomeResultCheckResponse"][];
             nextSafeAction: string;
             uncertainty: string[];
@@ -4264,6 +4283,7 @@ export interface components {
             outcomeId: string;
             /** Format: date-time */
             proofHorizon?: null | string;
+            reentryTargets: components["schemas"]["ControllersOutcomeReentryTargetResponse"][];
             result: components["schemas"]["ControllersOutcomeResultSummaryResponse"];
             status: string;
         };
