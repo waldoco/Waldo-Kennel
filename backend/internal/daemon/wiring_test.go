@@ -192,6 +192,8 @@ func TestWiring_StartSessionSpawnsScratchWithoutGitRepo(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	binDir := t.TempDir()
+	writeFakeExecutable(t, filepath.Join(binDir, "codex"))
+	writeFakeExecutable(t, filepath.Join(binDir, "codex.cmd"))
 	writeFakeExecutable(t, filepath.Join(binDir, "claude"))
 	writeFakeExecutable(t, filepath.Join(binDir, "claude.cmd"))
 	writeFakeExecutable(t, filepath.Join(binDir, "tmux"))

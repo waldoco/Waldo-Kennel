@@ -26,7 +26,7 @@ const expected = {
 	appName: "Kennel.app",
 	executable: "kennel",
 	protocol: "kennel-app",
-	releaseRepo: "Pin4sf/Waldo-Kennel",
+	releaseRepo: "waldoco/Waldo-Kennel",
 	updaterCache: "kennel-updater",
 };
 
@@ -67,7 +67,7 @@ for (const key of Object.keys(actual)) {
 
 const updaterPath = path.join(appPath, "Contents", "Resources", "app-update.yml");
 const updater = readFileSync(updaterPath, "utf8");
-for (const line of ["owner: Pin4sf", "repo: Waldo-Kennel", `updaterCacheDirName: ${expected.updaterCache}`]) {
+for (const line of ["owner: waldoco", "repo: Waldo-Kennel", `updaterCacheDirName: ${expected.updaterCache}`]) {
 	if (!updater.includes(line)) throw new Error(`${updaterPath} is missing ${JSON.stringify(line)}`);
 }
 if (/agent-orchestrator|ao-updater/i.test(updater)) {
