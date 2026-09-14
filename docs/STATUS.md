@@ -1,7 +1,7 @@
 # Kennel status
 
 Checkpoint dated 2026-09-13, based on `beta` revision
-`f12b9b62b09379247384f6c791070090d5ab3ff4` (PR #128), with native-planning
+`c1ba9f78110734fff5f661bc0d8ccdf02f4484f2` (PR #129), with native-planning
 failure feedback, daemon-only approved checks and a partial Result projection.
 The [demo-readiness handoff](verification/2026-09-13-demo-readiness-handoff.md)
 records each tested source revision and package hash. Branch publication is

@@ -43,8 +43,12 @@ test("opens, selects, and closes standalone shell terminals from the tab strip",
 // sessions yet) the topbar button and Ctrl+` raised the signal and nothing was
 // listening. Both silently did nothing. The shell layout owns it now, and
 // routes to the standalone terminals view when there is no session on screen.
-test("opens a terminal from the board, where no session view is mounted", async ({ page }) => {
-	await page.goto("/#/projects/kennel-design");
+test("opens a terminal from the standalone terminals view, where no session view is mounted", async ({ page }) => {
+	// Work launch mode removed the board's visible New terminal button; the
+	// remaining renderer entry point with no session on screen is the standalone
+	// terminals view itself. The Electron-menu shortcut chord is registered in
+	// the main process, so it is pod-gate coverage, not dev:web coverage.
+	await page.goto("/#/terminals");
 	await expect(page.getByRole("button", { name: "New terminal" })).toBeVisible();
 
 	await page.getByRole("button", { name: "New terminal" }).click();

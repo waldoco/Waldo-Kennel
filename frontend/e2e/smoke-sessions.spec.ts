@@ -18,13 +18,13 @@ const columnCard = (column: string, id: string) =>
 	`[data-testid="board-column"][data-column="${column}"] [data-session-id="${id}"]`;
 
 // #2483 SES-002.
-test("renderer: new session card appears in the spawning/working state @T0 @SES", async ({ page }) => {
+test("renderer: new session card appears in the spawning/working state @T0 @SES @legacy-board", async ({ page }) => {
 	// Renderer note: there is no distinct "spawning" badge — a freshly spawned
 	// session enters the Working column (badge "Working"); the daemon's
 	// spawning→working transition lands here. The card must not exist until the
 	// fake agent creates it.
 	await installFakeAgent(page);
-	await page.goto("/#/");
+	await page.goto("/#/projects/fake-proj");
 	await expect(page.getByTestId("board")).toBeVisible();
 	await expect(page.locator(card("fake-spawn"))).toHaveCount(0);
 

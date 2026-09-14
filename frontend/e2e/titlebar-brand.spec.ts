@@ -66,9 +66,11 @@ test("project board route: brand clears the macOS titlebar cluster and stays rea
 	await expectFigmaBoardBrand(page);
 });
 
-test("brand stays readable when navigating from the Work board to a session", async ({ page }) => {
+test("brand stays readable when navigating from the Work project overview to a session", async ({ page }) => {
+	// /projects/:id redirects into the project Work overview in Work launch mode.
 	await page.goto("/#/projects/kennel-design");
-	await expect(page.getByText("Projects")).toBeVisible();
+	await expect(page).toHaveURL(/#\/work\?/);
+	await expect(page.getByText("Projects").first()).toBeVisible();
 	await expectFigmaBoardBrand(page);
 
 	await page.getByRole("button", { name: "Open Build screenshot-ready dashboard data" }).click();

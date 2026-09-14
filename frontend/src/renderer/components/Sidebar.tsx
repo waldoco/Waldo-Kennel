@@ -535,12 +535,6 @@ export function Sidebar({
 				</>
 			) : null}
 
-			{figmaBoard && daemonStatus ? (
-				<span aria-hidden="true" className="sr-only" data-testid="daemon-status" data-state={daemonStatus.state}>
-					daemon {daemonStatus.state}
-				</span>
-			) : null}
-
 			{/* Footer — Settings opens the global settings page directly.
 			    Its hairline and row height match the board Archive bar. Bottom
 			    margin matches the framed center-panel inset plus the 1px surface
