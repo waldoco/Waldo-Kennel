@@ -96,3 +96,46 @@ describe("OutcomeAttemptTerminalPanel session engagement", () => {
 		expect(screen.queryByRole("button", { name: /new terminal/i })).not.toBeInTheDocument();
 	});
 });
+
+describe("OutcomeAttemptTerminalPanel historical Attempt inspection", () => {
+	it("shows the daemon's recovery receipts and observation count for an ended Attempt", () => {
+		const ended: AttemptRecord = {
+			...attempt([oldTuiBinding]),
+			status: "succeeded",
+			observations: [
+				{ id: "obs-1", kind: "note", seq: 1, createdAt: "2026-08-29T01:00:00Z" },
+				{ id: "obs-2", kind: "note", seq: 2, createdAt: "2026-08-29T02:00:00Z" },
+			],
+			receipts: [{ id: "rcpt-1", resolution: "replacement_attempt", createdAt: "2026-08-29T03:00:00Z" }],
+			presentation: { phase: "succeeded", unconfirmed: false, endedUnclassified: false, nextAction: "Inspect" },
+		} as AttemptRecord;
+		render(<OutcomeAttemptTerminalPanel attempt={ended} onClose={() => undefined} />);
+		const facts = screen.getByTestId("attempt-ended-facts");
+		expect(facts).toHaveTextContent("Replacement Attempt");
+		expect(facts).toHaveTextContent("Ordered observations recorded: 2");
+	});
+
+	it("flags an Attempt the daemon ended without classifying", () => {
+		const unclassified: AttemptRecord = {
+			...attempt([oldTuiBinding]),
+			status: "lost",
+			presentation: { phase: "ended_unclassified", unconfirmed: false, endedUnclassified: true, nextAction: "Inspect" },
+		} as AttemptRecord;
+		render(<OutcomeAttemptTerminalPanel attempt={unclassified} onClose={() => undefined} />);
+		expect(screen.getByTestId("attempt-ended-facts")).toHaveTextContent(/ended before Kennel could classify/);
+	});
+
+	it("says the recorded session is unavailable instead of promising a future live terminal when the binding no longer resolves", () => {
+		workspaceQueryMock.mockReturnValue({ data: [{ id: "project-1", sessions: [] }] });
+		render(<OutcomeAttemptTerminalPanel attempt={attempt([oldTuiBinding])} onClose={() => undefined} />);
+		expect(screen.getByText("Recorded session unavailable")).toBeInTheDocument();
+		expect(screen.queryByText("No live terminal yet")).not.toBeInTheDocument();
+	});
+
+	it("keeps the not-yet-bound copy only for Attempts that never bound a session", () => {
+		workspaceQueryMock.mockReturnValue({ data: [{ id: "project-1", sessions: [] }] });
+		render(<OutcomeAttemptTerminalPanel attempt={attempt([])} onClose={() => undefined} />);
+		expect(screen.getByText("No live terminal yet")).toBeInTheDocument();
+		expect(screen.queryByText("Recorded session unavailable")).not.toBeInTheDocument();
+	});
+});

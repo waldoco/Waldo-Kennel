@@ -131,3 +131,33 @@ describe("OutcomeRunBoardAdapters — Ready lane Merge action", () => {
 		expect(onEngage).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("OutcomeRunBoardAdapters — historical Attempt inspection", () => {
+	it("opens a non-current (historical) Attempt card for inspection without offering the Engage action", async () => {
+		workspaceQueryMock.mockReturnValue({ data: [{ id: "proj-1", sessions: [] }] });
+		scmSummaryMock.mockReturnValue({ data: [] });
+		const onEngage = vi.fn();
+		const historical = toAttemptBoardPresentation(
+			attempt({ status: "succeeded", presentation: { phase: "succeeded", unconfirmed: false, endedUnclassified: false, nextAction: "Inspect" } }),
+			plan,
+			false,
+			((key: string) => key) as never,
+		);
+		const user = userEvent.setup();
+		render(<AttemptCardAdapter onEngage={onEngage} presentation={historical} />);
+		expect(screen.queryByRole("button", { name: "Engage" })).not.toBeInTheDocument();
+		await user.click(screen.getByTestId("board-session-card"));
+		expect(onEngage).toHaveBeenCalledTimes(1);
+	});
+
+	it("opens a non-current (historical) Attempt row for inspection", async () => {
+		workspaceQueryMock.mockReturnValue({ data: [{ id: "proj-1", sessions: [] }] });
+		scmSummaryMock.mockReturnValue({ data: [] });
+		const onEngage = vi.fn();
+		const historical = toAttemptBoardPresentation(attempt({ status: "failed" }), plan, false, ((key: string) => key) as never);
+		const user = userEvent.setup();
+		render(<AttemptRowAdapter onEngage={onEngage} presentation={historical} />);
+		await user.click(screen.getByTestId("board-session-row"));
+		expect(onEngage).toHaveBeenCalledTimes(1);
+	});
+});

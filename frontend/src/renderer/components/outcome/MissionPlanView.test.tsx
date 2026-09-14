@@ -152,6 +152,63 @@ it("opens daemon execution detail for the selected WorkUnit on the execution sur
 	expect(onReviewProof).toHaveBeenCalledTimes(1);
 });
 
+it("labels the CTA Inspect for an ended Attempt and Engage for a live one", async () => {
+	const user = userEvent.setup();
+	const mk = (id: string, phase: string, status: string) => ({
+		id,
+		number: id === "live" ? 2 : 1,
+		workUnitId: "a",
+		status,
+		updatedAt: "2026-08-30T00:00:00Z",
+		presentation: { phase, unconfirmed: false, endedUnclassified: false, nextAction: "x" },
+		sessions: [{ id: `ref-${id}`, seq: 1, sessionId: `session-${id}`, harness: "codex", mode: "tui", boundAt: "2026-08-30T00:00:00Z", runBriefCoreDigest: "b" }],
+	}) as unknown as components["schemas"]["AttemptResponse"];
+	const schedule = {
+		workUnits: units.map((workUnit) => ({
+			workUnit,
+			state: workUnit.id === "a" ? "executing" : "blocked",
+			blockedReason: workUnit.id === "b" ? "awaiting_dependency_proof" : undefined,
+			blockingDependencies: workUnit.id === "b" ? ["a"] : [],
+			criterionReady: {},
+			attempts: [],
+		})),
+	} as unknown as components["schemas"]["ScheduleResponse"];
+	const onOpenAttempt = vi.fn();
+	render(<MissionPlanView attempts={[mk("ended", "succeeded", "succeeded"), mk("live", "executing", "running")]} graphOnly onOpenAttempt={onOpenAttempt} schedule={schedule} workUnits={units} />);
+	await user.click(screen.getByRole("button", { name: /Read source —/ }));
+	const detail = screen.getByTestId("mission-unit-execution-detail");
+	expect(within(detail).getByRole("button", { name: "Engage" })).toBeVisible();
+	expect(within(detail).queryByRole("button", { name: "Inspect" })).not.toBeInTheDocument();
+});
+
+it("labels the CTA Inspect when the newest Attempt has ended", async () => {
+	const user = userEvent.setup();
+	const ended = {
+		id: "ended",
+		number: 1,
+		workUnitId: "a",
+		status: "succeeded",
+		updatedAt: "2026-08-30T00:00:00Z",
+		presentation: { phase: "succeeded", unconfirmed: false, endedUnclassified: false, nextAction: "x" },
+		sessions: [{ id: "ref-ended", seq: 1, sessionId: "session-ended", harness: "codex", mode: "tui", boundAt: "2026-08-30T00:00:00Z", runBriefCoreDigest: "b" }],
+	} as unknown as components["schemas"]["AttemptResponse"];
+	const schedule = {
+		workUnits: units.map((workUnit) => ({
+			workUnit,
+			state: workUnit.id === "a" ? "proven" : "runnable",
+			blockedReason: undefined,
+			blockingDependencies: [],
+			criterionReady: {},
+			attempts: [],
+		})),
+	} as unknown as components["schemas"]["ScheduleResponse"];
+	render(<MissionPlanView attempts={[ended]} graphOnly onOpenAttempt={vi.fn()} schedule={schedule} workUnits={units} />);
+	await user.click(screen.getByRole("button", { name: /Read source —/ }));
+	const detail = screen.getByTestId("mission-unit-execution-detail");
+	expect(within(detail).getByRole("button", { name: "Inspect" })).toBeVisible();
+	expect(within(detail).queryByRole("button", { name: "Engage" })).not.toBeInTheDocument();
+});
+
 it("shows the daemon blocker and unreported proof readiness without inventing state", async () => {
 	const user = userEvent.setup();
 	const schedule = {

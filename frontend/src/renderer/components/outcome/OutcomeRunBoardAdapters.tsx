@@ -249,9 +249,9 @@ export function AttemptCardAdapter({
 		<SessionCardView
 			action={presentation.isCurrent ? <AttemptCardActions onEngage={onEngage} presentation={presentation} /> : undefined}
 			externalLink={ProductExternalLink}
-			interactive={presentation.isCurrent}
+			interactive
 			labels={attemptCardLabels(t)}
-			onOpen={presentation.isCurrent ? onEngage : undefined}
+			onOpen={onEngage}
 			renderAvatar={(provider) => <AgentAvatar className="h-7 w-[30px]" provider={provider} />}
 			session={presentation}
 			translate={translate}
@@ -278,9 +278,9 @@ export function AttemptRowAdapter({
 				)
 			}
 			externalLink={ProductExternalLink}
-			interactive={presentation.isCurrent}
+			interactive
 			labels={attemptCardLabels(t)}
-			onOpen={presentation.isCurrent ? onEngage : undefined}
+			onOpen={onEngage}
 			renderAvatar={(provider) => <AgentAvatar className="h-7 w-[30px]" provider={provider} />}
 			session={presentation}
 			translate={translate}
