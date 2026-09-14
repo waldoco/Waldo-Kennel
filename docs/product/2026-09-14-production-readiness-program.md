@@ -288,12 +288,12 @@ history; supersede in place with a dated note.
 
 | Checkpoint | Status | Proven at |
 | --- | --- | --- |
-| C1.1 Protocol negotiation + drift CI | In review (PR pending) | Tests + live 0.154.0 fetch/handshake, 2026-09-14, this PR |
+| C1.1 Protocol negotiation + drift CI | Proven | Merged to beta as 5fdf9c2 via PR #180 (CI run 34834508285 green), 2026-09-14 |
 | C1.2 Fresh #115 canary at HEAD | Open | — |
 | C1.3 #38 packaged journey | Open (script ready) | — |
 | C1.4 Onboarding rehearsal | Open | — |
 | C1.5 Install/update (#117) | Open | — |
-| C1.6 Provenance persistence | Open | — |
+| C1.6 Provenance persistence | In review (PR pending) | Migration 0136 + service/outcome/MC surfacing; tests + typecheck green, 2026-09-14, this PR |
 | C2.1 Claude policy mapping | Open | — |
 | C2.2 Claude transport decision | Open | — |
 | C2.3 Claude packaged conformance | Open | — |

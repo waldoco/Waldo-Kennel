@@ -31,6 +31,11 @@ import (
 // the SQLite store.
 type Store interface {
 	CreateConversation(ctx context.Context, id string, scope domain.ConversationScope, project domain.ProjectID, session domain.SessionID, now time.Time) (domain.ConversationRecord, error)
+	// RecordChatProtocolProvenance appends one protocol-negotiation episode
+	// for the session (migration 0136, ADR 0016). Append-only: a later
+	// renegotiation never rewrites the evidence an older Attempt was
+	// reviewed against.
+	RecordChatProtocolProvenance(ctx context.Context, rec domain.ChatProtocolProvenance) error
 	ConversationForSession(ctx context.Context, session domain.SessionID) (domain.ConversationRecord, error)
 	ClaimChatControllerGeneration(ctx context.Context, session domain.SessionID, generation string, now time.Time) error
 	ConversationBranch(ctx context.Context, conversationID, branchID string) (domain.ConversationBranch, error)

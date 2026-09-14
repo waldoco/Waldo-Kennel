@@ -30,6 +30,11 @@ type attemptFakeStore struct {
 	obs            map[domain.AttemptID][]domain.AttemptObservation
 	receipts       map[domain.AttemptID][]domain.AttemptRecoveryReceipt
 
+	// provenance holds recorded protocol-negotiation episodes by session ID,
+	// unordered; the read applies the same at-or-before rule as the sqlite
+	// store so tests exercise the real selection semantics.
+	provenance map[string][]domain.ChatProtocolProvenance
+
 	// dropActivationOnce simulates losing the queued->running promotion race.
 	dropActivationOnce bool
 
@@ -339,6 +344,25 @@ func (f *attemptFakeStore) ListAttemptSessionRefs(_ context.Context, attemptID d
 	return out, nil
 }
 
+func (f *attemptFakeStore) ChatProtocolProvenanceForBinding(_ context.Context, sessionID string, boundAt time.Time) (domain.ChatProtocolProvenance, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	episodes := f.provenance[sessionID]
+	if len(episodes) == 0 {
+		return domain.ChatProtocolProvenance{}, false, nil
+	}
+	best := -1
+	for i, episode := range episodes {
+		if !episode.NegotiatedAt.After(boundAt) && (best == -1 || episode.NegotiatedAt.After(episodes[best].NegotiatedAt)) {
+			best = i
+		}
+	}
+	if best == -1 {
+		return domain.ChatProtocolProvenance{}, false, nil
+	}
+	return episodes[best], true, nil
+}
+
 func (f *attemptFakeStore) AppendAttemptObservation(_ context.Context, attemptID domain.AttemptID, kind string, payload string, at time.Time) (domain.AttemptObservation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -643,6 +667,9 @@ func (f *fakeStore) LatestAttemptSessionRef(context.Context, domain.AttemptID) (
 }
 func (f *fakeStore) ListAttemptSessionRefs(context.Context, domain.AttemptID) ([]domain.AttemptSessionRef, error) {
 	return nil, nil
+}
+func (f *fakeStore) ChatProtocolProvenanceForBinding(context.Context, string, time.Time) (domain.ChatProtocolProvenance, bool, error) {
+	return domain.ChatProtocolProvenance{}, false, nil
 }
 func (f *fakeStore) AppendAttemptObservation(context.Context, domain.AttemptID, string, string, time.Time) (domain.AttemptObservation, error) {
 	return domain.AttemptObservation{}, nil

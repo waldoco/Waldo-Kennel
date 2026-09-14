@@ -127,6 +127,14 @@ type OutcomeStore interface {
 	BindAttemptSession(context.Context, domain.AttemptSessionRef) (domain.AttemptSessionRef, error)
 	LatestAttemptSessionRef(context.Context, domain.AttemptID) (domain.AttemptSessionRef, bool, error)
 	ListAttemptSessionRefs(context.Context, domain.AttemptID) ([]domain.AttemptSessionRef, error)
+	// ChatProtocolProvenanceForBinding returns the protocol-negotiation
+	// episode that answers for one provider-session binding: the latest
+	// episode at or before the binding time, so a later renegotiation never
+	// answers for work bound earlier; the earliest episode when none
+	// predates the binding (NegotiatedAt stays visible on the record).
+	// found is false when the session has no recorded provenance, which is
+	// observability absence, never an error.
+	ChatProtocolProvenanceForBinding(context.Context, string, time.Time) (domain.ChatProtocolProvenance, bool, error)
 	AppendAttemptObservation(context.Context, domain.AttemptID, string, string, time.Time) (domain.AttemptObservation, error)
 	ListAttemptObservations(context.Context, domain.AttemptID) ([]domain.AttemptObservation, error)
 	OpenFenceForSubject(context.Context, string) (domain.AttemptFence, bool, error)

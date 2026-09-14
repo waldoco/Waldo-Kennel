@@ -36,7 +36,9 @@ work. It does not claim a release or owner Acceptance.
   own declared protocol surface at session start, not assumed from a version
   number: a required-method floor fails closed with the missing methods named,
   optional capabilities degrade individually, and negotiated provenance is
-  logged. The generated bindings stay pinned to one provider build for
+  persisted per provider session (append-only, surfacing digest drift and
+  degraded capabilities on the Attempt inspection view in Mission Control).
+  The generated bindings stay pinned to one provider build for
   reproducible conformance tests, and a scheduled drift CI regenerates them
   from the latest published CLI (ADR 0016).
 - Work is the default destination. Plan/graph views and attached Attempt

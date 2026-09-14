@@ -2987,6 +2987,7 @@ export interface components {
             harness: string;
             id: string;
             mode?: string;
+            protocolProvenance?: components["schemas"]["ControllersChatProtocolProvenanceResponse"];
             runBriefCompiledDigest?: string;
             runBriefCoreDigest: string;
             /** Format: int64 */
@@ -3177,6 +3178,18 @@ export interface components {
             confirmation: string;
             /** Format: int64 */
             revision: number;
+        };
+        ControllersChatProtocolProvenanceResponse: {
+            degradedCapabilities?: string[];
+            generatedDigest?: string;
+            generatedFrom?: string;
+            installedVersion?: string;
+            matchesGenerated: boolean;
+            missingFloor?: string[];
+            /** Format: date-time */
+            negotiatedAt: string;
+            protocolDigest: string;
+            provider: string;
         };
         ControllersDocumentSourceResponse: {
             contentDigest: string;
