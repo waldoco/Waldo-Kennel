@@ -1,5 +1,7 @@
 # Kennel status
 
+> **Authority:** This file is the evidence ledger for what is integrated and proven on `beta`. It is not the product definition or build sequence. See [PRODUCT.md](../PRODUCT.md), [ROADMAP.md](../ROADMAP.md), and the [documentation map](README.md). A dated proof applies only to its named baseline and tested layer.
+
 Checkpoint dated 2026-09-13, based on `beta` revision
 `c1ba9f78110734fff5f661bc0d8ccdf02f4484f2` (PR #129), with native-planning
 failure feedback, daemon-only approved checks and a partial Result projection.
