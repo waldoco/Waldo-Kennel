@@ -185,6 +185,9 @@ func newTestDriver(t *testing.T) (*Driver, *scriptedServer) {
 		versionProbe: func(context.Context, string) (string, error) {
 			return "codex-cli 0.153.4", nil
 		},
+		surfaceProbe: func(context.Context, string) (protocolSurface, error) {
+			return fullTestSurface(), nil
+		},
 		spawn: func(context.Context, string, string, []string) (*process, error) {
 			return &process{
 				stdin:  clientWrites,

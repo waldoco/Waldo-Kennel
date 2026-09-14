@@ -1,0 +1,57 @@
+# Codex app-server protocol drift watch. The provider marks app-server
+# experimental and gives the generated schema no stability promise, so the
+# binding surface is regenerated from the latest published Codex CLI on a
+# schedule: a method Kennel depends on disappearing fails here — in CI, with
+# the exact diff — rather than at runtime on a user's machine. Deliberately
+# separate from the foundation gate: this tracks an external moving target,
+# not the repo's own changes.
+name: codex-protocol-drift
+
+on:
+  schedule:
+    # Weekly, off-peak (Monday 03:17 UTC).
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-protocol-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: codex-protocol-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Install the latest published Codex CLI
+        run: |
+          npm install --global @openai/codex@latest
+          codex --version
+      - name: Conformance against the installed provider
+        # Compares the checked-in generated surface against the schema the
+        # installed build emits: a method the driver uses and the provider no
+        # longer declares fails; methods the provider added are logged.
+        run: cd backend && go test ./internal/adapters/chatdriver/codexappserver/... -count=1
+      - name: Fail on unreviewed protocol drift
+        # Regenerate from the installed build. Any diff is upstream drift that
+        # must be reviewed and committed deliberately, never absorbed silently.
+        run: |
+          cd backend
+          go generate ./internal/adapters/chatdriver/codexappserver/...
+          if ! git diff --exit-code -- internal/adapters/chatdriver/codexappserver/codexproto/protocol.gen.go; then
+            echo "::error::The latest Codex CLI speaks a different protocol surface than the checked-in bindings. Review the diff above, then commit the regenerated protocol.gen.go with matching driver review."
+            exit 1
+          fi

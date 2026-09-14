@@ -44,6 +44,10 @@ type conversation struct {
 	conn *conn
 	proc *process
 	log  *slog.Logger
+	// caps is the negotiated capability set for the installed build, attached
+	// by the driver after protocol negotiation. Nil means never negotiated —
+	// only true for conversations built directly in pipe tests.
+	caps ports.ChatCapabilities
 
 	threadID string
 	events   chan ports.ChatEvent
@@ -136,7 +140,14 @@ func (c *conversation) start(threadID, model, effort string, governedSandboxPoli
 func (c *conversation) ProviderConversationID() string { return c.threadID }
 
 // Capabilities reports what this conversation can do.
-func (c *conversation) Capabilities() ports.ChatCapabilities { return capabilities() }
+func (c *conversation) Capabilities() ports.ChatCapabilities {
+	// When the driver negotiated a live surface it attaches the result; pipe
+	// tests that build a conversation directly keep the static table.
+	if c.caps != nil {
+		return c.caps
+	}
+	return capabilities()
+}
 
 // Events is the normalized stream. It closes when the conversation ends.
 func (c *conversation) Events() <-chan ports.ChatEvent { return c.events }

@@ -69,6 +69,7 @@ type Driver struct {
 	log          *slog.Logger
 	spawn        spawnFunc
 	versionProbe versionProbeFunc
+	surfaceProbe surfaceProbeFunc
 }
 
 // New builds a Chat driver over the existing Codex agent plugin.
@@ -186,10 +187,20 @@ func (d *Driver) Probe(ctx context.Context) (ports.ChatCapabilities, error) {
 			ports.ErrChatDriverIncompatible, installed, minimumCodexVersion)
 	}
 
-	// Binary presence is not protocol compatibility. Complete the same initialize
-	// handshake a real controller uses, then exercise model/list: it is part of
-	// the surface Kennel advertises and a harmless read that catches older app-server
-	// builds before a session row or worktree exists.
+	// Binary presence and version are not protocol compatibility either. Compare
+	// the method surface the installed build declares against what Kennel needs:
+	// the floor refuses the driver, optional features degrade individually, and
+	// new provider methods are tolerated. This runs before any spawn so an
+	// incompatible build costs no process.
+	negotiated, err := d.negotiate(ctx, bin)
+	if err != nil {
+		return nil, err
+	}
+
+	// Complete the same initialize handshake a real controller uses, then
+	// exercise model/list: it is part of the surface Kennel advertises and a
+	// harmless read that catches older app-server builds before a session row
+	// or worktree exists.
 	workdir, err := os.Getwd()
 	if err != nil || !filepath.IsAbs(workdir) {
 		workdir = os.TempDir()
@@ -208,7 +219,7 @@ func (d *Driver) Probe(ctx context.Context) (ports.ChatCapabilities, error) {
 		return nil, fmt.Errorf("%w: model/list: %w", ports.ErrChatDriverIncompatible, err)
 	}
 
-	return capabilities(), nil
+	return negotiated.caps, nil
 }
 
 // ProbeIntelligence reports whether this install exposes the permission-profile
@@ -447,6 +458,18 @@ func (d *Driver) connect(ctx context.Context, workdir string, env map[string]str
 		_ = conv.Close()
 		return nil, fmt.Errorf("notify initialized: %w", err)
 	}
+
+	// The handshake proves the wire is up, not that the build still declares
+	// what Kennel needs. Negotiate before returning so a drifted build is
+	// refused ahead of thread/start, and so the conversation reports the
+	// negotiated capability set rather than the static table. The fetch is
+	// cached per binary, so Probe and connect do not pay it twice.
+	negotiated, err := d.negotiate(ctx, bin)
+	if err != nil {
+		_ = conv.Close()
+		return nil, err
+	}
+	conv.caps = negotiated.caps
 	return conv, nil
 }
 
