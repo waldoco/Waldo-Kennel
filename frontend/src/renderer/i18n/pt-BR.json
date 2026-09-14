@@ -1998,6 +1998,8 @@
 	"outcome.proof.ownerWalkthrough": "Owner walkthrough",
 	"outcome.proof.deterministic": "Deterministic check",
 	"outcome.proof.artifact": "Artifact",
+	"outcome.proof.whatChanged": "O que mudou",
+	"outcome.proof.changesMore": "A lista completa de alterações está retida; apenas as primeiras entradas são exibidas",
 	"outcome.proof.providerOutput": "Provider output",
 	"outcome.proof.addEvidence": "Record evidence",
 	"outcome.proof.verification": "Verification",

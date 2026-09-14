@@ -1982,6 +1982,8 @@
 	"outcome.proof.ownerWalkthrough": "Owner walkthrough",
 	"outcome.proof.deterministic": "Deterministic check",
 	"outcome.proof.artifact": "Artifact",
+	"outcome.proof.whatChanged": "変更内容",
+	"outcome.proof.changesMore": "完全な変更リストは保持されています。最初の項目のみ表示しています",
 	"outcome.proof.providerOutput": "Provider output",
 	"outcome.proof.addEvidence": "Record evidence",
 	"outcome.proof.verification": "Verification",

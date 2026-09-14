@@ -14,6 +14,7 @@ import (
 
 type proofFakeStore struct {
 	*fakeStore
+	receiptBook   *receiptBook
 	proofMu       sync.Mutex
 	evidence      []domain.EvidenceItem
 	verifications []domain.VerificationRun
@@ -386,4 +387,122 @@ func (f *proofFakeStore) CreateAcceptanceDecisionBatch(_ context.Context, decisi
 	}
 	f.decisions = append(f.decisions, decisions...)
 	return nil
+}
+
+// receiptBook gives proofFakeStore the AttemptReceiptStore surface so the
+// Result facts projection can be exercised against durable attempts and
+// Kennel-retained receipts.
+type receiptBook struct {
+	mu       sync.Mutex
+	attempts []domain.Attempt
+	receipts map[domain.AttemptID]domain.AttemptReceipt
+}
+
+func (f *proofFakeStore) withAttemptReceipts(book *receiptBook) { f.receiptBook = book }
+
+func (f *proofFakeStore) ListAttempts(context.Context, domain.OutcomeID) ([]domain.Attempt, error) {
+	if f.receiptBook == nil {
+		return nil, nil
+	}
+	f.receiptBook.mu.Lock()
+	defer f.receiptBook.mu.Unlock()
+	return append([]domain.Attempt(nil), f.receiptBook.attempts...), nil
+}
+
+func (f *proofFakeStore) SaveAttemptReceipt(_ context.Context, receipt domain.AttemptReceipt) error {
+	f.receiptBook.mu.Lock()
+	defer f.receiptBook.mu.Unlock()
+	f.receiptBook.receipts[receipt.AttemptID] = receipt
+	return nil
+}
+
+func (f *proofFakeStore) GetAttemptReceipt(_ context.Context, id domain.AttemptID) (domain.AttemptReceipt, bool, error) {
+	f.receiptBook.mu.Lock()
+	defer f.receiptBook.mu.Unlock()
+	receipt, ok := f.receiptBook.receipts[id]
+	return receipt, ok, nil
+}
+
+func (f *proofFakeStore) FreezeAttemptReceipt(_ context.Context, id domain.AttemptID, at time.Time) error {
+	f.receiptBook.mu.Lock()
+	defer f.receiptBook.mu.Unlock()
+	receipt, ok := f.receiptBook.receipts[id]
+	if !ok {
+		return nil
+	}
+	frozen := at.UTC()
+	receipt.FrozenAt = &frozen
+	f.receiptBook.receipts[id] = receipt
+	return nil
+}
+
+func TestGetProofProjectsMeasuredChangesAndReentryTargets(t *testing.T) {
+	service, store, view := newProofService(t)
+	book := &receiptBook{receipts: map[domain.AttemptID]domain.AttemptReceipt{}}
+	store.withAttemptReceipts(book)
+	current := domain.Attempt{
+		ID:                     "att-current",
+		OutcomeID:              view.Outcome.ID,
+		WorkUnitID:             "wu-1",
+		ContractRevisionNumber: view.Current.Number,
+		Status:                 domain.AttemptSucceeded,
+	}
+	superseded := domain.Attempt{
+		ID:                     "att-old",
+		OutcomeID:              view.Outcome.ID,
+		WorkUnitID:             "wu-1",
+		ContractRevisionNumber: view.Current.Number + 1,
+		Status:                 domain.AttemptSucceeded,
+	}
+	book.attempts = []domain.Attempt{current, superseded}
+	book.receipts[current.ID] = domain.AttemptReceipt{
+		AttemptID:       current.ID,
+		ArtifactVersion: "v1",
+		RetentionState:  domain.RetentionRetained,
+		Files: []domain.ArtifactFile{
+			{RelativePath: "report.md", ChangeKind: domain.ArtifactModified, ContentDigest: "digest-report"},
+			{RelativePath: "notes/todo.md", ChangeKind: domain.ArtifactAdded, ContentDigest: "digest-notes"},
+		},
+	}
+	book.receipts[superseded.ID] = domain.AttemptReceipt{
+		AttemptID:       superseded.ID,
+		ArtifactVersion: "v9",
+		RetentionState:  domain.RetentionRetained,
+		Files:           []domain.ArtifactFile{{RelativePath: "stale.md", ChangeKind: domain.ArtifactAdded, ContentDigest: "digest-stale"}},
+	}
+
+	proof, err := service.GetProof(context.Background(), view.Outcome.ID)
+	if err != nil {
+		t.Fatalf("get proof: %v", err)
+	}
+	if len(proof.Changes) != 1 {
+		t.Fatalf("expected changes only for the current-revision attempt, got %+v", proof.Changes)
+	}
+	changes := proof.Changes[0]
+	if changes.AttemptID != current.ID || changes.ArtifactVersion != "v1" || changes.RetentionState != domain.RetentionRetained {
+		t.Fatalf("change identity = %+v", changes)
+	}
+	if changes.Truncated || len(changes.Files) != 2 {
+		t.Fatalf("change files = %+v truncated=%v", changes.Files, changes.Truncated)
+	}
+	if changes.Files[0].RelativePath != "report.md" || changes.Files[0].ChangeKind != domain.ArtifactModified {
+		t.Fatalf("first change = %+v", changes.Files[0])
+	}
+
+	var contractTarget, attemptTarget *outcome.ReentryTargetView
+	for i := range proof.ReentryTargets {
+		target := &proof.ReentryTargets[i]
+		switch {
+		case target.TargetType == domain.ReentryTargetContract && target.TargetID == string(view.Current.ID):
+			contractTarget = target
+		case target.TargetType == domain.ReentryTargetAttempt && target.TargetID == string(current.ID):
+			attemptTarget = target
+		}
+		if target.TargetID == string(superseded.ID) {
+			t.Fatalf("superseded attempt must not be a re-entry target: %+v", target)
+		}
+	}
+	if contractTarget == nil || attemptTarget == nil {
+		t.Fatalf("re-entry targets = %+v", proof.ReentryTargets)
+	}
 }

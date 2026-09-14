@@ -2814,12 +2814,42 @@ type OutcomeResultCheckResponse struct {
 	Uncertain        bool   `json:"uncertain"`
 }
 
+// OutcomeResultChangeFileResponse is one measured file change from Kennel's
+// own receipt of the leased workspace.
+type OutcomeResultChangeFileResponse struct {
+	Path       string `json:"path"`
+	ChangeKind string `json:"changeKind"`
+	Digest     string `json:"digest,omitempty"`
+}
+
+// OutcomeResultChangesResponse projects one retained Attempt's measured file
+// changes. The receipt, not the provider, is the source; truncated is
+// explicit when the projection shortens the list.
+type OutcomeResultChangesResponse struct {
+	AttemptID       string                            `json:"attemptId"`
+	WorkUnitID      string                            `json:"workUnitId"`
+	ArtifactVersion string                            `json:"artifactVersion"`
+	RetentionState  string                            `json:"retentionState"`
+	Files           []OutcomeResultChangeFileResponse `json:"files"`
+	Truncated       bool                              `json:"truncated"`
+}
+
 // OutcomeResultSummaryResponse projects artifact evidence and verification facts for owner review.
 type OutcomeResultSummaryResponse struct {
 	Artifacts      []OutcomeResultArtifactResponse `json:"artifacts"`
 	Checks         []OutcomeResultCheckResponse    `json:"checks"`
+	Changes        []OutcomeResultChangesResponse  `json:"changes"`
 	Uncertainty    []string                        `json:"uncertainty"`
 	NextSafeAction string                          `json:"nextSafeAction"`
+}
+
+// OutcomeReentryTargetResponse is one daemon-derived identity a correction
+// may target, so rework and reopen never ask the owner to type a raw
+// identifier.
+type OutcomeReentryTargetResponse struct {
+	TargetType string `json:"targetType"`
+	TargetID   string `json:"targetId"`
+	Label      string `json:"label"`
 }
 
 // OutcomeProofResponse is the daemon-derived Prove & Close read model.
@@ -2838,6 +2868,9 @@ type OutcomeProofResponse struct {
 	// rework or reopen stands against the current Contract revision.
 	ActiveCorrectionID string     `json:"activeCorrectionId,omitempty"`
 	ProofHorizon       *time.Time `json:"proofHorizon,omitempty"`
+	// ReentryTargets are the daemon-derived correction targets for the current
+	// Contract revision.
+	ReentryTargets []OutcomeReentryTargetResponse `json:"reentryTargets"`
 }
 
 // OutcomeProofEnvelope wraps the canonical proof response.
@@ -2849,10 +2882,29 @@ func outcomeProofResponse(view outcomevc.ProofView) OutcomeProofResponse {
 	response := OutcomeProofResponse{
 		OutcomeID: string(view.OutcomeID), Contract: contractRevisionResponse(view.Contract),
 		Status: string(view.Status), NextAction: view.NextAction,
-		Result:      OutcomeResultSummaryResponse{Artifacts: []OutcomeResultArtifactResponse{}, Checks: []OutcomeResultCheckResponse{}, Uncertainty: []string{}, NextSafeAction: view.NextAction},
-		Criteria:    make([]CriterionProofResponse, 0, len(view.Criteria)),
-		Decisions:   make([]AcceptanceDecisionResponse, 0, len(view.Decisions)),
-		Corrections: make([]OutcomeCorrectionResponse, 0, len(view.Corrections)),
+		Result:         OutcomeResultSummaryResponse{Artifacts: []OutcomeResultArtifactResponse{}, Checks: []OutcomeResultCheckResponse{}, Changes: []OutcomeResultChangesResponse{}, Uncertainty: []string{}, NextSafeAction: view.NextAction},
+		Criteria:       make([]CriterionProofResponse, 0, len(view.Criteria)),
+		Decisions:      make([]AcceptanceDecisionResponse, 0, len(view.Decisions)),
+		Corrections:    make([]OutcomeCorrectionResponse, 0, len(view.Corrections)),
+		ReentryTargets: make([]OutcomeReentryTargetResponse, 0, len(view.ReentryTargets)),
+	}
+	for _, target := range view.ReentryTargets {
+		response.ReentryTargets = append(response.ReentryTargets, OutcomeReentryTargetResponse{
+			TargetType: string(target.TargetType), TargetID: target.TargetID, Label: target.Label,
+		})
+	}
+	for _, change := range view.Changes {
+		projected := OutcomeResultChangesResponse{
+			AttemptID: string(change.AttemptID), WorkUnitID: string(change.WorkUnitID),
+			ArtifactVersion: change.ArtifactVersion, RetentionState: string(change.RetentionState),
+			Files: make([]OutcomeResultChangeFileResponse, 0, len(change.Files)), Truncated: change.Truncated,
+		}
+		for _, file := range change.Files {
+			projected.Files = append(projected.Files, OutcomeResultChangeFileResponse{
+				Path: file.RelativePath, ChangeKind: string(file.ChangeKind), Digest: file.ContentDigest,
+			})
+		}
+		response.Result.Changes = append(response.Result.Changes, projected)
 	}
 	if !view.ProofHorizon.IsZero() {
 		horizon := view.ProofHorizon

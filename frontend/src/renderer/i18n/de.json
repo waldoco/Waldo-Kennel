@@ -1982,6 +1982,8 @@
 	"outcome.proof.ownerWalkthrough": "Owner walkthrough",
 	"outcome.proof.deterministic": "Deterministic check",
 	"outcome.proof.artifact": "Artifact",
+	"outcome.proof.whatChanged": "Was geändert wurde",
+	"outcome.proof.changesMore": "Die vollständige Änderungsliste ist gespeichert; nur die ersten Einträge werden angezeigt",
 	"outcome.proof.providerOutput": "Provider output",
 	"outcome.proof.addEvidence": "Record evidence",
 	"outcome.proof.verification": "Verification",

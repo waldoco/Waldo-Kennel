@@ -1982,6 +1982,8 @@
 	"outcome.proof.ownerWalkthrough": "Owner walkthrough",
 	"outcome.proof.deterministic": "Deterministic check",
 	"outcome.proof.artifact": "Artifact",
+	"outcome.proof.whatChanged": "변경된 내용",
+	"outcome.proof.changesMore": "전체 변경 목록은 보존되며 처음 항목만 표시됩니다",
 	"outcome.proof.providerOutput": "Provider output",
 	"outcome.proof.addEvidence": "Record evidence",
 	"outcome.proof.verification": "Verification",

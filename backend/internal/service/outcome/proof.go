@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -63,6 +64,35 @@ type ProofView struct {
 	// rework or reopen stands against the current Contract revision.
 	ActiveCorrection *domain.OutcomeCorrection
 	ProofHorizon     time.Time
+	// Changes is the measured file-change projection for retained Attempts on
+	// the current Contract revision, so the Result can say what changed, not
+	// just that bytes were retained. Empty when nothing is retained yet.
+	Changes []AttemptChangesView
+	// ReentryTargets are the daemon-derived identities a correction may target
+	// on the current Contract revision, so rework and reopen never ask the
+	// owner to type a raw identifier.
+	ReentryTargets []ReentryTargetView
+}
+
+// AttemptChangesView projects one retained Attempt's measured file changes.
+// Files come from Kennel's own receipt of the leased workspace, never from
+// provider claims. Truncated is explicit when the projection shortens the
+// list; the receipt itself stays complete.
+type AttemptChangesView struct {
+	AttemptID       domain.AttemptID
+	WorkUnitID      domain.WorkUnitID
+	ArtifactVersion string
+	RetentionState  domain.RetentionState
+	Files           []domain.ArtifactFile
+	Truncated       bool
+}
+
+// ReentryTargetView is one daemon-derived correction target for the current
+// Contract revision.
+type ReentryTargetView struct {
+	TargetType domain.ReentryTargetType
+	TargetID   string
+	Label      string
 }
 
 // RecordEvidenceInput contains evidence tied to an Outcome criterion.
@@ -146,7 +176,88 @@ func (s *Service) GetProof(ctx context.Context, outcomeID domain.OutcomeID) (Pro
 	if err != nil {
 		return ProofView{}, err
 	}
-	return deriveProof(outcomeView, evidence, verifications, decisions, corrections, delegated), nil
+	view := deriveProof(outcomeView, evidence, verifications, decisions, corrections, delegated)
+	if err := s.attachResultFacts(ctx, outcomeView, &view); err != nil {
+		return ProofView{}, err
+	}
+	return view, nil
+}
+
+// maxResultChangeFiles bounds one Attempt's projected change list. A larger
+// receipt stays fully retained; only the review projection is shortened, and
+// says so through Truncated.
+const maxResultChangeFiles = 200
+
+// attachResultFacts adds the measured artifact-change projection and the
+// daemon-derived re-entry targets to the proof view. Both derive only from
+// the durable Contract, Plan, Attempts and Kennel's own retained receipts; no
+// provider claim becomes a fact here.
+func (s *Service) attachResultFacts(ctx context.Context, outcomeView View, view *ProofView) error {
+	view.Changes = []AttemptChangesView{}
+	view.ReentryTargets = []ReentryTargetView{{
+		TargetType: domain.ReentryTargetContract,
+		TargetID:   string(outcomeView.Current.ID),
+		Label:      fmt.Sprintf("Contract revision %d", outcomeView.Current.Number),
+	}}
+	unitTitles := map[domain.WorkUnitID]string{}
+	if outcomeView.LatestPlan != nil && outcomeView.LatestPlan.ContractRevisionNumber == outcomeView.Current.Number {
+		view.ReentryTargets = append(view.ReentryTargets, ReentryTargetView{
+			TargetType: domain.ReentryTargetPlan,
+			TargetID:   string(outcomeView.LatestPlan.ID),
+			Label:      "Current plan",
+		})
+		for _, unit := range outcomeView.LatestPlan.WorkUnits {
+			unitTitles[unit.ID] = unit.Title
+			view.ReentryTargets = append(view.ReentryTargets, ReentryTargetView{
+				TargetType: domain.ReentryTargetWorkUnit,
+				TargetID:   string(unit.ID),
+				Label:      unit.Title,
+			})
+		}
+	}
+	if s.store == nil || s.receipts == nil {
+		return nil
+	}
+	attempts, err := s.store.ListAttempts(ctx, outcomeView.Outcome.ID)
+	if err != nil {
+		return err
+	}
+	for _, attempt := range attempts {
+		if attempt.ContractRevisionNumber != outcomeView.Current.Number {
+			continue
+		}
+		label := "Attempt (" + string(attempt.Status) + ")"
+		if title := strings.TrimSpace(unitTitles[attempt.WorkUnitID]); title != "" {
+			label = title + " (" + string(attempt.Status) + ")"
+		}
+		view.ReentryTargets = append(view.ReentryTargets, ReentryTargetView{
+			TargetType: domain.ReentryTargetAttempt,
+			TargetID:   string(attempt.ID),
+			Label:      label,
+		})
+		receipt, retained, err := s.receipts.GetAttemptReceipt(ctx, attempt.ID)
+		if err != nil {
+			return err
+		}
+		if !retained {
+			continue
+		}
+		files := append([]domain.ArtifactFile(nil), receipt.Files...)
+		truncated := false
+		if len(files) > maxResultChangeFiles {
+			files = files[:maxResultChangeFiles]
+			truncated = true
+		}
+		view.Changes = append(view.Changes, AttemptChangesView{
+			AttemptID:       attempt.ID,
+			WorkUnitID:      attempt.WorkUnitID,
+			ArtifactVersion: receipt.ArtifactVersion,
+			RetentionState:  receipt.RetentionState,
+			Files:           files,
+			Truncated:       truncated,
+		})
+	}
+	return nil
 }
 
 // RecordEvidence appends evidence for an Outcome criterion.

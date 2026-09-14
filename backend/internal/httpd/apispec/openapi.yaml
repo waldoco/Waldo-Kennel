@@ -10219,6 +10219,19 @@ components:
       - sources
       - changedSources
       type: object
+    ControllersOutcomeReentryTargetResponse:
+      properties:
+        label:
+          type: string
+        targetId:
+          type: string
+        targetType:
+          type: string
+      required:
+      - targetType
+      - targetId
+      - label
+      type: object
     ControllersOutcomeResultArtifactResponse:
       properties:
         digest:
@@ -10231,6 +10244,42 @@ components:
       - revision
       - sourceRef
       - digest
+      type: object
+    ControllersOutcomeResultChangeFileResponse:
+      properties:
+        changeKind:
+          type: string
+        digest:
+          type: string
+        path:
+          type: string
+      required:
+      - path
+      - changeKind
+      type: object
+    ControllersOutcomeResultChangesResponse:
+      properties:
+        artifactVersion:
+          type: string
+        attemptId:
+          type: string
+        files:
+          items:
+            $ref: '#/components/schemas/ControllersOutcomeResultChangeFileResponse'
+          type: array
+        retentionState:
+          type: string
+        truncated:
+          type: boolean
+        workUnitId:
+          type: string
+      required:
+      - attemptId
+      - workUnitId
+      - artifactVersion
+      - retentionState
+      - files
+      - truncated
       type: object
     ControllersOutcomeResultCheckResponse:
       properties:
@@ -10259,6 +10308,10 @@ components:
           items:
             $ref: '#/components/schemas/ControllersOutcomeResultArtifactResponse'
           type: array
+        changes:
+          items:
+            $ref: '#/components/schemas/ControllersOutcomeResultChangesResponse'
+          type: array
         checks:
           items:
             $ref: '#/components/schemas/ControllersOutcomeResultCheckResponse'
@@ -10272,6 +10325,7 @@ components:
       required:
       - artifacts
       - checks
+      - changes
       - uncertainty
       - nextSafeAction
       type: object
@@ -12731,6 +12785,10 @@ components:
           type:
           - "null"
           - string
+        reentryTargets:
+          items:
+            $ref: '#/components/schemas/ControllersOutcomeReentryTargetResponse'
+          type: array
         result:
           $ref: '#/components/schemas/ControllersOutcomeResultSummaryResponse'
         status:
@@ -12744,6 +12802,7 @@ components:
       - criteria
       - decisions
       - corrections
+      - reentryTargets
       type: object
     OutcomeResponse:
       properties:
