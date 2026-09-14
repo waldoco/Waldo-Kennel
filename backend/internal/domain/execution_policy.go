@@ -81,17 +81,26 @@ func BuildAttemptExecutionPolicy(
 	grantByName := make(map[string]CapabilityGrant, len(plan.Grants))
 	for _, grant := range plan.Grants {
 		name := strings.TrimSpace(grant.Name)
-		if name != "" {
-			grant.Name = name
-			grant.Scope = strings.TrimSpace(grant.Scope)
-			grantByName[name] = grant
+		if name == "" {
+			continue
 		}
+		if _, duplicate := grantByName[name]; duplicate {
+			return AttemptExecutionPolicy{}, fmt.Errorf("plan repeats capability grant %q", name)
+		}
+		grant.Name = name
+		grant.Scope = strings.TrimSpace(grant.Scope)
+		grantByName[name] = grant
 	}
 	required := append([]string(nil), unit.RequiredCapabilities...)
+	seenRequired := make(map[string]struct{}, len(required))
 	for i := range required {
 		required[i] = strings.TrimSpace(required[i])
+		if _, duplicate := seenRequired[required[i]]; duplicate {
+			return AttemptExecutionPolicy{}, fmt.Errorf("work unit %s repeats required capability %q", unit.ID, required[i])
+		}
+		seenRequired[required[i]] = struct{}{}
 	}
-	required = uniqueSortedStrings(required)
+	sort.Strings(required)
 	if len(required) == 0 {
 		return AttemptExecutionPolicy{}, fmt.Errorf("work unit %s requires at least one capability", unit.ID)
 	}
@@ -175,9 +184,6 @@ func (p AttemptExecutionPolicy) Validate() error {
 		}
 		seenChecks[check.ID] = struct{}{}
 		lastCheckID = check.ID.String()
-	}
-	if len(p.ApprovedChecks) > 0 && !p.Has(CapabilityWorktreeExec) {
-		return fmt.Errorf("execution policy approved checks require %s", CapabilityWorktreeExec)
 	}
 	return nil
 }

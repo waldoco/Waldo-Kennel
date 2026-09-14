@@ -232,3 +232,22 @@ target revision/workunit/attempt
 ```
 
 If no action is valid, the UI must not manufacture a button. If several commands are valid, one may be recommended, but all remain tied to the same blocker and authority.
+
+## W1.0 implemented review seam
+
+W1.0 implements a narrow domain seam for review without replacing the future contract above:
+
+- `AdmissionVerdict` permits Contract- or Plan-missing rejection before those identities exist. Admitted verdicts require complete Outcome/Contract/Plan/WorkUnit attribution and only admitted WorkUnits. Rejected and stale verdicts forbid admitted executable work.
+- Each admitted WorkUnit carries one `ApprovedExecutableSpec` at approval. Its digest covers compiler-policy version, local harness/model binding, native enforcement mapping, workspace requirements and lease subject, typed/versioned admission receipt identities, versioned budget/accounting semantics, checks, capability grants, and all enclosing attribution. It contains no concrete root or runtime allocation. At Attempt start, `WorkspaceBoundLaunchPacket` references that spec and binds the canonical leased root plus exact Attempt, fence, session, input, current-readiness, and launch identities without widening the approved spec.
+- `BuildAttemptExecutionPolicy` rejects duplicate required capabilities after normalization and duplicate grant names instead of silently deduplicating or overwriting them. Daemon-run approved checks do not grant the provider `worktree.exec`.
+- Retry limit counts successor Attempts after the initial Attempt in one WorkUnit lineage (`workunit_attempt_successors`). Owner actions are closed machine commands.
+- Reasoning-only providers remain separate from `AgentHarness`; tests assert every shipped harness is selectable local execution and that an owner-key OpenAI identity cannot bind execution.
+- Current stored lifecycle facts map separately in `lifecycle_projection.go`. The exhaustive mapping consumes `EmittedAttemptObservationKinds`, the enumerable list beside the emitted observation constants. It preserves `blocked` and `waiting_input` as owner attention, keeps ambiguous/live-custody observations unconfirmed rather than lost, maps provider exit to reconciled rather than completed, and maps proof classification to verified.
+
+This slice does not persist verdicts, wire approval or Attempt start, add generated API, change current Work UI labels, implement the full future event envelope, or implement `next_action`. The future requirements in this document remain the target for W1.1-W1.4.
+
+### Approval and launch artifacts
+
+W1.0 chooses approval without workspace reservation. Approval consumes an immutable `ApprovedExecutableSpec`. Its digest binds Outcome/Contract/Plan/WorkUnit attribution, RunBrief core digest, local harness/model, compiler and native-mapping versions, normalized required capabilities and grants, daemon-run checks, workspace kind and lease subject, versioned budget/accounting semantics, and stable admission receipt identities. The spec contains no concrete root, Attempt, fence, or session identity.
+
+Attempt start derives an immutable `WorkspaceBoundLaunchPacket`. Its digest binds the approved spec and spec digest to the exact Attempt, fence, session, canonical workspace root, input artifact versions, current typed readiness receipts, launch facts, and workspace-bound `AttemptExecutionPolicy`. Validation cross-checks attribution and permits only binding or narrowing; the launch packet cannot widen capabilities, grants, checks, or budgets. No W1.0 persistence, service, or port wiring is implied.

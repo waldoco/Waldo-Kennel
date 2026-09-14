@@ -298,6 +298,18 @@ const (
 	ObservationInputProvisioningFailed = "input_provisioning_failed"
 )
 
+// EmittedAttemptObservationKinds is the canonical recognized observation set
+// for lifecycle projection and exhaustive compatibility. Some kinds are legacy
+// or recovery-only and may not have a current service emitter.
+var EmittedAttemptObservationKinds = []string{
+	ObservationAttemptContained, ObservationAttemptResumed, ObservationProviderExit,
+	ObservationAttemptClassified, ObservationAdmissionFailed, ObservationAdmissionAmbiguous,
+	ObservationActivationAmbiguous, ObservationGovernedCheckTerminationUnknown,
+	ObservationProviderStopFailed, ObservationOwnerContained, ObservationOwnerCancel,
+	ObservationOwnerPause, ObservationOwnerResume, ObservationRecoveryAttention,
+	ObservationInputProvisioningFailed,
+}
+
 // AttemptFence is the custody lock over one worktree subject. At most ONE
 // open fence per subject may exist (partial unique index on released_at IS
 // NULL); replacement inherits custody only through reconcile releasing the
