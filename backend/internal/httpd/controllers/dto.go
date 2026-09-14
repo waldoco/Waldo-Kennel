@@ -3473,6 +3473,41 @@ type AttemptSessionRefResponse struct {
 	RunBriefCoreDigest     string    `json:"runBriefCoreDigest"`
 	RunBriefCompiledDigest string    `json:"runBriefCompiledDigest,omitempty"`
 	BoundAt                time.Time `json:"boundAt"`
+	// ProtocolProvenance is the persisted protocol-negotiation episode that
+	// answers for this binding (ADR 0016): which provider build and negotiated
+	// surface the work ran on. Absent when no episode was recorded - a driver
+	// that cannot report provenance, or a record lost to the fail-soft write;
+	// never a statement that the session was unnegotiated.
+	ProtocolProvenance *ChatProtocolProvenanceResponse `json:"protocolProvenance,omitempty"`
+}
+
+// ChatProtocolProvenanceResponse is one persisted protocol-negotiation
+// episode. negotiatedAt stays explicit so a fallback to the earliest episode
+// (none predates the binding) is visible rather than implied.
+type ChatProtocolProvenanceResponse struct {
+	Provider             string    `json:"provider"`
+	InstalledVersion     string    `json:"installedVersion,omitempty"`
+	GeneratedFrom        string    `json:"generatedFrom,omitempty"`
+	ProtocolDigest       string    `json:"protocolDigest"`
+	GeneratedDigest      string    `json:"generatedDigest,omitempty"`
+	MatchesGenerated     bool      `json:"matchesGenerated"`
+	DegradedCapabilities []string  `json:"degradedCapabilities,omitempty"`
+	MissingFloor         []string  `json:"missingFloor,omitempty"`
+	NegotiatedAt         time.Time `json:"negotiatedAt"`
+}
+
+func chatProtocolProvenanceResponse(rec domain.ChatProtocolProvenance) *ChatProtocolProvenanceResponse {
+	return &ChatProtocolProvenanceResponse{
+		Provider:             rec.Provider,
+		InstalledVersion:     rec.InstalledVersion,
+		GeneratedFrom:        rec.GeneratedFrom,
+		ProtocolDigest:       rec.ProtocolDigest,
+		GeneratedDigest:      rec.GeneratedDigest,
+		MatchesGenerated:     rec.MatchesGenerated,
+		DegradedCapabilities: rec.DegradedCapabilities,
+		MissingFloor:         rec.MissingFloor,
+		NegotiatedAt:         rec.NegotiatedAt,
+	}
 }
 
 // AttemptObservationResponse is one ordered, append-only observation.
@@ -3544,8 +3579,8 @@ type AttemptRecoveryEnvelope struct {
 	Receipt *RecoveryReceiptResponse `json:"receipt,omitempty"`
 }
 
-func attemptSessionRefResponse(ref domain.AttemptSessionRef) AttemptSessionRefResponse {
-	return AttemptSessionRefResponse{
+func attemptSessionRefResponse(ref domain.AttemptSessionRef, provenance *domain.ChatProtocolProvenance) AttemptSessionRefResponse {
+	resp := AttemptSessionRefResponse{
 		ID:                     string(ref.ID),
 		Seq:                    ref.Seq,
 		SessionID:              ref.SessionID,
@@ -3555,6 +3590,10 @@ func attemptSessionRefResponse(ref domain.AttemptSessionRef) AttemptSessionRefRe
 		RunBriefCompiledDigest: ref.RunBriefCompiledDigest,
 		BoundAt:                ref.BoundAt,
 	}
+	if provenance != nil {
+		resp.ProtocolProvenance = chatProtocolProvenanceResponse(*provenance)
+	}
+	return resp
 }
 
 func attemptObservationResponse(obs domain.AttemptObservation) AttemptObservationResponse {
@@ -3579,7 +3618,11 @@ func recoveryReceiptResponse(receipt domain.AttemptRecoveryReceipt) RecoveryRece
 func attemptResponse(view outcomevc.AttemptView) AttemptResponse {
 	sessions := make([]AttemptSessionRefResponse, 0, len(view.Sessions))
 	for _, ref := range view.Sessions {
-		sessions = append(sessions, attemptSessionRefResponse(ref))
+		var provenance *domain.ChatProtocolProvenance
+		if rec, ok := view.ProtocolProvenance[ref.ID]; ok {
+			provenance = &rec
+		}
+		sessions = append(sessions, attemptSessionRefResponse(ref, provenance))
 	}
 	observations := make([]AttemptObservationResponse, 0, len(view.Observations))
 	for _, obs := range view.Observations {

@@ -9331,6 +9331,8 @@ components:
           type: string
         mode:
           type: string
+        protocolProvenance:
+          $ref: '#/components/schemas/ControllersChatProtocolProvenanceResponse'
         runBriefCompiledDigest:
           type: string
         runBriefCoreDigest:
@@ -9842,6 +9844,37 @@ components:
       - revision
       - action
       - confirmation
+      type: object
+    ControllersChatProtocolProvenanceResponse:
+      properties:
+        degradedCapabilities:
+          items:
+            type: string
+          type: array
+        generatedDigest:
+          type: string
+        generatedFrom:
+          type: string
+        installedVersion:
+          type: string
+        matchesGenerated:
+          type: boolean
+        missingFloor:
+          items:
+            type: string
+          type: array
+        negotiatedAt:
+          format: date-time
+          type: string
+        protocolDigest:
+          type: string
+        provider:
+          type: string
+      required:
+      - provider
+      - protocolDigest
+      - matchesGenerated
+      - negotiatedAt
       type: object
     ControllersDocumentSourceResponse:
       properties:

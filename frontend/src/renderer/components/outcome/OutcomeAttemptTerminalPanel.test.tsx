@@ -139,3 +139,46 @@ describe("OutcomeAttemptTerminalPanel historical Attempt inspection", () => {
 		expect(screen.queryByText("Recorded session unavailable")).not.toBeInTheDocument();
 	});
 });
+
+describe("OutcomeAttemptTerminalPanel protocol provenance", () => {
+	const negotiatedBinding: AttemptRecord["sessions"][number] = {
+		...newestChatBinding,
+		protocolProvenance: {
+			provider: "codex app-server",
+			installedVersion: "0.154.0",
+			generatedFrom: "0.153.4",
+			protocolDigest: "821a34c2aebae893",
+			generatedDigest: "821a34c2aebae893",
+			matchesGenerated: true,
+			degradedCapabilities: ["steer"],
+			negotiatedAt: "2026-08-30T00:00:00Z",
+		},
+	};
+
+	it("shows the persisted negotiation episode for the selected binding", () => {
+		render(<OutcomeAttemptTerminalPanel attempt={attempt([oldTuiBinding, negotiatedBinding])} onClose={vi.fn()} />);
+
+		const strip = screen.getByTestId("attempt-protocol-provenance");
+		expect(strip).toHaveTextContent("codex app-server 0.154.0");
+		expect(strip).toHaveTextContent("matches pinned surface");
+		expect(strip).toHaveTextContent("Degraded: steer");
+	});
+
+	it("reads a digest mismatch as information, not a warning", () => {
+		const drifted: AttemptRecord["sessions"][number] = {
+			...negotiatedBinding,
+			protocolProvenance: { ...negotiatedBinding.protocolProvenance!, matchesGenerated: false, degradedCapabilities: [] },
+		};
+		render(<OutcomeAttemptTerminalPanel attempt={attempt([drifted])} onClose={vi.fn()} />);
+
+		const strip = screen.getByTestId("attempt-protocol-provenance");
+		expect(strip).toHaveTextContent("surface differs from pin");
+		expect(strip).not.toHaveTextContent("Degraded");
+	});
+
+	it("renders no strip when the binding has no recorded episode", () => {
+		render(<OutcomeAttemptTerminalPanel attempt={attempt([oldTuiBinding, newestChatBinding])} onClose={vi.fn()} />);
+
+		expect(screen.queryByTestId("attempt-protocol-provenance")).not.toBeInTheDocument();
+	});
+});

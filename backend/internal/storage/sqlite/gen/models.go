@@ -222,6 +222,21 @@ type ChangeLog struct {
 	CreatedAt time.Time
 }
 
+type ChatProtocolProvenance struct {
+	SessionID            string
+	Seq                  int64
+	Harness              string
+	Provider             string
+	InstalledVersion     string
+	GeneratedFrom        string
+	ProtocolDigest       string
+	GeneratedDigest      string
+	MatchesGenerated     int64
+	DegradedCapabilities string
+	MissingFloor         string
+	NegotiatedAt         time.Time
+}
+
 type ContractCriterium struct {
 	ID                 string
 	ContractRevisionID string

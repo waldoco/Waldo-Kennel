@@ -103,7 +103,14 @@ type AttemptView struct {
 	Observations []domain.AttemptObservation
 	Receipts     []domain.AttemptRecoveryReceipt
 	Fence        *domain.AttemptFence
-	Presentation domain.AttemptPresentation
+	// ProtocolProvenance carries the persisted protocol-negotiation episode
+	// that answers for each session binding (ADR 0016, migration 0136),
+	// keyed by AttemptSessionRefID. A binding with no recorded provenance
+	// (a driver that cannot report it, or a record lost to the fail-soft
+	// write) is simply absent from the map; absence is observability,
+	// never an error.
+	ProtocolProvenance map[domain.AttemptSessionRefID]domain.ChatProtocolProvenance
+	Presentation       domain.AttemptPresentation
 }
 
 // RecoveryView is the service projection of a recovery receipt.
@@ -631,9 +638,26 @@ func (s *Service) readModel(ctx context.Context, outcomeRecord domain.Outcome, a
 			fence = &open
 		}
 	}
+	// Provenance rides the same read as the rest of the attempt's evidence so
+	// review surfaces never assemble a partial record from separate calls.
+	// Lookup errors propagate like every sibling read above: downgrading a
+	// storage failure to "no provenance recorded" would be a silent fallback,
+	// and genuine absence (driver cannot report, fail-soft write lost) is
+	// already represented as a missing map entry.
+	provenance := make(map[domain.AttemptSessionRefID]domain.ChatProtocolProvenance, len(sessions))
+	for _, ref := range sessions {
+		rec, found, err := s.store.ChatProtocolProvenanceForBinding(ctx, ref.SessionID, ref.BoundAt)
+		if err != nil {
+			return AttemptView{}, fmt.Errorf("read protocol provenance for attempt %s session %s: %w", attempt.ID, ref.SessionID, err)
+		}
+		if found {
+			provenance[ref.ID] = rec
+		}
+	}
 	return AttemptView{
 		Outcome: outcomeRecord, Attempt: attempt, Sessions: sessions, Observations: observations, Receipts: receipts, Fence: fence,
-		Presentation: domain.DeriveAttemptPresentation(attempt.Status, facts, unresolvedAdmission, unresolvedCheckTermination, domain.LivenessPolicy{Now: s.clock(), StaleHeartbeatAfter: s.staleHeartbeat}),
+		ProtocolProvenance: provenance,
+		Presentation:       domain.DeriveAttemptPresentation(attempt.Status, facts, unresolvedAdmission, unresolvedCheckTermination, domain.LivenessPolicy{Now: s.clock(), StaleHeartbeatAfter: s.staleHeartbeat}),
 	}, nil
 }
 

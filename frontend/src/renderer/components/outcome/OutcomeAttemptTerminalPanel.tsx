@@ -30,6 +30,9 @@ type OutcomeAttemptTerminalPanelProps = {
 	onClose: () => void;
 };
 
+/** One persisted protocol-negotiation episode, as carried on a session binding. */
+type ProtocolProvenanceRecord = NonNullable<AttemptRecord["sessions"][number]["protocolProvenance"]>;
+
 /**
  * Right-hand drill-in panel for one attempt, opened from its Board/List card
  * (Figma nodes 3144:21609 / 22189 / 25210 board-side, 3144:26623 / 29541
@@ -68,6 +71,22 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 
 	const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(latestBinding?.sessionId);
 	const [selectedTarget, setSelectedTarget] = useState<TerminalTarget>({ kind: "worker" });
+
+	// The negotiation episode that answers for the binding the user is
+	// looking at. Latest ref for the selected session wins; bindings without
+	// a recorded episode render nothing rather than an implied negotiation.
+	const selectedProvenance = useMemo<ProtocolProvenanceRecord | undefined>(() => {
+		if (!selectedSessionId) {
+			return undefined;
+		}
+		for (let i = attempt.sessions.length - 1; i >= 0; i -= 1) {
+			const ref = attempt.sessions[i];
+			if (ref.sessionId === selectedSessionId) {
+				return ref.protocolProvenance ?? undefined;
+			}
+		}
+		return undefined;
+	}, [attempt.sessions, selectedSessionId]);
 
 	// Follow the attempt to its newest binding if the panel opens (or the
 	// attempt rebinds) before the user has picked a tab of their own.
@@ -210,6 +229,7 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 			</div>
 
 			{attempt.presentation && ENDED_ATTEMPT_PHASES.has(attempt.presentation.phase) ? <EndedAttemptFacts attempt={attempt} /> : null}
+			{selectedProvenance ? <ProtocolProvenanceFacts provenance={selectedProvenance} /> : null}
 			<div className="min-h-0 flex-1 overflow-hidden rounded-group hairline border-border bg-card">
 				{resolvedSession?.mode === "chat" ? (
 					<SessionChatSurface
@@ -242,6 +262,39 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 	);
 }
 
+
+/**
+ * The persisted negotiation episode for the selected session binding (C1.6,
+ * ADR 0016): which provider build and negotiated surface the work ran on.
+ * A digest differing from the pin is information, not a warning - new
+ * upstream methods change the digest without breaking anything. Degraded
+ * capabilities ARE a warning: an optional feature negotiated off.
+ */
+function ProtocolProvenanceFacts({ provenance }: { provenance: ProtocolProvenanceRecord }) {
+	const { t } = useTranslation();
+	return (
+		<div className="flex flex-col gap-1 border-b border-border px-3 py-2 text-2xs" data-testid="attempt-protocol-provenance">
+			<h4 className="font-medium uppercase tracking-wide text-passive">{t("outcome.run.protocolTitle")}</h4>
+			<div className="flex flex-wrap items-center gap-1.5">
+				<span>
+					{provenance.provider}
+					{provenance.installedVersion ? ` ${provenance.installedVersion}` : ""}
+				</span>
+				<Badge variant="neutral">
+					{provenance.matchesGenerated ? t("outcome.run.protocolMatchesPin") : t("outcome.run.protocolDigestDrift")}
+				</Badge>
+				<time className="text-passive" dateTime={provenance.negotiatedAt}>
+					{formatTimeCompact(provenance.negotiatedAt)}
+				</time>
+			</div>
+			{provenance.degradedCapabilities && provenance.degradedCapabilities.length > 0 ? (
+				<p className="text-warning">
+					{t("outcome.run.protocolDegraded", { capabilities: provenance.degradedCapabilities.join(", ") })}
+				</p>
+			) : null}
+		</div>
+	);
+}
 
 /** Daemon-recorded recovery facts for an ended Attempt, shown verbatim. */
 function EndedAttemptFacts({ attempt }: { attempt: AttemptRecord }) {

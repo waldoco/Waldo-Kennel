@@ -248,7 +248,10 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	if missing := ports.MissingProductionCapabilities(caps); len(missing) > 0 {
 		return nil, fmt.Errorf("%w: %s lacks %v", ports.ErrChatUnsupported, cfg.Harness, missing)
 	}
-	s.logProtocolProvenance(ctx, driver, cfg.Harness)
+	provenance, hasProvenance := s.protocolProvenance(ctx, driver, cfg.Harness)
+	if hasProvenance {
+		s.logProtocolProvenanceAttrs(cfg.Harness, provenance)
+	}
 
 	scope := domain.ConversationScopeSession
 	if cfg.Kind == domain.KindOrchestrator {
@@ -291,6 +294,28 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// Persist the negotiated surface now that a provider conversation actually
+	// runs on it. Fail-soft by contract: provenance is review evidence, never
+	// a gate, so a lost record warns and the session still starts.
+	if hasProvenance {
+		record := domain.ChatProtocolProvenance{
+			SessionID:            string(cfg.SessionID),
+			Harness:              cfg.Harness,
+			Provider:             provenance.Provider,
+			InstalledVersion:     provenance.InstalledVersion,
+			GeneratedFrom:        provenance.GeneratedFrom,
+			ProtocolDigest:       provenance.ProtocolDigest,
+			GeneratedDigest:      provenance.GeneratedDigest,
+			MatchesGenerated:     provenance.MatchesGenerated,
+			DegradedCapabilities: chatCapabilityNames(provenance.DegradedCapabilities),
+			MissingFloor:         provenance.MissingFloor,
+			NegotiatedAt:         s.now(),
+		}
+		if err := s.store.RecordChatProtocolProvenance(ctx, record); err != nil {
+			s.log.Warn("chat: protocol provenance not persisted", "session", cfg.SessionID, "error", err)
+		}
 	}
 
 	// Claim the durable fence before the controller starts consuming events. An
@@ -813,25 +838,41 @@ func (s *Service) PreflightChat(ctx context.Context, harness domain.AgentHarness
 	if missing := ports.MissingProductionCapabilities(caps); len(missing) > 0 {
 		return fmt.Errorf("%w: %s lacks %v", ports.ErrChatUnsupported, harness, missing)
 	}
-	s.logProtocolProvenance(ctx, driver, harness)
+	if provenance, ok := s.protocolProvenance(ctx, driver, harness); ok {
+		s.logProtocolProvenanceAttrs(harness, provenance)
+	}
 	return nil
 }
 
-// logProtocolProvenance records which provider protocol a session will run on
-// when the driver can report it: the installed build, the negotiated surface
+// protocolProvenance reads which provider protocol a session will run on when
+// the driver can report it: the installed build, the negotiated surface
 // digest against the generated pin, and any capabilities negotiation switched
 // off. Provenance is observability only; a driver that cannot report it, or a
 // report that fails, changes nothing about the session.
-func (s *Service) logProtocolProvenance(ctx context.Context, driver ports.ChatDriver, harness domain.AgentHarness) {
+func (s *Service) protocolProvenance(ctx context.Context, driver ports.ChatDriver, harness domain.AgentHarness) (ports.ChatProtocolProvenance, bool) {
 	reporter, ok := driver.(ports.ChatProtocolProvenanceDriver)
 	if !ok {
-		return
+		return ports.ChatProtocolProvenance{}, false
 	}
 	provenance, err := reporter.ProtocolProvenance(ctx)
 	if err != nil {
 		s.log.Debug("chat: protocol provenance unavailable", "harness", harness, "error", err)
-		return
+		return ports.ChatProtocolProvenance{}, false
 	}
+	return provenance, true
+}
+
+func chatCapabilityNames(caps []ports.ChatCapability) []string {
+	names := make([]string, 0, len(caps))
+	for _, capability := range caps {
+		names = append(names, string(capability))
+	}
+	return names
+}
+
+// logProtocolProvenanceAttrs renders one negotiated-surface report. Shared by
+// preflight (log only) and Start (log + persist after the conversation runs).
+func (s *Service) logProtocolProvenanceAttrs(harness domain.AgentHarness, provenance ports.ChatProtocolProvenance) {
 	attrs := []any{
 		"harness", harness,
 		"provider", provenance.Provider,
