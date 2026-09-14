@@ -93,6 +93,12 @@ The scheduler concurrency remains intentionally `1`. WorkspaceLease-based
 parallel execution stays in its later milestone, and no graph should imply that
 authority before it exists.
 
+Current slice status against that list — including what #115, #176–#178 and
+the protocol-negotiation slice have since delivered — is tracked with dated
+evidence in the
+[production-readiness program](docs/product/2026-09-14-production-readiness-program.md);
+the list above is the historical PR #110 checkpoint, not live status.
+
 ### Public release readiness
 
 Repository and release administration is part of launch readiness. This list is

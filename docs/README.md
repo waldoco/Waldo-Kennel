@@ -8,6 +8,7 @@ architecture and historical evidence serve different purposes.
 | Understand or run Kennel | [Project README](../README.md), [development guide](development.md) |
 | Find contribution work | [Contributing](../CONTRIBUTING.md), [issues](https://github.com/waldoco/Waldo-Kennel/issues), [milestones](https://github.com/waldoco/Waldo-Kennel/milestones) |
 | Know what works and remains open | [Current status](STATUS.md) |
+| Track production-readiness work and checkpoints | [Production-readiness program](product/2026-09-14-production-readiness-program.md) |
 | Understand direction | [Public roadmap](../ROADMAP.md) |
 | Change product or kernel behavior | [AGENTS.md authority order](../AGENTS.md#canonical-read-order) |
 | Understand the control plane | [Product architecture](product/kennel-v1-product-architecture.md), [MVP reset](product/2026-09-08-outcome-control-plane-mvp-reset.md), [technical architecture](architecture.md) |
@@ -19,7 +20,8 @@ architecture and historical evidence serve different purposes.
 [AGENTS.md](../AGENTS.md) maintains the canonical read order; this index does not
 keep a competing copy. ADRs 0010–0012 establish Outcome authority and
 non-authoritative owner-configured reasoning; ADR 0015 adds contract-bound
-interactive planning. ADR 0008 separates contributing Outcomes from execution
+interactive planning; ADR 0016 makes provider protocol compatibility a
+runtime-negotiated property rather than a version assumption. ADR 0008 separates contributing Outcomes from execution
 WorkUnits, and ADR 0009 defines scheduling, workspace custody and effect fencing.
 Earlier ADRs remain applicable inside their scope unless explicitly superseded.
 

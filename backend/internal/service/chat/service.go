@@ -248,6 +248,7 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	if missing := ports.MissingProductionCapabilities(caps); len(missing) > 0 {
 		return nil, fmt.Errorf("%w: %s lacks %v", ports.ErrChatUnsupported, cfg.Harness, missing)
 	}
+	s.logProtocolProvenance(ctx, driver, cfg.Harness)
 
 	scope := domain.ConversationScopeSession
 	if cfg.Kind == domain.KindOrchestrator {
@@ -812,7 +813,39 @@ func (s *Service) PreflightChat(ctx context.Context, harness domain.AgentHarness
 	if missing := ports.MissingProductionCapabilities(caps); len(missing) > 0 {
 		return fmt.Errorf("%w: %s lacks %v", ports.ErrChatUnsupported, harness, missing)
 	}
+	s.logProtocolProvenance(ctx, driver, harness)
 	return nil
+}
+
+// logProtocolProvenance records which provider protocol a session will run on
+// when the driver can report it: the installed build, the negotiated surface
+// digest against the generated pin, and any capabilities negotiation switched
+// off. Provenance is observability only; a driver that cannot report it, or a
+// report that fails, changes nothing about the session.
+func (s *Service) logProtocolProvenance(ctx context.Context, driver ports.ChatDriver, harness domain.AgentHarness) {
+	reporter, ok := driver.(ports.ChatProtocolProvenanceDriver)
+	if !ok {
+		return
+	}
+	provenance, err := reporter.ProtocolProvenance(ctx)
+	if err != nil {
+		s.log.Debug("chat: protocol provenance unavailable", "harness", harness, "error", err)
+		return
+	}
+	attrs := []any{
+		"harness", harness,
+		"provider", provenance.Provider,
+		"installedVersion", provenance.InstalledVersion,
+		"protocolDigest", provenance.ProtocolDigest,
+		"generatedFrom", provenance.GeneratedFrom,
+		"matchesGenerated", provenance.MatchesGenerated,
+	}
+	if len(provenance.DegradedCapabilities) > 0 {
+		attrs = append(attrs, "degradedCapabilities", provenance.DegradedCapabilities)
+		s.log.Warn("chat: provider protocol degraded optional capabilities", attrs...)
+		return
+	}
+	s.log.Info("chat: provider protocol negotiated", attrs...)
 }
 
 // PreflightChatExecutionPolicy proves the selected Chat driver can map the

@@ -32,6 +32,13 @@ work. It does not claim a release or owner Acceptance.
   neither advertises nor accepts `run_approved_check`. Generic shell,
   unified-exec, web and plugin surfaces are disabled; unsupported policy shapes
   and unverified App Server injection fail closed.
+- Codex App Server compatibility is negotiated against the installed build's
+  own declared protocol surface at session start, not assumed from a version
+  number: a required-method floor fails closed with the missing methods named,
+  optional capabilities degrade individually, and negotiated provenance is
+  logged. The generated bindings stay pinned to one provider build for
+  reproducible conformance tests, and a scheduled drift CI regenerates them
+  from the latest published CLI (ADR 0016).
 - Work is the default destination. Plan/graph views and attached Attempt
   supervision expose daemon facts; provider Sessions remain technical detail.
   Kennel Island starts with the desktop when the display supports it; its

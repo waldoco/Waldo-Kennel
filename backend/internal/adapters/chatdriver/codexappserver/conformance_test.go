@@ -1,10 +1,7 @@
 package codexappserver
 
 import (
-	"encoding/json"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -213,50 +210,17 @@ func TestGeneratedProtocolMatchesTheInstalledProvider(t *testing.T) {
 
 func methodsFromSchema(t *testing.T, dir string) map[string]bool {
 	t.Helper()
-	found := map[string]bool{}
-	for name := range methodDirectionsFromSchema(t, dir) {
-		found[name] = true
+	// The parser is the driver's own: the conformance check and runtime
+	// negotiation must read the schema the same way, or one of them is lying.
+	found, err := parseProtocolSurface(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return found
-}
-
-// methodDirectionsFromSchema maps each method the installed provider declares onto
-// the direction that declares it. Direction is what says whether a client can
-// initiate something or only observe it.
-func methodDirectionsFromSchema(t *testing.T, dir string) map[string]string {
-	t.Helper()
-	found := map[string]string{}
-	for _, file := range []string{
-		"ClientRequest.json", "ClientNotification.json",
-		"ServerRequest.json", "ServerNotification.json",
-	} {
-		raw, err := os.ReadFile(filepath.Join(dir, file))
-		if err != nil {
-			continue
-		}
-		var doc struct {
-			OneOf []struct {
-				Properties struct {
-					Method struct {
-						Enum []string `json:"enum"`
-					} `json:"method"`
-				} `json:"properties"`
-			} `json:"oneOf"`
-		}
-		if err := json.Unmarshal(raw, &doc); err != nil {
-			t.Fatalf("parse %s: %v", file, err)
-		}
-		direction := strings.TrimSuffix(file, ".json")
-		for _, arm := range doc.OneOf {
-			for _, name := range arm.Properties.Method.Enum {
-				found[name] = direction
-			}
-		}
+	methods := map[string]bool{}
+	for name := range found {
+		methods[name] = true
 	}
-	if len(found) == 0 {
-		t.Fatalf("no methods parsed out of %s", dir)
-	}
-	return found
+	return methods
 }
 
 func truncate(names []string) []string {
@@ -297,8 +261,13 @@ func TestRealtimeStaysUnreachableUntilTheProviderPublishesAnEntryPoint(t *testin
 		t.Skipf("provider declined to emit its schema (%v): %s", err, out)
 	}
 
+	surface, err := parseProtocolSurface(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	var startable []string
-	for method, direction := range methodDirectionsFromSchema(t, dir) {
+	for method, direction := range surface {
 		if !strings.Contains(method, "realtime") {
 			continue
 		}
