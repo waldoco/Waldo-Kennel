@@ -70,30 +70,19 @@ func (s *Store) RecordChatProtocolProvenance(ctx context.Context, rec domain.Cha
 // ChatProtocolProvenanceForBinding returns the negotiation episode that
 // answers for one provider-session binding: the latest episode at or before
 // boundAt, because a later renegotiation (provider upgrade, resume) must
-// never answer for work bound earlier. When no episode predates the binding
-// - the negotiation that created the session is the only one recorded - the
-// earliest episode is returned; its NegotiatedAt travels with the record so
-// the ordering stays visible. found is false when the session has no
-// recorded provenance (a driver that cannot report it, or a record that
-// failed soft at session start).
+// never answer for work bound earlier. found is false when no episode exists
+// at or before the binding: writes are fail-soft at session start, so an
+// episode recorded only later must not be attributed to work it postdates -
+// honest absence, never a substitute record.
 func (s *Store) ChatProtocolProvenanceForBinding(ctx context.Context, sessionID string, boundAt time.Time) (rec domain.ChatProtocolProvenance, found bool, err error) {
 	row, err := s.qr.ChatProtocolProvenanceAtOrBefore(ctx, gen.ChatProtocolProvenanceAtOrBeforeParams{SessionID: sessionID, NegotiatedAt: boundAt})
-	switch {
-	case err == nil:
-		return chatProtocolProvenanceFromRow(row)
-	case errors.Is(err, sql.ErrNoRows):
-		// Fall through to the earliest episode.
-	default:
-		return domain.ChatProtocolProvenance{}, false, fmt.Errorf("read protocol provenance %s: %w", sessionID, err)
-	}
-	earliest, err := s.qr.EarliestChatProtocolProvenance(ctx, sessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ChatProtocolProvenance{}, false, nil
 	}
 	if err != nil {
-		return domain.ChatProtocolProvenance{}, false, fmt.Errorf("read earliest protocol provenance %s: %w", sessionID, err)
+		return domain.ChatProtocolProvenance{}, false, fmt.Errorf("read protocol provenance %s: %w", sessionID, err)
 	}
-	return chatProtocolProvenanceFromRow(earliest)
+	return chatProtocolProvenanceFromRow(row)
 }
 
 func chatProtocolProvenanceFromRow(row gen.ChatProtocolProvenance) (domain.ChatProtocolProvenance, bool, error) {

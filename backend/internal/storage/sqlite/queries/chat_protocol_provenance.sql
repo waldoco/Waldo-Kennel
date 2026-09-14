@@ -18,11 +18,3 @@ SELECT * FROM chat_protocol_provenance
 WHERE session_id = ? AND negotiated_at <= ?
 ORDER BY negotiated_at DESC, seq DESC
 LIMIT 1;
-
--- Earliest recorded episode, used only when none predates the binding (the
--- negotiation that created the session predates its first recorded binding).
--- name: EarliestChatProtocolProvenance :one
-SELECT * FROM chat_protocol_provenance
-WHERE session_id = ?
-ORDER BY negotiated_at, seq
-LIMIT 1;

@@ -45,35 +45,6 @@ func (q *Queries) ChatProtocolProvenanceAtOrBefore(ctx context.Context, arg Chat
 	return i, err
 }
 
-const earliestChatProtocolProvenance = `-- name: EarliestChatProtocolProvenance :one
-SELECT session_id, seq, harness, provider, installed_version, generated_from, protocol_digest, generated_digest, matches_generated, degraded_capabilities, missing_floor, negotiated_at FROM chat_protocol_provenance
-WHERE session_id = ?
-ORDER BY negotiated_at, seq
-LIMIT 1
-`
-
-// Earliest recorded episode, used only when none predates the binding (the
-// negotiation that created the session predates its first recorded binding).
-func (q *Queries) EarliestChatProtocolProvenance(ctx context.Context, sessionID string) (ChatProtocolProvenance, error) {
-	row := q.db.QueryRowContext(ctx, earliestChatProtocolProvenance, sessionID)
-	var i ChatProtocolProvenance
-	err := row.Scan(
-		&i.SessionID,
-		&i.Seq,
-		&i.Harness,
-		&i.Provider,
-		&i.InstalledVersion,
-		&i.GeneratedFrom,
-		&i.ProtocolDigest,
-		&i.GeneratedDigest,
-		&i.MatchesGenerated,
-		&i.DegradedCapabilities,
-		&i.MissingFloor,
-		&i.NegotiatedAt,
-	)
-	return i, err
-}
-
 const insertChatProtocolProvenance = `-- name: InsertChatProtocolProvenance :exec
 INSERT INTO chat_protocol_provenance (
     session_id, seq, harness, provider, installed_version, generated_from,

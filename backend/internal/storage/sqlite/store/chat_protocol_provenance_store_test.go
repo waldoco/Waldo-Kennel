@@ -102,14 +102,12 @@ func TestChatProtocolProvenanceForBindingNeverAnswersWithALaterEpisode(t *testin
 		t.Fatalf("binding before upgrade resolved digest %s, want the episode contemporaneous with the work", rec.ProtocolDigest)
 	}
 
-	// A binding made before ANY recorded episode falls back to the earliest:
-	// the negotiation that created the session predates its first binding.
-	rec, found, err = st.ChatProtocolProvenanceForBinding(ctx, "session-1", base.Add(-time.Hour))
-	if err != nil || !found {
-		t.Fatalf("read before all episodes: found=%v err=%v", found, err)
-	}
-	if rec.ProtocolDigest != old.ProtocolDigest || !rec.NegotiatedAt.Equal(base) {
-		t.Fatalf("earliest fallback = %+v, want the first episode with its own NegotiatedAt", rec)
+	// A binding made before ANY recorded episode is honest absence, never
+	// the earliest later record: writes are fail-soft, so a lost first write
+	// followed by a later resume must not let the resume's negotiation speak
+	// for the earlier work.
+	if _, found, err := st.ChatProtocolProvenanceForBinding(ctx, "session-1", base.Add(-time.Hour)); err != nil || found {
+		t.Fatalf("read before all episodes: found=%v err=%v, want absence", found, err)
 	}
 
 	// No recorded provenance is honest absence, not an error.

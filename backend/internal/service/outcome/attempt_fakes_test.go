@@ -31,8 +31,8 @@ type attemptFakeStore struct {
 	receipts       map[domain.AttemptID][]domain.AttemptRecoveryReceipt
 
 	// provenance holds recorded protocol-negotiation episodes by session ID,
-	// unordered; the read applies the same at-or-before-then-earliest rule as
-	// the sqlite store so tests exercise the real selection semantics.
+	// unordered; the read applies the same at-or-before rule as the sqlite
+	// store so tests exercise the real selection semantics.
 	provenance map[string][]domain.ChatProtocolProvenance
 
 	// dropActivationOnce simulates losing the queued->running promotion race.
@@ -352,17 +352,13 @@ func (f *attemptFakeStore) ChatProtocolProvenanceForBinding(_ context.Context, s
 		return domain.ChatProtocolProvenance{}, false, nil
 	}
 	best := -1
-	earliest := 0
 	for i, episode := range episodes {
-		if episode.NegotiatedAt.Before(episodes[earliest].NegotiatedAt) {
-			earliest = i
-		}
 		if !episode.NegotiatedAt.After(boundAt) && (best == -1 || episode.NegotiatedAt.After(episodes[best].NegotiatedAt)) {
 			best = i
 		}
 	}
 	if best == -1 {
-		best = earliest
+		return domain.ChatProtocolProvenance{}, false, nil
 	}
 	return episodes[best], true, nil
 }
