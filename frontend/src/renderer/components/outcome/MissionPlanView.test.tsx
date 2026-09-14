@@ -106,3 +106,78 @@ it("engages the selected WorkUnit's newest Attempt instead of the global newest 
 	expect(onOpenAttempt).toHaveBeenCalledWith(selectedAttempt);
 	expect(screen.queryByText("session-b")).not.toBeInTheDocument();
 });
+
+it("opens daemon execution detail for the selected WorkUnit on the execution surface", async () => {
+	const user = userEvent.setup();
+	const attempt = {
+		id: "attempt-a1",
+		number: 1,
+		workUnitId: "a",
+		status: "running",
+		updatedAt: "2026-08-30T00:00:00Z",
+		sessions: [{ id: "ref-a", seq: 1, sessionId: "session-a", harness: "codex", mode: "tui", boundAt: "2026-08-30T00:00:00Z", runBriefCoreDigest: "b" }],
+	} as unknown as components["schemas"]["AttemptResponse"];
+	const onOpenAttempt = vi.fn();
+	const onReviewProof = vi.fn();
+	const schedule = {
+		workUnits: units.map((workUnit) => ({
+			workUnit,
+			state: workUnit.id === "a" ? "executing" : "blocked",
+			blockedReason: workUnit.id === "b" ? "awaiting_dependency_proof" : undefined,
+			blockingDependencies: workUnit.id === "b" ? ["a"] : [],
+			criterionReady: { c1: workUnit.id === "a" },
+			attempts: [],
+		})),
+	} as unknown as components["schemas"]["ScheduleResponse"];
+	render(
+		<MissionPlanView
+			attempts={[attempt]}
+			criterionText={() => "Every source attributed"}
+			graphOnly
+			onOpenAttempt={onOpenAttempt}
+			onReviewProof={onReviewProof}
+			schedule={schedule}
+			workUnits={units}
+		/>,
+	);
+	expect(screen.queryByTestId("mission-unit-execution-detail")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: /Read source —/ }));
+	const detail = screen.getByTestId("mission-unit-execution-detail");
+	expect(within(detail).getByText(/Proof ready/)).toBeVisible();
+	expect(within(detail).getByText(/Attempt #1 · running/)).toBeVisible();
+	expect(within(detail).getByText(/Codex · tui/)).toBeVisible();
+	await user.click(within(detail).getByRole("button", { name: "Engage" }));
+	expect(onOpenAttempt).toHaveBeenCalledWith(attempt);
+	await user.click(within(detail).getByRole("button", { name: "View Outcome result and receipts" }));
+	expect(onReviewProof).toHaveBeenCalledTimes(1);
+});
+
+it("shows the daemon blocker and unreported proof readiness without inventing state", async () => {
+	const user = userEvent.setup();
+	const schedule = {
+		workUnits: units.map((workUnit) => ({
+			workUnit,
+			state: "blocked",
+			blockedReason: "awaiting_dependency_proof",
+			blockedDetail: "Receipt att-9 holds the workspace lease.",
+			blockingDependencies: ["a"],
+			criterionReady: null,
+			attempts: [],
+		})),
+	} as unknown as components["schemas"]["ScheduleResponse"];
+	render(<MissionPlanView criterionText={() => "Every source attributed"} graphOnly schedule={schedule} workUnits={units} />);
+	await user.click(screen.getByRole("button", { name: /Publish analysis —/ }));
+	const detail = screen.getByTestId("mission-unit-execution-detail");
+	expect(within(detail).getByText(/Waiting for proof from: Read source/)).toBeVisible();
+	expect(within(detail).getByText("Receipt att-9 holds the workspace lease.")).toBeVisible();
+	expect(within(detail).getByText(/Proof readiness not reported/)).toBeVisible();
+	expect(within(detail).getByText("No Attempts recorded")).toBeVisible();
+	expect(within(detail).queryByRole("button", { name: "Engage" })).not.toBeInTheDocument();
+});
+
+it("shows no execution detail before authorization because there are no execution facts", async () => {
+	const user = userEvent.setup();
+	render(<MissionPlanView graphOnly workUnits={units} />);
+	await user.click(screen.getByRole("button", { name: /Read source —/ }));
+	expect(screen.queryByTestId("mission-unit-execution-detail")).not.toBeInTheDocument();
+});

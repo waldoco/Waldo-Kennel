@@ -2352,6 +2352,7 @@
 	"mission.blocker": "Blocker detail",
 	"mission.sessions": "Linked sessions",
 	"mission.noSessions": "No provider SessionRefs reported for this WorkUnit.",
+	"mission.viewResult": "View Outcome result and receipts",
 	"mission.modeUnknown": "mode not reported",
 	"mission.exportUnavailable": "Export is unavailable until the daemon exposes durable delivery of the reviewed artifact. Acceptance does not export files.",
 	"mission.documentUnavailable": "Supplied-document selection is not connected to Outcome creation yet.",

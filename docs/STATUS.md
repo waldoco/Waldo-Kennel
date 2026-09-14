@@ -37,10 +37,14 @@ work. It does not claim a release or owner Acceptance.
   Kennel Island starts with the desktop when the display supports it; its
   persisted visibility preference remains owner-controlled in Settings.
 - Mission Control exposes durable planning failure details and a fresh-session
-  action while preserving prior lineage. The partial Result surface projects
-  daemon artifact/check/criterion facts, uncertainty and the next safe action.
-  Technical proof forms and explicit owner review decisions remain available;
-  ordinary non-contract rework still requires a raw target identity.
+  action while preserving prior lineage. Selecting a WorkUnit on the execution
+  graph opens its daemon-derived state, blocker, criterion proof readiness and
+  attempt lineage with session engagement. The Result surface projects daemon
+  artifact/check/criterion facts, measured per-file changes (bounded, with an
+  explicit truncation note), uncertainty and the next safe action. Technical
+  proof forms and explicit owner review decisions remain available; rework and
+  reopen target daemon-provided Contract, Plan, WorkUnit and Attempt identities
+  rather than typed raw ids.
 - Codex, Claude Code, OpenCode, Cursor and Pi are active execution-provider
   identities; this does not establish every role's live conformance.
 

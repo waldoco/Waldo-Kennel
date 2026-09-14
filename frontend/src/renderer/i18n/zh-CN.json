@@ -2432,6 +2432,7 @@
 	"mission.blocker": "Blocker detail",
 	"mission.sessions": "Linked sessions",
 	"mission.noSessions": "No provider SessionRefs reported for this WorkUnit.",
+	"mission.viewResult": "查看 Outcome 结果和回执",
 	"mission.modeUnknown": "mode not reported",
 	"mission.run.supersededIntent": "The durable run authorization names a superseded Plan. Rework must cancel it before a new Plan can run.",
 	"mission.run.blockerDetail": "Show blocker detail",
