@@ -18,10 +18,12 @@ import { useShellMaybe } from "../../lib/shell-context";
 import { cn } from "../../lib/utils";
 import { useUiStore } from "../../stores/ui-store";
 import type { TerminalTarget } from "../../types/terminal";
+import { Badge } from "../ui/badge";
 import { ShellTerminalTab } from "../ShellTerminalTab";
 import { TerminalPane } from "../TerminalPane";
 import { SessionChatSurface } from "../chat/SessionChatSurface";
 import { newestAttemptSession } from "./OutcomeRunBoardAdapters";
+import { ENDED_ATTEMPT_PHASES } from "./attemptPhases";
 
 type OutcomeAttemptTerminalPanelProps = {
 	attempt: AttemptRecord;
@@ -207,6 +209,7 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 				</div>
 			</div>
 
+			{attempt.presentation && ENDED_ATTEMPT_PHASES.has(attempt.presentation.phase) ? <EndedAttemptFacts attempt={attempt} /> : null}
 			<div className="min-h-0 flex-1 overflow-hidden rounded-group hairline border-border bg-card">
 				{resolvedSession?.mode === "chat" ? (
 					<SessionChatSurface
@@ -239,6 +242,35 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 	);
 }
 
+
+/** Daemon-recorded recovery facts for an ended Attempt, shown verbatim. */
+function EndedAttemptFacts({ attempt }: { attempt: AttemptRecord }) {
+	const { t } = useTranslation();
+	return (
+		<div className="flex flex-col gap-1.5 border-b border-border px-3 py-2 text-2xs" data-testid="attempt-ended-facts">
+			{attempt.presentation.endedUnclassified ? (
+				<p className="text-warning">{t("outcome.run.panelEndedUnclassified")}</p>
+			) : null}
+			{attempt.receipts.length > 0 ? (
+				<div>
+					<h4 className="font-medium uppercase tracking-wide text-passive">{t("outcome.run.panelReceipts")}</h4>
+					<ul className="mt-0.5 space-y-0.5">
+						{attempt.receipts.map((receipt) => (
+							<li className="flex items-center gap-1.5" key={receipt.id}>
+								<Badge variant={receipt.resolution === "needs_attention" ? "warning" : "neutral"}>
+									{t(`outcome.run.panelReceipt.${receipt.resolution}`)}
+								</Badge>
+								<time dateTime={receipt.createdAt}>{formatTimeCompact(receipt.createdAt)}</time>
+							</li>
+						))}
+					</ul>
+				</div>
+			) : null}
+			<p className="text-passive">{t("outcome.run.observationCount", { total: attempt.observations.length })}</p>
+		</div>
+	);
+}
+
 function AttemptPanelFallback({
 	attempt,
 	latestBinding,
@@ -249,8 +281,10 @@ function AttemptPanelFallback({
 	const { t } = useTranslation();
 	return (
 		<div className="flex h-full flex-col gap-3 overflow-y-auto p-4 font-mono text-xs leading-relaxed text-terminal-dim">
-			<p className="text-terminal">{t("outcome.run.panelFallbackTitle")}</p>
-			<p>{t("outcome.run.panelFallbackBody")}</p>
+			<p className="text-terminal">
+				{latestBinding ? t("outcome.run.panelFallbackUnavailableTitle") : t("outcome.run.panelFallbackTitle")}
+			</p>
+			<p>{latestBinding ? t("outcome.run.panelFallbackUnavailableBody") : t("outcome.run.panelFallbackBody")}</p>
 			<dl className="flex flex-col gap-1.5 text-terminal-foreground">
 				<div className="flex gap-2">
 					<dt className="text-terminal-dim">{t("outcome.run.panelFallbackNextAction")}</dt>

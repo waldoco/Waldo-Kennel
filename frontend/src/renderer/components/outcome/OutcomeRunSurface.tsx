@@ -39,18 +39,8 @@ type OutcomeRunSurfaceProps = {
  * The daemon's derived phase vocabulary, mirrored as constants so controls
  * never key off scattered literals. Source of truth: AttemptPresentationResponse.
  */
-export const ATTEMPT_PHASES = {
-	awaitingStart: "awaiting_start",
-	executing: "executing",
-	suspended: "suspended",
-	unconfirmed: "unconfirmed",
-	needsInput: "needs_input",
-	endedUnclassified: "ended_unclassified",
-	haltedFailed: "halted_failed",
-	haltedCancelled: "halted_cancelled",
-	suspectLost: "suspect_lost",
-	succeeded: "succeeded",
-} as const;
+export { ATTEMPT_PHASES } from "./attemptPhases";
+import { ATTEMPT_PHASES } from "./attemptPhases";
 
 const STATUS_BADGE_KEYS: Record<string, MessageKey> = {
 	queued: "outcome.run.badgeQueued",

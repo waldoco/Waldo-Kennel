@@ -9,6 +9,7 @@ import type { MessageKey } from "../../i18n/messages";
 import { MissionWorkUnitGraph } from "./MissionWorkUnitGraph";
 import { layerByDependency } from "../../lib/dependency-layers";
 import { Badge } from "../ui/badge";
+import { ENDED_ATTEMPT_PHASES } from "./attemptPhases";
 import { Button } from "../ui/button";
 import { newestAttempt } from "./OutcomeRunBoardAdapters";
 
@@ -341,7 +342,9 @@ function WorkUnitExecutionFacts({
 								</span>
 								{attempt.id === selectedAttempt?.id && attempt.sessions.length > 0 && onOpenAttempt ? (
 									<Button onClick={() => onOpenAttempt(attempt)} size="sm" variant="outline">
-										{t("outcome.run.engageCta")}
+										{attempt.presentation && ENDED_ATTEMPT_PHASES.has(attempt.presentation.phase)
+											? t("outcome.run.inspectCta")
+											: t("outcome.run.engageCta")}
 									</Button>
 								) : null}
 							</li>
