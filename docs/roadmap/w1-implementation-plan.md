@@ -4,7 +4,7 @@
 **Milestone:** make the complete Codex-first Ask -> Approve -> Watch -> Decide loop reviewable around September 18, 2026.
 **Rule:** the date forces integration and decisions. It does not turn missing evidence into readiness.
 
-This is the canonical implementation plan for W1.0-W1.6. The [September 18 milestone](launch-2026-09-18.md) is the concise status and dependency map. The [admission and event contract](../architecture/admission-and-events.md) owns detailed admission vocabulary. The [decision log](../decisions/product-and-architecture.md) owns product and architecture rationale. [STATUS.md](../STATUS.md) records observed evidence, not planned claims.
+This is the canonical implementation plan for W1.0-W1.6. The [September 15 product amendment](2026-09-15-product-amendment.md) updates clarification rounds, the native Codex execution profile, budget posture, interactive transport, UI feedback, and W1.6 gates; its versioned migration requirements supersede conflicting W1.0-W1.2 assumptions without rewriting accepted history. The [September 18 milestone](launch-2026-09-18.md) is the concise status and dependency map. The [admission and event contract](../architecture/admission-and-events.md) owns detailed admission vocabulary. The [decision log](../decisions/product-and-architecture.md) owns product and architecture rationale. [STATUS.md](../STATUS.md) records observed evidence, not planned claims.
 
 ## Program contract
 
@@ -30,12 +30,12 @@ Kennel must make a coding harness safer and easier to operate without hiding its
 7. Provider completion is not Verification; Verification is not owner Acceptance.
 8. All user surfaces derive from canonical durable state. Preview stores, provider prose, and component-local guesses cannot establish product truth.
 9. Every accepted slice includes negative, restart, replay, and concurrency evidence appropriate to its effects.
-10. No production wall-time, token, or retry defaults or ceilings are inferred. Their exact values remain an open product and operating-policy decision.
+10. No production budget target, warning threshold, explicit hard limit, emergency ceiling, or retry posture is inferred. Exact values and the versioned v2 semantics remain an open product and operating-policy decision.
 
 ### Program dependency order
 
 ```text
-W1.0 -> W1.1 -> W1.2 -> S1 -> W1.3 -> W1.4 -> W1.5 -> W1.6
+W1.0 -> W1.1 -> W1.2 -> S1 -> W1.3 -> amendment contracts/migrations -> W1.4 -> W1.5 -> W1.6
                                       ^          |
                                       |----------|
                            UI may expose only accepted semantics
@@ -109,7 +109,7 @@ W1.0 is additive domain vocabulary. Rollback removes only unconsumed types. Once
 
 ### Open decisions
 
-Exact production budget defaults and ceilings remain unresolved.
+Exact production budget targets, warning thresholds, explicit hard limits, and emergency runaway ceilings remain unresolved. The September 15 amendment requires a versioned budget contract before these semantics change.
 
 ## W1.1 - one admission evaluator and a crash-safe launch boundary
 
@@ -525,9 +525,9 @@ A polished preview is not the product if it is disconnected from admission, reco
 
 ### Scope
 
-- Ask: create/clarify an Outcome and show missing information without hidden Plan authority.
+- Ask: acknowledge immediately, start the first real planning turn automatically, and clarify through small related question batches with attributed partial answers and follow-up rounds, without hidden Plan authority. If bounded rounds exhaust with a load-bearing gap, remain Clarify/needs-owner-attention and keep approval disabled.
 - Approve: display Contract, Plan, WorkUnits, provider/model, capability/grants, checks, budgets, admission reasons, and exact owner effect.
-- Watch: show direct WorkUnit graph, Attempt phase, provider/session attribution, budgets, checks, evidence, and truthful recovery attention from W1.4.
+- Watch: show direct WorkUnit graph, Attempt phase, provider/session attribution, budget targets/warnings/hard limits, checks, evidence, truthful recovery attention, interactive send/steer/interrupt/resume, requested versus acknowledged stop, reconnecting/unknown, last-event age, and jump to latest from W1.4.
 - Decide: show Result mapped to criteria, Verification separately, retained artifacts/diffs/checks, bounded rework, and explicit owner Accept.
 - Integrate the reviewed U2.1 package only after replacing preview/local state with canonical API/projection state.
 - Make all reachable states keyboard/screen-reader usable, responsive, reduced-motion safe, and visually reviewed in dark, light, wide, and narrow layouts.
@@ -552,24 +552,25 @@ Buttons describe their exact effect and revalidate at the daemon. Disabled contr
 
 ### Ordered implementation sequence
 
-1. Make a reachable-state inventory from the W1.4 fixture matrix.
-2. Map each state to one primary next action and bounded secondary actions.
-3. Redirect U2.1 components to canonical hooks and remove preview assumptions.
-4. Integrate Ask and Approve first, including admission failure and stale approval.
-5. Integrate Watch, budgets, needs-you, replacement, restart, and unknown custody.
-6. Integrate Result, Verification, rework, and Accept.
-7. Run renderer/accessibility tests before pixel work.
-8. Render and inspect all required states in dark/light/wide/narrow and reduced motion.
-9. Prove the same surfaces in the packaged app, not only Vite/web preview.
+1. Land and review the amendment's clarification-round, native-profile, budget-v2, and interactive-event contracts and migrations, including S1 authentication and exact revision/profile/Attempt/session binding for every interactive owner command.
+2. Make a reachable-state inventory from the W1.4 fixture matrix.
+3. Map each state to one primary next action and bounded secondary actions.
+4. Redirect U2.1 components to canonical hooks and remove preview assumptions.
+5. Integrate Ask and Approve first, including admission failure and stale approval.
+6. Integrate Watch, budgets, needs-you, replacement, restart, and unknown custody.
+7. Integrate Result, Verification, rework, and Accept.
+8. Run renderer/accessibility tests before pixel work.
+9. Render and inspect all required states in dark/light/wide/narrow and reduced motion.
+10. Prove the same surfaces in the packaged app, not only Vite/web preview.
 
 ### Failure and test matrix
 
-- clarification required, analysis failed/expired, and Contract revision changed;
+- clarification required, bounded-round exhaustion with approval disabled, analysis failed/expired, and Contract revision changed;
 - rejected/stale admission and unsupported capability/accounting;
 - fence contention, preparation failure, unconfirmed launch, restart recovery;
 - budget stop, needs-you, unproven stop, replacement queued/failed;
 - check pass/fail/unknown, missing evidence, Verification fail, bounded rework;
-- stale Accept/rework request and concurrent backend transition;
+- forged, stale, wrong-profile/session, and replayed send/steer/interrupt/resume/stop commands; stale Accept/rework request and concurrent backend transition;
 - keyboard-only, screen reader names/live regions/focus return;
 - 320-ish narrow layout, zoom/text growth, dark/light contrast, and reduced motion;
 - refresh/deep-link/restart without state regression.
@@ -604,9 +605,10 @@ Unit, renderer, and source-level integration tests cannot prove packaging, nativ
 
 - Build the candidate from the exact reviewed commit and record artifact identity.
 - Install/launch on the target macOS environment with a real Codex account and real repository.
-- Complete Ask, clarification, Contract review, Plan/admission review, owner authorization, workspace preparation, execution, Watch, governed checks, retained evidence, Verification, Result review, bounded rework where induced, and explicit owner Accept.
-- Induce at least one safe recovery case, including app/daemon restart at a documented phase, and prove no duplicate work/effects.
-- Record machine-readable logs/IDs and user-visible screenshots without secrets.
+- Complete Ask, automatic first planning turn, batched/follow-up clarification, Contract review, Plan/admission/native-profile/budget review, owner authorization, workspace preparation, interactive execution and steering, Watch, governed checks, retained evidence, Verification, Result review, bounded rework where induced, and explicit owner Accept.
+- Induce restart at clarification, packet-ready, provider-starting, running, interactive-command-in-flight, needs-you, Result, and Accept boundaries where safe, and prove no duplicate commands, work, or effects.
+- Record machine-readable logs/IDs and user-visible screenshots without secrets, including interactive requested/acknowledged/unknown states.
+- Record source and license diligence for every absorbed UI reference.
 - Keep signing, notarization, updater, and publication claims separate unless actually completed.
 
 ### Non-goals
@@ -641,11 +643,11 @@ The tested artifact is built from the accepted commit. No secret enters screensh
 
 - missing binary/profile/login, wrong provider/model, and unsupported capability;
 - installation path, spaces/symlinks, data-dir permissions, stale run file, and ephemeral port;
-- app exit, daemon exit, keep-alive behavior, and restart at queued/preparing/launched/running/needs-you;
+- app exit, daemon exit, keep-alive behavior, and restart at clarification/packet-ready/provider-starting/running/interactive-command-in-flight/needs-you/Result/Accept;
 - repository dirty state, worktree contention, failed check, retained artifact mismatch;
 - lost response and replay for approval/start/replacement/accept;
 - network unavailable where nonessential, token accounting unavailable, and budget stop;
-- packaged IPC/native confirmation and bearer non-disclosure;
+- packaged IPC/native confirmation and bearer non-disclosure; forged, stale-revision, wrong-profile/session, and replayed interactive owner commands;
 - rework and Accept against stale Result;
 - uninstall/update/signing/notarization only if those are part of the claimed artifact.
 
@@ -660,7 +662,7 @@ Do not promote `outcome-loop` based on a partial canary. Fix failures in the own
 ### Open decisions
 
 - Exact target macOS versions/hardware and whether signing/notarization/publication are required for the September 18 review versus the later public release gate.
-- Exact production budget values.
+- Exact production budget targets, warning thresholds, explicit hard limits, emergency ceilings, and retry posture.
 - Which safe failure is induced if a real needs-you signal cannot be triggered deterministically without provider-dependent behavior.
 
 ## Review and change-control checklist

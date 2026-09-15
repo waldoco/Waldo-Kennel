@@ -19,7 +19,7 @@ A provider session is attached to an Attempt. It is never the top-level product 
 The product groups these crossings into Ask, Approve, Watch, and Decide. They remain distinct daemon transitions because each changes what Kennel may truthfully claim.
 
 1. **Outcome**: record the desired result, project, initiating surface, and provenance.
-2. **Clarify**: resolve only uncertainty that changes success, scope, authority, feasibility, or proof.
+2. **Clarify**: resolve only uncertainty that changes success, scope, authority, feasibility, or proof, using small related question batches and follow-up rounds.
 3. **Contract**: freeze observable criteria, constraints, non-goals, stop conditions, minimum authority, and required evidence in an immutable revision.
 4. **Plan**: decompose the Contract into dependency-linked WorkUnits whose intent, permissions, outputs, checks, provider requirements, and budgets are coherent.
 5. **Authorize**: admit the exact Plan against current verified capabilities, then let the owner authorize that immutable revision and its effects.
@@ -54,17 +54,17 @@ Provider-specific behavior stays behind adapters, but the abstraction must not e
 - typed activity and usage events;
 - result and failure provenance.
 
-Unsupported capability is an admission failure, not a prompt suggestion.
+The first complete Codex path uses a versioned native coding profile with isolated-worktree edits, development commands, interactive steering/resume/interrupt, and controlled orchestration. Unsupported profile behavior is an admission failure, not a prompt suggestion. Broad coding affordance does not widen owner-controlled external effects or daemon-owned lifecycle authority. Push, publish, deploy, pull-request creation, release, and remote mutation require separate owner authorization; local Git/project-tool access is not that authorization.
 
 ## Desktop and plugin parity
 
 An Outcome may begin in the desktop or from a supported provider/plugin entry point. Both create or attach to the same daemon-owned objects. The initiating surface may optimize presentation, but it cannot create a second Contract, Plan, authorization path, scheduler, or status vocabulary.
 
-Mission Control is a projection, not a scheduler. One daemon event updates the dependency graph, WorkUnit board, and detail drawer. Dragging a card cannot rewrite lifecycle state. Valid commands include answer, approve, interrupt, retry, replace, revise, request rework, Accept, and stop, subject to current authority.
+Mission Control is a projection, not a scheduler. One daemon event updates the dependency graph, WorkUnit board, and detail drawer. Dragging a card cannot rewrite lifecycle state. Valid commands include answer, approve, send, steer, interrupt, resume, retry, replace, revise, request rework, Accept, and stop, subject to current authority. Every interactive owner command uses S1 authentication, exact revision/profile/Attempt/session binding, and idempotency/replay protection.
 
 ## Scheduling
 
-The core model supports a WorkUnit DAG. A WorkUnit becomes ready only when its dependencies and admission conditions pass. Serial execution is acceptable while workspace, lease, fence, consolidation, and recovery guarantees are being proven. Parallel execution is an extension of the same scheduler, not a different architecture.
+The core model supports a WorkUnit DAG. A WorkUnit becomes ready only when its dependencies and admission conditions pass. Serial execution is required for the first proven native Codex loop while workspace, lease, fence, interaction, consolidation, and recovery guarantees are being proven. Parallel execution is an extension of the same scheduler, not a different architecture.
 
 The supervisor owns dependency release, routing, consolidation, and downstream readiness. Workers cannot release their own successors or expand scope.
 

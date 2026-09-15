@@ -31,13 +31,14 @@ Ask starts with one Outcome composer. The owner states the desired result and ma
 Kennel then:
 
 - acknowledges the Outcome immediately;
+- starts the first real planning turn automatically;
 - inspects available project context;
 - shows reasoning activity without exposing hidden chain-of-thought;
-- asks one load-bearing question at a time;
+- asks a small batch of related load-bearing questions, then follows up in bounded rounds until the Contract and Plan/orchestration map are coherent;
 - explains why an answer changes success, scope, authority, feasibility, or proof;
 - preserves answers as attributed decisions.
 
-Do not turn Contract fields into a form the user must complete. Do not ask questions whose answers can be grounded from the project.
+Each question is tied to the Contract or Plan element it can change. Partial answers remain visible and attributed across rounds. If bounded rounds end with any load-bearing answer unresolved, the Outcome remains in Clarify with owner attention required and approval disabled; Kennel makes no assumption and creates no Plan authority. Do not turn Contract fields into a form the user must complete. Do not ask questions whose answers can be grounded from the project.
 
 ## Approve
 
@@ -90,12 +91,12 @@ Each card shows:
 - assigned verified harness;
 - current Attempt number and session health;
 - current action in plain language;
-- elapsed time and available budget signals;
+- elapsed time, intended budget, warning, and explicit hard-limit signals;
 - changed files and check progress;
 - dependency or blocker;
 - one true next action when input is required.
 
-Never show unsupported token precision. Never imply progress from animation alone.
+Never show unsupported token precision. Never imply progress from animation alone. Interactive controls distinguish requested, provider-acknowledged, reconnecting, and unknown states, show last-event age, and provide jump to latest. Send, steer, interrupt, resume, and stop are authenticated S1 owner commands bound to the exact current revision, profile, Attempt, and session; a stale or replayed control cannot mutate the provider.
 
 ## Shared detail drawer
 

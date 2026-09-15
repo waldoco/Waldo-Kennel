@@ -116,6 +116,8 @@ W1.0 must reconcile these proposed values with existing API, generated code, dat
 
 ## Budgets
 
+The text below is the accepted v1 hard-budget contract and remains authoritative for existing v1 records. The [September 15 product amendment](../roadmap/2026-09-15-product-amendment.md) requires a versioned v2 contract separating planning targets, warnings, explicit owner hard limits, emergency runaway ceilings, and unsupported accounting. No implementation may silently reinterpret v1 records.
+
 Every executable WorkUnit has explicit limits:
 
 ```text
