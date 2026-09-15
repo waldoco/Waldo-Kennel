@@ -28,6 +28,7 @@ import {
 	type UpdateCheckOptions,
 } from "./main/auto-updater";
 import { listFeatureBuilds, getActiveFeatureBuild } from "./main/feature-builds";
+import { createAttemptReplacementHandler } from "./main/owner-command-handler";
 import { readUpdateSettings, type UpdateSettings, type UpdateStatus } from "./main/update-settings";
 import { readKeybindingOverrides, writeKeybindingOverrides } from "./main/keybinding-settings";
 import {
@@ -726,6 +727,7 @@ function ensureShellEnv(): Promise<void> {
 // KENNEL_APP_RUN_ID in the environment wins, which lets a test or a wrapper pin it.
 const appRunId = process.env.KENNEL_APP_RUN_ID ?? `apprun-${randomUUID()}`;
 const browserRuntimeToken = randomBytes(32).toString("base64url");
+const ownerCommandToken = randomBytes(32).toString("base64url");
 
 function daemonEnv(forceKeep = keepDaemonAlive(process.env)): NodeJS.ProcessEnv {
 	// KENNEL_OWNER is the daemon's durable spawn-mode record: the daemon writes it
@@ -748,7 +750,8 @@ function daemonEnv(forceKeep = keepDaemonAlive(process.env)): NodeJS.ProcessEnv 
 		// stdin pipe below. Never put it in the daemon environment, where a
 		// same-UID worker could inspect the parent process.
 		KENNEL_BROWSER_RUNTIME_TOKEN: "",
-		KENNEL_BROWSER_RUNTIME_TOKEN_STDIN: "1",
+		KENNEL_BROWSER_RUNTIME_TOKEN_STDIN: "",
+		KENNEL_STARTUP_SECRETS_STDIN: "1",
 		// Under AppImage, APPIMAGE is the stable outer .AppImage file path (the
 		// FUSE mount in executablePath is random per launch). The daemon echoes
 		// it as appImagePath in /healthz|/readyz so the identity check can
@@ -1340,7 +1343,12 @@ async function startDaemonInner(startEpoch: number): Promise<DaemonStatus> {
 	// worker processes when it spawns them.
 	if (child.stdin) {
 		child.stdin.on("error", () => undefined);
-		child.stdin.end(`${browserRuntimeToken}\n`);
+		const startupSecrets = Buffer.from(JSON.stringify({
+			browserRuntimeToken,
+			ownerCommandToken,
+			appRunId,
+		}), "utf8").toString("base64url");
+		child.stdin.end(`${startupSecrets}\n`);
 	} else {
 		console.warn("AO: browser runtime token handoff pipe was unavailable");
 	}
@@ -1601,6 +1609,21 @@ ipcMain.handle("daemon:restart", async () => {
 		return reportDaemonRestartFailure(error);
 	}
 });
+ipcMain.handle("ownerCommand:approveAttemptReplacement", createAttemptReplacementHandler({
+	getWindow: () => mainWindow,
+	getShellWebContents,
+	showConfirmation: (window, command) => dialog.showMessageBox(window, {
+		type: "warning",
+		buttons: ["Approve replacement", "Cancel"],
+		defaultId: 1,
+		cancelId: 1,
+		message: "Approve a new Attempt to replace the stopped Attempt?",
+		detail: `Outcome ${command.outcomeId}\nStopped Attempt ${command.predecessorAttemptId}\nWork Unit ${command.workUnitId}\nPlan ${command.planRevisionId} · Contract r${command.contractRevisionNumber} · Run ${command.runIntentGeneration}`,
+	}),
+	getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
+	ownerCommandToken,
+	fetch: globalThis.fetch,
+}));
 ipcMain.handle("app:getVersion", () => app.getVersion());
 ipcMain.handle("app:openExternal", async (_event, url: string) => {
 	await openAllowedAppExternalURL(url, shell);

@@ -97,6 +97,10 @@ const api = {
 			ipcRenderer.invoke("app:scanImportFolder", input) as Promise<ImportFolderScan>,
 		checkAncestorRepo: (path: string) =>
 			ipcRenderer.invoke("app:checkAncestorRepo", path) as Promise<string | undefined>,
+		approveAttemptReplacement: (input: {
+			outcomeId: string; predecessorAttemptId: string; planRevisionId: string;
+			workUnitId: string; runIntentGeneration: number; contractRevisionNumber: number; action: "replace"; requestKey: string;
+		}) => ipcRenderer.invoke("ownerCommand:approveAttemptReplacement", input) as Promise<unknown>,
 		// Fired by the main process when the app-level new-session shortcut
 		// (⌘N / Ctrl+Shift+N) is pressed in any web contents.
 		onNewSessionShortcut: (listener: () => void) => {

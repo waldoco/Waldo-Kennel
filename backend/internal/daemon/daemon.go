@@ -31,6 +31,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/mobilebridge"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/notify"
 	usagepipeline "github.com/Pin4sf/Waldo-Kennel/backend/internal/observe/usage"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/presence"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/preview"
@@ -74,7 +75,15 @@ func Run() error {
 
 	log := newLogger()
 	var browserRuntimeToken string
-	if os.Getenv(browserruntime.RuntimeTokenStdinEnv) == "1" {
+	var ownerAuthority *ownercommand.Authority
+	if os.Getenv(ownercommand.StartupSecretsStdinEnv) == "1" {
+		secrets, readErr := ownercommand.ReadStartupSecrets(os.Stdin)
+		if readErr != nil {
+			return readErr
+		}
+		browserRuntimeToken = secrets.BrowserRuntimeToken
+		ownerAuthority = ownercommand.NewAuthority(secrets.OwnerCommandToken, secrets.AppRunID)
+	} else if os.Getenv(browserruntime.RuntimeTokenStdinEnv) == "1" {
 		browserRuntimeToken, err = browserruntime.ReadRuntimeToken(os.Stdin)
 		if err != nil {
 			return err
@@ -579,9 +588,11 @@ func Run() error {
 				return sqlite.OpenReadOnly(ctx, dataDir)
 			},
 		}),
-		Browser:             browserService,
-		PreviewServer:       managedPreview,
-		SessionCapabilities: browserAuthority,
+		Browser:              browserService,
+		PreviewServer:        managedPreview,
+		SessionCapabilities:  browserAuthority,
+		OwnerAuthority:       ownerAuthority,
+		ReplacementDecisions: store,
 	})
 	if err != nil {
 		stop()

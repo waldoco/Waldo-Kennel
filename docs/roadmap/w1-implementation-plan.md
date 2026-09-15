@@ -269,7 +269,7 @@ Production default and ceiling values for wall time, token use, and retry count;
 
 ### Current state
 
-Prerequisite under implementation review and not accepted at the plan baseline. The paused implementation is not part of this documentation-only package.
+Implemented in a local review commit based on `outcome-loop`; independent source acceptance and packaged macOS proof remain pending. The source package provides the app-run authority, closed proposal, native confirmation, authenticated loopback write, immutable decision storage, and focused negative/replay/currentness tests. It creates no successor Attempt.
 
 ### Dependencies
 

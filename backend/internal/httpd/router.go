@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +18,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/daemonmeta"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/telemetrymeta"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/terminal"
@@ -25,7 +27,9 @@ import (
 // ControlDeps carries the daemon-control hooks the router exposes, such as the
 // callback that requests a graceful shutdown.
 type ControlDeps struct {
-	RequestShutdown func()
+	RequestShutdown      func()
+	OwnerAuthority       *ownercommand.Authority
+	ReplacementDecisions ports.AttemptReplacementDecisionStore
 }
 
 // NewRouterWithControl builds the root router with the standard middleware
@@ -65,6 +69,7 @@ func NewRouterWithControl(cfg config.Config, log *slog.Logger, termMgr *terminal
 	mountHealth(r, cfg)
 	mountTerminalMux(r, termMgr, log)
 	mountControl(r, control)
+	mountOwnerCommands(r, control.OwnerAuthority, control.ReplacementDecisions)
 	mountTelemetry(r, cfg, deps.Telemetry)
 	mountMobile(r, deps.Mobile)
 	mountMobileDevices(r, &controllers.MobileDevicesController{Registry: deps.DeviceRoster, Presence: deps.DeviceLive})
@@ -301,7 +306,9 @@ func localControlRequest(r *http.Request) bool {
 		return false
 	}
 	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	} else if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
 	switch host {

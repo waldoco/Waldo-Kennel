@@ -13,6 +13,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/apispec"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/presence"
 	prsvc "github.com/Pin4sf/Waldo-Kennel/backend/internal/service/pr"
@@ -64,6 +65,9 @@ type APIDeps struct {
 	// DeviceRoster and DeviceLive back the desktop-only mobile device roster.
 	DeviceRoster controllers.DeviceRoster
 	DeviceLive   controllers.LiveSet
+
+	OwnerAuthority       *ownercommand.Authority
+	ReplacementDecisions ports.AttemptReplacementDecisionStore
 }
 
 // normalizeAPIDeps closes the Presence/DeviceLive duplication trap structurally.
