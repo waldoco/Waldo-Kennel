@@ -725,7 +725,7 @@ func (c *conversation) handleServerRequest(ctx context.Context, req serverReques
 	c.pending[requestID] = &parkedRequest{ch: ch, method: req.Method, offered: offered}
 	c.mu.Unlock()
 
-	c.emit(ports.ChatEvent{
+	event := ports.ChatEvent{
 		Kind:           ports.ChatEventApprovalRequested,
 		ProviderItemID: requestID,
 		RequestID:      requestID,
@@ -734,7 +734,12 @@ func (c *conversation) handleServerRequest(ctx context.Context, req serverReques
 		Summary:        summary,
 		Detail:         detail,
 		Decisions:      decisions,
-	})
+	}
+	if req.Method == codexproto.MethodItemToolRequestUserInput {
+		event.Kind = ports.ChatEventInputRequested
+		event.Input = codexInputRequest(summary, pQuestions(req.Params))
+	}
+	c.emit(event)
 
 	select {
 	case decision := <-ch:
@@ -888,10 +893,14 @@ type approvalPayload struct {
 	// render from this rather than a fixed set of buttons.
 	AvailableDecisions []json.RawMessage `json:"availableDecisions"`
 	Questions          []struct {
-		ID      string `json:"id"`
-		Prompt  string `json:"prompt"`
-		Options []struct {
-			Label string `json:"label"`
+		ID       string `json:"id"`
+		Header   string `json:"header"`
+		Question string `json:"question"`
+		IsSecret *bool  `json:"isSecret,omitempty"`
+		IsOther  *bool  `json:"isOther,omitempty"`
+		Options  []struct {
+			Label       string `json:"label"`
+			Description string `json:"description,omitempty"`
 		} `json:"options"`
 	} `json:"questions"`
 }
@@ -917,7 +926,7 @@ func parseApproval(method string, params json.RawMessage) ([]ports.ChatDecisionO
 	case method == "item/fileChange/requestApproval":
 		summary = "Apply file changes"
 	case method == "item/tool/requestUserInput" && len(p.Questions) > 0:
-		summary = p.Questions[0].Prompt
+		summary = p.Questions[0].Question
 	case p.Reason != "":
 		summary = p.Reason
 	}
@@ -944,6 +953,71 @@ func parseApproval(method string, params json.RawMessage) ([]ports.ChatDecisionO
 		encoded = nil
 	}
 	return options, summary, encoded
+}
+
+// pQuestions decodes the provider's complete request_user_input questions for
+// the typed event. Detail keeps the same provider fields for exact rendering.
+func pQuestions(params json.RawMessage) []struct {
+	ID       string `json:"id"`
+	Header   string `json:"header"`
+	Question string `json:"question"`
+	IsSecret *bool  `json:"isSecret,omitempty"`
+	IsOther  *bool  `json:"isOther,omitempty"`
+	Options  []struct {
+		Label       string `json:"label"`
+		Description string `json:"description,omitempty"`
+	} `json:"options"`
+} {
+	var payload approvalPayload
+	if json.Unmarshal(params, &payload) != nil {
+		return nil
+	}
+	return payload.Questions
+}
+
+func codexInputRequest(summary string, questions []struct {
+	ID       string `json:"id"`
+	Header   string `json:"header"`
+	Question string `json:"question"`
+	IsSecret *bool  `json:"isSecret,omitempty"`
+	IsOther  *bool  `json:"isOther,omitempty"`
+	Options  []struct {
+		Label       string `json:"label"`
+		Description string `json:"description,omitempty"`
+	} `json:"options"`
+}) *ports.ChatInputRequest {
+	properties := make(map[string]any, len(questions))
+	required := make([]string, 0, len(questions))
+	for _, question := range questions {
+		property := map[string]any{"type": "string", "title": question.Header, "description": question.Question}
+		if question.IsSecret != nil && *question.IsSecret {
+			property["format"] = "password"
+		}
+		if len(question.Options) > 0 {
+			values := make([]string, 0, len(question.Options))
+			for _, option := range question.Options {
+				values = append(values, option.Label)
+			}
+			if question.IsOther != nil && *question.IsOther {
+				property["examples"] = values
+				property["x-kennel-allows-other"] = true
+			} else {
+				property["enum"] = values
+			}
+		}
+		properties[question.ID] = property
+		required = append(required, question.ID)
+	}
+	return &ports.ChatInputRequest{
+		Mode:    ports.ChatInputModeForm,
+		Message: summary,
+		Schema: map[string]any{
+			"type":                 "object",
+			"properties":           properties,
+			"required":             required,
+			"additionalProperties": false,
+		},
+	}
 }
 
 // decisionOption reads one entry of availableDecisions, which is either a plain

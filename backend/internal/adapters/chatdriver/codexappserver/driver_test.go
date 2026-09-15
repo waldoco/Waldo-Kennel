@@ -1235,3 +1235,79 @@ func TestEnvSliceWithNoOverlayStillInheritsTheEnvironment(t *testing.T) {
 		t.Error("an empty overlay produced an environment with no HOME")
 	}
 }
+
+func TestRequestUserInputEmitsTypedQuestionsAndForwardsExactAnswers(t *testing.T) {
+	d, srv := newTestDriver(t)
+	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = conv.Close() }()
+
+	srv.push(`{"id":21,"method":"item/tool/requestUserInput","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-questions","isBlocking":true,"questions":[{"id":"database","header":"Database","question":"Which database should the proof use?","isOther":true,"options":[{"label":"SQLite","description":"Local file"},{"label":"Postgres","description":"Network service"}]},{"id":"token","header":"Token","question":"Enter the temporary token","isSecret":true,"options":[]},{"id":"mode","header":"Mode","question":"Which run mode?","options":[{"label":"Fast"},{"label":"Thorough"}]}]}}`)
+	ev := nextEvent(t, conv.Events(), ports.ChatEventInputRequested)
+	if ev.RequestID != "21" || ev.ProviderItemID != "21" {
+		t.Fatalf("request ids = %q/%q, want 21/21", ev.RequestID, ev.ProviderItemID)
+	}
+	if ev.Summary != "Which database should the proof use?" {
+		t.Fatalf("summary = %q", ev.Summary)
+	}
+	if ev.Input == nil || ev.Input.Mode != ports.ChatInputModeForm {
+		t.Fatalf("typed input = %#v", ev.Input)
+	}
+	properties, ok := ev.Input.Schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties = %#v", ev.Input.Schema["properties"])
+	}
+	database := properties["database"].(map[string]any)
+	if _, constrained := database["enum"]; constrained {
+		t.Fatal("isOther question was constrained to enum-only")
+	}
+	if got := database["examples"].([]string); strings.Join(got, ",") != "SQLite,Postgres" || database["x-kennel-allows-other"] != true {
+		t.Fatalf("database other/options = %#v", database)
+	}
+	token := properties["token"].(map[string]any)
+	if token["format"] != "password" {
+		t.Fatalf("secret token schema = %#v", token)
+	}
+	var detail struct {
+		Method    string `json:"method"`
+		ItemID    string `json:"itemId"`
+		Questions []struct {
+			ID       string `json:"id"`
+			Header   string `json:"header"`
+			Question string `json:"question"`
+			IsSecret *bool  `json:"isSecret"`
+			IsOther  *bool  `json:"isOther"`
+			Options  []struct {
+				Label       string `json:"label"`
+				Description string `json:"description"`
+			} `json:"options"`
+		} `json:"questions"`
+	}
+	if err := json.Unmarshal(ev.Detail, &detail); err != nil {
+		t.Fatalf("detail: %v", err)
+	}
+	if detail.Method != "item/tool/requestUserInput" || detail.ItemID != "item-questions" ||
+		len(detail.Questions) != 3 || detail.Questions[0].ID != "database" ||
+		detail.Questions[0].IsOther == nil || !*detail.Questions[0].IsOther ||
+		detail.Questions[1].IsSecret == nil || !*detail.Questions[1].IsSecret ||
+		detail.Questions[0].Options[0].Description != "Local file" {
+		t.Fatalf("detail = %#v", detail)
+	}
+
+	raw := []byte(`{"answers":{"database":{"answers":["DuckDB"]},"token":{"answers":["ephemeral-test-value"]},"mode":{"answers":["Thorough"]}}}`)
+	if err := conv.ResolveRequest(context.Background(), ev.RequestID, ports.ChatDecision{Raw: raw}); err != nil {
+		t.Fatalf("ResolveRequest: %v", err)
+	}
+	reply := srv.awaitFrame(func(f frame) bool { return f.ID != nil && string(*f.ID) == "21" && f.Method == "" })
+	if string(reply.Result) != string(raw) {
+		t.Fatalf("provider answer = %s, want exact %s", reply.Result, raw)
+	}
+	for i := 0; i < 2; i++ {
+		err := conv.ResolveRequest(context.Background(), ev.RequestID, ports.ChatDecision{Raw: raw})
+		if !errors.Is(err, ports.ErrChatRequestNotPending) {
+			t.Fatalf("repeat %d = %v, want ErrChatRequestNotPending", i+1, err)
+		}
+	}
+}

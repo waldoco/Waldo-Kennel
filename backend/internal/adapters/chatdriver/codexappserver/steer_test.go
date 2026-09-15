@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -246,8 +247,7 @@ func TestLiveSteerKeepsTheTurnAndItsWork(t *testing.T) {
 		t.Skipf("codex binary %q not on PATH: %v", bin, err)
 	}
 
-	workspace := t.TempDir()
-	seedGitWorkspace(t, workspace)
+	workspace := newDisposableGitWorktree(t)
 
 	d := New(livePlugin{bin: bin}, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -256,8 +256,8 @@ func TestLiveSteerKeepsTheTurnAndItsWork(t *testing.T) {
 	opened, err := d.Start(ctx, ports.ChatStartConfig{
 		SessionID:     "kennel-live-steer",
 		WorkspacePath: workspace,
-		Env:           envMap(),
-		Permissions:   ports.PermissionModeDefault,
+		Env:           liveCodexEnv(),
+		Permissions:   ports.PermissionModeAcceptEdits,
 		SystemPrompt:  "You are in an automated test. Follow instructions literally.",
 	})
 	if err != nil {
@@ -287,6 +287,7 @@ func TestLiveSteerKeepsTheTurnAndItsWork(t *testing.T) {
 	// steer sent before turn/started is refused, which is exactly why the service
 	// layer waits for this signal too.
 	var starts, completions int
+	var preSteerOutput strings.Builder
 	waitForWork := func() {
 		for {
 			select {
@@ -297,8 +298,9 @@ func TestLiveSteerKeepsTheTurnAndItsWork(t *testing.T) {
 				switch ev.Kind {
 				case ports.ChatEventTurnStarted:
 					starts++
-				case ports.ChatEventCommandOutputDelta, ports.ChatEventActivityStarted:
-					if starts > 0 {
+				case ports.ChatEventCommandOutputDelta:
+					preSteerOutput.WriteString(ev.Delta)
+					if starts > 0 && strings.Contains(preSteerOutput.String(), "tick-") {
 						return
 					}
 				case ports.ChatEventTurnCompleted:
@@ -310,6 +312,7 @@ func TestLiveSteerKeepsTheTurnAndItsWork(t *testing.T) {
 		}
 	}
 	waitForWork()
+	steerStarted := time.Now()
 
 	steered, err := steerer.Steer(ctx, ref.ProviderTurnID, ports.ChatUserMessage{
 		Text: "Change of plan: abandon that loop immediately and reply with the " +
@@ -327,8 +330,9 @@ func TestLiveSteerKeepsTheTurnAndItsWork(t *testing.T) {
 	}
 
 	var (
-		text  strings.Builder
-		state domain.TurnState
+		text            strings.Builder
+		postSteerOutput strings.Builder
+		state           domain.TurnState
 	)
 collect:
 	for {
@@ -340,6 +344,8 @@ collect:
 			switch ev.Kind {
 			case ports.ChatEventTurnStarted:
 				starts++
+			case ports.ChatEventCommandOutputDelta:
+				postSteerOutput.WriteString(ev.Delta)
 			case ports.ChatEventMessageCompleted:
 				text.WriteString(ev.Text)
 				text.WriteString("\n")
@@ -365,8 +371,31 @@ collect:
 	if starts != 1 || completions != 1 {
 		t.Errorf("turn lifecycle = %d started / %d completed, want 1/1", starts, completions)
 	}
+	if elapsed := time.Since(steerStarted); elapsed > 30*time.Second {
+		t.Errorf("steered turn took %s after acknowledgement, want <= 30s", elapsed)
+	}
+	if strings.Contains(postSteerOutput.String(), "tick-10") {
+		t.Errorf("steer did not stop the loop before terminal tick; output=%q", postSteerOutput.String())
+	}
 	if !strings.Contains(text.String(), "STEERED") {
 		t.Errorf("the agent never acted on the guidance; final text was:\n%s", text.String())
+	}
+	historyReader, ok := opened.(ports.ChatHistoryReader)
+	if !ok {
+		t.Fatalf("conversation %T has no history reader", opened)
+	}
+	history, err := historyReader.ReadHistory(ctx)
+	if err != nil {
+		t.Fatalf("read steered history: %v", err)
+	}
+	var sawSteerClientID bool
+	for _, ev := range history {
+		if ev.ProviderTurnID == ref.ProviderTurnID && ev.ClientMessageID == "live-steer-1" {
+			sawSteerClientID = true
+		}
+	}
+	if !sawSteerClientID {
+		t.Log("provider history did not preserve the steer client id on this build")
 	}
 	t.Logf("steered turn %s completed as %s: %s", steered.ProviderTurnID, state,
 		strings.TrimSpace(text.String()))
@@ -376,6 +405,17 @@ collect:
 		ports.ChatUserMessage{Text: "too late"}); !errors.Is(err, ports.ErrChatNoSteerableTurn) {
 		t.Errorf("steering a finished turn returned %v, want ErrChatNoSteerableTurn", err)
 	}
+
+	continued := runLiveTurn(t, ctx, opened, ports.ChatUserMessage{
+		Text:            "Continue after the completed steer by running this exact local command: printf CONTINUED > steer-continued.txt. Then reply CONTINUED.",
+		ClientMessageID: "live-steer-continued", Origin: domain.MessageOriginHuman,
+	})
+	if continued.state != domain.TurnStateCompleted || !continued.sawCompletedCommand || continued.ref.ProviderTurnID == ref.ProviderTurnID {
+		t.Fatalf("post-steer continuation = %#v", continued)
+	}
+	assertFileTrimmed(t, filepath.Join(workspace, "steer-continued.txt"), "CONTINUED")
+	t.Logf("evidence steer_turn=%s steer_client=%s continuation_turn=%s continuation_client=%s",
+		ref.ProviderTurnID, "live-steer-1", continued.ref.ProviderTurnID, "live-steer-continued")
 }
 
 // The capability and the method have to agree. Advertising steer while the provider
