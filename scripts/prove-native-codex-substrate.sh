@@ -1,66 +1,38 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 out=${1:-"$root/native-codex-substrate-evidence"}
+if [[ -d "$out" && -n $(find "$out" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) ]]; then
+  echo "Evidence directory is not empty: $out" >&2
+  exit 2
+fi
 mkdir -p "$out"
-
-bin=${KENNEL_CODEX_BIN:-codex}
-resolved=$(command -v "$bin") || { echo "Codex binary not found: $bin" >&2; exit 1; }
-version=$($resolved --version 2>&1)
-if command -v shasum >/dev/null; then
-  sha=$(shasum -a 256 "$resolved" | awk '{print $1}')
-  hash_log() { shasum -a 256 "$1" | awk '{print $1}'; }
-else
-  sha=$(sha256sum "$resolved" | awk '{print $1}')
-  hash_log() { sha256sum "$1" | awk '{print $1}'; }
-fi
-source_sha=$(git -C "$root" rev-parse HEAD)
-if [[ -n $(git -C "$root" status --porcelain) ]]; then
-  source_dirty=true
-else
-  source_dirty=false
-fi
-started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 log="$out/live-test.log"
+manifest="$out/manifest.txt"
+: >"$log"
 
-# The Go test receives only the explicit variables below. liveCodexEnv applies a
-# second allowlist before starting app-server. Secrets are never printed.
-set +e
-(
-  cd "$root/backend"
-  KENNEL_CODEX_LIVE=1 KENNEL_CODEX_BIN="$resolved" \
-    go test ./internal/adapters/chatdriver/codexappserver \
-      -run 'TestLive(PersistentCodexSubstrate|SteerKeepsTheTurnAndItsWork)$' \
-      -count=1 -v
-) >"$log" 2>&1
-status=$?
-set -e
+source_sha=$(git -C "$root" rev-parse HEAD 2>/dev/null || printf unknown)
+if [[ -n $(git -C "$root" status --porcelain 2>/dev/null) ]]; then source_dirty=true; else source_dirty=false; fi
+started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+selected=unresolved
+canonical=unresolved
+version=unresolved
+binary_sha=unresolved
+status=1
+result=FAIL
+reason=setup_failed
 
-if [[ $status -ne 0 ]]; then
-  echo "Live proof failed ($status)" >&2
-  exit "$status"
-fi
-if grep -Eq -- '--- SKIP:|^[[:space:]]*SKIP[[:space:]]*$' "$log"; then
-  echo "Live proof skipped; refusing evidence" >&2
-  exit 1
-fi
-for test in TestLivePersistentCodexSubstrate TestLiveSteerKeepsTheTurnAndItsWork; do
-  grep -Fq -- "--- PASS: $test" "$log" || { echo "Missing PASS: $test" >&2; exit 1; }
-done
-for marker in \
-  'profile=codex_native_worktree_v1' \
-  'failed_test_observed=true' \
-  'repaired_test_passed=true' \
-  'filesystem_escape_denied=true' \
-  'network_denied=true' \
-  'continuation_turn=' \
-  'git_status_short='; do
-  grep -Fq -- "$marker" "$log" || { echo "Missing evidence marker: $marker" >&2; exit 1; }
-done
-finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-log_sha=$(hash_log "$log")
-cat >"$out/manifest.txt" <<MANIFEST
+hash_file() {
+  if command -v shasum >/dev/null; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi
+}
+finalize() {
+  local shell_status=$?
+  if [[ $status -eq 0 && $shell_status -ne 0 ]]; then status=$shell_status; fi
+  local finished log_sha
+  finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  log_sha=$(hash_file "$log" 2>/dev/null || printf unavailable)
+  cat >"$manifest" <<MANIFEST
 source_commit=$source_sha
 source_dirty=$source_dirty
 profile=codex_native_worktree_v1
@@ -70,11 +42,62 @@ started_utc=$started
 finished_utc=$finished
 platform=$(uname -s)
 architecture=$(uname -m)
-go_version=$(go version)
-codex_binary=$resolved
+go_version=$(go version 2>&1)
+codex_selected_path=$selected
+codex_canonical_path=$canonical
 codex_version=$version
-codex_binary_sha256=$sha
+codex_binary_sha256=$binary_sha
+test_exit_status=$status
 log_sha256=$log_sha
-result=PASS
+result=$result
+reason=$reason
 MANIFEST
-cat "$out/manifest.txt"
+  cat "$manifest"
+}
+trap finalize EXIT
+
+identity=$(cd "$root/backend" && go run ./cmd/kennel-codex-runtime-identity 2>>"$log") || {
+  status=$?; reason=runtime_identity_resolution_failed; exit "$status";
+}
+selected=$(printf '%s' "$identity" | sed -n 's/.*"selected_path":"\([^"]*\)".*/\1/p')
+canonical=$(printf '%s' "$identity" | sed -n 's/.*"canonical_path":"\([^"]*\)".*/\1/p')
+if [[ -z "$selected" || -z "$canonical" || ! -x "$canonical" ]]; then
+  status=1; reason=invalid_runtime_identity; exit "$status"
+fi
+version=$($canonical --version 2>>"$log") || { status=$?; reason=version_probe_failed; exit "$status"; }
+binary_sha=$(hash_file "$canonical") || { status=$?; reason=binary_hash_failed; exit "$status"; }
+printf 'runtime_identity selected=%q canonical=%q\n' "$selected" "$canonical" >>"$log"
+
+set +e
+(
+  cd "$root/backend"
+  KENNEL_CODEX_LIVE=1 KENNEL_CODEX_BIN="$canonical" KENNEL_CODEX_SELECTED_BIN="$selected" \
+    go test ./internal/adapters/chatdriver/codexappserver -run '^TestLiveCodexRuntimeCanary$' -count=1 -v &&
+  KENNEL_CODEX_LIVE=1 KENNEL_CODEX_BIN="$canonical" KENNEL_CODEX_SELECTED_BIN="$selected" \
+    go test ./internal/adapters/chatdriver/codexappserver \
+      -run 'TestLive(PersistentCodexSubstrate|SteerKeepsTheTurnAndItsWork)$' -count=1 -v
+) >>"$log" 2>&1
+status=$?
+set -e
+if [[ $status -ne 0 ]]; then reason=test_failed; exit "$status"; fi
+if grep -Eq -- '--- SKIP:|^[[:space:]]*SKIP[[:space:]]*$' "$log"; then
+  status=3; result=SKIP; reason=test_skipped; exit "$status"
+fi
+for test in TestLiveCodexRuntimeCanary TestLivePersistentCodexSubstrate TestLiveSteerKeepsTheTurnAndItsWork; do
+  grep -Fq -- "--- PASS: $test" "$log" || { status=1; reason="missing_pass_$test"; exit "$status"; }
+done
+for marker in \
+  'runtime_canary=true' \
+  'profile=codex_native_worktree_v1' \
+  'expected_assertion_observed=true' \
+  'repaired_test_passed=true' \
+  'filesystem_escape_denied=true' \
+  'network_denied=true' \
+  'continuation_turn=' \
+  'git_status_short='; do
+  grep -Fq -- "$marker" "$log" || { status=1; reason="missing_evidence_marker"; exit "$status"; }
+done
+result=PASS
+reason=all_gates_passed
+status=0
+exit 0

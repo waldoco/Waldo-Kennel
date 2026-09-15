@@ -18,6 +18,10 @@ Review only slice 1. Reject the patch if it changes Outcome admission, session o
 - Confirm typed request/answer coverage remains in the deterministic suite.
 - Confirm the test cannot run or spend by default.
 
+## Runtime repair review
+
+See [native Codex runtime-package repair review](2026-09-15-native-codex-runtime-repair-review.md). Confirm protocol compatibility and runtime-companion viability are independently evidenced, selected/canonical executable identity is pinned, failure manifests survive, and generic local/DNS/tool failures cannot satisfy policy-negative probes.
+
 ## Evidence review
 
 A source-only pass does not close slice 1. Require an authenticated real-provider run of both persistent substrate and steer tests, a pinned Codex version/binary hash, complete test log hash, IDs, marker evidence, and final workspace state. A skipped test is not a pass.

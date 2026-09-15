@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -144,6 +147,129 @@ collect:
 	t.Logf("resumed thread %s on a fresh app-server process", threadID)
 }
 
+func TestCanonicalLiveCodexBinaryAcceptsDirectPathAndRejectsSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix symlink identity")
+	}
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonicalize temp dir: %v", err)
+	}
+	direct := filepath.Join(dir, "codex")
+	if err := os.WriteFile(direct, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := canonicalLiveCodexBinary(direct); err != nil || got != direct {
+		t.Fatalf("direct canonical identity = %q, %v", got, err)
+	}
+	shim := filepath.Join(t.TempDir(), "codex")
+	if err := os.Symlink(direct, shim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := canonicalLiveCodexBinary(shim); err == nil || !strings.Contains(err.Error(), direct) {
+		t.Fatalf("symlink identity error = %v, want canonical target", err)
+	}
+}
+
+func TestFailedAssertionPredicateParsesRealVerboseAndParallelOrder(t *testing.T) {
+	fixtures := []string{
+		"--- FAIL: TestValue (0.00s)\n    proof_test.go:5: Value = \"wrong\"\nFAIL\nFAIL\texample.com/substrate\t0.002s\n",
+		"=== RUN   TestValue\n    proof_test.go:5: Value = \"wrong\"\n--- FAIL: TestValue (0.00s)\nFAIL\n",
+		"=== RUN   TestValue\n=== PAUSE TestValue\n=== CONT  TestValue\n=== NAME  TestValue\n    proof_test.go:5: Value = \"wrong\"\n--- FAIL: TestValue (0.00s)\n",
+	}
+	for i, output := range fixtures {
+		r := liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: output}}}
+		if !r.failedTestValueAssertion() {
+			t.Fatalf("real fixture %d rejected", i)
+		}
+	}
+	negatives := []liveTurnResult{
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: `log: --- FAIL: TestValue and Value = "wrong" were expected`}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: `=== RUN   TestOther
+    proof_test.go:5: Value = "wrong"
+--- FAIL: TestOther (0.00s)
+--- FAIL: TestValue (0.00s)
+`}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: `=== RUN TestValue
+    proof_test.go:5: Value = "wrong"
+`}, {status: domain.ActivityStatusFailed, output: "--- FAIL: TestValue (0.00s)\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: `{"output":"=== RUN TestValue\\n proof_test.go:5: Value = \\\"wrong\\\"\\n--- FAIL: TestValue"}`}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "--- FAIL: TestOther (0.00s)\n    proof_test.go:5: Value = \"wrong\"\n--- FAIL: TestValue (0.00s)\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "--- FAIL: TestValue (0.00s)\nproof_test.go:5: Value = \"wrong\"\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "    proof_test.go:5: Value = \"wrong\"\n--- FAIL: TestValue was expected\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "    proof_test.go:5: Value = \"wrong\"\n--- FAIL: TestValue (not-a-duration)\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "    proof_test.go:5: Value = \"wrong\"\n--- FAIL: TestValue (0.00s) trailing prose\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "    --- FAIL: TestValue (0.00s)\n    proof_test.go:5: Value = \"wrong\"\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "=== RUN   TestValue\n    proof_test.go:5: Value = \"wrong\"\n    --- FAIL: TestValue (0.00s)\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "    proof_test.go:5: Value = \"wrong\"\n    --- FAIL: TestValue (0.00s)\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "--- FAIL: TestValue (0.00s)\n    proof_test.go:: Value = \"wrong\"\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "--- FAIL: TestValue (0.00s)\n    :5: Value = \"wrong\"\n"}}},
+		{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, output: "=== RUNNER TestValue\n    proof_test.go:5: Value = \"wrong\"\n--- FAIL: TestValue (0.00s)\n"}}},
+	}
+	for i, r := range negatives {
+		if r.failedTestValueAssertion() {
+			t.Fatalf("negative %d accepted", i)
+		}
+	}
+}
+
+func TestDenialAttributionUsesExactArgumentAndNonCommandSemantics(t *testing.T) {
+	const url = "https://example.com/"
+	const path = "/outside/target"
+	markers := []string{"operation not permitted", "permission denied", "denied by policy", "network access denied", "sandbox policy denied", "blocked by sandbox policy"}
+	for _, marker := range markers {
+		r := liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, command: "echo " + marker + "; curl " + url, output: "generic error"}}}
+		if r.denialAttributedTo(url) {
+			t.Fatalf("command echo %q counted as semantics", marker)
+		}
+	}
+	negatives := []struct {
+		r         liveTurnResult
+		operation string
+	}{
+		{liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusPending, command: "curl " + url + " 'approval required'", summary: "generic error", approval: true}}}, url},
+		{liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, command: "write " + path + "-other", output: "permission denied"}}}, path},
+		{liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, command: "write /outside", output: "permission denied"}}}, path},
+		{liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, command: "write " + path + "/child", output: "permission denied"}}}, path},
+		{liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, command: "curl " + url + "longer", output: "network access denied"}}}, url},
+		{liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, command: "curl " + url, output: "echo: approval required"}}}, url},
+	}
+	for i, tc := range negatives {
+		if tc.r.denialAttributedTo(tc.operation) {
+			t.Fatalf("negative %d accepted", i)
+		}
+	}
+	failed := liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusFailed, command: "curl " + url, output: "network access denied"}}}
+	if !failed.denialAttributedTo(url) {
+		t.Fatal("exact failed enforcement rejected")
+	}
+	approval := liveTurnResult{activities: []liveActivityEvidence{{status: domain.ActivityStatusPending, command: "write " + path, summary: "approval required for outside write", approval: true}}}
+	if !approval.denialAttributedTo(path) {
+		t.Fatal("exact approval rejected")
+	}
+}
+
+// TestLiveCodexRuntimeCanary separates protocol compatibility from native tool
+// viability. It uses the exact canonical runtime selected by the wrapper and
+// requires an attributable local command completion before the expensive journey.
+func TestLiveCodexRuntimeCanary(t *testing.T) {
+	requireLiveCodex(t)
+	bin := liveCodexBin(t)
+	workspace := newDisposableGitWorktree(t)
+	d := New(livePlugin{bin: bin}, slog.New(slog.DiscardHandler))
+	opened := startLiveConversation(t, d, workspace)
+	defer func() { _ = opened.Close() }()
+	result := runLiveTurn(t, phaseContext(t, 60*time.Second), opened, ports.ChatUserMessage{
+		Text:            "Run this exact local command: printf RUNTIME-CANARY > runtime-canary.txt. Then reply CANARY-DONE.",
+		ClientMessageID: "native-runtime-canary", Origin: domain.MessageOriginHuman,
+	})
+	if result.state != domain.TurnStateCompleted || !result.sawCompletedCommand {
+		t.Fatalf("runtime companion canary failed: %s", result.sanitizedEvidence())
+	}
+	assertFileTrimmed(t, filepath.Join(workspace, "runtime-canary.txt"), "RUNTIME-CANARY")
+	t.Logf("runtime_canary=true turn=%s client=native-runtime-canary canonical_binary=%q", result.ref.ProviderTurnID, bin)
+}
+
 // TestLivePersistentCodexSubstrate proves the native primitives vNext relies on
 // without creating an Outcome or changing daemon admission. It deliberately uses
 // one disposable git worktree and one provider thread across many turns and a
@@ -194,8 +320,9 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 			"go test ./... . The failing test is expected; report FIRST-FAIL-OBSERVED after it runs.",
 		ClientMessageID: "persistent-substrate-failing-test", Origin: domain.MessageOriginHuman,
 	})
-	if first.ref.ProviderTurnID == "" || first.state != domain.TurnStateCompleted || !first.sawCommand || !first.sawFailedCommand {
-		t.Fatalf("failing-test turn = %#v", first)
+	if first.ref.ProviderTurnID == "" || first.state != domain.TurnStateCompleted || !first.sawFailedCommand ||
+		!first.failedTestValueAssertion() {
+		t.Fatalf("expected TestValue assertion was not the failed command: %s", first.sanitizedEvidence())
 	}
 	assertCanonicalPathFile(t, filepath.Join(workspace, "observed-pwd.txt"), workspace)
 	assertCanonicalPathFile(t, filepath.Join(workspace, "observed-git-root.txt"), workspace)
@@ -204,7 +331,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read marker evidence: %v", err)
 	}
-	t.Logf("evidence turn=%s client=%s marker=%q marker_sha256=%x failed_test_observed=true", first.ref.ProviderTurnID,
+	t.Logf("evidence turn=%s client=%s marker=%q marker_sha256=%x expected_assertion_observed=true", first.ref.ProviderTurnID,
 		"persistent-substrate-failing-test", strings.TrimSpace(string(marker)), sha256.Sum256(marker))
 
 	second := runLiveTurn(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
@@ -222,15 +349,26 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	assertFileContains(t, filepath.Join(workspace, "proof.go"), `return "right"`)
 	t.Logf("evidence turn=%s client=%s repaired_test_passed=true", second.ref.ProviderTurnID, "persistent-substrate-repair-test")
 
-	outside := filepath.Join(t.TempDir(), "undeclared", "outside-sentinel.txt")
+	fsPositive := runLiveTurn(t, phaseContext(t, 60*time.Second), opened, ports.ChatUserMessage{
+		Text:            "Run this exact local write control: printf LOCAL-WRITE-OK > filesystem-positive-control.txt. Then reply LOCAL-WRITE-OK.",
+		ClientMessageID: "persistent-substrate-fs-positive", Origin: domain.MessageOriginHuman,
+	})
+	if fsPositive.state != domain.TurnStateCompleted || !fsPositive.sawCompletedCommand {
+		t.Fatalf("filesystem positive control failed: %s", fsPositive.sanitizedEvidence())
+	}
+	assertFileTrimmed(t, filepath.Join(workspace, "filesystem-positive-control.txt"), "LOCAL-WRITE-OK")
+
+	outsideRoot := t.TempDir()
+	assertPathOutside(t, outsideRoot, workspace)
+	outside := filepath.Join(outsideRoot, "undeclared", "outside-sentinel.txt")
 	deniedFS := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
 		Text: "Test the profile boundary by running this exact command, without requesting wider authority: " +
 			"mkdir -p " + shellQuote(filepath.Dir(outside)) + " && printf ESCAPED > " + shellQuote(outside) +
 			". This operation is expected to be denied; report FS-DENIED.",
 		ClientMessageID: "persistent-substrate-fs-denied", Origin: domain.MessageOriginHuman,
 	})
-	if deniedFS.state != domain.TurnStateCompleted || (!deniedFS.sawFailedCommand && !deniedFS.sawDeniedRequest) {
-		t.Fatalf("filesystem denial turn = %#v", deniedFS)
+	if deniedFS.state != domain.TurnStateCompleted || !deniedFS.denialAttributedTo(outside) {
+		t.Fatalf("filesystem denial lacks operation/enforcement attribution: %s", deniedFS.sanitizedEvidence())
 	}
 	if _, err := os.Stat(outside); !os.IsNotExist(err) {
 		_ = os.Remove(outside)
@@ -239,14 +377,23 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	t.Logf("evidence turn=%s client=%s filesystem_escape_denied=true approval_request_denied=%t", deniedFS.ref.ProviderTurnID,
 		"persistent-substrate-fs-denied", deniedFS.sawDeniedRequest)
 
+	networkPositive := runLiveTurn(t, phaseContext(t, 60*time.Second), opened, ports.ChatUserMessage{
+		Text:            "Run this exact local network-tool control without making a request: curl --version > curl-version.txt. Then reply CURL-AVAILABLE.",
+		ClientMessageID: "persistent-substrate-network-tool-positive", Origin: domain.MessageOriginHuman,
+	})
+	if networkPositive.state != domain.TurnStateCompleted || !networkPositive.sawCompletedCommand {
+		t.Fatalf("curl availability control failed: %s", networkPositive.sanitizedEvidence())
+	}
+	assertFileContains(t, filepath.Join(workspace, "curl-version.txt"), "curl")
+	const networkProbeURL = "https://example.com/"
 	deniedNetwork := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
 		Text: "Test the profile's explicit network boundary by running this exact command, without requesting wider authority: " +
 			"curl --fail --silent --show-error --max-time 5 https://example.com/ >/dev/null && printf REACHED > network-reached.txt" +
 			". Network is expected to be denied; report NETWORK-DENIED.",
 		ClientMessageID: "persistent-substrate-network-denied", Origin: domain.MessageOriginHuman,
 	})
-	if deniedNetwork.state != domain.TurnStateCompleted || (!deniedNetwork.sawFailedCommand && !deniedNetwork.sawDeniedRequest) {
-		t.Fatalf("network denial turn = %#v", deniedNetwork)
+	if deniedNetwork.state != domain.TurnStateCompleted || !deniedNetwork.denialAttributedTo(networkProbeURL) {
+		t.Fatalf("network denial lacks request/enforcement attribution: %s", deniedNetwork.sanitizedEvidence())
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "network-reached.txt")); !os.IsNotExist(err) {
 		t.Fatalf("undeclared network command reached its success sentinel: %v", err)
@@ -318,11 +465,13 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		t.Fatalf("history ids changed:\n%v\n%v", ids1, ids2)
 	}
 	assertHistoryTurns(t, history1, map[string]string{
-		first.ref.ProviderTurnID:         "persistent-substrate-failing-test",
-		second.ref.ProviderTurnID:        "persistent-substrate-repair-test",
-		deniedFS.ref.ProviderTurnID:      "persistent-substrate-fs-denied",
-		deniedNetwork.ref.ProviderTurnID: "persistent-substrate-network-denied",
-		interruptRef.ProviderTurnID:      "persistent-substrate-interrupt",
+		first.ref.ProviderTurnID:           "persistent-substrate-failing-test",
+		second.ref.ProviderTurnID:          "persistent-substrate-repair-test",
+		fsPositive.ref.ProviderTurnID:      "persistent-substrate-fs-positive",
+		networkPositive.ref.ProviderTurnID: "persistent-substrate-network-tool-positive",
+		deniedFS.ref.ProviderTurnID:        "persistent-substrate-fs-denied",
+		deniedNetwork.ref.ProviderTurnID:   "persistent-substrate-network-denied",
+		interruptRef.ProviderTurnID:        "persistent-substrate-interrupt",
 	})
 
 	third := runLiveTurn(t, phaseContext(t, 90*time.Second), resumed, ports.ChatUserMessage{
@@ -352,17 +501,29 @@ func requireLiveCodex(t *testing.T) {
 	}
 }
 
+func canonicalLiveCodexBinary(path string) (string, error) {
+	if path == "" {
+		return "", errors.New("canonical Codex runtime is required")
+	}
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	if canonical != path {
+		return "", fmt.Errorf("path %q is not canonical; target is %q", path, canonical)
+	}
+	return canonical, nil
+}
+
 func liveCodexBin(t *testing.T) string {
 	t.Helper()
 	bin := os.Getenv("KENNEL_CODEX_BIN")
-	if bin == "" {
-		bin = "codex"
-	}
-	resolved, err := exec.LookPath(bin)
+	canonical, err := canonicalLiveCodexBinary(bin)
 	if err != nil {
-		t.Skipf("codex binary %q not on PATH: %v", bin, err)
+		t.Fatalf("invalid KENNEL_CODEX_BIN: %v", err)
 	}
-	return resolved
+	t.Logf("runtime_identity selected=%q canonical=%q", os.Getenv("KENNEL_CODEX_SELECTED_BIN"), canonical)
+	return canonical
 }
 
 func startLiveConversation(t *testing.T, d *Driver, workspace string) ports.ChatConversation {
@@ -482,6 +643,17 @@ func assertHistoryTurns(t *testing.T, events []ports.ChatEvent, expected map[str
 	}
 }
 
+type liveActivityEvidence struct {
+	itemID   string
+	status   domain.ActivityStatus
+	summary  string
+	command  string
+	cwd      string
+	output   string
+	detail   string
+	approval bool
+}
+
 type liveTurnResult struct {
 	ref                 ports.ChatTurnRef
 	state               domain.TurnState
@@ -490,6 +662,178 @@ type liveTurnResult struct {
 	sawFailedCommand    bool
 	sawCompletedCommand bool
 	sawDeniedRequest    bool
+	deniedRequestID     string
+	activities          []liveActivityEvidence
+}
+
+func (r liveTurnResult) commandEvidence() string {
+	var b strings.Builder
+	for _, ev := range r.activities {
+		fmt.Fprintf(&b, "item=%s status=%s summary=%q detail=%s\n", ev.itemID, ev.status, ev.summary, ev.detail)
+	}
+	return b.String()
+}
+
+func sourceDiagnostic(line string) (string, bool) {
+	if line == "" || (line[0] != ' ' && line[0] != '\t') {
+		return "", false
+	}
+	trimmed := strings.TrimSpace(line)
+	marker := strings.Index(trimmed, ": ")
+	if marker < 0 {
+		return "", false
+	}
+	location := trimmed[:marker]
+	lastColon := strings.LastIndex(location, ":")
+	if lastColon <= 0 || lastColon == len(location)-1 {
+		return "", false
+	}
+	if strings.TrimSpace(location[:lastColon]) == "" {
+		return "", false
+	}
+	for _, r := range location[lastColon+1:] {
+		if r < '0' || r > '9' {
+			return "", false
+		}
+	}
+	return strings.TrimSpace(trimmed[marker+2:]), true
+}
+
+func exactTestRecord(line, status, name string) bool {
+	prefix := "--- " + status + ": " + name
+	if strings.TrimLeft(line, " \t") != line {
+		return false
+	}
+	line = strings.TrimRight(line, "\r")
+	if line == prefix {
+		return true
+	}
+	if !strings.HasPrefix(line, prefix+" (") || !strings.HasSuffix(line, ")") {
+		return false
+	}
+	duration := strings.TrimSuffix(strings.TrimPrefix(line, prefix+" ("), ")")
+	_, err := time.ParseDuration(duration)
+	return err == nil
+}
+
+func hasExpectedGoTestFailure(output string) bool {
+	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
+	var pendingDiagnostics []string
+	activeName := ""
+	afterTestValueFail := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		frameName := ""
+		for _, prefix := range []string{"=== RUN   ", "=== NAME  ", "=== PAUSE ", "=== CONT  "} {
+			if strings.HasPrefix(line, prefix) && len(line) > len(prefix) {
+				frameName = strings.TrimSpace(line[len(prefix):])
+				break
+			}
+		}
+		if frameName != "" {
+			activeName = frameName
+			afterTestValueFail = false
+			continue
+		}
+		if strings.HasPrefix(trimmed, "--- FAIL:") || strings.HasPrefix(trimmed, "--- PASS:") || strings.HasPrefix(trimmed, "--- SKIP:") {
+			isTestValueFail := exactTestRecord(line, "FAIL", "TestValue")
+			if isTestValueFail {
+				for _, diagnostic := range pendingDiagnostics {
+					if diagnostic == `Value = "wrong"` {
+						return true
+					}
+				}
+			}
+			pendingDiagnostics = nil
+			activeName = ""
+			afterTestValueFail = isTestValueFail
+			continue
+		}
+		if diagnostic, ok := sourceDiagnostic(line); ok {
+			if afterTestValueFail && diagnostic == `Value = "wrong"` {
+				return true
+			}
+			if activeName == "TestValue" {
+				pendingDiagnostics = append(pendingDiagnostics, diagnostic)
+			}
+			continue
+		}
+		// In non-verbose output only immediately associated indented diagnostics may
+		// follow the FAIL record. Any other nonblank line closes the block.
+		if afterTestValueFail && trimmed != "" {
+			afterTestValueFail = false
+		}
+	}
+	return false
+}
+func (r liveTurnResult) failedTestValueAssertion() bool {
+	for _, ev := range r.activities {
+		if ev.status == domain.ActivityStatusFailed && hasExpectedGoTestFailure(ev.output) {
+			return true
+		}
+	}
+	return false
+}
+
+func exactOperationArgument(command, operation string) bool {
+	for _, field := range strings.Fields(command) {
+		candidate := strings.Trim(field, "'\"")
+		candidate = strings.TrimRight(candidate, ";")
+		if strings.Contains(operation, "://") {
+			if candidate == operation {
+				return true
+			}
+			continue
+		}
+		if filepath.IsAbs(candidate) && filepath.Clean(candidate) == filepath.Clean(operation) {
+			return true
+		}
+	}
+	return false
+}
+
+func failedCommandPolicyEnforcement(ev liveActivityEvidence, operation string) bool {
+	if ev.status != domain.ActivityStatusFailed || ev.approval || !exactOperationArgument(ev.command, operation) {
+		return false
+	}
+	semantics := strings.ToLower(ev.summary + "\n" + ev.output)
+	for _, marker := range []string{"operation not permitted", "permission denied", "denied by policy", "network access denied", "sandbox policy denied", "blocked by sandbox policy"} {
+		if strings.Contains(semantics, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func approvalPolicyDenial(ev liveActivityEvidence, operation string) bool {
+	if !ev.approval || !exactOperationArgument(ev.command, operation) {
+		return false
+	}
+	semantics := strings.ToLower(ev.summary + "\n" + ev.output)
+	for _, marker := range []string{"approval required", "request approval", "permission approval", "policy approval"} {
+		if strings.Contains(semantics, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r liveTurnResult) denialAttributedTo(operation string) bool {
+	for _, ev := range r.activities {
+		if failedCommandPolicyEnforcement(ev, operation) || approvalPolicyDenial(ev, operation) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r liveTurnResult) sanitizedEvidence() string {
+	const limit = 4096
+	text := fmt.Sprintf("turn=%s state=%s request=%s activities=[%s]", r.ref.ProviderTurnID, r.state, r.deniedRequestID, r.commandEvidence())
+	if len(text) > limit {
+		return text[:limit] + "...[truncated]"
+	}
+	return text
 }
 
 func runLiveTurn(t *testing.T, ctx context.Context, conv ports.ChatConversation, msg ports.ChatUserMessage) liveTurnResult {
@@ -513,6 +857,7 @@ func runLiveTurn(t *testing.T, ctx context.Context, conv ports.ChatConversation,
 				result.sawCommand = true
 			case ports.ChatEventActivityCompleted:
 				if ev.ActivityKind == domain.ActivityKindCommand {
+					result.activities = append(result.activities, nativeToolEvidence(ev, false))
 					result.sawCommand = true
 					if ev.ActivityStatus == domain.ActivityStatusFailed {
 						result.sawFailedCommand = true
@@ -562,6 +907,7 @@ func runLiveTurnAllowDeniedRequest(t *testing.T, ctx context.Context, conv ports
 				result.sawCommand = true
 			case ports.ChatEventActivityCompleted:
 				if ev.ActivityKind == domain.ActivityKindCommand {
+					result.activities = append(result.activities, nativeToolEvidence(ev, false))
 					result.sawCommand = true
 					if ev.ActivityStatus == domain.ActivityStatusFailed {
 						result.sawFailedCommand = true
@@ -572,6 +918,8 @@ func runLiveTurnAllowDeniedRequest(t *testing.T, ctx context.Context, conv ports
 				}
 			case ports.ChatEventApprovalRequested:
 				result.sawDeniedRequest = true
+				result.deniedRequestID = ev.RequestID
+				result.activities = append(result.activities, nativeToolEvidence(ev, true))
 				if err := conv.ResolveRequest(ctx, ev.RequestID, ports.ChatDecision{ID: "cancel"}); err != nil {
 					t.Fatalf("deny profile escape request %s: %v", ev.RequestID, err)
 				}
@@ -590,6 +938,50 @@ func runLiveTurnAllowDeniedRequest(t *testing.T, ctx context.Context, conv ports
 		case <-ctx.Done():
 			t.Fatalf("denied turn %s timed out: %v", ref.ProviderTurnID, ctx.Err())
 		}
+	}
+}
+
+func nativeToolEvidence(ev ports.ChatEvent, approval bool) liveActivityEvidence {
+	raw := map[string]any{}
+	_ = json.Unmarshal(ev.Detail, &raw)
+	stringField := func(name string) string { value, _ := raw[name].(string); return value }
+	output := stringField("output")
+	if len(output) > 1024 {
+		output = output[:1024] + "...[truncated]"
+	}
+	safe := map[string]any{}
+	for _, key := range []string{"command", "cwd", "exitCode", "durationMs"} {
+		if value, ok := raw[key]; ok {
+			safe[key] = value
+		}
+	}
+	if output != "" {
+		safe["output"] = output
+	}
+	encoded, _ := json.Marshal(safe)
+	return liveActivityEvidence{
+		itemID: ev.ProviderItemID, status: ev.ActivityStatus, summary: ev.Summary,
+		command: stringField("command"), cwd: stringField("cwd"), output: output,
+		detail: string(encoded), approval: approval,
+	}
+}
+
+func assertPathOutside(t *testing.T, candidate, workspace string) {
+	t.Helper()
+	c, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(w, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+		t.Fatalf("negative-probe path %q is inside allowed worktree %q", c, w)
 	}
 }
 

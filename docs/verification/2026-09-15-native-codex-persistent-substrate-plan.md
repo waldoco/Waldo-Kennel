@@ -41,7 +41,7 @@ Extend `live_test.go` with one opt-in test, `TestLivePersistentCodexSubstrate`. 
 
 The existing `TestLiveSteerKeepsTheTurnAndItsWork` stays part of the proof command. It now uses an actual detached worktree and the same workspace-write posture. It proves steering preserves the active turn ID, keeps in-flight work until the agent reacts, carries a client ID, does not become interrupt-and-resend, and accepts a new command turn afterward in the same thread.
 
-Typed request/answer remains a deterministic pipe/conformance gate, because a real model cannot be relied on to ask a specific question. A captured `item/tool/requestUserInput` frame must emit `ChatEventInputRequested` with question IDs, options, descriptions, `isSecret`/`isOther`, password/free-text semantics, and typed form schema; the exact raw `answers` object must return to the provider; repeat and stale resolution must return `ErrChatRequestNotPending`. The live proof fails on any unexpected request.
+Typed request/answer remains a deterministic pipe/conformance gate, because a real model cannot be relied on to ask a specific question. A captured `item/tool/requestUserInput` frame must emit `ChatEventInputRequested` with question IDs, options, descriptions, `isSecret`/`isOther`, password/free-text semantics, and typed form schema; the exact raw `answers` object must return to the provider; repeat and stale resolution must return `ErrChatRequestNotPending`. The live proof fails on any unexpected request. Protocol negotiation and native runtime-companion viability are separate gates: the wrapper first resolves production's canonical runtime identity and runs `TestLiveCodexRuntimeCanary` alone before the longer journey.
 
 ## Commands and evidence
 
@@ -70,6 +70,8 @@ scripts/prove-native-codex-substrate.sh /path/to/evidence-directory
 If Codex is not on `PATH`, set `KENNEL_CODEX_BIN` to the exact authenticated binary. The wrapper records:
 
 - source commit and machine-recorded `source_dirty` from `git status --porcelain`;
+- selected PATH executable plus canonical production-resolved runtime executable; version/hash/launch all bind the canonical target;
+- PASS/FAIL/SKIP, exact exit status and complete-log hash even when setup or tests fail;
 - profile name and hashed profile/configuration inputs, inherited skill inventory hash, installed/generated protocol versions and digests, negotiated degradation/missing-floor facts;
 - `codex --version` and binary SHA-256;
 - platform/architecture and Go version;
@@ -88,7 +90,7 @@ The live subprocess receives an allowlist only: `HOME`, identity/path/shell/temp
 - The workspace is an actual detached Git worktree, not only a repository-shaped temporary directory.
 - Inspect/failing-test/repair/rerun turns share the exact absolute worktree and marker state.
 - `accept-edits` maps the proof to workspace-write/on-request rather than the legacy default danger-full-access posture.
-- An undeclared outside-worktree write and undeclared network command fail closed or request authority that the test denies; no success sentinel exists.
+- An admitted local write and local curl-availability control pass first. An undeclared outside-worktree write and undeclared network command then fail with evidence naming the exact operation plus policy enforcement, or request authority that the test denies; generic missing-tool, DNS, host, or curl failures never count. No success sentinel exists.
 - Active-turn steer retains the same turn ID, produces one completed turn, and permits a distinct continuation turn afterward.
 - Interrupt targets the exact turn and produces interrupted completion.
 - Closing the first controller really ends its app-server process; resume starts a fresh process and returns the same thread ID.

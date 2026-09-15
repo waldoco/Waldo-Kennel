@@ -47,4 +47,4 @@ W1.0-W1.2 remain accepted foundations. S1 is source-accepted, with its packaged 
 
 ## Current gate
 
-Architecture and authority contracts are frozen at `f31cdca4ea55fb25903f7af55ec45c7abccdcc04`. Stage 1 implementation is authorized and its native Codex substrate is in source review: deterministic evidence is required before the authenticated packaged macOS proof. No Outcome cutover or stage 2+ work has occurred. The preserved W1.3 nonterminal contract patch remains evidence/input, not an accepted patch or active implementation order.
+Architecture and authority contracts are frozen at `f31cdca4ea55fb25903f7af55ec45c7abccdcc04`. Stage 1 implementation is authorized. Its first Mac proof established protocol compatibility but exposed a proof-launcher runtime-companion path defect before coding began; the bounded repair is in source review. Protocol compatibility and runtime-companion viability are now separate gates, and fresh authenticated Mac evidence remains required. No Outcome cutover or stage 2+ work has occurred. The preserved W1.3 nonterminal contract patch remains evidence/input, not an accepted patch or active implementation order.
