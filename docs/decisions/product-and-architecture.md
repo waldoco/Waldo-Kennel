@@ -67,3 +67,37 @@ This log records choices most likely to regress. Accepted ADRs retain deeper rat
 **Decision:** Every proposed WorkUnit carries an immutable resolved execution budget with source and policy id/version/digest. A named, versioned daemon policy owns defaults and ceilings. Missing budgets reject rather than borrowing hidden runtime defaults; token precision is omitted when negotiated accounting is unsupported, while wall-time and retry bounds remain required.
 
 **Why:** Replacements must not reset lineage limits, and approval must show the exact effective values it authorized. Production default and ceiling numbers remain intentionally unresolved until the reviewed policy table lands; W1.1 contains no invented numeric defaults.
+
+## D14. Persistent Codex sessions are the vNext execution substrate
+
+**Decision:** One vNext WorkUnit Attempt owns one exclusive worktree lease, one Kennel Session, and one persistent primary Codex app-server thread with many turns. A turn or process exit is not completion.
+
+**Why:** The app-server already supports native persistence, steering/interruption, and resume. One-shot was an implementation choice that broke healthy interaction and recovery.
+
+## D15. Mission Supervisor intelligence is coupled through typed authority
+
+**Decision:** One Mission Supervisor thread per active Plan revision interprets mission events and may automatically send approved, low-risk, in-scope steering/context. The daemon validates its typed commands and remains the only authority, scheduler, state, custody, check, and projection layer.
+
+**Why:** Missions need higher-level intelligence without making graph mutation, permissions, or durable state probabilistic.
+
+## D16. Context is a versioned artifact graph
+
+**Decision:** Attempts consume hashed input manifests and produce structured output manifests. Plan edges pass exact verified artifacts/decisions, never private transcripts or hidden reasoning.
+
+**Why:** Explicit versions and provenance prevent stale coupling, accidental disclosure, and summaries becoming false authority.
+
+## D17. Attention and completion retain session continuity
+
+**Decision:** `needs_you` is nonterminal and resumes the same thread. Completion begins with `ready_for_verification`, daemon checks, and owner Accept. Replacement is explicit or follows proven irrecoverability.
+
+**Why:** Healthy waiting and bounded rework are part of one Attempt; replacement should not be a conversational primitive.
+
+## D18. Serial Codex proof precedes concurrency and provider breadth
+
+**Decision:** Build graph/worktree safety now, run the first packaged proof serially, then enable independent concurrency. Other providers follow protocol evidence from Codex.
+
+**Why:** One complete loop removes more risk than speculative abstraction and parallel orchestration.
+
+### Decision provenance
+
+D14-D18 follow the owner's authenticated reply received Tuesday, 2026-09-15 at 1:41:46 PM IST: "I think I agree with all 12 recommendations that you have given," "The supervisor should be allowed to do that and not wait on the user," and "lock all these 12 and update all the documentation accordingly." Source: inbound WhatsApp message `wamid.HBgMOTE3NTU4NjU5OTMxFQIAEhggQUMzMEFDMzFBQ0M2NzFGREEzQTZEMDNGN0I2MTVDRjUA`. This exact source ID came from the live owner channel; observation indexing lag is not negative evidence. External projects, UI references, provider protocol observations, and research notes are supporting evidence only; none grants product or runtime authority.

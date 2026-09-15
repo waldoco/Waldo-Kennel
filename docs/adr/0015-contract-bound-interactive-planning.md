@@ -1,5 +1,8 @@
 # ADR 0015: Contract-bound interactive planning
 
+> **Supersession note (2026-09-15):** Contract-bound planning remains accepted. [ADR 0017](0017-persistent-mission-runtime-and-bounded-supervision.md) fixes the thread topology: Contract conversation, fresh planning conversation, Supervisor thread, and persistent worker threads.
+
+
 **Status:** Accepted
 
 **Date:** 2026-09-11

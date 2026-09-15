@@ -1,5 +1,8 @@
 # Local owner command authority
 
+> **vNext extension note (2026-09-15):** S1 source implementation is accepted; packaged macOS/runtime proof remains open. The W1.3 replacement-only continuation below is historical. Extend the same authenticated envelope to answer, steer, interrupt, cancel, and replace under [ADR 0017](../adr/0017-persistent-mission-runtime-and-bounded-supervision.md).
+
+
 State-changing recovery decisions that claim owner approval must not trust loopback HTTP, the `Host` header, CORS, or body-supplied actor labels. The desktop boundary is:
 
 1. Electron main mints a 256-bit per-app-run owner-command token. It shares the app-run ID and this token with the app-owned daemon once, over the child's inherited stdin, in the same bounded startup envelope as the browser-runtime token. Tokens never enter argv, environment values, files, `running.json`, logs, or renderer JavaScript.

@@ -1,5 +1,8 @@
 # Kennel Work launch experience and execution handoff
 
+> **Superseded for vNext (2026-09-15):** Historical launch experience; current UI follows persistent mission runtime. Use [persistent mission runtime](../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 Date: 2026-09-09. Status: implementation specification for review; not a claim of shipped or accepted behavior.
 
 This companion refines the [execution plan](../superpowers/plans/2026-09-08-outcome-control-plane-mvp-reset.md). ADRs 0010–0012, product architecture, ADRs 0008/0009 and repository engineering rules retain authority. Read this document before implementing Work UX, proof or delivery. It replaces software-only launch framing and fills the missing delivery contract; it does not authorize implementing every slice.

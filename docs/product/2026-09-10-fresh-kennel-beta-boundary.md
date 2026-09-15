@@ -1,5 +1,8 @@
 # Fresh Kennel beta and Island integration boundary
 
+> **Classification (2026-09-15):** Historical beta boundary; retained for compatibility evidence. Use the [canonical documentation map](../README.md).
+
+
 The owner chose a fresh installation on 2026-09-10. Compatibility with AO profiles is not a product requirement. This decision does not authorize deleting local files or rewriting published Git history. Use fresh isolated profiles for validation.
 
 ## Product ownership

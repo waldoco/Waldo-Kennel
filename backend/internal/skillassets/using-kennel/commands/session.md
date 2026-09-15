@@ -1,5 +1,8 @@
 # kennel session
 
+> Compatibility command reference. This command does not grant scheduling or Outcome authority; the daemon validates all governed actions.
+
+
 Manage agent sessions: list, inspect, rename, kill, restore, clean up, and claim PRs.
 
 ## Syntax

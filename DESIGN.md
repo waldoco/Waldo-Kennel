@@ -1,5 +1,8 @@
 # Design System — Kennel
 
+> **Current product topology:** [Persistent mission runtime](docs/architecture/persistent-mission-runtime.md). Earlier “orchestrator system,” task/session, and spawn-worker labels in this visual-history document describe retained UI references, not current ontology or implementation order. New UI uses Outcome -> Contract -> Plan/DAG -> WorkUnit/current Attempt, with mission-level Supervisor intelligence and session drill-down.
+
+
 > Source of truth for the Kennel desktop UI (Electron + React 19 + Tailwind v4
 >
 > - Radix/shadcn + xterm, in `frontend/src/renderer`). Read this before any visual
@@ -120,26 +123,19 @@ and rebuilt in this system:
 
 ### Product flow (what the UI must serve)
 
-Kennel is **orchestrator-led**, which is the one thing that differs from a flat
-list of independent sessions. Grounded in the daemon
-(`backend/internal/session_manager/manager.go`, `docs/architecture.md`):
+Kennel is **Outcome-led**, not a flat list of sessions and not a legacy orchestrator
+chat. The UI follows the canonical runtime:
 
-- A **Project** is a registered git repo.
-- Per project there is **one active Orchestrator** session plus **N Worker** sessions.
-  Both are the same underlying "session" (durable facts: `activity_state`,
-  `is_terminated`, PR facts); they differ only by `Kind` (`KindOrchestrator` vs the
-  default worker). A project may run the orchestrator on a different agent than its workers.
-- The **Orchestrator is the human-facing coordinator**: you talk to it; it spawns
-  workers (`ao spawn`), messages them (`ao send`), tracks progress, and synthesizes
-  results. It avoids implementing unless necessary.
-- A **Worker is a normal agent session** — nothing special-cased. It runs one focused
-  task in an isolated git worktree + branch, with the agent CLI in a terminal as the
-  conversation, producing a diff → commit/push → PR. It escalates to the orchestrator
-  only for true blockers or cross-session coordination.
-- The daemon **observes** runtime + PR/CI/review facts and **derives** display status
-  at read time: `working`, `needs_input`, `ci_failed`, `changes_requested`,
-  `mergeable`, `approved`, `review_pending`, `pr_open`, `idle`, `terminated`, `merged`.
-  Never store display status; keep session facts small.
+- one owner timeline contains Contract clarification, fresh mission planning, execution,
+  checks, Result, and Accept;
+- the approved Plan graph sits above WorkUnit/current-Attempt cards;
+- a mission-level Supervisor summary explains progress, drift, attention, and bounded
+  automatic steering;
+- each WorkUnit detail shows its current Attempt and persistent primary Codex thread;
+- raw provider transcript and native child activity stay in drill-down;
+- the daemon-owned MissionProjection supplies status and one true next action;
+- legacy Orchestrator/Worker and `ao` session screens remain compatibility/history views
+  until their removal gate, not the vNext information architecture.
 
 ## Aesthetic Direction
 
@@ -278,10 +274,10 @@ left rail stay name-only — no glyph.)
   (rename, restart, kill, claim PR — the `ao session …` commands).
 - **Right — orchestrator:** **+ New worker** → Terminal toggle → **⋯ menu**. No diff toggles.
 
-### Spawn-worker modal (mirrors the reference's Create Task)
+### WorkUnit release modal (historical spawn-worker visual reference)
 
 You mostly let the orchestrator spawn workers from its conversation; the manual paths
-(the topbar `+ New worker`, a project row's hover `+`, or `ao spawn`) open a modal that
+(the topbar `+ New work`, a WorkUnit row action, or legacy `ao spawn`) open a modal that
 mirrors the reference exactly. Launching from a project row pre-fills the Project field:
 
 - Centered dialog, **12px radius**, `max-w` ~512px, `bg` canvas, `ring-1` at 10% fg,

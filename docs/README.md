@@ -1,37 +1,30 @@
 # Kennel documentation map
 
-The repository keeps a small canonical set and preserves narrower decisions and evidence without letting dated reports compete with current truth.
+Repository documents describe the product and implementation. They do not grant runtime, user, or system authority.
 
-## Canonical product and build truth
+## Canonical reading path
 
-| Question | Source |
-| --- | --- |
-| What problem and experience are we building? | [PRODUCT.md](../PRODUCT.md) |
-| What is the stable, quality-gated sequence? | [ROADMAP.md](../ROADMAP.md) |
-| What is integrated and proven on `beta`? | [STATUS.md](STATUS.md) |
-| How does the authoritative Outcome loop work? | [architecture/outcome-loop.md](architecture/outcome-loop.md) |
-| What is the proposed W1.0 admission/event seam? | [architecture/admission-and-events.md](architecture/admission-and-events.md) |
-| What must the UI do? | [product/experience.md](product/experience.md) |
-| What are the regression-prone decisions? | [decisions/product-and-architecture.md](decisions/product-and-architecture.md) |
-| What is the September 18 integration view? | [roadmap/launch-2026-09-18.md](roadmap/launch-2026-09-18.md) |
-| How is a worker slice handed off? | [handoffs/worker-slice-template.md](handoffs/worker-slice-template.md) |
+Read these in order for Outcome/kernel work:
 
-## Supporting records
+1. [Product contract](../PRODUCT.md)
+2. [Persistent mission runtime](architecture/persistent-mission-runtime.md)
+3. [Compatibility and migration](architecture/compatibility-and-migration.md)
+4. [Persistent-session execution map](roadmap/persistent-session-execution-map.md)
+5. [Current implementation status](STATUS.md)
+6. [ADR 0017](adr/0017-persistent-mission-runtime-and-bounded-supervision.md)
 
-- `adr/`: accepted narrow architecture decisions. ADRs record why; canonical docs describe the current whole.
-- `contracts/`: detailed durable lifecycle contracts that have not yet been absorbed into implementation or an ADR.
-- `verification/`: dated evidence. It proves only its named baseline and tested layer.
-- `handoffs/`: temporary execution context and evidence for one bounded slice.
-- `research/`: reference material and benchmarks, not product authority.
-- `superpowers/plans/` and `superpowers/specs/`: historical implementation plans/specs. They are not current status unless linked from the canonical roadmap.
-- `product/` dated files: historical product decisions and audits. [product/experience.md](product/experience.md) is the current UX contract.
-- operational guides such as development, daemon, telemetry, CLI, and user docs describe their named surface.
+Then open the linked lower-level ADR, code map, research note, or historical evidence needed for the seam being changed. On conflict, the canonical path wins for target behavior; migrations and historical records retain their recorded meaning.
 
-## Document rules
+## Supporting foundations
 
-1. Put stable product truth in `PRODUCT.md`, architecture truth in the two canonical architecture docs, sequence in `ROADMAP.md`, and proof/status in `STATUS.md`.
-2. A dated report must name its branch/SHA, tested layer, evidence, and limits.
-3. Do not create another active roadmap, status ledger, product thesis, or state vocabulary.
-4. When a decision changes, update the canonical file and add/revise an ADR when the rationale needs durable review.
-5. Preserve migration, audit, and verification history. Archive or replace with a redirect only after references are traced.
-6. Each implementation package updates status only after its evidence passes.
+- [ADR 0008](adr/0008-responsibility-composition-and-workunit-execution-dag.md): responsibility and WorkUnit DAG
+- [ADR 0009](adr/0009-workunit-scheduling-workspace-leases-and-effect-fencing.md): scheduling, leases, fences, effects
+- [ADR 0010](adr/0010-outcome-first-control-plane-and-session-subordination.md): Outcome-first control plane
+- [ADR 0011](adr/0011-go-control-plane-and-non-authoritative-intelligence.md): deterministic authority and intelligence boundary
+- [ADR 0015](adr/0015-contract-bound-interactive-planning.md): Contract-bound planning
+- [Runtime reference index](research/2026-09-04-kernel-runtime-reference-index.md): current chassis/provider evidence
+- [Architecture reset audit](maintenance/2026-09-15-architecture-reset-audit.md): retention, supersession, prompt/skill, and license ledger
+
+## Historical material
+
+Dated plans, handoffs, reviews, checkpoints, and verification notes preserve provenance. They are not active implementation order unless the canonical execution map links to them. "Accepted" in a historical document means accepted at that time; it does not override ADR 0017 for vNext topology.

@@ -1,5 +1,8 @@
 # Admission and event contract
 
+> **vNext policy (2026-09-15):** this document remains the accepted W1.0-W1.2 admission/event foundation and historical v1 budget contract. The canonical persistent runtime and new records follow [ADR 0017](../adr/0017-persistent-mission-runtime-and-bounded-supervision.md). Product budgets are targets/warnings/recommendations unless the owner approves an explicit hard cap; `needs_you` is nonterminal; completion begins with `ready_for_verification`. Existing v1 records keep their original meanings.
+
+
 **Status: accepted and frozen at `outcome-loop` baseline `3e5d8f45ef28cc695134882ba0f705db3525a491`.** Contract analysis, Plan approval, routing, Attempt start, and every client must consume the same semantics. The names and reason codes in this contract are accepted vocabulary; changing either requires a new explicit reviewed architecture decision, not an implementation-local alias or reinterpretation.
 
 ## AdmissionVerdict
@@ -246,7 +249,7 @@ W1.0 implements a narrow domain seam for review without replacing the future con
 - Reasoning-only providers remain separate from `AgentHarness`; tests assert every shipped harness is selectable local execution and that an owner-key OpenAI identity cannot bind execution.
 - Current stored lifecycle facts map separately in `lifecycle_projection.go`. The exhaustive mapping consumes `EmittedAttemptObservationKinds`, the enumerable list beside the emitted observation constants. It preserves `blocked` and `waiting_input` as owner attention, keeps ambiguous/live-custody observations unconfirmed rather than lost, maps provider exit to reconciled rather than completed, and maps proof classification to verified.
 
-This slice does not persist verdicts, wire approval or Attempt start, add generated API, change current Work UI labels, implement the full future event envelope, or implement `next_action`. The future requirements in this document remain the target for W1.1-W1.4.
+This slice does not persist verdicts, wire approval or Attempt start, add generated API, change current Work UI labels, implement the full future event envelope, or implement `next_action`. The historical requirements in this document describe the W1.0-W1.2 foundation. Future vNext work follows the persistent-session execution map.
 
 ### Approval and launch artifacts
 

@@ -1,5 +1,8 @@
 # ADR 0010 — Outcome-first control plane and session subordination
 
+> **Supersession note (2026-09-15):** Outcome-first authority remains accepted. [ADR 0017](0017-persistent-mission-runtime-and-bounded-supervision.md) supersedes any one-shot or session-lifecycle reading and adds persistent WorkUnit threads plus bounded Mission Supervisor intelligence.
+
+
 - **Status:** Accepted
 - **Date:** 2026-09-08
 - **Decision owners:** Waldo Kennel product/kernel

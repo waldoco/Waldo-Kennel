@@ -1,5 +1,8 @@
 # Superseded: first Outcome slice
 
+> **Classification (2026-09-15):** Historical first-slice design; retained for provenance. Use the [canonical documentation map](../README.md).
+
+
 This document is no longer an active implementation contract. Its one-WorkUnit v0 shape is superseded by the canonical v1 distinction between responsibility decomposition and a WorkUnit execution DAG.
 
 Use:

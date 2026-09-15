@@ -1,5 +1,8 @@
 # Project Registration + Provider Admission Implementation Plan
 
+> **Superseded for vNext (2026-09-15):** Historical implementation plan; retained for provider-binding provenance. Use [persistent mission runtime](../../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 > **For implementers:** Execute this plan test-first. Preserve the canonical `Project -> Outcome -> ContractRevision -> PlanRevision -> WorkUnit -> Attempt -> AgentSessionRef` lineage and the five-provider surface (Codex, Claude Code, OpenCode, Cursor, Pi). Do not add hidden provider defaults or fallback chains.
 
 **Goal:** Make Project registration succeed independently of provider readiness, bind the exact worker provider into the immutable authorized WorkUnit, and make Attempt execution admit only that bound provider with truthful remediation when setup is incomplete.
