@@ -1,98 +1,108 @@
 # Persistent-session execution map
 
-- Status: only active dependency-ordered implementation map
+- Status: proposed reconciled dependency-ordered implementation map
 - Architecture: [persistent mission runtime](../architecture/persistent-mission-runtime.md)
+- Connection contract: [harness connection and authority](../architecture/harness-connection-and-authority.md)
 - Rule: architecture and documentation freeze first; no production cutover before independent review
 
 ```mermaid
 flowchart LR
- A[0 Architecture freeze] --> B[1 Native Codex substrate proof]
+ A[0 Contract freeze] --> B[1 Native Codex + compatibility proof]
  B --> C[2 Unified session controller]
- C --> D[3 S1 interactive extension]
- D --> E[4 Persistent-session cutover]
- E --> F[5 Context and Artifact Protocol]
- F --> G[6 Nonterminal attention]
- G --> H[7 Mission Supervisor protocol]
- H --> I[8 MissionProjection]
- I --> J[9 UI integration]
- J --> K[10 Serial packaged proof]
- K --> L[11 Cleanup and expansion]
+ C --> D[3 S1 + authenticated harness connection]
+ D --> E[4 Intake + installed mission entry]
+ E --> F[5 Persistent-session cutover]
+ F --> G[6 Artifact, integration + immutable verification]
+ G --> H[7 Nonterminal attention]
+ H --> I[8 Supervisor + failure isolation]
+ I --> J[9 MissionProjection]
+ J --> K[10 UI integration]
+ K --> L[11 Serial packaged proof]
+ L --> M[12 Cleanup and expansion]
 ```
 
-## 0. Architecture freeze
+## 0. Contract freeze
 
-Land the canonical runtime, compatibility policy, authority map, audit manifest, and this map. Independently review diagrams, terminology, historical compatibility, and implementation seams. Freeze event/command names and cardinality invariants before code work.
+Land the canonical runtime, compatibility policy, connection/authority contract, exact artifact-application rule, immutable verification rule, rework/staleness transitions, audit manifest, diagrams, repository guidance, and this map. Freeze command/event/state names, capability classes, coding profile, and cardinality invariants.
 
-Exit: no canonical document or repository-owned steering asset contradicts the accepted ontology.
+Exit: independent review maps every stated falsifier to an enforceable invariant and no canonical document or steering asset contradicts it.
 
-## 1. Native Codex substrate proof
+## 1. Native Codex and compatibility proof
 
-Prove `thread/start`, multiple `turn/start`, active-turn steering where supported, `turn/interrupt`, and fresh-process resume of the same thread. Record normalized events and provider/client IDs.
+Prove one real `codex_native_worktree_v1` loop in one persistent thread: inspect files, edit, run a failing test, repair, rerun successfully, receive owner steering, and continue. Also prove thread start, many turns, active steer, typed request/answer, interrupt, fresh-process resume, exact cwd/worktree, command/event/client/turn IDs, and restart behavior. Record inherited configuration/mission-skill provenance; prove filesystem confinement and explicit treatment of network-dependent commands.
 
-Exit: a repeatable test demonstrates persistence without an Outcome cutover.
+Resolve binary path, version, hash, protocol/capability fingerprint, and cloud/server provenance where applicable. The evidence wrapper fails on skip. Run against pinned and latest supported Codex where available.
+
+Exit: repeatable Linux deterministic evidence plus live packaged macOS evidence proves persistent native coding, not only chat or mocks; intended coding is admitted while undeclared filesystem/network/external effects fail closed.
 
 ## 2. Unified session controller
 
-Extend/reuse the Chat controller as sole writer for governed sessions. Add command generations, idempotency, event-cursor recovery, and acknowledged, rejected, and delivery-unknown states. Do not build a second session engine.
+Extend/reuse the Chat controller as sole writer for governed sessions. Add command generations, idempotency, event-cursor recovery, child-command tracking, and acknowledged/rejected/delivery-unknown states. Do not build a second session engine.
 
-Exit: concurrent callers, daemon restart, duplicate commands, and ambiguous delivery converge without duplicate effects.
+Exit: concurrent callers, restart, duplicates, ambiguous delivery, and surviving child commands converge without duplicate effects or false quiescence.
 
-## 3. S1 interactive extension
+## 3. S1 and authenticated harness connection
 
-Start from the source-accepted S1 implementation; its packaged macOS/runtime proof remains open. Carry authenticated owner identity through answer, steer, interrupt, cancel, and replace envelopes. Keep legacy routes as compatibility ingress until callers migrate.
+Extend S1 across answer, turn, steer, interrupt, cancel, replace, approval, and Accept. Implement discovery, signed/content-addressed adapter install or upgrade, one-time pairing, short-lived capability binding, capability check, token rotation, desktop-to-existing-daemon reconnect, and connected/degraded/action-needed states. Routine current-generation answers do not trigger native dialogs; material authority deltas do.
 
-Exit: source tests and packaged macOS/runtime evidence prove no stale or cross-Attempt command lands.
+Exit: an unpaired/spoofed/stale adapter cannot authorize or widen an action; reconnect preserves one mission without daemon restart; native confirmations occur exactly for material transitions; version drift produces a truthful repair state.
 
-## 4. Persistent-session cutover
+## 4. Intake and installed mission entry
 
-Add `persistent_codex_v1`. Admit one Codex WorkUnit Attempt into one exclusive worktree, one Kennel Session, and one persistent thread. Legacy one-shot rows remain read-only history.
+Implement multi-question Contract clarification and repeated follow-up rounds. Install/register the real mission skill/command, verify its digest and provider visibility, automatically send the first planning turn with the frozen Contract, schema-validate provider plans, and expose pending/delivered/approval-required/approved/error states.
 
-Exit: start, several turns, restart/resume, and clean completion claim work in one Attempt.
+Exit: packaged tests defeat the one-question limit, empty planning composer, docs-only command, missing provider verification, lost approval, and silent-error falsifiers.
 
-## 5. Context and Artifact Protocol
+## 5. Persistent-session cutover
 
-Implement durable, typed, versioned input and output manifests. Input manifests bind exact Contract, Plan, WorkUnit, project snapshot, profile/session generation, allowed facts, owner decisions, checks, effect limits, and named dependency artifacts. Select and redact context, preserve provenance, hash the canonical manifest, and record delivery acknowledgement or delivery unknown before retry.
+Add `persistent_codex_v1`. Admit one Codex WorkUnit Attempt into one exclusive worktree, one Session, one persistent thread, and the negotiated pinned profile. Legacy one-shot rows remain read-only history.
 
-Output manifests bind base/result revisions, changed files, API/schema decisions, checks, retained artifacts, risks, and handoff. A daemon verification pass freezes a content-addressed output. Every Plan edge names the exact frozen artifact/revision/decision passed downstream. No transcript, hidden reasoning, uncommitted worktree state, or mutable “latest” summary crosses an edge.
+Exit: start, many turns, restart/resume, reconnect, and clean completion claim work in one Attempt without changing the pinned harness/profile identity.
 
-Exit: restart, duplicate delivery, tamper, redaction, size-bound, stale-edge, and delivery-unknown tests converge on one exact downstream packet; failed checks cannot publish a verified output.
+## 6. Artifact, integration, and immutable verification
 
-## 6. Nonterminal attention
+Implement hashed input/output manifests. In the serial path, A starts from the approved source tree and every dependent starts from its verified predecessor result tree. Retain complete change sets for audit. Fan-in uses an explicit integration WorkUnit; conflicts stop for attention or Plan revision. Final checks and review bind the single frozen integrated-result tree.
 
-Implement `needs_you` as a nonterminal question generation with retained custody. Answer and resume the same thread. Repair cancel and explicit hard-stop paths so ambiguous effects reconcile instead of replaying provider Kill.
+On readiness, close active turns and child commands, fence writes, then make a content-addressed verification snapshot. Bind checks, evidence, publication, and owner review to it. Rework creates a new version and invalidates every consuming descendant through artifact edges.
 
-Exit: repeated restart at every boundary neither loses an answer nor duplicates a stop.
+Exit: restart, duplicate delivery, tamper, redaction, size, stale edge, conflict, moving-file, assembly, and delivery-unknown tests converge on one tree; A's API reaches B; separately passing units cannot publish an unchecked assembly.
 
-## 7. Mission Supervisor protocol
+## 7. Nonterminal attention
 
-Create one Supervisor thread per active Plan revision. Define typed daemon-to-Supervisor events and Supervisor-to-daemon recommendations/commands. The default automatic set is only context delivery and reversible guidance. Every automatic command must be on an explicit allowlist and bind the exact Plan, WorkUnit, approved profile, Attempt/session generation, budget bound, and idempotency key. It must use approved facts, stay inside unchanged scope/acceptance criteria/approach, and cause no external effect. Anything else is a recommendation for owner or Plan review.
+Implement `needs_you` as a retained-custody question generation. Answer and resume the same thread. Repair cancel/hard-stop paths so ambiguous effects reconcile rather than replaying Kill.
 
-Periodic summary is triggered only by a daemon-owned durable cadence event. The Supervisor never self-schedules, polls, or creates timers.
+Exit: repeated restart at every boundary neither loses an answer nor duplicates a stop, and routine answer delivery does not demand material-authority confirmation.
 
-Exit: capability tests prove the Supervisor can perform only the allowlisted in-scope actions and cannot change graph, scope, criteria, approach, authority, effects, replacement, or Accept.
+## 8. Supervisor protocol and failure isolation
 
-## 8. MissionProjection
+Create one Supervisor thread per active Plan revision with typed events and commands. Keep automatic action to allowlisted context delivery and reversible in-scope guidance. Failed-check auto-rework is allowed only when the approved Plan grants that class, authority/profile/effects are unchanged, budget remains, and exact evidence is attached.
 
-Build one durable projection from canonical state: Outcome, revisions, DAG, WorkUnits/current Attempts, attention, Supervisor summary/recommendations, checks, evidence, Result, and one true next action. Include truthful legacy badges.
+Treat crash, context exhaustion, timeout, malformed output, or unavailable Supervisor as a degraded advisory component. The daemon and owner paths continue; recovery rebuilds from canonical events.
 
-Exit: projection rebuild after restart is stable and does not depend on live transcripts.
+Exit: capability and fault-injection tests prove the Supervisor cannot change graph/scope/criteria/authority/effects/replacement/Accept, stale descendants cannot survive upstream rework, and healthy work/owner answer-stop-review remains usable without the Supervisor.
 
-## 9. UI integration
+## 9. MissionProjection
 
-Use the existing Work shell. Present one continuous timeline with internal Contract, planning, Supervisor, and worker boundaries; graph above WorkUnit/current-Attempt Kanban; session detail on drill-down; raw provider transcript below that.
+Build one durable projection from canonical state, including connection/compatibility state, immutable snapshot and artifact lineage, stale descendants, Supervisor degradation, attention, checks, evidence, Result, and one true next action. Include truthful legacy badges.
 
-Exit: desktop and plugin paths show the same projection and authority; keyboard, empty, loading, stale, error, and attention states pass review.
+Exit: restart rebuild is stable and does not depend on live transcripts.
 
-## 10. Serial packaged proof
+## 10. UI integration
 
-Run a real three-WorkUnit Codex Outcome serially. Prove manifests, exact artifact handoff, bounded automatic guidance, `needs_you`, steering, daemon/app-server restart, failed-check same-thread rework, verified Result, and owner Accept. Package install, launch, and rollback evidence.
+Use the existing Work shell. Present one timeline with internal conversation boundaries, graph above current Attempts, drill-down session detail, raw transcript below, and clear connection/pending/error/authority-delta states.
 
-Exit: clean-machine dogfood and independent review pass.
+Exit: desktop and plugin show the same projection and authority; reconnect, keyboard, empty, loading, stale, degraded, error, attention, confirmation, and no-confirmation routine-answer states pass visual review.
 
-## 11. Cleanup and expansion
+## 11. Serial packaged proof
 
-Only after the packaged proof: remove one-shot production paths historical readers do not need; delete compatibility ingress after observed migration; enable independent-worktree concurrency; expand controlled child-agent observation; consider other providers from proven protocol needs; tune budget advice from measurements.
+Run a clean-machine three-WorkUnit Codex Outcome serially. Prove install/discovery/pairing, compatibility state, multi-round intake, automatic `/mission`, Plan approval, native coding loop, exact predecessor-tree handoff, conflict behavior, immutable checks, bounded supervision, `needs_you`, steering, desktop/daemon/app-server restart and reconnect, failed-check rework with stale-descendant invalidation, Supervisor failure, checked integrated Result, owner Accept, adapter/harness upgrade and rollback.
+
+Exit: complete dogfood evidence and independent review pass with no skip and every falsifier exercised.
+
+## 12. Cleanup and expansion
+
+Only after packaged proof: remove one-shot production paths historical readers do not need; remove compatibility ingress after observed migration; enable independent-worktree concurrency; expand controlled child-agent observation; add other providers one at a time through the same discovery/pairing/capability contract; tune budgets from measurements.
 
 ## Explicit deferrals
 
-No provider-neutral persistent-session abstraction, swarm scheduler, global forever Supervisor, transcript sharing, speculative context lake, aggressive default token stop, or wholesale UI rewrite belongs before the serial proof.
+No provider-neutral persistent-session abstraction, swarm scheduler, global forever Supervisor, transcript sharing, speculative context lake, aggressive default token stop, silent auto-update across active missions, or wholesale UI rewrite belongs before serial proof.

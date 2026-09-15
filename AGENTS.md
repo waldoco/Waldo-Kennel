@@ -28,8 +28,11 @@ Historical plans, handoffs, and verification notes are evidence, not current imp
 - New execution is Codex-first and serial until the packaged proof passes.
 - Legacy one-shot Attempts are read-only historical execution. Never reinterpret or resume them into vNext.
 - Never delete a migration that may have run.
-- Skills, hooks, plugins, and compatibility CLIs are thin ingress/sensors/adapters, not schedulers, databases, or authority.
+- Skills, hooks, plugins, and compatibility CLIs are thin paired ingress/sensors/adapters, not schedulers, databases, or authority. They may propose or transport authenticated owner input; they never self-authorize. Follow `docs/architecture/harness-connection-and-authority.md`.
+- Verification begins only after active turns and tracked child commands settle and writes are fenced. Each check and WorkUnit publication binds the exact WorkUnit snapshot it attests; the integrated Result, final checks, and owner review bind a distinct integrated snapshot plus ordered input lineage.
+- In the serial path, a dependent starts from the exact verified predecessor tree. Fan-in and final checks operate on an explicit integrated-result tree.
+- Supervisor failure must not block deterministic work or authenticated owner answer, stop, evidence review, or Accept paths.
 
 ## Engineering standard
 
-Write the smallest production slice that closes a canonical gate. Use typed state and events, durable idempotency, ownership/fencing, explicit recovery, race tests, and evidence. Native development commands stay inside the assigned worktree; external effects follow separately recorded authority.
+Write the smallest production slice that closes a canonical gate. Use typed state and events, durable idempotency, ownership/fencing, explicit recovery, race tests, and evidence. Native development commands stay inside the assigned worktree under the negotiated coding profile; network-dependent commands follow the profile and external effects follow separately recorded authority. A harness version or cloud capability change never silently mutates an active Attempt.

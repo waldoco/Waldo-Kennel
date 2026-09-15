@@ -8,10 +8,11 @@ Read these in order for Outcome/kernel work:
 
 1. [Product contract](../PRODUCT.md)
 2. [Persistent mission runtime](architecture/persistent-mission-runtime.md)
-3. [Compatibility and migration](architecture/compatibility-and-migration.md)
-4. [Persistent-session execution map](roadmap/persistent-session-execution-map.md)
-5. [Current implementation status](STATUS.md)
-6. [ADR 0017](adr/0017-persistent-mission-runtime-and-bounded-supervision.md)
+3. [Harness connection and authority](architecture/harness-connection-and-authority.md)
+4. [Compatibility and migration](architecture/compatibility-and-migration.md)
+5. [Persistent-session execution map](roadmap/persistent-session-execution-map.md)
+6. [Current implementation status](STATUS.md)
+7. [ADR 0017](adr/0017-persistent-mission-runtime-and-bounded-supervision.md)
 
 Then open the linked lower-level ADR, code map, research note, or historical evidence needed for the seam being changed. On conflict, the canonical path wins for target behavior; migrations and historical records retain their recorded meaning.
 

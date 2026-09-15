@@ -42,18 +42,21 @@ Codex proposes and executes. The daemon authorizes, schedules, records, checks, 
 
 ```mermaid
 flowchart LR
-    UI[Desktop / Web / CLI] -->|typed owner command| S1[S1 local owner command authority]
-    PL[Thin plugins, skills, hooks] -->|typed ingress or sensor event| S1
-    S1 -->|authenticated command| D[(Kernel daemon + durable store)]
+    UI[Authenticated owner surface] -->|owner proof + typed content| S1[S1 owner authority]
+    PL[Paired adapter] -->|adapter-authenticated transport only| S1
+    S1 -->|owner-authenticated command or proposal-only ingress| D[(Kernel daemon + durable store)]
     D -->|mission event packet| MS[Persistent Mission Supervisor thread]
     MS -->|typed recommendation or bounded steering command| D
     D -->|authorized session command| SC[Unified session controller]
-    SC --> A1[Attempt A: exclusive worktree + primary Codex thread]
-    SC --> B1[Attempt B: exclusive worktree + primary Codex thread]
+    SC --> PA[Attempt A negotiated coding profile]
+    SC --> PB[Attempt B negotiated coding profile]
+    PA --> A1[Attempt A: exclusive worktree + primary Codex thread]
+    PB --> B1[Attempt B: exclusive worktree + primary Codex thread]
     A1 -->|events, claim, artifacts| SC
     B1 -->|events, claim, artifacts| SC
     SC --> D
-    D -->|MissionProjection| UI
+    D -->|MissionProjection + capability state| UI
+    D -->|connected / degraded / action needed| PL
 ```
 
 The Supervisor and daemon are deliberately coupled through a typed protocol, not shared memory or hidden control:
@@ -97,16 +100,23 @@ A material Plan revision gets a fresh Supervisor thread seeded from canonical re
 flowchart LR
     CR[Contract rev] --> IM[Input manifest]
     PR[Plan rev] --> IM
-    PS[Project snapshot] --> IM
+    PS[Source tree snapshot] --> IM
     OD[Applicable owner decisions] --> IM
-    UP[Verified upstream output manifest] --> IM
+    UP[Verified predecessor output + snapshot lineage] --> IM
     IM -->|version + hash| A[Attempt / Codex thread]
     A --> OM[Output manifest]
-    OM --> CK[Daemon checks]
-    CK -->|pass| VO[Verified frozen output]
-    CK -->|fail evidence| RW[Same-thread rework]
-    RW --> OM
+    OM --> ST[Settle active turn + tracked child commands]
+    ST --> FW[Fence worker writes]
+    FW --> VS[WorkUnit immutable verification snapshot]
+    VS --> CK[Daemon checks]
+    CK -->|pass: attest this snapshot| VO[Verified WorkUnit output]
+    CK -->|eligible under approved Plan| RW[Same-thread rework]
+    CK -->|not eligible| OR[Owner decision or Plan review]
+    RW --> OM2[New output version; stale consumers]
     VO -->|exact Plan edge| DIM[Dependent input manifest]
+    VO --> IR[Integration WorkUnit]
+    IR --> IS[Distinct immutable integrated snapshot]
+    IS --> FC[Final checks + owner review attest integrated snapshot]
 ```
 
 Before a session starts, the daemon compiles and hashes an input manifest containing the exact Contract and Plan revisions, WorkUnit goal and criteria, approved project snapshot, relevant facts and artifacts, applicable owner decisions, profile/worktree/effect limits, checks, and expected evidence. Codex receives a readable packet; the manifest remains canonical.
@@ -158,17 +168,23 @@ sequenceDiagram
     participant MS as Mission Supervisor
     actor U as Owner
     W->>D: ready_for_verification + output manifest
-    D->>D: freeze claim and run approved checks
-    alt checks fail
-        D->>MS: failed-check evidence
-        MS->>D: bounded rework recommendation
-        D->>W: same-thread rework turn
+    D->>D: settle active turn and tracked children
+    D->>D: fence writes; create immutable WorkUnit snapshot
+    D->>D: run approved checks against that snapshot
+    alt checks fail and Plan preauthorizes this rework class
+        D->>MS: failed-check evidence for recommendation
+        MS-->>D: optional bounded recommendation
+        D->>W: same-thread rework; create new output version
+        D->>D: stale every consuming descendant
+    else checks fail and rework is not preauthorized
+        D->>U: owner decision or Plan review required
     else checks pass
-        D->>D: verify WorkUnit and release ready dependents
-        D->>MS: verified output event
+        D->>D: attest WorkUnit snapshot and release ready dependents
+        D->>MS: verified output + snapshot lineage event
     end
-    D->>D: assemble Result when required WorkUnits verify
-    D->>U: Result + evidence + one true next action
+    D->>D: integration WorkUnit creates distinct integrated snapshot
+    D->>D: final checks attest integrated snapshot and input lineage
+    D->>U: Result + evidence + exact reviewed snapshot + one true next action
     U->>D: Accept / request rework / revise Plan
 ```
 
@@ -221,3 +237,41 @@ This architecture applies only to new vNext execution records after cutover. His
 ## Rendered review companions
 
 GitHub renders every Mermaid block above. Repository-authored SVG companions for offline and independent visual review are indexed at [architecture review diagrams](../assets/review/README.md). They are review views of this document, not a second architecture source.
+
+## Immutable verification snapshot
+
+`ready_for_verification` first closes worker write custody. The controller interrupts or settles the active turn, proves all tracked child commands have exited, and fences the worktree against further worker writes. Only then does the daemon create a content-addressed verification snapshot containing the exact tree, base revision, output-manifest hash, dependency artifact versions, approved check set, and profile. Checks run against that immutable snapshot, not the worker's mutable checkout.
+
+Each check result, WorkUnit verification, published WorkUnit output, and its evidence name the exact WorkUnit snapshot digest they attest. Each WorkUnit has its own snapshot digest. The integrated Result has a distinct integrated snapshot digest plus the ordered input-lineage digests; final checks, its published change list, and owner review name that integrated snapshot. If any input changes, verification is stale and cannot be reused. Rework reopens custody in the same Attempt where permitted, produces a new output version and snapshot, and invalidates the affected verification lineage. A file change during checks either cannot reach the snapshot or fails the fence; it can never be published under an earlier pass.
+
+## Serial artifact application and integrated result
+
+For the first serial proof, every WorkUnit input names a source commit and complete source tree digest. WorkUnit A starts from the approved project snapshot. Each dependent WorkUnit starts from the verified predecessor result tree, not from an independent checkout plus a partial patch. A complete content-addressed change set is retained for audit and recovery, but the verified tree is the execution input.
+
+A dependency fan-in is an explicit integration WorkUnit. It applies complete verified change sets in declared edge order onto a named base. A conflict stops integration and creates attention or a Plan-revision proposal; Kennel never guesses a merge. The integration WorkUnit publishes the single integrated-result tree. Final checks and owner review run against that distinct integrated snapshot and retain the exact ordered WorkUnit input lineage. No separately passing unit can substitute for an assembled result that has not passed its own checks.
+
+When an upstream verified output is replaced, the daemon walks artifact-consumption edges and marks every consuming input, descendant verification, integration result, and applicable final check stale. Stale descendants cannot release work or appear as verified. They must rebase/reapply and verify against the new version, or remain historical under the older lineage.
+
+## Native coding profile
+
+The first Codex substrate proof uses a named `codex_native_worktree_v1` profile: repository inspection, admitted file edits, shell development commands, failing-test observation, repair, rerun, owner steering, and continued work in one persistent thread. It inherits only reviewed Kennel mission skill/configuration plus explicitly approved project instructions; provenance and hashes are recorded.
+
+Filesystem writes are confined to the leased worktree and declared temporary/cache locations. Repository-local development commands are allowed by the profile. Network-dependent package installs, downloads, remote tests, or service calls are denied unless the approved profile names their hosts and effect class; they are recorded separately from ordinary local checks. Deploy, publish, merge, message, payment, and other external effects always require distinct authority.
+
+## Intake and mission entry
+
+Contract intake supports multiple clarification questions in one request and repeated follow-up rounds until the owner freezes a Contract revision. Starting `/mission` automatically opens a fresh planning thread and sends the first planning turn with the frozen Contract and project context. The installed mission skill/command is a tested runtime artifact, not documentation: Kennel verifies its digest, provider visibility, command registration, and capability handshake before it offers mission start.
+
+Planning shows explicit pending, delivered, approval-required, approved, and error states. Provider output is schema-validated and source-attributed consistently; an empty composer, one-question cap, missing command, or unverified provider response blocks the gate rather than degrading silently.
+
+## Rework and Supervisor failure semantics
+
+A failed approved check permits automatic same-thread rework only when the current Plan explicitly grants that rework class, the coding profile and authority do not widen, no external effect is added, the rework budget remains, and the exact failed evidence is attached. Otherwise the Supervisor may recommend rework but the owner or a Plan revision must authorize it.
+
+Owner-requested change after Result assembly creates a new rework revision. The daemon identifies affected WorkUnits and descendants from artifact lineage, marks the assembled Result superseded, preserves the old evidence, and executes only an approved revised graph. Acceptance never migrates to the new Result.
+
+The Mission Supervisor is optional for safety and liveness. If it crashes, reaches context limits, times out, or emits an invalid recommendation, the daemon records the fault, rejects unusable commands, and continues deterministic scheduling, command delivery, checks, projection, and recovery. Healthy workers may finish. The owner may still answer, steer, stop, inspect evidence, request rework, and Accept. Supervisor recovery starts from canonical events and summaries, never hidden transcript state.
+
+## Harness connection
+
+Installation, plugin/skill pairing, reconnect, propose-versus-authorize rules, and version drift are specified in [Harness connection and authority](harness-connection-and-authority.md). A thin adapter is not trusted because it is installed; it must negotiate capabilities and authenticate to the daemon. Desktop reconnection attaches to durable mission state without restarting a healthy daemon.

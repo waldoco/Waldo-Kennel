@@ -43,13 +43,15 @@ The Mission Supervisor is the mission-level intelligence layer coupled to the de
 - `needs_you` waits in the same Attempt/session/thread.
 - A finished turn or exited process is not completion. A worker claims readiness; Kennel runs checks.
 - Replacement is explicit or follows proven irrecoverability.
-- Native development work happens in an exclusive worktree. External effects require separate authority.
+- Native development work happens in an exclusive worktree under a negotiated coding profile. External effects require separate authority.
+- Verification binds an immutable tree after worker and child-command write custody is closed; publication and owner review use that same tree.
+- Installed harness adapters are paired and capability-checked. They may propose; only Kennel’s authenticated owner path may authorize material changes.
 - Budgets guide warnings and recommendations. Hard limits are explicit, not arbitrary defaults.
 - New execution is Codex-first and persistent. Historical one-shot Attempts remain readable under their original model.
 
 ## Readiness standard
 
-The first shippable loop is one clean-machine, serial, three-WorkUnit Codex Outcome that proves planning, approval, persistent turns, bounded automatic supervision, attention and answer, daemon/app-server restart, artifact handoff, failed-check rework, verified Result, owner Accept, and rollback. Parallel independent worktrees and other providers follow this proof.
+The first shippable loop is one clean-machine, serial, three-WorkUnit Codex Outcome that proves installation/pairing, multi-round intake, automatic mission planning, approval, a native inspect-edit-fail-repair-test loop, persistent turns, bounded automatic supervision, attention and answer without confirmation spam, desktop/daemon/app-server restart and reconnect, exact predecessor-tree handoff, immutable verification, stale-lineage rework, Supervisor failure tolerance, verified integrated Result, owner Accept, harness drift handling, and rollback. Parallel independent worktrees and other providers follow this proof.
 
 ## Decision rule
 

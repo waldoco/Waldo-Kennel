@@ -10,3 +10,6 @@ These repository-authored SVGs are rendered review companions for the Mermaid di
 - [Completion/check/rework/Accept](diagrams/completion.svg)
 - [Restart/recovery](diagrams/restart.svg)
 - [Dependency-ordered execution map](diagrams/roadmap.svg)
+
+- [Harness installation, pairing, and reconnect](diagrams/harness-connection.svg)
+- [Immutable verification and artifact lineage](diagrams/verification-lineage.svg)

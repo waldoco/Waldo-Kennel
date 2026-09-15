@@ -23,3 +23,7 @@ Workers exchange versioned artifacts and decisions through explicit Plan edges, 
 - Add context/input/output manifests, capability checks, execution-model generation, and reconciliation evidence.
 - Keep the first proof serial and Codex-only; concurrency and other providers follow evidence.
 - Update repository documentation and steering assets so this ADR and its linked architecture are the sole target.
+
+## 2026-09-15 review reconciliation
+
+The implementation contract adds five constraints without changing the chosen topology: paired and capability-negotiated harness adapters; a native coding loop in the first substrate proof; exact predecessor-tree application and an explicit integration WorkUnit; immutable verification snapshots after write custody closes; and deterministic stale-lineage/rework plus Supervisor-failure transitions. Ordinary authenticated continuation does not require repeated native confirmation, while material authority changes do. These constraints close review falsifiers; they do not grant plugins or the Supervisor authority.

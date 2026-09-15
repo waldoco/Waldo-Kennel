@@ -30,8 +30,11 @@ These facts remain readable and testable. They are not design authority for new 
 - Separate Contract and fresh `/mission` planning threads in one UI timeline.
 - One Mission Supervisor thread per active Plan revision.
 - One WorkUnit Attempt = one exclusive worktree lease = one Kennel Session = one persistent primary Codex thread with many turns.
-- Typed daemon/Supervisor event and command protocol with bounded automatic steering.
-- Versioned, hashed input/output manifests and explicit artifact handoff.
+- Typed daemon/Supervisor event and command protocol with bounded automatic steering and failure isolation.
+- Paired, capability-negotiated harness adapters with install/upgrade, reconnect, and connected/degraded/action-needed states.
+- Multi-round Contract intake and a verified installed mission command with automatic first planning turn.
+- A named native coding profile proving inspect/edit/fail/repair/rerun/steer with explicit filesystem/network/effect limits.
+- Versioned, hashed input/output manifests, verified predecessor-tree handoff, explicit integration, immutable verification snapshots, and mechanical stale-lineage invalidation.
 - Nonterminal `needs_you` with same-thread answer/resume.
 - Acknowledged/reconciled answer, steer, cancel, and hard-stop effects.
 - Explicit readiness claim, daemon checks, same-thread rework, and owner Accept.
@@ -44,4 +47,4 @@ W1.0-W1.2 remain accepted foundations. S1 is source-accepted, with its packaged 
 
 ## Current gate
 
-Architecture/documentation reset and independent review are in progress. Code implementation, deletion, and push are paused until review accepts the canonical package. The preserved W1.3 nonterminal contract patch is evidence/input, not an accepted patch or active implementation order.
+The architecture is retained, but final review reconciliation for verification snapshots, artifact application, authenticated harness connection, native coding compatibility, mission entry, and rework/failure transitions is in progress. Code implementation, deletion, and push are paused until review accepts the canonical package. The preserved W1.3 nonterminal contract patch is evidence/input, not an accepted patch or active implementation order.

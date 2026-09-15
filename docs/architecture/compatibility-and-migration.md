@@ -49,3 +49,9 @@ S1 is the source-accepted owner-command authority boundary; packaged macOS/runti
 5. MissionProjection renders both historical and vNext records truthfully.
 6. A serial packaged Outcome passes restart, attention, check, rework, and Accept tests.
 7. Independent review accepts the patch and migration/rollback evidence.
+
+## Harness and adapter compatibility
+
+Harness compatibility is negotiated independently of stored execution-model compatibility. Every Attempt records harness kind, local binary or cloud endpoint identity, resolved version, protocol/capability fingerprint, adapter/skill digest, coding profile, and compatibility-manifest revision. Active Attempts pin these values. An automatic harness or cloud update cannot mutate them in place.
+
+The packaged support matrix covers oldest supported, current pinned, and latest available versions. Unknown versions are admitted only when required capability probes pass and policy permits that exact fingerprint; otherwise Kennel shows `degraded` or `action needed`. Adapter updates are signed or content-addressed, rollback-capable, and cannot reinterpret historical commands or evidence.
