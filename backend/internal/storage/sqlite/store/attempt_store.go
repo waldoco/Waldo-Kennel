@@ -653,19 +653,19 @@ func attemptFenceFromRow(row gen.AttemptFence) domain.AttemptFence {
 // and treats an exact sequence replay as idempotent.
 func (s *Store) AppendAttemptExecutionUsage(ctx context.Context, sample domain.ExecutionUsageSample) (domain.ExecutionUsageSample, bool, error) {
 	if err := sample.ValidateCumulative(); err != nil {
-		return domain.ExecutionUsageSample{}, false, err
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
-		return domain.ExecutionUsageSample{}, false, err
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
 	}
 	defer tx.Rollback()
 	var pi, po, ps int64
 	err = tx.QueryRowContext(ctx, `SELECT sequence,cumulative_input_tokens,cumulative_output_tokens FROM attempt_execution_usage WHERE attempt_id=? AND provider=? AND session_id=? ORDER BY sequence DESC LIMIT 1`, sample.AttemptID, sample.Provider, sample.SessionID).Scan(&ps, &pi, &po)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return domain.ExecutionUsageSample{}, false, err
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
 	}
 	if err == nil {
 		if sample.Sequence == ps && sample.InputTokens == pi && sample.OutputTokens == po {
@@ -681,14 +681,14 @@ func (s *Store) AppendAttemptExecutionUsage(ctx context.Context, sample domain.E
 	}
 	var status domain.AttemptStatus
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM attempts WHERE id=?`, sample.AttemptID).Scan(&status); err != nil {
-		return domain.ExecutionUsageSample{}, false, err
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
 	}
 	if status != domain.AttemptRunning {
 		return domain.ExecutionUsageSample{}, false, fmt.Errorf("execution usage attempt is not running")
 	}
 	var claimed int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM attempt_budget_stops WHERE attempt_id=?`, sample.AttemptID).Scan(&claimed); err != nil {
-		return domain.ExecutionUsageSample{}, false, err
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
 	}
 	if claimed > 0 {
 		return domain.ExecutionUsageSample{}, false, fmt.Errorf("execution usage budget stop already claimed")
@@ -697,12 +697,19 @@ func (s *Store) AppendAttemptExecutionUsage(ctx context.Context, sample domain.E
 	sample.OutputDelta = sample.OutputTokens - po
 	_, err = tx.ExecContext(ctx, `INSERT INTO attempt_execution_usage(attempt_id,provider,session_id,sequence,cumulative_input_tokens,cumulative_output_tokens,input_delta,output_delta,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, sample.AttemptID, sample.Provider, sample.SessionID, sample.Sequence, sample.InputTokens, sample.OutputTokens, sample.InputDelta, sample.OutputDelta, sample.CreatedAt)
 	if err != nil {
-		return domain.ExecutionUsageSample{}, false, err
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
 	}
 	if err = tx.Commit(); err != nil {
-		return domain.ExecutionUsageSample{}, false, err
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
 	}
 	return sample, true, nil
+}
+
+func classifyExecutionUsageError(err error) error {
+	if isSQLiteBusy(err) {
+		return &ports.ExecutionUsageBusyError{Err: err}
+	}
+	return err
 }
 
 func (s *Store) WorkUnitExecutionUsage(ctx context.Context, unitID domain.WorkUnitID) (domain.ExecutionUsageTotals, error) {

@@ -750,6 +750,9 @@ func (f *attemptFakeStore) ClaimAttemptBudgetStop(_ context.Context, claim domai
 		f.budgetStops = map[domain.AttemptID]domain.AttemptBudgetStop{}
 	}
 	if old, ok := f.budgetStops[claim.AttemptID]; ok {
+		if old.SessionID != claim.SessionID || old.Reason != claim.Reason {
+			return old, false, errors.New("attempt budget stop claim conflicts with durable claim")
+		}
 		return old, false, nil
 	}
 	f.budgetStops[claim.AttemptID] = claim
@@ -758,7 +761,16 @@ func (f *attemptFakeStore) ClaimAttemptBudgetStop(_ context.Context, claim domai
 func (f *attemptFakeStore) RecordAttemptBudgetProviderStopped(_ context.Context, id domain.AttemptID, session string, reason domain.RuntimeBudgetReasonCode, result string, at time.Time) (domain.AttemptBudgetStop, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	x := f.budgetStops[id]
+	x, ok := f.budgetStops[id]
+	if !ok || x.SessionID != session || x.Reason != reason {
+		return domain.AttemptBudgetStop{}, errors.New("budget machine stop result conflicts with durable claim")
+	}
+	if x.ProviderStoppedAt != nil {
+		if !domain.CanonicalJSONEqual(x.MachineResult, result) {
+			return x, errors.New("budget machine stop result conflicts with durable result")
+		}
+		return x, nil
+	}
 	x.ProviderStoppedAt = &at
 	x.MachineResult = result
 	f.budgetStops[id] = x

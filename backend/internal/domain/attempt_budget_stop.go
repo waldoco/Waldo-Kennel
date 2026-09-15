@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -39,3 +40,27 @@ func (s AttemptBudgetStop) Validate() error {
 	return nil
 }
 func (s AttemptBudgetStop) ProviderStopped() bool { return s.ProviderStoppedAt != nil }
+
+// CanonicalJSON preserves integer precision while normalizing object key order.
+// Budget evidence uses exact counters, so decoding through float64 is forbidden.
+func CanonicalJSON(raw string) (string, error) {
+	dec := json.NewDecoder(bytes.NewBufferString(raw))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		return "", err
+	}
+	if dec.More() {
+		return "", fmt.Errorf("multiple JSON values")
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+func CanonicalJSONEqual(left, right string) bool {
+	a, e1 := CanonicalJSON(left)
+	b, e2 := CanonicalJSON(right)
+	return e1 == nil && e2 == nil && a == b
+}

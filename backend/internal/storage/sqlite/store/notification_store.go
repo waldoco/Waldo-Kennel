@@ -285,6 +285,14 @@ func isSQLiteUnique(err error) bool {
 	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
 }
 
+func isSQLiteBusy(err error) bool {
+	var sqliteErr *moderncsqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	return sqliteErr.Code()&0xff == sqlite3.SQLITE_BUSY || sqliteErr.Code()&0xff == sqlite3.SQLITE_LOCKED
+}
+
 func notificationFromGen(row gen.Notification) domain.NotificationRecord {
 	return domain.NotificationRecord{
 		ID:         row.ID,

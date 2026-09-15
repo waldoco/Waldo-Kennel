@@ -42,6 +42,14 @@ type AttemptAdmission struct {
 	RetryLimit          *int
 }
 
+// ExecutionUsageBusyError identifies transient SQLite contention separately from semantic counter refusal.
+type ExecutionUsageBusyError struct{ Err error }
+
+func (e *ExecutionUsageBusyError) Error() string {
+	return "execution usage store busy: " + e.Err.Error()
+}
+func (e *ExecutionUsageBusyError) Unwrap() error { return e.Err }
+
 // AttemptRetryBudgetExceededError means a new row was refused atomically; no execution budget was consumed.
 type AttemptRetryBudgetExceededError struct {
 	WorkUnitID    domain.WorkUnitID

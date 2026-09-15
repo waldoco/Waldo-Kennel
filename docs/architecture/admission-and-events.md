@@ -287,3 +287,17 @@ Workspace-bound packets carry typed canonical LaunchFacts rather than an opaque 
 `LaunchPrepared` is machine proof only for an exact W1.1-admitted Plan/WorkUnit with durable verdict/spec evidence and no bound session or launch packet. A no-packet Attempt with any bound session is classified legacy and retains beta liveness/stop-proof custody semantics; packet absence alone can never release a possibly live legacy writer.
 
 Legacy/unknown launch state never treats owner confirmation as provider-stop proof. Reconcile and replace require machine-terminated bound-session evidence, including for succeeded Attempts with complete retained results. An unavailable admission store classifies as legacy/unknown, never prepared.
+
+### Runtime budget evidence
+
+`execution_usage` is an ordered Attempt observation of one accepted provider cumulative-counter sample and its persisted delta. It is execution accounting only, never planning or IntelligenceRun usage.
+
+`budget_exceeded` is terminal Attempt evidence written only after a durable stop claim and a durable machine proof that the bound provider session stopped. The same atomic write marks the Attempt `failed` and releases custody.
+
+Runtime budget reasons are stable machine codes:
+
+- `retry_budget_exhausted`: a replacement was refused before an Attempt row or fence was created.
+- `token_budget_exhausted`: the accepted WorkUnit-lineage execution counters reached the token limit.
+- `wall_time_budget_exhausted`: the Attempt reached its wall-time limit.
+
+These are runtime facts, distinct from admission-time missing-budget and policy-ceiling reason codes. A counter reset within the same provider/session stream is refused; a replacement or newly bound provider session starts a distinct stream identity.
