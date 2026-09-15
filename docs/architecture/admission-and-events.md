@@ -1,6 +1,6 @@
 # Admission and event contract
 
-**Status: proposed W1.0 contract.** This document freezes the review seam before implementation. Names may change during W1.0 review, but Contract analysis, Plan approval, routing, Attempt start, and every client must consume the same semantics.
+**Status: accepted and frozen at `outcome-loop` baseline `3e5d8f45ef28cc695134882ba0f705db3525a491`.** Contract analysis, Plan approval, routing, Attempt start, and every client must consume the same semantics. The names and reason codes in this contract are accepted vocabulary; changing either requires a new explicit reviewed architecture decision, not an implementation-local alias or reinterpretation.
 
 ## AdmissionVerdict
 
