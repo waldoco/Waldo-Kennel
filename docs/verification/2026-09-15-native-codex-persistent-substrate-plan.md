@@ -26,6 +26,7 @@ These are code and pipe-test facts. Existing live tests prove one turn, fresh-pr
 ## Smallest change
 
 Extend `live_test.go` with one opt-in test, `TestLivePersistentCodexSubstrate`. It:
+- creates the tiny Go fixture directly from typed harness-owned bytes before model work begins, so shell/model quoting cannot replace the intended assertion failure with a compile failure;
 
 1. creates a seed repository and one actual detached disposable `git worktree`;
 2. resolves and records the installed version, negotiated protocol digest, generated schema version/digest, capability degradation, named `codex_native_worktree_v1` profile-instruction hash, and inherited skill inventory hash;
@@ -39,7 +40,7 @@ Extend `live_test.go` with one opt-in test, `TestLivePersistentCodexSubstrate`. 
 10. reads history twice and requires byte-identical ordered event IDs, nonempty uniqueness, and exact started/user/completed plus client-ID facts for the coding, boundary, and interrupt turns;
 11. starts another command turn after resume and writes a filesystem result derived from the earlier turn.
 
-The existing `TestLiveSteerKeepsTheTurnAndItsWork` stays part of the proof command. It now uses an actual detached worktree and the same workspace-write posture. It proves steering preserves the active turn ID, keeps in-flight work until the agent reacts, carries a client ID, does not become interrupt-and-resend, and accepts a new command turn afterward in the same thread.
+The existing `TestLiveSteerKeepsTheTurnAndItsWork` stays part of the proof command. It uses an actual detached worktree and the same workspace-write posture. It proves `turn/steer` appends guidance to the active thread/turn, preserves that turn ID, observably incorporates the guidance into subsequent model work, carries a client ID where provider history preserves it, emits no second turn start, and accepts a new command turn afterward in the same thread. It does not require steering to cancel an already-running child command; the separate `turn/interrupt` proof owns active-command cancellation.
 
 Typed request/answer remains a deterministic pipe/conformance gate, because a real model cannot be relied on to ask a specific question. A captured `item/tool/requestUserInput` frame must emit `ChatEventInputRequested` with question IDs, options, descriptions, `isSecret`/`isOther`, password/free-text semantics, and typed form schema; the exact raw `answers` object must return to the provider; repeat and stale resolution must return `ErrChatRequestNotPending`. The live proof fails on any unexpected request. Protocol negotiation and native runtime-companion viability are separate gates: the wrapper first resolves production's canonical runtime identity and runs `TestLiveCodexRuntimeCanary` alone before the longer journey.
 

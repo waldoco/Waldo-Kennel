@@ -310,14 +310,15 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	}
 	t.Logf("inherited_skills_count=%d inherited_skills_sha256=%x", len(skills), sha256.Sum256(skillJSON))
 
+	// The harness owns fixture bytes. Asking a model to synthesize Go source inside a
+	// shell command adds three quoting layers and can turn the intended assertion
+	// failure into an unrelated compile failure before the proof begins.
+	writePersistentSubstrateFixture(t, workspace)
 	first := runLiveTurn(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
 		Text: "Inspect the assigned repository, then run this exact local command: " +
 			"pwd > observed-pwd.txt && git rev-parse --show-toplevel > observed-git-root.txt && " +
-			"printf PERSISTENT-SUBSTRATE > substrate-marker.txt && " +
-			"printf 'module example.com/substrate\\n\\ngo 1.22\\n' > go.mod && " +
-			"printf 'package substrate\\n\\nfunc Value() string { return \"wrong\" }\\n' > proof.go && " +
-			"printf 'package substrate\\n\\nimport \"testing\"\\n\\nfunc TestValue(t *testing.T) { if Value() != \"right\" { t.Fatalf(\"Value = %q\", Value()) } }\\n' > proof_test.go && " +
-			"go test ./... . The failing test is expected; report FIRST-FAIL-OBSERVED after it runs.",
+			"printf PERSISTENT-SUBSTRATE > substrate-marker.txt && go test ./... . " +
+			"The failing TestValue assertion is expected; report FIRST-FAIL-OBSERVED after it runs.",
 		ClientMessageID: "persistent-substrate-failing-test", Origin: domain.MessageOriginHuman,
 	})
 	if first.ref.ProviderTurnID == "" || first.state != domain.TurnStateCompleted || !first.sawFailedCommand ||
@@ -492,6 +493,53 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	}
 	t.Logf("evidence git_status_short=%q", string(statusOut))
 	t.Logf("thread/resume thread=%s post-resume-turn=%s history-events=%d", threadID, third.ref.ProviderTurnID, len(history1))
+}
+
+const (
+	persistentSubstrateGoMod  = "module example.com/substrate\n\ngo 1.22\n"
+	persistentSubstrateSource = "package substrate\n\nfunc Value() string { return \"wrong\" }\n"
+	persistentSubstrateTest   = `package substrate
+
+import "testing"
+
+func TestValue(t *testing.T) {
+	if Value() != "right" {
+		t.Fatalf("Value = %q", Value())
+	}
+}
+`
+)
+
+func writePersistentSubstrateFixture(t *testing.T, workspace string) {
+	t.Helper()
+	for name, content := range map[string]string{
+		"go.mod":        persistentSubstrateGoMod,
+		"proof.go":      persistentSubstrateSource,
+		"proof_test.go": persistentSubstrateTest,
+	} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write persistent substrate fixture %s: %v", name, err)
+		}
+	}
+}
+
+func TestPersistentSubstrateFixtureProducesExactAssertionFailure(t *testing.T) {
+	workspace := t.TempDir()
+	writePersistentSubstrateFixture(t, workspace)
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Dir = workspace
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("fixture unexpectedly passed:\n%s", output)
+	}
+	result := liveTurnResult{activities: []liveActivityEvidence{{
+		status:  domain.ActivityStatusFailed,
+		command: "go test ./...",
+		output:  string(output),
+	}}}
+	if !result.failedTestValueAssertion() {
+		t.Fatalf("fixture did not produce the exact TestValue assertion:\n%s", output)
+	}
 }
 
 func requireLiveCodex(t *testing.T) {

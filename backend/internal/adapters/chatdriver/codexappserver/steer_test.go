@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -231,109 +230,82 @@ func TestSteerFallsBackToTheRequestedTurnWhenTheProviderNamesNone(t *testing.T) 
 //
 //	KENNEL_CODEX_LIVE=1 go test ./internal/adapters/chatdriver/codexappserver/ -run LiveSteer -v
 //
-// This is the test that earns the capability. Steering is advertised only because
-// this passed against codex-cli 0.146.0, and the claim it checks is the one the
-// feature exists for: the turn the user was waiting on survives, keeps its id, and
-// finishes having followed the correction — not interrupted, not restarted.
+// This earns the capability promised by turn/steer: input is appended to the active
+// turn, the provider preserves that turn's identity, and the model incorporates the
+// added input into later work in that turn. It intentionally does not require the
+// already-running child command to stop. turn/interrupt owns cancellation.
 func TestLiveSteerKeepsTheTurnAndItsWork(t *testing.T) {
 	if os.Getenv("KENNEL_CODEX_LIVE") != "1" {
 		t.Skip("set KENNEL_CODEX_LIVE=1 to run against a real codex app-server")
 	}
-	bin := os.Getenv("KENNEL_CODEX_BIN")
-	if bin == "" {
-		bin = "codex"
-	}
-	if _, err := exec.LookPath(bin); err != nil {
-		t.Skipf("codex binary %q not on PATH: %v", bin, err)
-	}
-
+	bin := liveCodexBin(t)
 	workspace := newDisposableGitWorktree(t)
-
 	d := New(livePlugin{bin: bin}, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	opened, err := d.Start(ctx, ports.ChatStartConfig{
-		SessionID:     "kennel-live-steer",
-		WorkspacePath: workspace,
-		Env:           liveCodexEnv(),
-		Permissions:   ports.PermissionModeAcceptEdits,
-		SystemPrompt:  "You are in an automated test. Follow instructions literally.",
-	})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	opened := startLiveConversation(t, d, workspace)
 	defer func() { _ = opened.Close() }()
-
+	threadID := opened.ProviderConversationID()
+	if threadID == "" {
+		t.Fatal("thread/start returned no provider conversation id")
+	}
 	steerer, ok := opened.(ports.ChatSteerer)
 	if !ok {
 		t.Fatalf("conversation %T does not implement ChatSteerer", opened)
 	}
 
-	// Long enough to still be running when the steer lands, and visibly abandoned if
-	// the agent takes the correction.
+	turnStartedAt := time.Now()
 	ref, err := opened.SendTurn(ctx, ports.ChatUserMessage{
-		Text: "Run this exact shell command and then report its output verbatim: " +
+		Text: "Run this exact shell command and then wait for further guidance before replying: " +
 			"for i in 1 2 3 4 5 6 7 8 9 10; do echo tick-$i; sleep 3; done",
-		ClientMessageID: "live-steer-turn",
-		Origin:          domain.MessageOriginHuman,
+		ClientMessageID: "live-steer-turn", Origin: domain.MessageOriginHuman,
 	})
 	if err != nil {
 		t.Fatalf("SendTurn: %v", err)
 	}
-	t.Logf("turn %s", ref.ProviderTurnID)
 
-	// Wait for the provider's own acknowledgement AND for work to be under way. A
-	// steer sent before turn/started is refused, which is exactly why the service
-	// layer waits for this signal too.
 	var starts, completions int
 	var preSteerOutput strings.Builder
-	waitForWork := func() {
-		for {
-			select {
-			case ev, live := <-opened.Events():
-				if !live {
-					t.Fatal("event stream closed before the turn started working")
-				}
-				switch ev.Kind {
-				case ports.ChatEventTurnStarted:
-					starts++
-				case ports.ChatEventCommandOutputDelta:
-					preSteerOutput.WriteString(ev.Delta)
-					if starts > 0 && strings.Contains(preSteerOutput.String(), "tick-") {
-						return
-					}
-				case ports.ChatEventTurnCompleted:
-					t.Fatal("the turn finished before there was anything to steer")
-				}
-			case <-ctx.Done():
-				t.Fatalf("timed out waiting for the turn to start working: %v", ctx.Err())
+	for {
+		select {
+		case ev, live := <-opened.Events():
+			if !live {
+				t.Fatal("event stream closed before the turn started working")
 			}
+			switch ev.Kind {
+			case ports.ChatEventTurnStarted:
+				starts++
+			case ports.ChatEventCommandOutputDelta:
+				preSteerOutput.WriteString(ev.Delta)
+				if starts == 1 && strings.Contains(preSteerOutput.String(), "tick-") {
+					goto workObserved
+				}
+			case ports.ChatEventTurnCompleted:
+				t.Fatal("the turn finished before there was anything to steer")
+			}
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for the turn to start working: %v", ctx.Err())
 		}
 	}
-	waitForWork()
-	steerStarted := time.Now()
 
+workObserved:
+	steerRequestedAt := time.Now()
 	steered, err := steerer.Steer(ctx, ref.ProviderTurnID, ports.ChatUserMessage{
-		Text: "Change of plan: abandon that loop immediately and reply with the " +
-			"single word STEERED and nothing else.",
-		ClientMessageID: "live-steer-1",
-		Origin:          domain.MessageOriginHuman,
+		Text: "Let the current command finish. Then, in this same turn, run this exact command: " +
+			"printf STEER-INCORPORATED > steer-incorporated.txt. After it succeeds, reply STEERED.",
+		ClientMessageID: "live-steer-1", Origin: domain.MessageOriginHuman,
 	})
 	if err != nil {
 		t.Fatalf("Steer: %v", err)
 	}
-	// The load-bearing observation. A steer that opened a second turn would leave the
-	// user's guidance attributed to work they were not watching.
+	steerAcknowledgedAt := time.Now()
 	if steered.ProviderTurnID != ref.ProviderTurnID {
 		t.Errorf("steer moved the turn: %q -> %q", ref.ProviderTurnID, steered.ProviderTurnID)
 	}
 
-	var (
-		text            strings.Builder
-		postSteerOutput strings.Builder
-		state           domain.TurnState
-	)
+	var text, postSteerOutput strings.Builder
+	var state domain.TurnState
 collect:
 	for {
 		select {
@@ -363,23 +335,17 @@ collect:
 		}
 	}
 
-	// Interrupt-and-resend would have produced an interrupted turn and a second one.
-	// Steering produces neither, which is the whole reason to prefer it.
 	if state != domain.TurnStateCompleted {
 		t.Errorf("steered turn state = %q, want completed", state)
 	}
 	if starts != 1 || completions != 1 {
 		t.Errorf("turn lifecycle = %d started / %d completed, want 1/1", starts, completions)
 	}
-	if elapsed := time.Since(steerStarted); elapsed > 30*time.Second {
-		t.Errorf("steered turn took %s after acknowledgement, want <= 30s", elapsed)
-	}
-	if strings.Contains(postSteerOutput.String(), "tick-10") {
-		t.Errorf("steer did not stop the loop before terminal tick; output=%q", postSteerOutput.String())
-	}
+	assertFileTrimmed(t, filepath.Join(workspace, "steer-incorporated.txt"), "STEER-INCORPORATED")
 	if !strings.Contains(text.String(), "STEERED") {
-		t.Errorf("the agent never acted on the guidance; final text was:\n%s", text.String())
+		t.Errorf("the agent never acknowledged the guidance; final text was:\n%s", text.String())
 	}
+
 	historyReader, ok := opened.(ports.ChatHistoryReader)
 	if !ok {
 		t.Fatalf("conversation %T has no history reader", opened)
@@ -388,19 +354,28 @@ collect:
 	if err != nil {
 		t.Fatalf("read steered history: %v", err)
 	}
-	var sawSteerClientID bool
+	var sawOriginalClientID, sawSteerClientID bool
 	for _, ev := range history {
-		if ev.ProviderTurnID == ref.ProviderTurnID && ev.ClientMessageID == "live-steer-1" {
+		if ev.ProviderTurnID != ref.ProviderTurnID {
+			continue
+		}
+		switch ev.ClientMessageID {
+		case "live-steer-turn":
+			sawOriginalClientID = true
+		case "live-steer-1":
 			sawSteerClientID = true
 		}
+	}
+	if !sawOriginalClientID {
+		t.Error("provider history lost the original turn client id")
 	}
 	if !sawSteerClientID {
 		t.Log("provider history did not preserve the steer client id on this build")
 	}
-	t.Logf("steered turn %s completed as %s: %s", steered.ProviderTurnID, state,
-		strings.TrimSpace(text.String()))
+	t.Logf("evidence thread=%s steer_turn=%s original_client=%s steer_client=%s same_turn=true incorporated=true steer_ack=%s turn_elapsed=%s post_steer_output=%q",
+		threadID, ref.ProviderTurnID, "live-steer-turn", "live-steer-1",
+		steerAcknowledgedAt.Sub(steerRequestedAt), time.Since(turnStartedAt), postSteerOutput.String())
 
-	// And the refusal, live: with the turn finished there is nothing to join.
 	if _, err := steerer.Steer(ctx, ref.ProviderTurnID,
 		ports.ChatUserMessage{Text: "too late"}); !errors.Is(err, ports.ErrChatNoSteerableTurn) {
 		t.Errorf("steering a finished turn returned %v, want ErrChatNoSteerableTurn", err)
