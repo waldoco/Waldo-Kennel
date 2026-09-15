@@ -171,11 +171,11 @@ func TestCrossProcessBudgetStopClaimConflictPreservesDurable(t *testing.T) {
 	}
 	c2 := c1
 	c2.MeasuredUsage = `{"inputTokens":120}`
-	if converged, created, err := s2.ClaimAttemptBudgetStop(ctx, c2); err != nil || created || converged.MeasuredUsage != `{"inputTokens":100}` {
+	if converged, created, err := s2.ClaimAttemptBudgetStop(ctx, c2); err != nil || created || !domain.CanonicalJSONEqual(converged.MeasuredUsage, `{"inputTokens":100}`) {
 		t.Fatalf("same-reason claim did not converge to durable winner: %+v created=%v err=%v", converged, created, err)
 	}
 	got, ok, err := s2.GetAttemptBudgetStop(ctx, a.ID)
-	if err != nil || !ok || got.MeasuredUsage != `{"inputTokens":100}` {
+	if err != nil || !ok || !domain.CanonicalJSONEqual(got.MeasuredUsage, `{"inputTokens":100}`) {
 		t.Fatalf("durable claim=%+v ok=%v err=%v", got, ok, err)
 	}
 	if _, err := s2.RecordAttemptBudgetProviderStopped(ctx, a.ID, "s", c1.Reason, `{"providerStopped":true}`, time.Now()); err != nil {

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/big"
 	"strings"
 	"time"
 )
@@ -41,8 +43,9 @@ func (s AttemptBudgetStop) Validate() error {
 }
 func (s AttemptBudgetStop) ProviderStopped() bool { return s.ProviderStoppedAt != nil }
 
-// CanonicalJSON preserves integer precision while normalizing object key order.
-// Budget evidence uses exact counters, so decoding through float64 is forbidden.
+// CanonicalJSON preserves exact numeric value while normalizing object key order.
+// JSON numbers are finite decimals, so each is reduced to an arbitrary-precision
+// integer coefficient and base-10 exponent. No float conversion occurs.
 func CanonicalJSON(raw string) (string, error) {
 	dec := json.NewDecoder(bytes.NewBufferString(raw))
 	dec.UseNumber()
@@ -50,15 +53,114 @@ func CanonicalJSON(raw string) (string, error) {
 	if err := dec.Decode(&value); err != nil {
 		return "", err
 	}
-	if dec.More() {
-		return "", fmt.Errorf("multiple JSON values")
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return "", fmt.Errorf("multiple JSON values")
+		}
+		return "", err
 	}
-	b, err := json.Marshal(value)
+	normalized, err := canonicalJSONValue(value)
+	if err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(normalized)
 	if err != nil {
 		return "", err
 	}
 	return string(b), nil
 }
+
+type canonicalJSONNumber string
+
+func (n canonicalJSONNumber) MarshalJSON() ([]byte, error) { return []byte(n), nil }
+
+func canonicalJSONValue(value any) (any, error) {
+	switch v := value.(type) {
+	case json.Number:
+		n, err := canonicalizeJSONNumber(v.String())
+		if err != nil {
+			return nil, err
+		}
+		return canonicalJSONNumber(n), nil
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			n, err := canonicalJSONValue(item)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = n
+		}
+		return out, nil
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			n, err := canonicalJSONValue(item)
+			if err != nil {
+				return nil, err
+			}
+			out[key] = n
+		}
+		return out, nil
+	default:
+		return value, nil
+	}
+}
+
+func canonicalizeJSONNumber(raw string) (string, error) {
+	sign := ""
+	if len(raw) > 0 && raw[0] == '-' {
+		sign = "-"
+		raw = raw[1:]
+	}
+	mantissa, expText := raw, ""
+	for i, c := range raw {
+		if c == 'e' || c == 'E' {
+			mantissa, expText = raw[:i], raw[i+1:]
+			break
+		}
+	}
+	exp := new(big.Int)
+	if expText != "" {
+		if _, ok := exp.SetString(expText, 10); !ok {
+			return "", fmt.Errorf("invalid JSON number exponent")
+		}
+	}
+	fraction := int64(0)
+	digits := mantissa
+	if dot := strings.IndexByte(mantissa, '.'); dot >= 0 {
+		fraction = int64(len(mantissa) - dot - 1)
+		digits = mantissa[:dot] + mantissa[dot+1:]
+	}
+	coefficient := new(big.Int)
+	if _, ok := coefficient.SetString(digits, 10); !ok {
+		return "", fmt.Errorf("invalid JSON number %q", raw)
+	}
+	if coefficient.Sign() == 0 {
+		return "0", nil
+	}
+	if sign == "-" {
+		coefficient.Neg(coefficient)
+	}
+	scale := new(big.Int).Sub(exp, big.NewInt(fraction))
+	ten := big.NewInt(10)
+	rem := new(big.Int)
+	for {
+		q := new(big.Int)
+		q.QuoRem(coefficient, ten, rem)
+		if rem.Sign() != 0 {
+			break
+		}
+		coefficient = q
+		scale.Add(scale, big.NewInt(1))
+	}
+	if scale.Sign() == 0 {
+		return coefficient.String(), nil
+	}
+	return coefficient.String() + "e" + scale.String(), nil
+}
+
 func CanonicalJSONEqual(left, right string) bool {
 	a, e1 := CanonicalJSON(left)
 	b, e2 := CanonicalJSON(right)
