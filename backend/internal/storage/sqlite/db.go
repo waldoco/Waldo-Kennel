@@ -1726,6 +1726,30 @@ func reconcileAdmissionSchema(db *sql.DB) error {
 			return err
 		}
 	}
+	var intentColumn int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('work_units') WHERE name='intent'`).Scan(&intentColumn); err != nil {
+		return err
+	}
+	if intentColumn == 0 {
+		if _, err := db.Exec(`ALTER TABLE work_units ADD COLUMN intent TEXT NOT NULL DEFAULT 'legacy_unknown'`); err != nil {
+			return fmt.Errorf("add work unit intent: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_execution_usage (
+		attempt_id TEXT NOT NULL REFERENCES attempts(id), provider TEXT NOT NULL, session_id TEXT NOT NULL,
+		sequence INTEGER NOT NULL CHECK(sequence >= 1), cumulative_input_tokens INTEGER NOT NULL CHECK(cumulative_input_tokens >= 0),
+		cumulative_output_tokens INTEGER NOT NULL CHECK(cumulative_output_tokens >= 0), input_delta INTEGER NOT NULL CHECK(input_delta >= 0),
+		output_delta INTEGER NOT NULL CHECK(output_delta >= 0), created_at TIMESTAMP NOT NULL,
+		PRIMARY KEY(attempt_id, provider, session_id, sequence))`); err != nil {
+		return fmt.Errorf("create attempt execution usage ledger: %w", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_budget_stops (
+		attempt_id TEXT PRIMARY KEY REFERENCES attempts(id), session_id TEXT NOT NULL,
+		reason_code TEXT NOT NULL CHECK(reason_code IN ('retry_budget_exhausted','token_budget_exhausted','wall_time_budget_exhausted')),
+		measured_usage TEXT NOT NULL CHECK(json_valid(measured_usage)), claimed_at TIMESTAMP NOT NULL,
+		provider_stopped_at TIMESTAMP, machine_result TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(machine_result)))`); err != nil {
+		return fmt.Errorf("create attempt budget stop ledger: %w", err)
+	}
 	_, err := db.Exec(admissionPacketsDDL)
 	return err
 }

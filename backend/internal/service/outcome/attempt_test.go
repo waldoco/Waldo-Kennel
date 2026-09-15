@@ -1566,3 +1566,115 @@ func TestLivenessLoopConvergesAfterInjectedObservationWriteFailure(t *testing.T)
 func TestLivenessLoopConvergesAfterInjectedCustodyReleaseFailure(t *testing.T) {
 	livenessLoopFailureConvergenceCase(t, "release")
 }
+
+func TestWallBudgetStopsProviderBeforeFailureAndCustodyRelease(t *testing.T) {
+	svc, store, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, outcomeID, startInput(planID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	list := store.attempts[outcomeID]
+	list[0].CreatedAt = time.Now().Add(-2 * time.Hour)
+	store.attempts[outcomeID] = list
+	store.mu.Unlock()
+	if err := svc.EvaluateAttemptLiveness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.GetAttempt(ctx, outcomeID, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptFailed {
+		t.Fatalf("status=%s", got.Attempt.Status)
+	}
+	if got.Fence != nil && got.Fence.Open() {
+		t.Fatalf("fence=%+v", got.Fence)
+	}
+	if len(spawner.terminated) != 1 || spawner.terminated[0] != first.Sessions[0].SessionID {
+		t.Fatalf("terminated=%v", spawner.terminated)
+	}
+	last := got.Observations[len(got.Observations)-1]
+	if last.Kind != domain.ObservationBudgetExceeded || !strings.Contains(last.Payload, "wall_time_budget_exhausted") {
+		t.Fatalf("observation=%+v", last)
+	}
+}
+
+func TestWallBudgetStopFailureKeepsRunningAndCustody(t *testing.T) {
+	svc, store, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, outcomeID, startInput(planID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	list := store.attempts[outcomeID]
+	list[0].CreatedAt = time.Now().Add(-2 * time.Hour)
+	store.attempts[outcomeID] = list
+	store.mu.Unlock()
+	spawner.failNextTerminate(errors.New("stop unproven"))
+	if err := svc.EvaluateAttemptLiveness(ctx); err == nil {
+		t.Fatal("expected stop error")
+	}
+	got, err := svc.GetAttempt(ctx, outcomeID, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptRunning || got.Fence == nil || !got.Fence.Open() {
+		t.Fatalf("got=%+v", got)
+	}
+}
+
+func TestBudgetStopClaimRecoveryConvergesWithoutRetry(t *testing.T) {
+	svc, store, spawner, _, out, plan := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, out, startInput(plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim := domain.AttemptBudgetStop{AttemptID: first.Attempt.ID, SessionID: first.Sessions[0].SessionID, Reason: domain.RuntimeWallTimeBudgetExhausted, MeasuredUsage: `{"reasonCode":"wall_time_budget_exhausted"}`, ClaimedAt: time.Now()}
+	if _, _, err := store.ClaimAttemptBudgetStop(ctx, claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EvaluateAttemptLiveness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.GetAttempt(ctx, out, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptFailed || len(spawner.terminated) != 1 {
+		t.Fatalf("got=%s term=%v", got.Attempt.Status, spawner.terminated)
+	}
+	attempts, _ := svc.ListAttempts(ctx, out)
+	if len(attempts) != 1 {
+		t.Fatalf("silent retry: %d attempts", len(attempts))
+	}
+}
+
+func TestBudgetMachineStopRecoveryFinalizesWithoutSecondTerminate(t *testing.T) {
+	svc, store, spawner, _, out, plan := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, out, startInput(plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim := domain.AttemptBudgetStop{AttemptID: first.Attempt.ID, SessionID: first.Sessions[0].SessionID, Reason: domain.RuntimeTokenBudgetExhausted, MeasuredUsage: `{"reasonCode":"token_budget_exhausted"}`, ClaimedAt: time.Now()}
+	if _, _, err := store.ClaimAttemptBudgetStop(ctx, claim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RecordAttemptBudgetProviderStopped(ctx, claim.AttemptID, claim.SessionID, claim.Reason, `{"reasonCode":"token_budget_exhausted","providerStopped":true}`, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EvaluateAttemptLiveness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.GetAttempt(ctx, out, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptFailed || len(spawner.terminated) != 0 {
+		t.Fatalf("got=%s term=%v", got.Attempt.Status, spawner.terminated)
+	}
+}

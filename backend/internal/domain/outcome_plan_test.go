@@ -128,6 +128,7 @@ func TestPlanApprovalRequiresRoutingBindingAgreement(t *testing.T) {
 		Criteria: []ContractCriterion{{ID: "crit-1", ContractRevisionID: "cr-1", Position: 1, Text: "inspection complete"}},
 	}
 	unit := validWorkUnit()
+	unit.Intent = WorkUnitIntentInspect
 	unit.CriterionIDs = []CriterionID{"crit-1"}
 	unit.RequiredCapabilities = []string{CapabilityWorktreeRead}
 	if err := unit.BindExecution(ExecutionBinding{Provider: AgentHarness("codex"), ModelSelection: ExecutionBindingModelProviderDefault}); err != nil {
@@ -220,5 +221,27 @@ func TestGrantsFailClosed(t *testing.T) {
 	err := GrantsFailClosed([]CapabilityGrant{{ID: "cg-network", Name: "network.fetch", Scope: "*"}}, []string{CapabilityWorktreeRead})
 	if err == nil || !strings.Contains(err.Error(), "network.fetch") {
 		t.Fatalf("GrantsFailClosed() = %v", err)
+	}
+}
+
+func TestPlanApprovalRejectsLegacyIntentAndCapabilityDrift(t *testing.T) {
+	revision := ContractRevision{ID: "cr-1", OutcomeID: "out-test", Number: 1, Goal: "Inspect", SuccessCriteria: []string{"done"}, Review: "owner", Criteria: []ContractCriterion{{ID: "crit-1", ContractRevisionID: "cr-1", Position: 1, Text: "done"}}}
+	unit := validWorkUnit()
+	unit.CriterionIDs = []CriterionID{"crit-1"}
+	unit.RequiredCapabilities = []string{CapabilityWorktreeRead}
+	_ = unit.BindExecution(ExecutionBinding{Provider: AgentHarness("codex"), ModelSelection: ExecutionBindingModelProviderDefault})
+	plan := validPlanRevision()
+	plan.WorkUnits = []WorkUnit{unit}
+	plan.Grants = []CapabilityGrant{{ID: "g", Name: CapabilityWorktreeRead, Scope: "worktree/*"}}
+	plan.RoutingDecisions = []WorkUnitRoutingDecision{{WorkUnitID: unit.ID, Decision: RoutingDecision{Status: RoutingDecisionRecommended, PolicyVersion: RoutingPolicyVersion, Role: RoutingRoleWorker, RecommendedCandidateID: "c", RecommendedProvider: "codex", RecommendedModelSelection: ExecutionBindingModelProviderDefault}}}
+	plan.RunBriefCoreDigest, _ = ComputePlanRunBriefCoreDigest(revision, plan.WorkUnits, plan.Grants)
+	plan.WorkUnits[0].Intent = WorkUnitIntentLegacy
+	if err := plan.ValidateForApproval(revision); err == nil || !strings.Contains(err.Error(), "re-planned") {
+		t.Fatalf("legacy err=%v", err)
+	}
+	plan.WorkUnits[0].Intent = WorkUnitIntentInspect
+	plan.WorkUnits[0].RequiredCapabilities = []string{CapabilityWorktreeRead, CapabilityWorktreeWrite}
+	if err := plan.ValidateForApproval(revision); err == nil || !strings.Contains(err.Error(), "intent") {
+		t.Fatalf("drift err=%v", err)
 	}
 }

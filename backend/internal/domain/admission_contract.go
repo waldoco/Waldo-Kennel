@@ -196,6 +196,7 @@ type ApprovedExecutableSpec struct {
 	ContractRevisionNumber  int64                   `json:"contractRevisionNumber"`
 	PlanRevisionID          PlanRevisionID          `json:"planRevisionId"`
 	WorkUnitID              WorkUnitID              `json:"workUnitId"`
+	Intent                  WorkUnitIntent          `json:"intent"`
 	RunBriefCoreDigest      string                  `json:"runBriefCoreDigest"`
 	Binding                 ExecutionBinding        `json:"binding"`
 	NativeMappingVersion    string                  `json:"nativeMappingVersion"`
@@ -228,7 +229,7 @@ func (s ApprovedExecutableSpec) Validate() error {
 	if err := s.Binding.ValidateForNewWork(); err != nil {
 		return err
 	}
-	policy := AttemptExecutionPolicy{OutcomeID: s.OutcomeID, PlanRevisionID: s.PlanRevisionID, WorkUnitID: s.WorkUnitID, ContractRevisionNumber: s.ContractRevisionNumber, RunBriefCoreDigest: s.RunBriefCoreDigest, RequiredCapabilities: s.RequiredCapabilities, Grants: s.Grants, ApprovedChecks: s.ApprovedChecks}
+	policy := AttemptExecutionPolicy{OutcomeID: s.OutcomeID, PlanRevisionID: s.PlanRevisionID, WorkUnitID: s.WorkUnitID, Intent: s.Intent, ContractRevisionNumber: s.ContractRevisionNumber, RunBriefCoreDigest: s.RunBriefCoreDigest, RequiredCapabilities: s.RequiredCapabilities, Grants: s.Grants, ApprovedChecks: s.ApprovedChecks}
 	if err := policy.Validate(); err != nil {
 		return fmt.Errorf("approved policy: %w", err)
 	}

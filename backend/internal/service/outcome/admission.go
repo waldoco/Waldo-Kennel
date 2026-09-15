@@ -66,6 +66,9 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 	if !plan.BindsCurrentContract(in.outcome.CurrentRevisionNumber) {
 		return reject(domain.AdmissionRevisionSuperseded)
 	}
+	if reason := workUnitCoherenceReason(*plan, in.contract); reason != "" {
+		return reject(reason)
+	}
 	if err := plan.ValidateForApproval(in.contract); err != nil {
 		return reject(domain.AdmissionIntentPermissionConflict)
 	}
@@ -92,10 +95,6 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 		if !ok || binding != frozen {
 			return reject(domain.AdmissionCapabilityMissing)
 		}
-		policy, err := domain.BuildAttemptExecutionPolicy(in.outcome.ID, *plan, unit, plan.RunBriefCoreDigest)
-		if err != nil {
-			return reject(domain.AdmissionIntentPermissionConflict)
-		}
 		if e.policy == nil || e.policy.Validate() != nil {
 			return reject(domain.AdmissionTimeBudgetMissing)
 		}
@@ -108,6 +107,18 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 		if unit.ExecutionBudget.TokenAccounting == domain.TokenAccountingEnforced && unit.ExecutionBudget.TokenLimit <= 0 {
 			return reject(domain.AdmissionTokenBudgetMissing)
 		}
+		if unit.ExecutionBudget.TokenAccounting == domain.TokenAccountingEnforced {
+			accounting := domain.CapabilityUnknown
+			for _, candidate := range snapshot.Candidates {
+				if candidate.ID == decision.RecommendedCandidateID {
+					accounting = candidate.ExecutionTokenAccounting
+					break
+				}
+			}
+			if accounting != domain.CapabilitySupported {
+				return reject(domain.AdmissionPlatformUnsupported)
+			}
+		}
 		if unit.ExecutionBudget.Validate() != nil {
 			return reject(domain.AdmissionTimeBudgetMissing)
 		}
@@ -117,6 +128,10 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 		if unit.ExecutionBudget.WallTimeLimit > e.policy.MaxWallTime || unit.ExecutionBudget.RetryLimit > e.policy.MaxRetries || (unit.ExecutionBudget.TokenAccounting == domain.TokenAccountingEnforced && (e.policy.MaxTokens <= 0 || unit.ExecutionBudget.TokenLimit > e.policy.MaxTokens)) {
 			return reject(domain.AdmissionBudgetExceedsPolicy)
 		}
+		policy, err := domain.BuildAttemptExecutionPolicy(in.outcome.ID, *plan, unit, plan.RunBriefCoreDigest)
+		if err != nil {
+			return reject(domain.AdmissionIntentPermissionConflict)
+		}
 		retry := unit.ExecutionBudget.RetryLimit
 		receipt := domain.ReadinessReceipt{Producer: "routing_inventory", Version: domain.RoutingPolicyVersion, ReceiptID: snapshot.SnapshotID, Digest: snapshot.SnapshotID}
 		routingReceipt := domain.RoutingAdmissionReceipt{GenerationID: snapshot.GenerationID, SnapshotID: snapshot.SnapshotID, Preference: *preference, Candidates: append([]domain.RoutingCandidate(nil), snapshot.Candidates...)}
@@ -124,7 +139,7 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 		if err != nil {
 			return reject(domain.AdmissionIntentPermissionConflict)
 		}
-		spec := domain.ApprovedExecutableSpec{CompilerPolicyVersion: admissionCompilerPolicyVersion, OutcomeID: in.outcome.ID, ContractRevisionNumber: in.contract.Number, PlanRevisionID: plan.ID, WorkUnitID: unit.ID, RunBriefCoreDigest: plan.RunBriefCoreDigest, Binding: binding, NativeMappingVersion: admissionNativeMappingVersion, RequiredCapabilities: append([]string(nil), policy.RequiredCapabilities...), Grants: append([]domain.CapabilityGrant(nil), policy.Grants...), ApprovedChecks: append([]domain.ApprovedCheck(nil), policy.ApprovedChecks...), Workspace: domain.WorkspaceRequirements{Kind: kind, LeaseSubject: in.leaseSubject}, Budget: domain.AdmissionBudget{PolicyVersion: unit.ExecutionBudget.PolicyVersion, AccountingVersion: string(unit.ExecutionBudget.TokenAccounting), WallTimeLimit: unit.ExecutionBudget.WallTimeLimit, TokenLimit: unit.ExecutionBudget.TokenLimit, TokenAccountingSupported: unit.ExecutionBudget.TokenAccounting == domain.TokenAccountingEnforced, RetryLimit: &retry, RetryLineageScope: domain.AdmissionRetryLineageWorkUnit}, AdmissionReceipts: []domain.ReadinessReceipt{receipt}, RoutingReceipt: routingReceipt, DocumentContextID: func() domain.DocumentContextID {
+		spec := domain.ApprovedExecutableSpec{CompilerPolicyVersion: admissionCompilerPolicyVersion, OutcomeID: in.outcome.ID, ContractRevisionNumber: in.contract.Number, PlanRevisionID: plan.ID, WorkUnitID: unit.ID, Intent: unit.Intent, RunBriefCoreDigest: plan.RunBriefCoreDigest, Binding: binding, NativeMappingVersion: admissionNativeMappingVersion, RequiredCapabilities: append([]string(nil), policy.RequiredCapabilities...), Grants: append([]domain.CapabilityGrant(nil), policy.Grants...), ApprovedChecks: append([]domain.ApprovedCheck(nil), policy.ApprovedChecks...), Workspace: domain.WorkspaceRequirements{Kind: kind, LeaseSubject: in.leaseSubject}, Budget: domain.AdmissionBudget{PolicyVersion: unit.ExecutionBudget.PolicyVersion, AccountingVersion: string(unit.ExecutionBudget.TokenAccounting), WallTimeLimit: unit.ExecutionBudget.WallTimeLimit, TokenLimit: unit.ExecutionBudget.TokenLimit, TokenAccountingSupported: unit.ExecutionBudget.TokenAccounting == domain.TokenAccountingEnforced, RetryLimit: &retry, RetryLineageScope: domain.AdmissionRetryLineageWorkUnit}, AdmissionReceipts: []domain.ReadinessReceipt{receipt}, RoutingReceipt: routingReceipt, DocumentContextID: func() domain.DocumentContextID {
 			if in.document != nil {
 				return in.document.ID
 			}
@@ -310,4 +325,51 @@ func (s *Service) EvaluateAdmissionStage(ctx context.Context, in ports.Admission
 		return ports.AdmissionStageResult{}, err
 	}
 	return ports.AdmissionStageResult{Eligible: v.Status == domain.AdmissionAdmitted, Verdict: v}, nil
+}
+
+func workUnitCoherenceReason(plan domain.PlanRevision, contract domain.ContractRevision) domain.AdmissionReasonCode {
+	for _, unit := range plan.WorkUnits {
+		if !unit.Intent.Valid() {
+			return domain.AdmissionIntentPermissionConflict
+		}
+		want, err := unit.Intent.RequiredCapabilities()
+		if err != nil || !sameCapabilities(want, unit.RequiredCapabilities) {
+			return domain.AdmissionIntentPermissionConflict
+		}
+		if err := validateWorkUnitWithinContractCeiling(contract, unit); err != nil {
+			return domain.AdmissionOutputPermissionConflict
+		}
+		for _, check := range unit.Checks {
+			if err := check.Validate(); err != nil {
+				return domain.AdmissionCheckUncompilable
+			}
+			if !hasCapability(unit.RequiredCapabilities, domain.CapabilityWorktreeExec) {
+				return domain.AdmissionCheckPermissionConflict
+			}
+		}
+	}
+	return ""
+}
+func sameCapabilities(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aa := append([]string(nil), a...)
+	bb := append([]string(nil), b...)
+	sort.Strings(aa)
+	sort.Strings(bb)
+	for i := range aa {
+		if aa[i] != bb[i] {
+			return false
+		}
+	}
+	return true
+}
+func hasCapability(values []string, want string) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }

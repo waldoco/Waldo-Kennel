@@ -64,6 +64,10 @@ func LifecycleForRecovery(r RecoveryResolution) (LifecycleProjection, bool) {
 }
 func LifecycleForObservation(k string) (LifecycleProjection, bool) {
 	switch k {
+	case ObservationExecutionUsage:
+		return LifecycleAttemptStarted, true
+	case ObservationBudgetExceeded:
+		return LifecycleAttemptFailed, true
 	case ObservationAttemptContained, ObservationOwnerContained, ObservationOwnerCancel:
 		return LifecycleAttemptStopped, true
 	case ObservationAttemptResumed, ObservationOwnerResume:

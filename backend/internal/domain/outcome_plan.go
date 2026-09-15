@@ -74,7 +74,9 @@ func (k WorkUnitKind) Valid() bool { return k == WorkUnitDirect }
 // Dependencies and criterion coverage are canonical graph/proof identity; routing
 // recommendation is stored separately and must agree with this exact binding.
 type WorkUnit struct {
-	ID                      WorkUnitID
+	ID WorkUnitID
+	// Intent is immutable user-meaning; capabilities are derived execution requirements.
+	Intent                  WorkUnitIntent
 	Kind                    WorkUnitKind
 	Title                   string
 	ContractRevisionNumber  int64
@@ -103,6 +105,9 @@ func (w WorkUnit) Validate() error {
 	}
 	if !w.Kind.Valid() {
 		return fmt.Errorf("unsupported work unit kind %q", w.Kind)
+	}
+	if w.Intent != "" && w.Intent != WorkUnitIntentLegacy && !w.Intent.Valid() {
+		return fmt.Errorf("unsupported work unit intent %q", w.Intent)
 	}
 	if strings.TrimSpace(w.Title) == "" {
 		return fmt.Errorf("work unit title is required")
@@ -513,6 +518,13 @@ func (p PlanRevision) ValidateForApproval(revision ContractRevision) error {
 		routing[record.WorkUnitID] = record
 	}
 	for _, unit := range p.WorkUnits {
+		if !unit.Intent.Valid() {
+			return fmt.Errorf("work unit %s has legacy or unknown intent and must be re-planned", unit.ID)
+		}
+		want, err := unit.Intent.RequiredCapabilities()
+		if err != nil || !equalStringSets(want, unit.RequiredCapabilities) {
+			return fmt.Errorf("work unit %s intent does not match its derived capabilities", unit.ID)
+		}
 		if _, err := unit.ExecutionBindingForNewWork(); err != nil {
 			return fmt.Errorf("work unit %s is not executable: %w", unit.ID, err)
 		}
@@ -598,19 +610,20 @@ func MissingCapabilitiesForWorkUnit(grants []CapabilityGrant, unit WorkUnit) []s
 }
 
 type runBriefWorkUnit struct {
-	ID                      string   `json:"id"`
-	Title                   string   `json:"title"`
-	Provider                string   `json:"provider,omitempty"`
-	ModelSelection          string   `json:"modelSelection,omitempty"`
-	Model                   string   `json:"model,omitempty"`
-	Output                  string   `json:"output"`
-	EvidenceChecks          []string `json:"evidenceChecks"`
-	VerificationRequirement string   `json:"verificationRequirement"`
-	StopConditions          []string `json:"stopConditions"`
-	DependsOn               []string `json:"dependsOn,omitempty"`
-	CriterionIDs            []string `json:"criterionIds,omitempty"`
-	RequiredCapabilities    []string `json:"requiredCapabilities,omitempty"`
-	Checks                  []string `json:"approvedChecks,omitempty"`
+	ID                      string         `json:"id"`
+	Title                   string         `json:"title"`
+	Intent                  WorkUnitIntent `json:"intent,omitempty"`
+	Provider                string         `json:"provider,omitempty"`
+	ModelSelection          string         `json:"modelSelection,omitempty"`
+	Model                   string         `json:"model,omitempty"`
+	Output                  string         `json:"output"`
+	EvidenceChecks          []string       `json:"evidenceChecks"`
+	VerificationRequirement string         `json:"verificationRequirement"`
+	StopConditions          []string       `json:"stopConditions"`
+	DependsOn               []string       `json:"dependsOn,omitempty"`
+	CriterionIDs            []string       `json:"criterionIds,omitempty"`
+	RequiredCapabilities    []string       `json:"requiredCapabilities,omitempty"`
+	Checks                  []string       `json:"approvedChecks,omitempty"`
 }
 
 type runBriefCore struct {
@@ -653,7 +666,7 @@ func ComputePlanRunBriefCoreDigest(revision ContractRevision, units []WorkUnit, 
 		}
 		sort.Strings(criteria)
 		briefUnits = append(briefUnits, runBriefWorkUnit{
-			ID: unit.ID.String(), Title: unit.Title, Provider: string(unit.Provider),
+			ID: unit.ID.String(), Title: unit.Title, Intent: unit.Intent, Provider: string(unit.Provider),
 			ModelSelection: string(unit.ModelSelection), Model: unit.Model, Output: unit.OutputSummary,
 			EvidenceChecks: sortedTrimmed(unit.EvidenceChecks), VerificationRequirement: unit.VerificationRequirement,
 			StopConditions: sortedTrimmed(unit.StopConditions), DependsOn: dependencies, CriterionIDs: criteria,
@@ -707,4 +720,10 @@ func sortedTrimmed(in []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func equalStringSets(left, right []string) bool {
+	a := uniqueSortedStrings(append([]string(nil), left...))
+	b := uniqueSortedStrings(append([]string(nil), right...))
+	return equalStrings(a, b)
 }

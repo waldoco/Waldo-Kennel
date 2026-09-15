@@ -28,7 +28,7 @@ func TestLifecycleExhaustsAttemptStatusActivityRecovery(t *testing.T) {
 	}
 }
 func TestLifecycleExhaustsEnumerableEmittedObservationKinds(t *testing.T) {
-	if len(EmittedAttemptObservationKinds) != 15 {
+	if len(EmittedAttemptObservationKinds) != 17 {
 		t.Fatal("emitted vocabulary changed")
 	}
 	seen := map[string]struct{}{}

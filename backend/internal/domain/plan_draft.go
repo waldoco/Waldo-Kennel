@@ -18,6 +18,8 @@ const MaxPlanDraftWorkUnits = 16
 type WorkUnitIntent string
 
 const (
+	// WorkUnitIntentLegacy marks rows created before intent was frozen. It is readable history, never approvable.
+	WorkUnitIntentLegacy WorkUnitIntent = "legacy_unknown"
 	// WorkUnitIntentInspect requests read-only inspection work.
 	WorkUnitIntentInspect WorkUnitIntent = "inspect"
 	// WorkUnitIntentModify requests workspace mutation without execution.

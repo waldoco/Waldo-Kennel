@@ -39,6 +39,24 @@ type AttemptAdmission struct {
 	RequestKey          string
 	FenceSubject        string
 	At                  time.Time
+	RetryLimit          *int
+}
+
+// AttemptRetryBudgetExceededError means a new row was refused atomically; no execution budget was consumed.
+type AttemptRetryBudgetExceededError struct {
+	WorkUnitID    domain.WorkUnitID
+	RetryLimit    int
+	PriorAttempts int
+}
+
+func (e *AttemptRetryBudgetExceededError) Error() string {
+	return fmt.Sprintf("work unit %s retry budget exhausted: %d prior attempts for limit %d", e.WorkUnitID, e.PriorAttempts, e.RetryLimit)
+}
+
+// AttemptExecutionUsageStore is the normalized provider-neutral execution ledger.
+type AttemptExecutionUsageStore interface {
+	AppendAttemptExecutionUsage(context.Context, domain.ExecutionUsageSample) (domain.ExecutionUsageSample, bool, error)
+	WorkUnitExecutionUsage(context.Context, domain.WorkUnitID) (domain.ExecutionUsageTotals, error)
 }
 
 // RunIntentReplayConflictError reports reuse of a run-command key with a
@@ -255,3 +273,11 @@ type DecompositionRequestAnswer struct {
 
 // ErrDecompositionRequestClosed indicates that a request is no longer answerable.
 var ErrDecompositionRequestClosed = errors.New("decomposition request is not open")
+
+// AttemptBudgetStopStore owns durable, crash-recoverable budget stop state.
+type AttemptBudgetStopStore interface {
+	ClaimAttemptBudgetStop(context.Context, domain.AttemptBudgetStop) (domain.AttemptBudgetStop, bool, error)
+	RecordAttemptBudgetProviderStopped(context.Context, domain.AttemptID, string, domain.RuntimeBudgetReasonCode, string, time.Time) (domain.AttemptBudgetStop, error)
+	GetAttemptBudgetStop(context.Context, domain.AttemptID) (domain.AttemptBudgetStop, bool, error)
+	ListUnfinishedAttemptBudgetStops(context.Context) ([]domain.AttemptBudgetStop, error)
+}

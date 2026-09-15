@@ -45,6 +45,7 @@ type AttemptManager interface {
 	GetSchedule(ctx context.Context, outcomeID domain.OutcomeID, planID domain.PlanRevisionID) (ScheduleView, error)
 	CancelAttempt(ctx context.Context, outcomeID domain.OutcomeID, attemptID domain.AttemptID) (AttemptView, error)
 	RecordObservation(ctx context.Context, outcomeID domain.OutcomeID, attemptID domain.AttemptID, in RecordObservationInput) (domain.AttemptObservation, error)
+	RecordExecutionUsage(ctx context.Context, outcomeID domain.OutcomeID, attemptID domain.AttemptID, in RecordExecutionUsageInput) (AttemptView, error)
 	RecoverAttempt(ctx context.Context, outcomeID domain.OutcomeID, attemptID domain.AttemptID, in RecoveryInput) (RecoveryView, error)
 }
 
@@ -63,6 +64,14 @@ type StartAttemptInput struct {
 type RecordObservationInput struct {
 	Kind    string
 	Payload string
+}
+
+type RecordExecutionUsageInput struct {
+	Provider     domain.AgentHarness
+	SessionID    string
+	Sequence     int64
+	InputTokens  int64
+	OutputTokens int64
 }
 
 // RecoveryAction identifies the governed response to an uncertain attempt.
@@ -329,7 +338,7 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 		OutcomeID: outcomeID, PlanRevisionID: plan.ID, WorkUnitID: unit.ID,
 		ContractRevisionNumber: plan.ContractRevisionNumber,
 		RunIntentGeneration:    runIntentGeneration,
-		RequestKey:             strings.TrimSpace(in.RequestKey), FenceSubject: domain.FenceSubjectForProject(projectID), At: now,
+		RequestKey:             strings.TrimSpace(in.RequestKey), FenceSubject: domain.FenceSubjectForProject(projectID), At: now, RetryLimit: &unit.ExecutionBudget.RetryLimit,
 	})
 	if err != nil {
 		var replayConflict *ports.AttemptReplayConflictError
@@ -341,6 +350,10 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 		var replay *ports.AttemptReplayError
 		if errors.As(err, &replay) {
 			return s.GetAttempt(ctx, replay.Attempt.OutcomeID, replay.Attempt.ID)
+		}
+		var exhausted *ports.AttemptRetryBudgetExceededError
+		if errors.As(err, &exhausted) {
+			return AttemptView{}, apierr.Conflict("ATTEMPT_RETRY_BUDGET_EXCEEDED", "This WorkUnit has exhausted its approved replacement allowance", map[string]any{"reason": domain.RuntimeRetryBudgetExhausted, "workUnitId": exhausted.WorkUnitID, "retryLimit": exhausted.RetryLimit, "priorAttempts": exhausted.PriorAttempts})
 		}
 		var held *ports.AttemptFenceHeldError
 		if errors.As(err, &held) {
@@ -506,6 +519,9 @@ func (s *Service) probeReadiness(ctx context.Context, projectID domain.ProjectID
 	if !readiness.Ready {
 		return domain.ReadinessReceipt{}, apierr.Conflict(CodeAgentProfileNotReady, "The authorized agent profile/model is not ready to launch", map[string]any{"harness": binding.Provider, "modelSelection": binding.ModelSelection, "model": binding.Model, "detail": readiness.Detail})
 	}
+	if policy != nil && policy.ExecutionBudget.TokenAccounting == domain.TokenAccountingEnforced && !readiness.ExecutionTokenAccounting {
+		return domain.ReadinessReceipt{}, apierr.Conflict(CodeAttemptExecutionPolicyUnsupported, "The selected provider cannot report trustworthy cumulative execution token usage", map[string]any{"harness": binding.Provider})
+	}
 	digest := domain.DigestSHA256([]byte(string(binding.Provider) + "\x00" + readiness.Detail))
 	return domain.ReadinessReceipt{Producer: "provider_profile", Version: "w1.1-v1", ReceiptID: string(digest), Digest: string(digest)}, nil
 }
@@ -621,6 +637,110 @@ func (s *Service) RecordObservation(ctx context.Context, outcomeID domain.Outcom
 		return domain.AttemptObservation{}, apierr.Invalid("OBSERVATION_PAYLOAD_INVALID", "Payload must be valid JSON", nil)
 	}
 	return s.store.AppendAttemptObservation(ctx, attemptID, kind, payload, s.clock())
+}
+
+// RecordExecutionUsage persists one provider cumulative sample and enforces the
+// WorkUnit-lineage token cap. The provider is stopped before failure/custody release.
+func (s *Service) RecordExecutionUsage(ctx context.Context, outcomeID domain.OutcomeID, attemptID domain.AttemptID, in RecordExecutionUsageInput) (AttemptView, error) {
+	attempt, _, err := s.requireAttempt(ctx, outcomeID, attemptID)
+	if err != nil {
+		return AttemptView{}, err
+	}
+	if attempt.Status != domain.AttemptRunning {
+		return AttemptView{}, apierr.Conflict("ATTEMPT_NOT_RUNNING", "Execution usage is accepted only for a running Attempt", nil)
+	}
+	plan, found, err := s.store.GetPlanRevision(ctx, outcomeID, attempt.PlanRevisionID)
+	if err != nil || !found {
+		return AttemptView{}, err
+	}
+	unit, ok := workUnitByID(plan, attempt.WorkUnitID)
+	if !ok {
+		return AttemptView{}, fmt.Errorf("work unit %s missing", attempt.WorkUnitID)
+	}
+	if unit.ExecutionBudget.TokenAccounting != domain.TokenAccountingEnforced {
+		return AttemptView{}, apierr.Conflict("EXECUTION_TOKEN_ACCOUNTING_UNSUPPORTED", "This WorkUnit did not negotiate enforceable execution token accounting", nil)
+	}
+	ref, bound, err := s.store.LatestAttemptSessionRef(ctx, attemptID)
+	if err != nil {
+		return AttemptView{}, err
+	}
+	if !bound || ref.SessionID != in.SessionID || ref.Harness != in.Provider {
+		return AttemptView{}, apierr.Conflict("EXECUTION_USAGE_IDENTITY_MISMATCH", "Usage does not match the bound provider session", nil)
+	}
+	ledger, ok := s.store.(ports.AttemptExecutionUsageStore)
+	if !ok {
+		return AttemptView{}, apierr.Internal("EXECUTION_USAGE_UNWIRED", "Execution usage persistence is unavailable")
+	}
+	sample := domain.ExecutionUsageSample{AttemptID: attemptID, Provider: in.Provider, SessionID: in.SessionID, Sequence: in.Sequence, InputTokens: in.InputTokens, OutputTokens: in.OutputTokens, CreatedAt: s.clock()}
+	stored, inserted, err := ledger.AppendAttemptExecutionUsage(ctx, sample)
+	if err != nil {
+		return AttemptView{}, apierr.Conflict("EXECUTION_USAGE_NON_MONOTONIC", err.Error(), nil)
+	}
+	if inserted {
+		_, err = s.store.AppendAttemptObservation(ctx, attemptID, domain.ObservationExecutionUsage, mustJSON(map[string]any{"provider": stored.Provider, "sessionId": stored.SessionID, "sequence": stored.Sequence, "inputTokens": stored.InputTokens, "outputTokens": stored.OutputTokens, "inputDelta": stored.InputDelta, "outputDelta": stored.OutputDelta}), s.clock())
+		if err != nil {
+			return AttemptView{}, err
+		}
+	}
+	totals, err := ledger.WorkUnitExecutionUsage(ctx, unit.ID)
+	if err != nil {
+		return AttemptView{}, err
+	}
+	if totals.TotalTokens() < unit.ExecutionBudget.TokenLimit {
+		return s.GetAttempt(ctx, outcomeID, attemptID)
+	}
+	if err := s.failRunningAttemptForBudget(ctx, attempt, ref, domain.RuntimeTokenBudgetExhausted, map[string]any{"inputTokens": totals.InputTokens, "outputTokens": totals.OutputTokens, "tokenLimit": unit.ExecutionBudget.TokenLimit}); err != nil {
+		return AttemptView{}, err
+	}
+	return s.GetAttempt(ctx, outcomeID, attemptID)
+}
+
+func (s *Service) failRunningAttemptForBudget(ctx context.Context, attempt domain.Attempt, ref domain.AttemptSessionRef, reason domain.RuntimeBudgetReasonCode, usage map[string]any) error {
+	stops, ok := s.store.(ports.AttemptBudgetStopStore)
+	if !ok {
+		return apierr.Internal("ATTEMPT_BUDGET_STOP_UNWIRED", "Durable budget stop persistence is unavailable")
+	}
+	usage["reasonCode"] = reason
+	usage["sessionId"] = ref.SessionID
+	claim, _, err := stops.ClaimAttemptBudgetStop(ctx, domain.AttemptBudgetStop{AttemptID: attempt.ID, SessionID: ref.SessionID, Reason: reason, MeasuredUsage: mustJSON(usage), ClaimedAt: s.clock()})
+	if err != nil {
+		return err
+	}
+	if claim.ProviderStopped() {
+		return s.finalizeBudgetStop(ctx, attempt, claim)
+	}
+	projectID, _, err := s.store.GetOutcomeProjectID(ctx, attempt.OutcomeID)
+	if err != nil {
+		return err
+	}
+	term, err := s.spawner.Terminate(ctx, projectID, ref.SessionID)
+	if err != nil || !term.ProviderStopped {
+		if err == nil {
+			err = ports.ErrProviderStopUnproven
+		}
+		return fmt.Errorf("budget stop not proven: %w", err)
+	}
+	usage["providerStopped"] = true
+	usage["workspaceFreed"] = term.WorkspaceFreed
+	claim, err = stops.RecordAttemptBudgetProviderStopped(ctx, attempt.ID, ref.SessionID, reason, mustJSON(usage), s.clock())
+	if err != nil {
+		return err
+	}
+	return s.finalizeBudgetStop(ctx, attempt, claim)
+}
+func (s *Service) finalizeBudgetStop(ctx context.Context, attempt domain.Attempt, claim domain.AttemptBudgetStop) error {
+	_, applied, err := s.store.TerminateRunningAttemptWithObservation(ctx, ports.AttemptRunningTermination{OutcomeID: attempt.OutcomeID, AttemptID: attempt.ID, TargetStatus: domain.AttemptFailed, ObservationKind: domain.ObservationBudgetExceeded, ObservationPayload: claim.MachineResult, ReleaseReason: "execution_budget_exceeded", At: s.clock()})
+	if err != nil {
+		return err
+	}
+	if !applied {
+		current, _, getErr := s.store.GetAttempt(ctx, attempt.OutcomeID, attempt.ID)
+		if getErr == nil && current.Status == domain.AttemptFailed {
+			return nil
+		}
+		return apierr.Conflict("ATTEMPT_STATUS_MOVED", "The Attempt changed state concurrently", nil)
+	}
+	return nil
 }
 
 func (s *Service) requireAttempt(ctx context.Context, outcomeID domain.OutcomeID, attemptID domain.AttemptID) (domain.Attempt, domain.Outcome, error) {
@@ -886,4 +1006,13 @@ func writeExactRunBriefValue(b *strings.Builder, value string) {
 	if !strings.HasSuffix(value, "\n") {
 		b.WriteByte('\n')
 	}
+}
+
+func workUnitByID(plan domain.PlanRevision, id domain.WorkUnitID) (domain.WorkUnit, bool) {
+	for _, unit := range plan.WorkUnits {
+		if unit.ID == id {
+			return unit, true
+		}
+	}
+	return domain.WorkUnit{}, false
 }

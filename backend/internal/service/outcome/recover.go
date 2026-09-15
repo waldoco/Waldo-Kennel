@@ -344,7 +344,58 @@ func (s *Service) EvaluateAttemptLiveness(ctx context.Context) error {
 		return fmt.Errorf("list running attempts: %w", err)
 	}
 	var failures []error
+	stopClaims := map[domain.AttemptID]domain.AttemptBudgetStop{}
+	if stops, ok := s.store.(ports.AttemptBudgetStopStore); ok {
+		pending, stopErr := stops.ListUnfinishedAttemptBudgetStops(ctx)
+		if stopErr != nil {
+			return fmt.Errorf("list budget stops: %w", stopErr)
+		}
+		for _, claim := range pending {
+			stopClaims[claim.AttemptID] = claim
+		}
+	}
 	for _, attempt := range running {
+		if claim, claimed := stopClaims[attempt.ID]; claimed {
+			if claim.ProviderStopped() {
+				if err := s.finalizeBudgetStop(ctx, attempt, claim); err != nil {
+					failures = append(failures, err)
+				}
+				continue
+			}
+			ref, bound, refErr := s.store.LatestAttemptSessionRef(ctx, attempt.ID)
+			if refErr != nil || !bound || ref.SessionID != claim.SessionID {
+				failures = append(failures, fmt.Errorf("attempt %s budget claim session mismatch", attempt.ID))
+				continue
+			}
+			var measured map[string]any
+			_ = json.Unmarshal([]byte(claim.MeasuredUsage), &measured)
+			if err := s.failRunningAttemptForBudget(ctx, attempt, ref, claim.Reason, measured); err != nil {
+				failures = append(failures, err)
+			}
+			continue
+		}
+		plan, found, planErr := s.store.GetPlanRevision(ctx, attempt.OutcomeID, attempt.PlanRevisionID)
+		if planErr != nil {
+			failures = append(failures, fmt.Errorf("attempt %s budget plan: %w", attempt.ID, planErr))
+			continue
+		}
+		if found {
+			if unit, ok := workUnitByID(plan, attempt.WorkUnitID); ok && unit.ExecutionBudget.WallTimeLimit > 0 && !s.clock().Before(attempt.CreatedAt.Add(unit.ExecutionBudget.WallTimeLimit)) {
+				ref, bound, refErr := s.store.LatestAttemptSessionRef(ctx, attempt.ID)
+				if refErr != nil {
+					failures = append(failures, fmt.Errorf("attempt %s budget session: %w", attempt.ID, refErr))
+					continue
+				}
+				if !bound {
+					failures = append(failures, fmt.Errorf("attempt %s wall budget expired without a bound session", attempt.ID))
+					continue
+				}
+				if stopErr := s.failRunningAttemptForBudget(ctx, attempt, ref, domain.RuntimeWallTimeBudgetExhausted, map[string]any{"elapsedNanos": s.clock().Sub(attempt.CreatedAt).Nanoseconds(), "wallTimeLimitNanos": unit.ExecutionBudget.WallTimeLimit.Nanoseconds()}); stopErr != nil {
+					failures = append(failures, fmt.Errorf("attempt %s wall budget: %w", attempt.ID, stopErr))
+				}
+				continue
+			}
+		}
 		facts, err := s.heartbeatFacts(ctx, attempt.ID)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("attempt %s: %w", attempt.ID, err))

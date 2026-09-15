@@ -18,12 +18,14 @@ type AttemptExecutionPolicy struct {
 	OutcomeID              OutcomeID         `json:"outcomeId"`
 	PlanRevisionID         PlanRevisionID    `json:"planRevisionId"`
 	WorkUnitID             WorkUnitID        `json:"workUnitId"`
+	Intent                 WorkUnitIntent    `json:"intent"`
 	ContractRevisionNumber int64             `json:"contractRevisionNumber"`
 	RunBriefCoreDigest     string            `json:"runBriefCoreDigest"`
 	WorkspaceRoot          string            `json:"workspaceRoot,omitempty"`
 	RequiredCapabilities   []string          `json:"requiredCapabilities"`
 	Grants                 []CapabilityGrant `json:"grants"`
 	ApprovedChecks         []ApprovedCheck   `json:"approvedChecks,omitempty"`
+	ExecutionBudget        ExecutionBudget   `json:"executionBudget"`
 }
 
 // BindWorkspaceRoot freezes the exact leased workspace into a policy after
@@ -126,11 +128,13 @@ func BuildAttemptExecutionPolicy(
 		OutcomeID:              outcomeID,
 		PlanRevisionID:         plan.ID,
 		WorkUnitID:             unit.ID,
+		Intent:                 unit.Intent,
 		ContractRevisionNumber: plan.ContractRevisionNumber,
 		RunBriefCoreDigest:     strings.TrimSpace(runBriefCoreDigest),
 		RequiredCapabilities:   required,
 		Grants:                 grants,
 		ApprovedChecks:         checks,
+		ExecutionBudget:        unit.ExecutionBudget,
 	}
 	if err := policy.Validate(); err != nil {
 		return AttemptExecutionPolicy{}, err
@@ -142,6 +146,14 @@ func BuildAttemptExecutionPolicy(
 func (p AttemptExecutionPolicy) Validate() error {
 	if p.OutcomeID.IsZero() || p.PlanRevisionID.IsZero() || p.WorkUnitID.IsZero() {
 		return fmt.Errorf("execution policy attribution is incomplete")
+	}
+	if p.Intent != "" && !p.Intent.Valid() {
+		return fmt.Errorf("execution policy requires a known work unit intent")
+	}
+	if p.ExecutionBudget.PolicyID != "" {
+		if err := p.ExecutionBudget.Validate(); err != nil {
+			return fmt.Errorf("execution policy budget: %w", err)
+		}
 	}
 	if p.ContractRevisionNumber < 1 {
 		return fmt.Errorf("execution policy contract revision must be positive")

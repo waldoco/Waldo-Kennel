@@ -20,7 +20,7 @@ func admissionFixture() admissionInput {
 	criterion := domain.ContractCriterion{ID: "criterion", ContractRevisionID: "cr", Position: 1, Text: "inspect"}
 	contract := domain.ContractRevision{ID: "cr", OutcomeID: "out", Number: 1, Goal: "inspect", Criteria: []domain.ContractCriterion{criterion}, SuccessCriteria: []string{"inspect"}, Review: "review", AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true}}
 	policy := admissionTestPolicy()
-	unit := domain.WorkUnit{ID: "wu", Kind: domain.WorkUnitDirect, Title: "Inspect", ContractRevisionNumber: 1, Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault, OutputSummary: "report", EvidenceChecks: []string{"inspect"}, VerificationRequirement: "review", CriterionIDs: []domain.CriterionID{"criterion"}, RequiredCapabilities: []string{domain.CapabilityWorktreeRead}, ExecutionBudget: policy.Default}
+	unit := domain.WorkUnit{ID: "wu", Intent: domain.WorkUnitIntentInspect, Kind: domain.WorkUnitDirect, Title: "Inspect", ContractRevisionNumber: 1, Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault, OutputSummary: "report", EvidenceChecks: []string{"inspect"}, VerificationRequirement: "review", CriterionIDs: []domain.CriterionID{"criterion"}, RequiredCapabilities: []string{domain.CapabilityWorktreeRead}, ExecutionBudget: policy.Default}
 	grant := domain.CapabilityGrant{ID: "g", Name: domain.CapabilityWorktreeRead, Scope: "worktree/*"}
 	candidate := domain.RoutingCandidate{ID: "codex", Provider: "codex", ModelSelection: domain.ExecutionBindingModelProviderDefault, WorkerEligible: true, Readiness: domain.CapabilitySupported, Capabilities: map[string]domain.CapabilitySupport{domain.CapabilityWorktreeRead: domain.CapabilitySupported}}
 	decision := domain.RouteExecution(domain.RoutingRequirements{Role: domain.RoutingRoleWorker, HardCapabilities: unit.RequiredCapabilities}, []domain.RoutingCandidate{candidate}, "snap")
@@ -135,5 +135,20 @@ func TestAdmissionBudgetMissingReasonsAreExact(t *testing.T) {
 				t.Fatalf("%v", got.Reasons)
 			}
 		})
+	}
+}
+
+func TestAdmissionRejectsTokenCapWithoutProviderAccounting(t *testing.T) {
+	in := admissionFixture()
+	in.plan.WorkUnits[0].ExecutionBudget.TokenAccounting = domain.TokenAccountingEnforced
+	in.plan.WorkUnits[0].ExecutionBudget.TokenLimit = 500
+	got := (admissionEvaluator{policy: admissionTestPolicy(), now: time.Now}).evaluate(in)
+	if got.Reasons[0] != domain.AdmissionPlatformUnsupported {
+		t.Fatalf("reasons=%v", got.Reasons)
+	}
+	in.snapshots["wu"].Candidates[0].ExecutionTokenAccounting = domain.CapabilitySupported
+	got = (admissionEvaluator{policy: admissionTestPolicy(), now: time.Now}).evaluate(in)
+	if got.Status != domain.AdmissionAdmitted {
+		t.Fatalf("verdict=%+v", got)
 	}
 }

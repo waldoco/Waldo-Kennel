@@ -250,6 +250,7 @@ func (s *Service) compileAndRoutePlan(
 		unit := domain.WorkUnit{
 			ID:                      unitID,
 			Kind:                    domain.WorkUnitDirect,
+			Intent:                  draftUnit.Intent,
 			Title:                   strings.TrimSpace(draftUnit.Title),
 			ContractRevisionNumber:  revision.Number,
 			OutputSummary:           strings.TrimSpace(draftUnit.OutputSummary),
