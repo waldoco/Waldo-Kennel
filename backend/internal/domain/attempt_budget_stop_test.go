@@ -1,6 +1,10 @@
 package domain
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestCanonicalJSONNumbersCompareByExactMathematicalValue(t *testing.T) {
 	equal := [][2]string{
@@ -29,5 +33,30 @@ func TestCanonicalJSONPreservesLargeIntegerPrecision(t *testing.T) {
 	}
 	if CanonicalJSONEqual(left, `{"tokens":9007199254740992,"nested":{"a":1,"b":2}}`) {
 		t.Fatal("large counters compared through float precision")
+	}
+}
+
+func TestCanonicalJSONLongZeroCoefficientCompletesLinearly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("large linear guard")
+	}
+	raw := `{"n":1` + strings.Repeat("0", 200000) + `}`
+	done := make(chan string, 1)
+	go func() {
+		got, err := CanonicalJSON(raw)
+		if err != nil {
+			done <- "error: " + err.Error()
+			return
+		}
+		done <- got
+	}()
+	select {
+	case got := <-done:
+		want := `{"n":1e200000}`
+		if got != want {
+			t.Fatalf("got length %d value prefix %.32q, want %q", len(got), got, want)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("canonicalization exceeded linear-time guard")
 	}
 }

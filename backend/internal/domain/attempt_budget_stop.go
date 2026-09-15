@@ -133,28 +133,26 @@ func canonicalizeJSONNumber(raw string) (string, error) {
 		fraction = int64(len(mantissa) - dot - 1)
 		digits = mantissa[:dot] + mantissa[dot+1:]
 	}
-	coefficient := new(big.Int)
-	if _, ok := coefficient.SetString(digits, 10); !ok {
-		return "", fmt.Errorf("invalid JSON number %q", raw)
+	// Strip coefficient zeros textually before big.Int parsing. A numeric
+	// coefficient with N trailing zeros changes only the decimal exponent by N.
+	// This is one linear scan instead of N successively smaller big divisions.
+	trimmedEnd := len(digits)
+	for trimmedEnd > 0 && digits[trimmedEnd-1] == '0' {
+		trimmedEnd--
 	}
-	if coefficient.Sign() == 0 {
+	if trimmedEnd == 0 {
 		return "0", nil
+	}
+	trimmed := digits[:trimmedEnd]
+	coefficient := new(big.Int)
+	if _, ok := coefficient.SetString(trimmed, 10); !ok {
+		return "", fmt.Errorf("invalid JSON number %q", raw)
 	}
 	if sign == "-" {
 		coefficient.Neg(coefficient)
 	}
 	scale := new(big.Int).Sub(exp, big.NewInt(fraction))
-	ten := big.NewInt(10)
-	rem := new(big.Int)
-	for {
-		q := new(big.Int)
-		q.QuoRem(coefficient, ten, rem)
-		if rem.Sign() != 0 {
-			break
-		}
-		coefficient = q
-		scale.Add(scale, big.NewInt(1))
-	}
+	scale.Add(scale, new(big.Int).SetUint64(uint64(len(digits)-trimmedEnd)))
 	if scale.Sign() == 0 {
 		return coefficient.String(), nil
 	}
