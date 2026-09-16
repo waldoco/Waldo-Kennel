@@ -3279,6 +3279,53 @@ func TestGovernedTurnPersistsDispatchingBeforeProviderContactAndAcknowledges(t *
 	}
 }
 
+type failAcknowledgedGovernedTurnStore struct {
+	chatsvc.Store
+	err error
+}
+
+func (s *failAcknowledgedGovernedTurnStore) AdvanceGovernedCommand(ctx context.Context, rec domain.GovernedCommandRecord, expected domain.GovernedCommandState, generation, revision, capability string) (bool, error) {
+	if rec.State == domain.GovernedCommandAcknowledged {
+		return false, s.err
+	}
+	return s.Store.AdvanceGovernedCommand(ctx, rec, expected, generation, revision, capability)
+}
+
+func TestGovernedTurnCrashAfterProviderAcceptanceLeavesDispatchingAndBlocksReplay(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-accepted"},
+		TransportRequestID: 1, TransportSHA256: "abc", TransportBytes: 10, TransportSequence: 1,
+	}}
+	injected := errors.New("daemon stopped before acknowledged projection")
+	wrapped := &failAcknowledgedGovernedTurnStore{Store: st, err: injected}
+	svc := chatsvc.New(chatsvc.Options{Store: wrapped, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("post-accept")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-post-accept"}
+	if _, err = ctrl.Send(context.Background(), msg); !errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) || !errors.Is(err, injected) {
+		t.Fatalf("first send err=%v", err)
+	}
+	claim, ok, err := st.GetGovernedCommand(context.Background(), "post-accept-1")
+	if err != nil || !ok || claim.State != domain.GovernedCommandDispatching {
+		t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+	if _, err = ctrl.Send(context.Background(), msg); err != nil {
+		t.Fatalf("exact replay err=%v", err)
+	}
+	if _, err = ctrl.Send(context.Background(), ports.ChatUserMessage{Text: "later", ClientMessageID: "request-later"}); err != nil {
+		t.Fatalf("later send err=%v", err)
+	}
+	if got := len(conv.sentMessages()); got != 1 {
+		t.Fatalf("provider dispatches=%d want 1", got)
+	}
+}
+
 func TestGovernedTurnUnknownStaysBlockingAndExactRetryDoesNotRedispatch(t *testing.T) {
 	st := openStore(t)
 	workspace := t.TempDir()
