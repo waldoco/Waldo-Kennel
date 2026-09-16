@@ -63,7 +63,9 @@ func (h HarnessConnection) Validate() error {
 		strings.TrimSpace(h.ProviderVersion) == "" || !h.ProtocolFingerprint.Valid() ||
 		strings.TrimSpace(h.MissionID) == "" || strings.TrimSpace(h.AppRunID) == "" ||
 		h.Generation < 1 || h.ExpiresAt.IsZero() || h.CreatedAt.IsZero() || h.UpdatedAt.IsZero() ||
-		strings.TrimSpace(h.CapabilityVerifier) == "" || len(h.CapabilityClasses) == 0 {
+		!SHA256Digest(h.CapabilityVerifier).Valid() || len(h.CapabilityClasses) == 0 ||
+		!h.ExpiresAt.After(h.CreatedAt) || h.UpdatedAt.Before(h.CreatedAt) ||
+		(h.RevokedAt != nil && h.RevokedAt.Before(h.CreatedAt)) {
 		return ErrHarnessConnectionInvalid
 	}
 	seen := make(map[HarnessCapabilityClass]struct{}, len(h.CapabilityClasses))

@@ -55,7 +55,7 @@ func (s *Store) GetHarnessConnection(ctx context.Context, id domain.HarnessConne
 }
 
 func (s *Store) RotateHarnessConnection(ctx context.Context, id domain.HarnessConnectionID, generation int64, verifier string, expiresAt, updatedAt time.Time) (domain.HarnessConnection, bool, error) {
-	if strings.TrimSpace(verifier) == "" || generation < 1 || expiresAt.IsZero() || updatedAt.IsZero() {
+	if !domain.SHA256Digest(verifier).Valid() || generation < 1 || expiresAt.IsZero() || updatedAt.IsZero() || !expiresAt.After(updatedAt) {
 		return domain.HarnessConnection{}, false, domain.ErrHarnessConnectionInvalid
 	}
 	s.writeMu.Lock()
