@@ -1560,3 +1560,61 @@ func TestConnectionCloseDoesNotReleaseUnverifiedInterruptedTerminal(t *testing.T
 		}
 	}
 }
+
+func TestDispatchTurnReportsAcknowledgedWithTransportEvidence(t *testing.T) {
+	d, _ := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	dispatcher, ok := opened.(ports.ChatTurnDispatcher)
+	if !ok {
+		t.Fatal("Codex conversation has no evidence-aware dispatch")
+	}
+	got, err := dispatcher.DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "go", ClientMessageID: "dispatch-evidence-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Acceptance != ports.ChatTurnAcknowledged || got.Ref.ProviderTurnID != "turn-1" || got.TransportRequestID <= 0 || got.TransportSHA256 == "" || got.TransportBytes <= 0 || got.TransportSequence <= 0 {
+		t.Fatalf("dispatch evidence=%+v", got)
+	}
+}
+
+func TestDispatchTurnReportsProviderRejectionAfterFullWrite(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.replyError("turn/start", -32602, "invalid turn")
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "go"})
+	if err == nil {
+		t.Fatal("expected provider rejection")
+	}
+	if got.Acceptance != ports.ChatTurnRejected || got.TransportSHA256 == "" || got.Ref.ProviderTurnID != "" {
+		t.Fatalf("rejection evidence=%+v err=%v", got, err)
+	}
+}
+
+func TestDispatchTurnReportsUnknownAfterFullWriteWithoutResponse(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.mu.Lock()
+	delete(srv.responses, "turn/start")
+	srv.mu.Unlock()
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(ctx, ports.ChatUserMessage{Text: "go"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err=%v", err)
+	}
+	if got.Acceptance != ports.ChatTurnDeliveryUnknown || got.TransportSHA256 == "" || got.TransportBytes <= 0 || got.TransportSequence <= 0 {
+		t.Fatalf("unknown evidence=%+v", got)
+	}
+}

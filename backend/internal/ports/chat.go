@@ -621,6 +621,37 @@ type ChatTurnRef struct {
 	ProviderTurnID string
 }
 
+// ChatTurnAcceptance describes only what the provider transport proved about a
+// turn request. A fully written request with no conclusive response is delivery
+// unknown, not rejection and not permission to retry.
+type ChatTurnAcceptance string
+
+const (
+	ChatTurnNotSent         ChatTurnAcceptance = "not_sent"
+	ChatTurnRejected        ChatTurnAcceptance = "rejected"
+	ChatTurnDeliveryUnknown ChatTurnAcceptance = "delivery_unknown"
+	ChatTurnAcknowledged    ChatTurnAcceptance = "acknowledged"
+)
+
+// ChatTurnDispatch is the evidence returned by a driver that can distinguish
+// transport write from provider acceptance. Transport fields contain no prompt,
+// credentials, provider response, or other request content.
+type ChatTurnDispatch struct {
+	Acceptance         ChatTurnAcceptance
+	Ref                ChatTurnRef
+	TransportRequestID int64
+	TransportSHA256    string
+	TransportBytes     int
+	TransportSequence  int64
+}
+
+// ChatTurnDispatcher is an optional stronger send boundary. Controllers use it
+// for governed delivery; legacy drivers keep the existing SendTurn contract
+// until their protocol can provide equally honest evidence.
+type ChatTurnDispatcher interface {
+	DispatchTurn(ctx context.Context, msg ChatUserMessage) (ChatTurnDispatch, error)
+}
+
 // ChatDeferredTurnStarter is implemented by protocols whose prompt call is the
 // whole lifetime of a turn rather than a quick "accepted" request. SendTurn
 // prepares such a turn and returns its id; the controller calls StartDeferredTurn

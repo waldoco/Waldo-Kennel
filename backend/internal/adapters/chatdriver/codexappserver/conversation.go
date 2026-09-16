@@ -361,7 +361,14 @@ func (c *conversation) closeEvents() {
 
 // SendTurn delivers one message to the provider.
 func (c *conversation) SendTurn(ctx context.Context, msg ports.ChatUserMessage) (ports.ChatTurnRef, error) {
-	return c.sendTurn(ctx, msg, nil)
+	dispatch, err := c.dispatchTurn(ctx, msg, nil)
+	return dispatch.Ref, err
+}
+
+// DispatchTurn preserves the distinction between a provider rejection and an
+// ambiguous result after the complete request frame crossed the transport.
+func (c *conversation) DispatchTurn(ctx context.Context, msg ports.ChatUserMessage) (ports.ChatTurnDispatch, error) {
+	return c.dispatchTurn(ctx, msg, nil)
 }
 
 // sendTurn is the shared turn/start boundary. Structured reasoning uses the
@@ -369,10 +376,15 @@ func (c *conversation) SendTurn(ctx context.Context, msg ports.ChatUserMessage) 
 // adapter prevents a generic chat caller from smuggling provider wire fields
 // through the ports contract.
 func (c *conversation) sendTurn(ctx context.Context, msg ports.ChatUserMessage, outputSchema json.RawMessage) (ports.ChatTurnRef, error) {
+	dispatch, err := c.dispatchTurn(ctx, msg, outputSchema)
+	return dispatch.Ref, err
+}
+
+func (c *conversation) dispatchTurn(ctx context.Context, msg ports.ChatUserMessage, outputSchema json.RawMessage) (ports.ChatTurnDispatch, error) {
 	if strings.TrimSpace(msg.Text) == "" {
 		// There is no keystroke concept here: an empty message is a caller bug,
 		// not a way to nudge the agent.
-		return ports.ChatTurnRef{}, errors.New("chat message text is empty")
+		return ports.ChatTurnDispatch{Acceptance: ports.ChatTurnNotSent}, errors.New("chat message text is empty")
 	}
 
 	c.sendMu.Lock()
@@ -424,28 +436,39 @@ func (c *conversation) sendTurn(ctx context.Context, msg ports.ChatUserMessage, 
 	}
 	var receipt transportReceipt
 	var err error
-	if c.nativeSandboxPolicy != nil {
-		receipt, err = c.conn.requestWithTransportReceipt(ctx, "turn/start", params, &resp, c.nativeSandboxPolicy)
-	} else {
-		err = c.conn.request(ctx, "turn/start", params, &resp)
-	}
+	receipt, err = c.conn.requestWithTransportReceipt(ctx, "turn/start", params, &resp, c.nativeSandboxPolicy)
+	dispatch := turnDispatchFromReceipt(receipt)
 	if err != nil {
-		return ports.ChatTurnRef{}, fmt.Errorf("turn/start: %w", err)
+		var providerErr *rpcError
+		switch {
+		case !receipt.SuccessfulWrite:
+			dispatch.Acceptance = ports.ChatTurnNotSent
+		case errors.As(err, &providerErr):
+			dispatch.Acceptance = ports.ChatTurnRejected
+		default:
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+		}
+		return dispatch, fmt.Errorf("turn/start: %w", err)
 	}
+	dispatch.Acceptance = ports.ChatTurnAcknowledged
 	if strings.TrimSpace(resp.Turn.ID) == "" {
-		return ports.ChatTurnRef{}, errors.New("turn/start returned no turn id")
+		dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+		return dispatch, errors.New("turn/start returned no turn id")
 	}
 
 	if c.nativeSandboxPolicy != nil {
 		if err := c.appendNativeTurnPolicyEvidence(resp.Turn.ID, receipt, params); err != nil {
-			return ports.ChatTurnRef{}, err
+			dispatch.Acceptance = ports.ChatTurnAcknowledged
+			dispatch.Ref.ProviderTurnID = resp.Turn.ID
+			return dispatch, err
 		}
 	}
 	c.mu.Lock()
 	c.activeTurn = resp.Turn.ID
 	c.mu.Unlock()
 
-	return ports.ChatTurnRef{ProviderTurnID: resp.Turn.ID}, nil
+	dispatch.Ref.ProviderTurnID = resp.Turn.ID
+	return dispatch, nil
 }
 
 // applyTurnSettings folds the caller's per-turn choices into a turn/start payload.
@@ -453,6 +476,13 @@ func (c *conversation) sendTurn(ctx context.Context, msg ports.ChatUserMessage, 
 // Only fields the caller actually chose are sent. An omitted field lets the
 // provider fall back to what the thread was started with, which is why a caller
 // that chooses nothing behaves exactly as it did before per-turn settings existed.
+func turnDispatchFromReceipt(receipt transportReceipt) ports.ChatTurnDispatch {
+	return ports.ChatTurnDispatch{
+		TransportRequestID: receipt.RequestID, TransportSHA256: receipt.SHA256,
+		TransportBytes: receipt.ByteCount, TransportSequence: receipt.WriteSequence,
+	}
+}
+
 func applyTurnSettings(params map[string]any, settings ports.ChatTurnSettings) {
 	if settings.Model != "" {
 		params["model"] = settings.Model

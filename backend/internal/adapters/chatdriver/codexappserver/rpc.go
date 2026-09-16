@@ -282,7 +282,7 @@ func (c *conn) writeSerialized(v any, requestID int64, method string, expectedSa
 		return transportReceipt{}, fmt.Errorf("encode frame: %w", err)
 	}
 	b = append(b, '\n')
-	if method == "turn/start" {
+	if method == "turn/start" && expectedSandboxPolicy != nil {
 		if err := validateSerializedTurnSandboxPolicy(b, expectedSandboxPolicy); err != nil {
 			return transportReceipt{}, err
 		}

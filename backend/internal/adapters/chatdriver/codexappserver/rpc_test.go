@@ -143,9 +143,13 @@ func TestRequestHonorsContextAndToleratesLateResponse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	err := c.request(ctx, "turn/start", nil, nil)
+	var out any
+	receipt, err := c.requestWithTransportReceipt(ctx, "turn/start", nil, &out, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+	}
+	if !receipt.SuccessfulWrite || receipt.Method != "turn/start" || receipt.SHA256 == "" || receipt.ByteCount <= 0 || receipt.WriteSequence <= 0 {
+		t.Fatalf("missing full-write receipt: %+v", receipt)
 	}
 
 	// The request was still sent; answering it now must be discarded quietly.
