@@ -736,6 +736,16 @@ func (c *Controller) configureGovernedTurns(ctx context.Context, policy *domain.
 			break
 		}
 	}
+	controls, err := c.store.ListUnsettledGovernedControlCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("list unsettled governed control commands: %w", err)
+	}
+	for _, command := range controls {
+		if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
+			governance.blocked = true
+			break
+		}
+	}
 	c.governance = governance
 	return nil
 }
@@ -803,6 +813,15 @@ func (c *Controller) governedBlockedExcept(ctx context.Context, commandID string
 		return false, err
 	}
 	for _, command := range unsettled {
+		if command.SessionID == c.sessionID && command.ID != commandID && command.State.BlocksConflictingDispatch() {
+			return true, nil
+		}
+	}
+	controls, err := c.store.ListUnsettledGovernedControlCommands(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, command := range controls {
 		if command.SessionID == c.sessionID && command.ID != commandID && command.State.BlocksConflictingDispatch() {
 			return true, nil
 		}

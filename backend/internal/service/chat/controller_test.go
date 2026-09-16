@@ -3667,3 +3667,57 @@ func TestGovernedInterruptAcknowledgedWithoutQuiescenceStaysUnknown(t *testing.T
 		t.Fatalf("claims=%+v err=%v", claims, err)
 	}
 }
+
+func TestRestartRetainsBlockingGovernedControlUnknown(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	first := newFakeConversation()
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: first}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("restart-control")})
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	claim := domain.GovernedControlCommand{ID: "control-unknown", IdempotencyKey: "interrupt:turn-1", RequestFingerprint: domain.ComputeGovernedControlFingerprint(testSession, domain.GovernedControlInterrupt, "interrupt:turn-1", "turn-1", "{}"), Class: domain.GovernedControlInterrupt, State: domain.GovernedCommandClaimed, SessionID: testSession, ControllerGeneration: ctrl.Generation(), ExpectedRevision: policy.PlanRevisionID.String(), CapabilityFingerprint: chatCapabilityFingerprintForTest(first.Capabilities()), ProviderConversationID: first.ProviderConversationID(), ProviderTurnID: "turn-1", Quiescence: domain.GovernedCommandQuiescencePending, CreatedAt: now, UpdatedAt: now}
+	if _, made, err := st.CreateGovernedControlCommandClaim(context.Background(), claim); err != nil || !made {
+		t.Fatalf("claim made=%v err=%v", made, err)
+	}
+	claim.State = domain.GovernedCommandDispatching
+	claim.UpdatedAt = now.Add(time.Second)
+	if ok, err := st.AdvanceGovernedControlCommand(context.Background(), claim, domain.GovernedCommandClaimed, claim.ControllerGeneration, claim.ExpectedRevision, claim.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("dispatch ok=%v err=%v", ok, err)
+	}
+	claim.State = domain.GovernedCommandDeliveryUnknown
+	claim.UpdatedAt = now.Add(2 * time.Second)
+	if ok, err := st.AdvanceGovernedControlCommand(context.Background(), claim, domain.GovernedCommandDispatching, claim.ControllerGeneration, claim.ExpectedRevision, claim.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("unknown ok=%v err=%v", ok, err)
+	}
+	if err := svc.Stop(context.Background(), testSession); err != nil {
+		t.Fatal(err)
+	}
+	second := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-new"}, TransportRequestID: 4, TransportSHA256: "new-sha", TransportBytes: 10, TransportSequence: 4}}
+	svc = chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: second}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("restart-control-2")})
+	if _, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: "thread-1", ExecutionPolicy: &policy}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Send(context.Background(), testSession, ports.ChatUserMessage{Text: "new work", ClientMessageID: "after-control-unknown"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(second.sentMessages()); got != 0 {
+		t.Fatalf("provider dispatches=%d want 0", got)
+	}
+}
+
+func chatCapabilityFingerprintForTest(capabilities ports.ChatCapabilities) string {
+	enabled := make([]string, 0, len(capabilities))
+	for capability, available := range capabilities {
+		if available {
+			enabled = append(enabled, string(capability))
+		}
+	}
+	sort.Strings(enabled)
+	payload, _ := json.Marshal(enabled)
+	sum := sha256.Sum256(payload)
+	return "chat-v1:" + hex.EncodeToString(sum[:])
+}
