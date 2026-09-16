@@ -129,6 +129,7 @@ type StartConfig struct {
 	Model                 string
 	Permissions           ports.PermissionMode
 	ExecutionPolicy       *domain.AttemptExecutionPolicy
+	NativeSandboxProfile  *ports.ChatNativeSandboxProfile
 	SystemPrompt          string
 	AdditionalDirectories []string
 	MCPServers            []ports.ChatMCPServerConfig
@@ -274,6 +275,7 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 			Permissions:            cfg.Permissions,
 			Model:                  cfg.Model,
 			ExecutionPolicy:        cfg.ExecutionPolicy,
+			NativeSandboxProfile:   cfg.NativeSandboxProfile,
 			SystemPrompt:           cfg.SystemPrompt,
 			AdditionalDirectories:  cfg.AdditionalDirectories,
 			MCPServers:             cfg.MCPServers,
@@ -287,6 +289,7 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 			Model:                 cfg.Model,
 			Permissions:           cfg.Permissions,
 			ExecutionPolicy:       cfg.ExecutionPolicy,
+			NativeSandboxProfile:  cfg.NativeSandboxProfile,
 			SystemPrompt:          cfg.SystemPrompt,
 			AdditionalDirectories: cfg.AdditionalDirectories,
 			MCPServers:            cfg.MCPServers,
@@ -512,7 +515,30 @@ func (s *Service) Interrupt(ctx context.Context, id domain.SessionID) error {
 	if err != nil {
 		return err
 	}
-	return controller.Interrupt(ctx)
+	err = controller.Interrupt(ctx)
+	if !errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+		return err
+	}
+
+	// Codex can acknowledge Stop before its shell exits. The driver has killed
+	// that owned process tree; reattach the same native thread in a fresh process
+	// before reporting Stop complete so the session stays usable.
+	select {
+	case <-controller.stopped:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	s.mu.RLock()
+	cfg, ok := s.startConfigs[id]
+	s.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("restart after non-quiescent interrupt: no saved controller config")
+	}
+	cfg.ProviderConversationID = controller.ProviderConversationID()
+	if _, restartErr := s.Start(ctx, cfg); restartErr != nil {
+		return fmt.Errorf("restart after non-quiescent interrupt: %w", restartErr)
+	}
+	return nil
 }
 
 // ArmChatHandoff closes source intake and queue dispatch at
@@ -932,6 +958,7 @@ type StartRequest struct {
 	Model                 string
 	Permissions           ports.PermissionMode
 	ExecutionPolicy       *domain.AttemptExecutionPolicy
+	NativeSandboxProfile  *ports.ChatNativeSandboxProfile
 	SystemPrompt          string
 	AdditionalDirectories []string
 	MCPServers            []ports.ChatMCPServerConfig

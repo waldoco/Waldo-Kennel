@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +27,11 @@ const eventBuffer = 4096
 // resolves would hang the session indefinitely. On expiry Kennel refuses rather than
 // deciding on the user's behalf.
 const approvalWait = 30 * time.Minute
+
+// interruptQuiescenceWait is the provider grace period after it accepts Stop.
+// A command that remains active after this bound is not safe to leave attached:
+// Codex 0.154.0 can report the turn interrupted while its shell keeps writing.
+const interruptQuiescenceWait = 1500 * time.Millisecond
 
 // errConversationClosed reports a decision arriving after the controller ended.
 var errConversationClosed = errors.New("conversation closed")
@@ -72,7 +79,13 @@ type conversation struct {
 
 	mu      sync.Mutex
 	pending map[string]*parkedRequest
-	closed  bool
+	// rawCodeModeExec pairs the public opt-in rawResponseItem/completed call/output
+	// records that Codex emits for Code Mode exec. Pump is its sole owner.
+	rawCodeModeExec map[string]codeModeExecCall
+	// rawExecCompleted holds raw fallback completions until turn/completed, so a
+	// standard commandExecution item can win without duplicate activities. Pump owns it.
+	rawExecCompleted map[string]ports.ChatEvent
+	closed           bool
 
 	// sendMu serializes turn dispatch so only one operation mutates the provider
 	// conversation at a time.
@@ -81,6 +94,13 @@ type conversation struct {
 	// activeTurn is the most recent provider turn id, used when a caller asks to
 	// interrupt without naming one.
 	activeTurn string
+	// terminalTurns and activeCommands let Interrupt distinguish a settled stop
+	// from Codex's early interrupted notification. They are bounded to the live
+	// thread and reset as turns settle.
+	terminalTurns    map[string]bool
+	activeCommands   map[string]int
+	interrupting     map[string]bool
+	deferredTerminal map[string]ports.ChatEvent
 
 	// contextTokens is the conversation's latest position in the model's context,
 	// and contextWindow the size of that context. Both come from the provider's
@@ -123,11 +143,17 @@ var _ ports.ChatMCPReloader = (*conversation)(nil)
 
 func newConversation(proc *process, log *slog.Logger) *conversation {
 	c := &conversation{
-		proc:     proc,
-		log:      log,
-		events:   make(chan ports.ChatEvent, eventBuffer),
-		pending:  make(map[string]*parkedRequest),
-		pumpDone: make(chan struct{}),
+		proc:             proc,
+		log:              log,
+		events:           make(chan ports.ChatEvent, eventBuffer),
+		pending:          make(map[string]*parkedRequest),
+		rawCodeModeExec:  make(map[string]codeModeExecCall),
+		rawExecCompleted: make(map[string]ports.ChatEvent),
+		terminalTurns:    make(map[string]bool),
+		activeCommands:   make(map[string]int),
+		interrupting:     make(map[string]bool),
+		deferredTerminal: make(map[string]ports.ChatEvent),
+		pumpDone:         make(chan struct{}),
 	}
 	c.conn = newConn(proc.stdin, proc.stdout, log, c.handleServerRequest)
 	return c
@@ -201,7 +227,24 @@ func (c *conversation) pump() {
 		// The clock is passed in rather than read inside: a rate-limit reset arrives
 		// as an absolute instant and has to become a remaining duration, and a
 		// normalizer that reads the clock itself cannot be tested deterministically.
+		c.normalizeRawExec(n)
+
 		for _, ev := range normalizeNotification(n, time.Now()) {
+			c.trackInterruptState(ev)
+			if c.deferInterruptedTerminal(ev) {
+				continue
+			}
+			if ev.Kind == ports.ChatEventActivityCompleted && ev.ActivityKind == domain.ActivityKindCommand {
+				delete(c.rawExecCompleted, ev.ProviderItemID)
+			}
+			if ev.Kind == ports.ChatEventTurnCompleted {
+				for callID, fallback := range c.rawExecCompleted {
+					if fallback.ProviderTurnID == ev.ProviderTurnID {
+						c.emit(fallback)
+						delete(c.rawExecCompleted, callID)
+					}
+				}
+			}
 			rootConversation := ev.ProviderConversationID == "" || ev.ProviderConversationID == c.threadID
 			if ev.Kind == ports.ChatEventTurnStarted && ev.ProviderTurnID != "" && rootConversation {
 				c.mu.Lock()
@@ -733,6 +776,56 @@ func formatTokens(tokens int64) string {
 	return fmt.Sprintf("%.1fk tokens", float64(tokens)/1000)
 }
 
+// deferInterruptedTerminal keeps the UI in its working/stopping state until
+// Interrupt has either observed command settlement or killed the owned tree.
+func (c *conversation) deferInterruptedTerminal(ev ports.ChatEvent) bool {
+	if ev.Kind != ports.ChatEventTurnCompleted || ev.TurnState != domain.TurnStateInterrupted || ev.ProviderTurnID == "" {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.interrupting[ev.ProviderTurnID] {
+		return false
+	}
+	c.deferredTerminal[ev.ProviderTurnID] = ev
+	return true
+}
+
+func (c *conversation) clearInterrupt(turnID string, emitTerminal bool) {
+	c.mu.Lock()
+	delete(c.interrupting, turnID)
+	ev, ok := c.deferredTerminal[turnID]
+	delete(c.deferredTerminal, turnID)
+	c.mu.Unlock()
+	if emitTerminal && ok {
+		c.emit(ev)
+	}
+}
+
+// trackInterruptState records only the lifecycle needed to know whether Stop
+// has actually settled. Provider prose and output are deliberately irrelevant.
+func (c *conversation) trackInterruptState(ev ports.ChatEvent) {
+	if ev.ProviderTurnID == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch {
+	case ev.Kind == ports.ChatEventTurnStarted:
+		delete(c.terminalTurns, ev.ProviderTurnID)
+	case ev.Kind == ports.ChatEventTurnCompleted:
+		c.terminalTurns[ev.ProviderTurnID] = true
+	case ev.Kind == ports.ChatEventActivityStarted && ev.ActivityKind == domain.ActivityKindCommand:
+		c.activeCommands[ev.ProviderTurnID]++
+	case ev.Kind == ports.ChatEventActivityCompleted && ev.ActivityKind == domain.ActivityKindCommand:
+		if c.activeCommands[ev.ProviderTurnID] > 1 {
+			c.activeCommands[ev.ProviderTurnID]--
+		} else {
+			delete(c.activeCommands, ev.ProviderTurnID)
+		}
+	}
+}
+
 // Interrupt cancels a turn. An empty turn id targets the active one.
 func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) error {
 	if providerTurnID == "" {
@@ -743,6 +836,9 @@ func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) err
 	if providerTurnID == "" {
 		return ports.ErrChatNoActiveTurn
 	}
+	c.mu.Lock()
+	c.interrupting[providerTurnID] = true
+	c.mu.Unlock()
 	if err := c.conn.request(ctx, "turn/interrupt", map[string]any{
 		"threadId": c.threadID,
 		"turnId":   providerTurnID,
@@ -753,12 +849,41 @@ func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) err
 		// internal failure, so it is translated here, where the provider's
 		// vocabulary is known, instead of escaping as a protocol error and
 		// reaching the user as "Internal server error".
+		c.clearInterrupt(providerTurnID, false)
 		if isNoActiveTurn(err) {
 			return ports.ErrChatNoActiveTurn
 		}
 		return fmt.Errorf("turn/interrupt: %w", err)
 	}
-	return nil
+	// Pipe-backed tests have no owned process to police. A real app-server does:
+	// do not report Stop complete until its command lifecycle has settled.
+	if c.proc.forceStop == nil {
+		c.clearInterrupt(providerTurnID, true)
+		return nil
+	}
+	deadline := time.NewTimer(interruptQuiescenceWait)
+	defer deadline.Stop()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			c.clearInterrupt(providerTurnID, true)
+			return ctx.Err()
+		case <-ticker.C:
+			// Provider lifecycle settlement is useful transcript evidence, but Codex
+			// 0.154.0 can settle both turn and command before the shell's final write.
+			// There is no process-level quiescence signal on the public protocol, so
+			// only terminating the owned process group closes the effect boundary.
+		case <-deadline.C:
+			if err := c.proc.forceStop(); err != nil {
+				c.clearInterrupt(providerTurnID, true)
+				return fmt.Errorf("force-stop interrupted app-server: %w", err)
+			}
+			c.clearInterrupt(providerTurnID, true)
+			return ports.ErrChatInterruptRestartRequired
+		}
+	}
 }
 
 // isNoActiveTurn recognizes the provider's "nothing to interrupt" refusal.
@@ -1248,4 +1373,146 @@ func approvalReply(method string, decision ports.ChatDecision) any {
 		return map[string]any{"decision": json.RawMessage(decision.Raw)}
 	}
 	return map[string]any{"decision": decision.ID}
+}
+
+// The provider deliberately excludes this internal/experimental notification from
+// generated method constants while still exporting its typed payload. Native Stage 1
+// opts into it because gpt-5.6-luna Code Mode otherwise has no public command lifecycle.
+const methodRawResponseItemCompleted = "rawResponseItem/completed"
+
+type codeModeExecCall struct{ command, cwd string }
+
+var codeModeExecField = regexp.MustCompile(`(?:^|[,({])\s*(cmd|workdir)\s*:\s*("(?:\\.|[^"\\])*")`)
+
+func parseCodeModeExecInput(input string) (codeModeExecCall, bool) {
+	if !strings.Contains(input, "tools.exec_command(") || !strings.Contains(input, "text(JSON.stringify(") {
+		return codeModeExecCall{}, false
+	}
+	var call codeModeExecCall
+	for _, match := range codeModeExecField.FindAllStringSubmatch(input, -1) {
+		value, err := strconv.Unquote(match[2])
+		if err != nil {
+			return codeModeExecCall{}, false
+		}
+		switch match[1] {
+		case "cmd":
+			call.command = value
+		case "workdir":
+			call.cwd = value
+		}
+	}
+	return call, call.command != ""
+}
+
+func rawOutputText(raw *json.RawMessage) string {
+	if raw == nil || len(*raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(*raw, &text) == nil {
+		return text
+	}
+	var items []struct{ Type, Text string }
+	if json.Unmarshal(*raw, &items) != nil {
+		return ""
+	}
+	var parts []string
+	for _, item := range items {
+		if item.Type == "input_text" || item.Type == "output_text" {
+			parts = append(parts, item.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+type codeModeExecResult struct {
+	ExitCode int    `json:"exit_code"`
+	Output   string `json:"output"`
+}
+
+func parseCodeModeExecOutput(text string) (codeModeExecResult, bool) {
+	// The host prefixes a human line, then emits one JSON object. Decode only the
+	// final complete line; never infer success from prose or assistant text.
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		var result codeModeExecResult
+		if json.Unmarshal([]byte(strings.TrimSpace(lines[i])), &result) == nil && strings.Contains(lines[i], `"exit_code"`) {
+			return result, true
+		}
+	}
+	return codeModeExecResult{}, false
+}
+
+func parseDirectExecArguments(raw json.RawMessage) (codeModeExecCall, bool) {
+	var args struct {
+		Command string `json:"cmd"`
+		CWD     string `json:"workdir"`
+	}
+	if json.Unmarshal(raw, &args) != nil || args.Command == "" {
+		return codeModeExecCall{}, false
+	}
+	return codeModeExecCall{command: args.Command, cwd: args.CWD}, true
+}
+
+func (c *conversation) markRawCommand(turnID string, delta int) {
+	if turnID == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.activeCommands == nil {
+		c.activeCommands = make(map[string]int)
+	}
+	if delta > 0 {
+		c.activeCommands[turnID] += delta
+	} else if c.activeCommands[turnID] > 1 {
+		c.activeCommands[turnID]--
+	} else {
+		delete(c.activeCommands, turnID)
+	}
+}
+
+func (c *conversation) normalizeRawExec(n notification) {
+	if n.Method != methodRawResponseItemCompleted {
+		return
+	}
+	var p codexproto.RawResponseItemCompletedNotification
+	if json.Unmarshal(n.Params, &p) != nil || p.Item.CallID == nil {
+		return
+	}
+	callID := *p.Item.CallID
+	switch p.Item.Type {
+	case codexproto.ResponseItemTypeCustomToolCall:
+		if p.Item.Name == nil || *p.Item.Name != "exec" || p.Item.Input == nil {
+			return
+		}
+		if call, ok := parseCodeModeExecInput(*p.Item.Input); ok {
+			c.rawCodeModeExec[callID] = call
+			c.markRawCommand(p.TurnID, 1)
+		}
+	case codexproto.ResponseItemTypeFunctionCall:
+		if p.Item.Name == nil || *p.Item.Name != "exec_command" {
+			return
+		}
+		if call, ok := parseDirectExecArguments(p.Item.Arguments); ok {
+			c.rawCodeModeExec[callID] = call
+			c.markRawCommand(p.TurnID, 1)
+		}
+	case codexproto.ResponseItemTypeCustomToolCallOutput, codexproto.ResponseItemTypeFunctionCallOutput:
+		call, ok := c.rawCodeModeExec[callID]
+		if !ok {
+			return
+		}
+		delete(c.rawCodeModeExec, callID)
+		c.markRawCommand(p.TurnID, -1)
+		result, ok := parseCodeModeExecOutput(rawOutputText(p.Item.Output))
+		if !ok {
+			return
+		}
+		status := domain.ActivityStatusCompleted
+		if result.ExitCode != 0 {
+			status = domain.ActivityStatusFailed
+		}
+		c.rawExecCompleted[callID] = ports.ChatEvent{Kind: ports.ChatEventActivityCompleted, ProviderTurnID: p.TurnID, ProviderItemID: callID, ActivityKind: domain.ActivityKindCommand, ActivityStatus: status, Summary: commandSummary(call.command), Detail: encodeDetail(map[string]any{"command": call.command, "cwd": call.cwd, "output": result.Output, "exitCode": result.ExitCode, "source": "rawResponseItem/completed:exec-fallback"})}
+	}
 }

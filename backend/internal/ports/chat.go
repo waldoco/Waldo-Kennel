@@ -44,6 +44,11 @@ var (
 	// letting a protocol error escape: pressing stop a moment too late is an
 	// ordinary thing for a person to do, not an internal failure.
 	ErrChatNoActiveTurn = errors.New("no active turn to interrupt")
+	// ErrChatInterruptRestartRequired means the provider accepted Stop but did not
+	// quiesce its active command before the bounded grace period. The driver has
+	// killed its owned process tree; the service must resume the same native
+	// conversation in a fresh controller before reporting Stop complete.
+	ErrChatInterruptRestartRequired = errors.New("chat interrupt requires controller restart")
 	// ErrChatRequestNotPending means the request a decision names is not waiting
 	// for one: already answered, superseded, or from a controller that has been
 	// replaced. Two clients looking at the same approval is normal, so one of them

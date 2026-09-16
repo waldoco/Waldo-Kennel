@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/chatdriver/processenv"
@@ -55,8 +56,11 @@ type codexPlugin interface {
 type process struct {
 	stdin  io.WriteCloser
 	stdout io.Reader
-	// stop releases the process. It must be safe to call more than once.
-	stop func() error
+	// stop releases the process gracefully. forceStop kills the complete owned
+	// process tree when provider cancellation leaves command effects running.
+	// Both must be safe to call more than once.
+	stop      func() error
+	forceStop func() error
 }
 
 // spawnFunc launches an app-server. Injected so tests never exec anything.
@@ -339,9 +343,10 @@ func (d *Driver) Start(ctx context.Context, cfg ports.ChatStartConfig) (ports.Ch
 		sandbox = "workspace-write"
 	}
 	params := map[string]any{
-		"cwd":            cfg.WorkspacePath,
-		"approvalPolicy": policy,
-		"sandbox":        sandbox,
+		"cwd":                   cfg.WorkspacePath,
+		"approvalPolicy":        policy,
+		"sandbox":               sandbox,
+		"experimentalRawEvents": nativePolicy != nil,
 	}
 	if cfg.Model != "" {
 		params["model"] = cfg.Model
@@ -673,6 +678,7 @@ func spawnAppServer(ctx context.Context, bin, workdir string, env []string) (*pr
 	if err != nil {
 		return nil, fmt.Errorf("stderr pipe: %w", err)
 	}
+	configureAppServerProcess(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s app-server: %w", bin, err)
 	}
@@ -681,27 +687,31 @@ func spawnAppServer(ctx context.Context, bin, workdir string, env []string) (*pr
 	// its own process.
 	go func() { _, _ = io.Copy(io.Discard, stderr) }()
 
-	var stopped bool
+	var stopOnce sync.Once
+	var stopErr error
+	stop := func(force bool) error {
+		stopOnce.Do(func() {
+			if force {
+				stopErr = killAppServerProcessTree(cmd)
+			} else {
+				_ = stdin.Close()
+				done := make(chan struct{})
+				go func() { _, _ = cmd.Process.Wait(); close(done) }()
+				select {
+				case <-done:
+				case <-time.After(3 * time.Second):
+					stopErr = killAppServerProcessTree(cmd)
+				}
+			}
+		})
+		return stopErr
+	}
 	return &process{
-		stdin:  stdin,
-		stdout: stdout,
-		stop: func() error {
-			if stopped {
-				return nil
-			}
-			stopped = true
-			// Closing stdin is the graceful shutdown; kill only if it lingers.
-			_ = stdin.Close()
-			done := make(chan struct{})
-			go func() { _, _ = cmd.Process.Wait(); close(done) }()
-			select {
-			case <-done:
-			case <-time.After(3 * time.Second):
-				_ = cmd.Process.Kill()
-			}
-			return nil
-		},
+		stdin: stdin, stdout: stdout,
+		stop:      func() error { return stop(false) },
+		forceStop: func() error { return stop(true) },
 	}, nil
+
 }
 
 // envSlice merges Kennel's session env OVER the daemon's own, in the KEY=VALUE form

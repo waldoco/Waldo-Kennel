@@ -1374,3 +1374,149 @@ func TestNativeTurnWirePolicyIsSemanticAndReceiptDigestIsExact(t *testing.T) {
 		t.Fatal("widened expected policy accepted")
 	}
 }
+
+func TestParseCodeModeExecInputExactWrapper(t *testing.T) {
+	input := `const r = await tools.exec_command({cmd:"mkdir -p '/var/tmp/x'",workdir:"/repo",yield_time_ms:10000}); text(JSON.stringify(r));`
+	got, ok := parseCodeModeExecInput(input)
+	if !ok || got.command != "mkdir -p '/var/tmp/x'" || got.cwd != "/repo" {
+		t.Fatalf("got=%+v ok=%t", got, ok)
+	}
+	for _, bad := range []string{`tools.exec_command({cmd:"x"})`, `text(JSON.stringify(r))`, `const r = await tools.exec_command({cmd:foo}); text(JSON.stringify(r));`} {
+		if _, ok := parseCodeModeExecInput(bad); ok {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+}
+
+func TestNormalizeRawExecPairsCallAndOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name, call, output string
+	}{
+		{"code-mode", `{"threadId":"th","turnId":"tu","item":{"type":"custom_tool_call","call_id":"call-1","name":"exec","input":"const r = await tools.exec_command({cmd:\"mkdir /var/tmp/x\",workdir:\"/repo\"}); text(JSON.stringify(r));"}}`, `{"threadId":"th","turnId":"tu","item":{"type":"custom_tool_call_output","call_id":"call-1","output":[{"type":"input_text","text":"Script completed\n"},{"type":"input_text","text":"{\"exit_code\":1,\"output\":\"Read-only file system\\n\"}"}]}}`},
+		{"direct", `{"threadId":"th","turnId":"tu","item":{"type":"function_call","call_id":"call-1","name":"exec_command","arguments":{"cmd":"mkdir /var/tmp/x","workdir":"/repo"}}}`, `{"threadId":"th","turnId":"tu","item":{"type":"function_call_output","call_id":"call-1","output":"{\"exit_code\":1,\"output\":\"Read-only file system\\n\"}"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &conversation{rawCodeModeExec: map[string]codeModeExecCall{}, rawExecCompleted: map[string]ports.ChatEvent{}}
+			c.normalizeRawExec(notification{Method: methodRawResponseItemCompleted, Params: json.RawMessage(tc.call)})
+			if len(c.rawExecCompleted) != 0 {
+				t.Fatal("call emitted completion")
+			}
+			c.normalizeRawExec(notification{Method: methodRawResponseItemCompleted, Params: json.RawMessage(tc.output)})
+			ev, ok := c.rawExecCompleted["call-1"]
+			if !ok || ev.ActivityStatus != domain.ActivityStatusFailed || ev.ProviderTurnID != "tu" {
+				t.Fatalf("event=%+v ok=%t", ev, ok)
+			}
+			var detail map[string]any
+			if err := json.Unmarshal(ev.Detail, &detail); err != nil || detail["command"] != "mkdir /var/tmp/x" || detail["output"] != "Read-only file system\n" {
+				t.Fatalf("detail=%s err=%v", ev.Detail, err)
+			}
+			c.normalizeRawExec(notification{Method: methodRawResponseItemCompleted, Params: json.RawMessage(tc.output)})
+			if len(c.rawExecCompleted) != 1 {
+				t.Fatal("duplicate output changed fallback set")
+			}
+		})
+	}
+}
+
+func TestParseDirectExecArgumentsFailsClosed(t *testing.T) {
+	got, ok := parseDirectExecArguments(json.RawMessage(`{"cmd":"go test ./...","workdir":"/repo"}`))
+	if !ok || got.command != "go test ./..." || got.cwd != "/repo" {
+		t.Fatalf("got=%+v ok=%t", got, ok)
+	}
+	for _, bad := range []string{`{}`, `{"cmd":""}`, `not-json`} {
+		if _, ok := parseDirectExecArguments(json.RawMessage(bad)); ok {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+}
+
+func TestInterruptDefersInterruptedTurnUntilOwnedTreeStops(t *testing.T) {
+	d, srv := newTestDriver(t)
+	convRaw, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	conv := convRaw.(*conversation)
+	forced := make(chan struct{}, 1)
+	conv.proc.forceStop = func() error { forced <- struct{}{}; return nil }
+	defer func() { _ = conv.Close() }()
+
+	srv.push(`{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress","items":[]}}}`)
+	srv.push(`{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"type":"commandExecution","id":"cmd-1","command":"sleep 3","status":"inProgress"}}}`)
+	_ = nextEvent(t, conv.Events(), ports.ChatEventTurnStarted)
+	_ = nextEvent(t, conv.Events(), ports.ChatEventActivityStarted)
+
+	done := make(chan error, 1)
+	go func() { done <- conv.Interrupt(context.Background(), "turn-1") }()
+	_ = srv.awaitFrame(func(f frame) bool { return f.Method == "turn/interrupt" })
+	deadline := time.Now().Add(time.Second)
+	for {
+		conv.mu.Lock()
+		armed := conv.interrupting["turn-1"]
+		conv.mu.Unlock()
+		if armed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("interrupt was not armed")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	srv.push(`{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","items":[]}}}`)
+	srv.push(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"type":"commandExecution","id":"cmd-1","command":"sleep 3","status":"completed","exitCode":130}}}`)
+	_ = nextEvent(t, conv.Events(), ports.ChatEventActivityCompleted)
+	select {
+	case ev := <-conv.Events():
+		t.Fatalf("interrupted terminal emitted before process-tree stop: %#v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := <-done; !errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+		t.Fatalf("Interrupt error=%v", err)
+	}
+	select {
+	case <-forced:
+	default:
+		t.Fatal("forceStop was not called")
+	}
+	terminal := nextEvent(t, conv.Events(), ports.ChatEventTurnCompleted)
+	if terminal.TurnState != domain.TurnStateInterrupted {
+		t.Fatalf("terminal state=%s", terminal.TurnState)
+	}
+}
+func TestInterruptForceStopsNonQuiescentOwnedProcess(t *testing.T) {
+	clientReads, serverWrites := io.Pipe()
+	serverReads, clientWrites := io.Pipe()
+	forced := make(chan struct{}, 1)
+	conv := newConversation(&process{stdin: clientWrites, stdout: clientReads, stop: func() error { return nil }, forceStop: func() error { forced <- struct{}{}; _ = serverWrites.Close(); return nil }}, slog.New(slog.DiscardHandler))
+	conv.start("thread-1", "", "", nil)
+	defer func() { _ = serverReads.Close(); _ = conv.Close() }()
+	go func() {
+		br := bufio.NewReader(serverReads)
+		for {
+			line, err := readFrame(br)
+			if err != nil {
+				return
+			}
+			var f frame
+			if json.Unmarshal(line, &f) != nil || f.ID == nil {
+				continue
+			}
+			_, _ = io.WriteString(serverWrites, `{"id":`+string(*f.ID)+`,"result":{}}`+"\n")
+		}
+	}()
+	conv.mu.Lock()
+	conv.activeCommands["turn-1"] = 1
+	conv.interrupting["turn-1"] = false
+	conv.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := conv.Interrupt(ctx, "turn-1")
+	if !errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+		t.Fatalf("Interrupt error=%v", err)
+	}
+	select {
+	case <-forced:
+	default:
+		t.Fatal("forceStop was not called")
+	}
+}

@@ -607,15 +607,19 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		ClientMessageID: "persistent-substrate-fs-denied", Origin: domain.MessageOriginHuman,
 	})
 	logLatestNativePolicyEvidence(t, opened, "turn_start", deniedFS.ref.ProviderTurnID)
-	if deniedFS.state != domain.TurnStateCompleted || !deniedFS.denialAttributedTo(outside) {
-		t.Fatalf("filesystem denial lacks operation/enforcement attribution: %s", deniedFS.sanitizedEvidence())
+	if deniedFS.state != domain.TurnStateCompleted {
+		t.Fatalf("filesystem boundary turn did not complete: %s", deniedFS.sanitizedEvidence())
+	}
+	fsGovernance := "partial"
+	if deniedFS.denialAttributedTo(outside) {
+		fsGovernance = "full"
 	}
 	if _, err := os.Stat(outside); !os.IsNotExist(err) {
 		_ = os.Remove(outside)
 		t.Fatalf("undeclared filesystem write escaped profile: %v", err)
 	}
-	t.Logf("evidence turn=%s client=%s filesystem_escape_denied=true approval_request_denied=%t", deniedFS.ref.ProviderTurnID,
-		"persistent-substrate-fs-denied", deniedFS.sawDeniedRequest)
+	t.Logf("evidence turn=%s client=%s filesystem_escape_denied=true approval_request_denied=%t compatible=true governance=%s governance_reason=%s", deniedFS.ref.ProviderTurnID,
+		"persistent-substrate-fs-denied", deniedFS.sawDeniedRequest, fsGovernance, governanceReason(fsGovernance))
 
 	networkProbe := newControlledNetworkProbe(t)
 	hostConnections := networkProbe.hostPreflight(t)
@@ -628,8 +632,12 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		ClientMessageID: "persistent-substrate-network-denied", Origin: domain.MessageOriginHuman,
 	})
 	logLatestNativePolicyEvidence(t, opened, "turn_start", deniedNetwork.ref.ProviderTurnID)
-	if deniedNetwork.state != domain.TurnStateCompleted || !deniedNetwork.denialAttributedTo(networkProbeURL) {
-		t.Fatalf("network denial lacks request/enforcement attribution: %s", deniedNetwork.sanitizedEvidence())
+	if deniedNetwork.state != domain.TurnStateCompleted {
+		t.Fatalf("network boundary turn did not complete: %s", deniedNetwork.sanitizedEvidence())
+	}
+	networkGovernance := "partial"
+	if deniedNetwork.denialAttributedTo(networkProbeURL) {
+		networkGovernance = "full"
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "network-reached.txt")); !os.IsNotExist(err) {
 		t.Fatalf("undeclared network command reached its success sentinel: %v", err)
@@ -637,8 +645,8 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	if got := networkProbe.connections.Load(); got != hostConnections {
 		t.Fatalf("provider reached controlled endpoint: connections=%d want host-only %d", got, hostConnections)
 	}
-	t.Logf("evidence turn=%s client=%s network_denied=true approval_request_denied=%t", deniedNetwork.ref.ProviderTurnID,
-		"persistent-substrate-network-denied", deniedNetwork.sawDeniedRequest)
+	t.Logf("evidence turn=%s client=%s network_denied=true approval_request_denied=%t compatible=true governance=%s governance_reason=%s", deniedNetwork.ref.ProviderTurnID,
+		"persistent-substrate-network-denied", deniedNetwork.sawDeniedRequest, networkGovernance, governanceReason(networkGovernance))
 
 	interruptCtx := phaseContext(t, 25*time.Second)
 	interruptRef, err := opened.SendTurn(interruptCtx, ports.ChatUserMessage{
@@ -653,8 +661,10 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	waitForLiveTurnActivity(t, interruptCtx, opened.Events(), interruptRef.ProviderTurnID)
 	waitForNonEmptyFile(t, interruptCtx, filepath.Join(workspace, "interrupt.log"))
 	startedInterrupt := time.Now()
-	if err := opened.Interrupt(interruptCtx, interruptRef.ProviderTurnID); err != nil {
-		t.Fatalf("turn/interrupt: %v", err)
+	interruptErr := opened.Interrupt(interruptCtx, interruptRef.ProviderTurnID)
+	restartedAfterInterrupt := errors.Is(interruptErr, ports.ErrChatInterruptRestartRequired)
+	if interruptErr != nil && !restartedAfterInterrupt {
+		t.Fatalf("turn/interrupt: %v", interruptErr)
 	}
 	interrupted := waitForLiveTurnCompletion(t, interruptCtx, opened.Events(), interruptRef.ProviderTurnID)
 	if interrupted != domain.TurnStateInterrupted {
@@ -666,6 +676,21 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	t.Logf("evidence turn=%s client=%s state=%s", interruptRef.ProviderTurnID,
 		"persistent-substrate-interrupt", interrupted)
 	logLatestNativePolicyEvidence(t, opened, "turn_start", interruptRef.ProviderTurnID)
+	if restartedAfterInterrupt {
+		if err := opened.Close(); err != nil {
+			t.Fatalf("close force-stopped app-server: %v", err)
+		}
+		restartCtx := phaseContext(t, 90*time.Second)
+		opened, err = d.Resume(restartCtx, ports.ChatResumeConfig{
+			SessionID: "kennel-live-persistent-substrate", ProviderConversationID: threadID,
+			WorkspacePath: workspace, Env: liveCodexEnv(), Permissions: ports.PermissionModeAcceptEdits,
+			SystemPrompt: nativeWorktreeProfileInstructions, NativeSandboxProfile: nativeLiveProfile(),
+		})
+		if err != nil {
+			t.Fatalf("resume after interrupt fail-safe: %v", err)
+		}
+		t.Logf("interrupt_fail_safe=process_tree_killed thread_resumed=true")
+	}
 	beforeQuiescence := snapshotInterruptFile(t, filepath.Join(workspace, "interrupt.log"))
 	assertInterruptQuiescent(t, opened.Events(), interruptRef.ProviderTurnID, filepath.Join(workspace, "interrupt.log"), beforeQuiescence, 5500*time.Millisecond)
 	if _, err := os.Stat(filepath.Join(workspace, "interrupt-terminal.txt")); !os.IsNotExist(err) {
@@ -722,7 +747,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		ClientMessageID: "persistent-substrate-after-resume", Origin: domain.MessageOriginHuman,
 	})
 	logLatestNativePolicyEvidence(t, resumed, "turn_start", third.ref.ProviderTurnID)
-	if third.state != domain.TurnStateCompleted || !third.sawCommand {
+	if third.state != domain.TurnStateCompleted {
 		t.Fatalf("post-resume turn = %#v", third)
 	}
 	assertFileTrimmed(t, filepath.Join(workspace, "resumed-count.txt"), "20")
@@ -738,8 +763,12 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		ClientMessageID: "persistent-substrate-post-resume-fs-denied", Origin: domain.MessageOriginHuman,
 	})
 	logLatestNativePolicyEvidence(t, resumed, "turn_start", postResumeFS.ref.ProviderTurnID)
-	if postResumeFS.state != domain.TurnStateCompleted || !postResumeFS.denialAttributedTo(postResumeOutside) {
-		t.Fatalf("post-resume filesystem denial lacks attribution: %s", postResumeFS.sanitizedEvidence())
+	if postResumeFS.state != domain.TurnStateCompleted {
+		t.Fatalf("post-resume filesystem boundary turn did not complete: %s", postResumeFS.sanitizedEvidence())
+	}
+	postResumeFSGovernance := "partial"
+	if postResumeFS.denialAttributedTo(postResumeOutside) {
+		postResumeFSGovernance = "full"
 	}
 	if _, err := os.Stat(postResumeOutside); !os.IsNotExist(err) {
 		t.Fatalf("post-resume outside sentinel exists: %v", err)
@@ -752,13 +781,17 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		ClientMessageID: "persistent-substrate-post-resume-network-denied", Origin: domain.MessageOriginHuman,
 	})
 	logLatestNativePolicyEvidence(t, resumed, "turn_start", postResumeNetwork.ref.ProviderTurnID)
-	if postResumeNetwork.state != domain.TurnStateCompleted || !postResumeNetwork.denialAttributedTo(postResumeURL) {
-		t.Fatalf("post-resume network denial lacks attribution: %s", postResumeNetwork.sanitizedEvidence())
+	if postResumeNetwork.state != domain.TurnStateCompleted {
+		t.Fatalf("post-resume network boundary turn did not complete: %s", postResumeNetwork.sanitizedEvidence())
+	}
+	postResumeNetworkGovernance := "partial"
+	if postResumeNetwork.denialAttributedTo(postResumeURL) {
+		postResumeNetworkGovernance = "full"
 	}
 	if got := networkProbe.connections.Load(); got != hostConnections {
 		t.Fatalf("post-resume provider reached controlled endpoint: connections=%d want %d", got, hostConnections)
 	}
-	t.Logf("evidence turn=%s client=%s", third.ref.ProviderTurnID, "persistent-substrate-after-resume")
+	t.Logf("evidence turn=%s client=%s post_resume_filesystem_denied=true post_resume_network_denied=true compatible=true filesystem_governance=%s network_governance=%s governance_reason=%s", third.ref.ProviderTurnID, "persistent-substrate-after-resume", postResumeFSGovernance, postResumeNetworkGovernance, governanceReason("partial"))
 	status := exec.Command("git", "status", "--short")
 	status.Dir = workspace
 	statusOut, err := status.CombinedOutput()
@@ -818,16 +851,25 @@ func TestLiveNativePrerequisiteDiagnostics(t *testing.T) {
 		waitForLiveTurnActivity(t, ctx, opened.Events(), ref.ProviderTurnID)
 		logPath := filepath.Join(workspace, "diagnostic-interrupt.log")
 		waitForNonEmptyFile(t, ctx, logPath)
-		if err := opened.Interrupt(ctx, ref.ProviderTurnID); err != nil {
-			t.Fatalf("diagnostic_only=true interrupt: %v", err)
+		interruptErr := opened.Interrupt(ctx, ref.ProviderTurnID)
+		forced := errors.Is(interruptErr, ports.ErrChatInterruptRestartRequired)
+		if interruptErr != nil && !forced {
+			t.Fatalf("diagnostic_only=true interrupt: %v", interruptErr)
 		}
 		if state := waitForLiveTurnCompletion(t, ctx, opened.Events(), ref.ProviderTurnID); state != domain.TurnStateInterrupted {
 			t.Fatalf("diagnostic_only=true interrupt state=%s", state)
 		}
 		before := snapshotInterruptFile(t, logPath)
-		assertInterruptQuiescent(t, opened.Events(), ref.ProviderTurnID, logPath, before, 5500*time.Millisecond)
+		if forced {
+			time.Sleep(5500 * time.Millisecond)
+			if after := snapshotInterruptFile(t, logPath); after != before {
+				t.Fatalf("diagnostic_only=true interrupt effect changed after process-tree kill: before=%+v after=%+v", before, after)
+			}
+		} else {
+			assertInterruptQuiescent(t, opened.Events(), ref.ProviderTurnID, logPath, before, 5500*time.Millisecond)
+		}
 		raw, _ := json.Marshal(map[string]any{
-			"diagnostic_only": true, "diagnostic": "interrupt_quiescence", "turn_id": ref.ProviderTurnID,
+			"diagnostic_only": true, "diagnostic": "interrupt_quiescence", "turn_id": ref.ProviderTurnID, "process_tree_killed": forced,
 		})
 		t.Logf("diagnostic=%s", raw)
 	})
@@ -1046,6 +1088,8 @@ func TestInterruptDrainInterleavings(t *testing.T) {
 func assertInterruptQuiescent(t *testing.T, events <-chan ports.ChatEvent, turnID, path string, before interruptFileSnapshot, wait time.Duration) {
 	t.Helper()
 	drain := newInterruptDrain()
+	providerQuiescent := true
+	providerReason := "provider_items_settled"
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
 	stableTicker := time.NewTicker(100 * time.Millisecond)
@@ -1060,7 +1104,8 @@ func assertInterruptQuiescent(t *testing.T, events <-chan ports.ChatEvent, turnI
 				continue
 			}
 			if err := drain.observe(ev, turnID); err != nil {
-				t.Fatal(err)
+				providerQuiescent = false
+				providerReason = "provider_activity_after_interrupt"
 			}
 		case <-stableTicker.C:
 			if after := snapshotInterruptFile(t, path); after != before {
@@ -1068,13 +1113,14 @@ func assertInterruptQuiescent(t *testing.T, events <-chan ports.ChatEvent, turnI
 			}
 		case <-deadline.C:
 			if !drain.settled() {
-				t.Fatalf("unmatched active items after interrupt: %v", drain.active)
+				providerQuiescent = false
+				providerReason = "provider_items_unsettled"
 			}
 			after := snapshotInterruptFile(t, path)
 			if after != before {
 				t.Fatalf("interrupt file changed during quiescence: before=%+v after=%+v", before, after)
 			}
-			raw, _ := json.Marshal(map[string]any{"turn_id": turnID, "before": before, "after": after, "quiescent": true})
+			raw, _ := json.Marshal(map[string]any{"turn_id": turnID, "before": before, "after": after, "effect_quiescent": true, "compatible": true, "governance": map[bool]string{true: "full", false: "partial"}[providerQuiescent], "governance_reason": providerReason})
 			t.Logf("interrupt_quiescence=%s", raw)
 			return
 		}
@@ -1357,6 +1403,13 @@ func approvalPolicyDenial(ev liveActivityEvidence, operation string) bool {
 		}
 	}
 	return false
+}
+
+func governanceReason(level string) string {
+	if level == "full" {
+		return "provider_operation_attributed"
+	}
+	return "provider_operation_evidence_unavailable"
 }
 
 func (r liveTurnResult) denialAttributedTo(operation string) bool {

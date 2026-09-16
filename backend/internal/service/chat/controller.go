@@ -1257,6 +1257,11 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 	}
 
 	if err := c.conv.Interrupt(ctx, turn); err != nil {
+		if errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+			// The driver already killed the non-quiescent provider tree. Preserve the
+			// Stop cutoff: queued pre-Stop work must not be released by recovery.
+			return err
+		}
 		if errors.Is(err, ports.ErrChatNoActiveTurn) {
 			// Serialize durable settlement, memory cleanup, and queue promotion so
 			// a message arriving after Stop cannot slip between those steps.
