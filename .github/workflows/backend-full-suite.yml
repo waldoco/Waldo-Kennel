@@ -32,3 +32,20 @@ jobs:
       - name: Run the unchanged backend full suite
         working-directory: backend
         run: go test ./... -count=1
+
+  go-test-macos:
+    name: go-test-full-macos
+    if: github.ref == 'refs/heads/outcome-loop'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Run the unchanged backend full suite on macOS
+        working-directory: backend
+        run: go test ./... -count=1
