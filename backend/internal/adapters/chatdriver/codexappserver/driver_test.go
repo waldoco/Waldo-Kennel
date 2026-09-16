@@ -1695,6 +1695,8 @@ func TestNativeWorktreeEnvironmentConfinesGoScratch(t *testing.T) {
 		t.Errorf("GOTMPDIR=%q, want %q", env["GOTMPDIR"], want)
 	} else if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
 		t.Fatalf("GOTMPDIR was not created: info=%v err=%v", info, statErr)
+	}
+}
 
 func TestDispatchInterruptReportsAcknowledgedAndQuiescent(t *testing.T) {
 	d, _ := newTestDriver(t)
