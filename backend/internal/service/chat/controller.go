@@ -330,6 +330,17 @@ func (c *Controller) importNativeHistory(
 			return fmt.Errorf("import native history event %s: %w", event.Kind, err)
 		}
 	}
+	// History projection settles durable turns before live consumption starts,
+	// but intentionally does not run afterProject: that hook reports live
+	// activity and drains on every primary completion. Reconciliation is the one
+	// startup boundary that must release accepted queued work after its blocker
+	// is conclusively settled. Serialize it with Send so one caller claims the
+	// queue and startup cannot report ready while that claim is in flight.
+	if c.governance != nil && !c.governance.blocked {
+		c.sendMu.Lock()
+		c.drainLocked(ctx)
+		c.sendMu.Unlock()
+	}
 	return nil
 }
 
@@ -403,9 +414,22 @@ func (c *Controller) reconcileGovernedHistory(ctx context.Context, events []port
 	}
 	c.governance.blocked = false
 	for _, command := range remaining {
-		if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
+		if command.SessionID == c.sessionID &&
+			(command.State == domain.GovernedCommandDispatching || command.State == domain.GovernedCommandDeliveryUnknown) {
 			c.governance.blocked = true
 			break
+		}
+	}
+	if !c.governance.blocked {
+		controls, listErr := c.store.ListUnsettledGovernedControlCommands(ctx)
+		if listErr != nil {
+			return fmt.Errorf("refresh governed controls after history reconciliation: %w", listErr)
+		}
+		for _, command := range controls {
+			if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
+				c.governance.blocked = true
+				break
+			}
 		}
 	}
 	return nil
@@ -1229,6 +1253,20 @@ func (c *Controller) drainLocked(ctx context.Context) {
 			}
 			c.log.Error("failed to read governed queued turn", "session", c.sessionID, "turn", queued.TurnID, "error", claimErr)
 			return
+		}
+		if claim.State == domain.GovernedCommandClaimed && claim.ControllerGeneration != c.generation {
+			adopted, adoptErr := c.store.AdoptClaimedGovernedCommandGeneration(ctx, claim, c.generation, c.now())
+			if adoptErr != nil {
+				c.log.Error("failed to adopt queued governed turn", "session", c.sessionID, "turn", queued.TurnID, "error", adoptErr)
+				return
+			}
+			if !adopted {
+				// Another caller changed the durable boundary. Leave it for that
+				// owner rather than guessing whether provider contact happened.
+				return
+			}
+			claim.ControllerGeneration = c.generation
+			claim.UpdatedAt = c.now()
 		}
 		governed = &claim
 	}

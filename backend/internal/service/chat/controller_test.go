@@ -4632,3 +4632,94 @@ func TestGovernedInterruptConcurrentDuplicatesPreserveOneCutoffAndEffect(t *test
 		t.Fatalf("unsettled=%+v err=%v", claims, err)
 	}
 }
+
+func TestGovernedRestartReconciliationReleasesQueuedWorkExactlyOnce(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	first := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnDeliveryUnknown, TransportRequestID: 1, TransportSHA256: "unknown-sha", TransportBytes: 10, TransportSequence: 1,
+	}, err: context.DeadlineExceeded}
+	ids := sequentialID("reconcile-release")
+	firstSvc := chatsvc.New(chatsvc.Options{Store: st, Reader: snapshotReader(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: first}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
+	firstCtrl, err := firstSvc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := firstCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "uncertain", ClientMessageID: "request-uncertain"}); !errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) {
+		t.Fatalf("unknown send=%v", err)
+	}
+	if queued, err := firstCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "after", ClientMessageID: "request-after"}); err != nil || queued.State != domain.TurnStateQueued {
+		t.Fatalf("queued=%+v err=%v", queued, err)
+	}
+	conversationID := firstCtrl.ConversationID()
+	if err := firstSvc.Stop(context.Background(), testSession); err != nil {
+		t.Fatal(err)
+	}
+
+	secondBase := newFakeConversation()
+	secondBase.providerConversationID = "thread-1"
+	second := &dispatchHistoryConversation{dispatchConversation: &dispatchConversation{fakeConversation: secondBase, dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-after"},
+		TransportRequestID: 2, TransportSHA256: "after-sha", TransportBytes: 10, TransportSequence: 2,
+	}}, history: []ports.ChatEvent{
+		{Kind: ports.ChatEventUserMessageCompleted, ProviderEventID: "history-user", ProviderTurnID: "provider-uncertain", ProviderConversationID: "thread-1", ProviderItemID: "provider-user", ClientMessageID: "request-uncertain", Text: "uncertain"},
+		{Kind: ports.ChatEventTurnCompleted, ProviderEventID: "history-complete", ProviderTurnID: "provider-uncertain", ProviderConversationID: "thread-1", TurnState: domain.TurnStateCompleted},
+	}}
+	secondSvc := chatsvc.New(chatsvc.Options{Store: st, Reader: snapshotReader(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: second}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
+	t.Cleanup(func() { _ = secondSvc.Stop(context.Background(), testSession) })
+	secondCtrl, err := secondSvc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: "thread-1", ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := second.sentMessages(); len(got) != 1 || got[0].ClientMessageID != "request-after" {
+		t.Fatalf("restart sends=%+v", got)
+	}
+	if replay, err := secondCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "after", ClientMessageID: "request-after"}); err != nil || replay.ID != "" {
+		t.Fatalf("replay=%+v err=%v", replay, err)
+	}
+	if got := len(second.sentMessages()); got != 1 {
+		t.Fatalf("restart dispatched queued work %d times", got)
+	}
+	snapshot, err := st.LoadConversationSnapshot(context.Background(), conversationID)
+	if err != nil || len(snapshot.Turns) != 2 || snapshot.Turns[0].State != domain.TurnStateCompleted || snapshot.Turns[1].State != domain.TurnStateRunning {
+		t.Fatalf("snapshot=%+v err=%v", snapshot.Turns, err)
+	}
+}
+
+func TestGovernedRestartUnresolvedUnknownDoesNotReleaseQueuedWork(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	first := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{Acceptance: ports.ChatTurnDeliveryUnknown, TransportRequestID: 1, TransportSHA256: "unknown-sha", TransportBytes: 10, TransportSequence: 1}, err: context.DeadlineExceeded}
+	ids := sequentialID("reconcile-block")
+	firstSvc := chatsvc.New(chatsvc.Options{Store: st, Reader: snapshotReader(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: first}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
+	firstCtrl, err := firstSvc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := firstCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "uncertain", ClientMessageID: "request-uncertain"}); !errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) {
+		t.Fatalf("unknown send=%v", err)
+	}
+	if _, err := firstCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "after", ClientMessageID: "request-after"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := firstSvc.Stop(context.Background(), testSession); err != nil {
+		t.Fatal(err)
+	}
+	secondBase := newFakeConversation()
+	secondBase.providerConversationID = "thread-1"
+	second := &dispatchHistoryConversation{dispatchConversation: &dispatchConversation{fakeConversation: secondBase}, history: nil}
+	secondSvc := chatsvc.New(chatsvc.Options{Store: st, Reader: snapshotReader(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: second}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
+	t.Cleanup(func() { _ = secondSvc.Stop(context.Background(), testSession) })
+	if _, err := secondSvc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: "thread-1", ExecutionPolicy: &policy}); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(second.sentMessages()); got != 0 {
+		t.Fatalf("unresolved restart dispatched %d turns", got)
+	}
+	claims, err := st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 2 {
+		t.Fatalf("claims=%+v err=%v", claims, err)
+	}
+}
