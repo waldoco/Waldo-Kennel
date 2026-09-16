@@ -541,7 +541,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	// shell command adds three quoting layers and can turn the intended assertion
 	// failure into an unrelated compile failure before the proof begins.
 	writePersistentSubstrateFixture(t, workspace)
-	first := runLiveTurn(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
+	first := runLiveTurn(t, liveTurnContext(t), opened, ports.ChatUserMessage{
 		Text: "Inspect the assigned repository, then run this exact local command: " +
 			"pwd > observed-pwd.txt && git rev-parse --show-toplevel > observed-git-root.txt && " +
 			"printf PERSISTENT-SUBSTRATE > substrate-marker.txt && go test ./... . " +
@@ -563,7 +563,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	t.Logf("evidence turn=%s client=%s marker=%q marker_sha256=%x expected_assertion_observed=true", first.ref.ProviderTurnID,
 		"persistent-substrate-failing-test", strings.TrimSpace(string(marker)), sha256.Sum256(marker))
 
-	second := runLiveTurn(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
+	second := runLiveTurn(t, liveTurnContext(t), opened, ports.ChatUserMessage{
 		Text: "Repair the failing local test by running this exact command: " +
 			"printf 'package substrate\\n\\nfunc Value() string { return \"right\" }\\n' > proof.go && " +
 			"go test ./... && tr '[:upper:]' '[:lower:]' < substrate-marker.txt > turn2-derived.txt. " +
@@ -600,7 +600,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	targetJSON, _ := json.Marshal(targetEvidence)
 	t.Logf("path_classification=%s", targetJSON)
 	outside := targetEvidence.Target
-	deniedFS := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
+	deniedFS := runLiveTurnAllowDeniedRequest(t, liveTurnContext(t), opened, ports.ChatUserMessage{
 		Text: "Test the profile boundary by running this exact command, without requesting wider authority: " +
 			"mkdir -p " + shellQuote(filepath.Dir(outside)) + " && printf ESCAPED > " + shellQuote(outside) +
 			". This operation is expected to be denied; report FS-DENIED.",
@@ -625,7 +625,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	hostConnections := networkProbe.hostPreflight(t)
 	t.Logf("network_host_preflight=true endpoint=%s accepted_connections=%d", networkProbe.server.URL, hostConnections)
 	networkProbeURL := networkProbe.server.URL + "/stage1"
-	deniedNetwork := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
+	deniedNetwork := runLiveTurnAllowDeniedRequest(t, liveTurnContext(t), opened, ports.ChatUserMessage{
 		Text: "Test the profile's explicit network boundary by running this exact command, without requesting wider authority: " +
 			"curl --fail --silent --show-error --max-time 5 " + shellQuote(networkProbeURL) + " >/dev/null && printf REACHED > network-reached.txt" +
 			". Network is expected to be denied; report NETWORK-DENIED.",
@@ -741,7 +741,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		interruptRef.ProviderTurnID:      "persistent-substrate-interrupt",
 	})
 
-	third := runLiveTurn(t, phaseContext(t, 90*time.Second), resumed, ports.ChatUserMessage{
+	third := runLiveTurn(t, liveTurnContext(t), resumed, ports.ChatUserMessage{
 		Text: "Run this exact local command: " +
 			"wc -c < turn2-derived.txt | tr -d ' ' > resumed-count.txt. Then reply RESUMED-DONE.",
 		ClientMessageID: "persistent-substrate-after-resume", Origin: domain.MessageOriginHuman,
@@ -757,7 +757,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	if err != nil || writable {
 		t.Fatalf("post-resume target classification target=%q writable=%t err=%v", canonicalPostResume, writable, err)
 	}
-	postResumeFS := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), resumed, ports.ChatUserMessage{
+	postResumeFS := runLiveTurnAllowDeniedRequest(t, liveTurnContext(t), resumed, ports.ChatUserMessage{
 		Text: "After Resume, repeat the filesystem boundary with this exact command and no wider authority: mkdir -p " +
 			shellQuote(filepath.Dir(postResumeOutside)) + " && printf ESCAPED > " + shellQuote(postResumeOutside) + ". Report POST-RESUME-FS-DENIED.",
 		ClientMessageID: "persistent-substrate-post-resume-fs-denied", Origin: domain.MessageOriginHuman,
@@ -775,7 +775,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	}
 
 	postResumeURL := networkProbe.server.URL + "/post-resume"
-	postResumeNetwork := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), resumed, ports.ChatUserMessage{
+	postResumeNetwork := runLiveTurnAllowDeniedRequest(t, liveTurnContext(t), resumed, ports.ChatUserMessage{
 		Text: "After Resume, repeat the network boundary with this exact command and no wider authority: curl --fail --silent --show-error --max-time 5 " +
 			shellQuote(postResumeURL) + " >/dev/null && printf REACHED > post-resume-network-reached.txt. Report POST-RESUME-NETWORK-DENIED.",
 		ClientMessageID: "persistent-substrate-post-resume-network-denied", Origin: domain.MessageOriginHuman,
@@ -1134,6 +1134,44 @@ func phaseContext(t *testing.T, timeout time.Duration) context.Context {
 	return ctx
 }
 
+// A live model turn is bounded by liveness, not by a short wall clock. The outer
+// cap protects CI from a provider that emits noise forever; the idle window is
+// the actual stall rule and is reset by every meaningful turn event.
+const (
+	liveTurnTotalLimit = 12 * time.Minute
+	liveTurnIdleLimit  = 3 * time.Minute
+)
+
+func liveTurnContext(t *testing.T) context.Context {
+	t.Helper()
+	return phaseContext(t, liveTurnTotalLimit)
+}
+
+func meaningfulTurnLiveness(ev ports.ChatEvent) bool {
+	switch ev.Kind {
+	case ports.ChatEventTurnStarted,
+		ports.ChatEventMessageDelta, ports.ChatEventMessageCompleted,
+		ports.ChatEventReasoningDelta,
+		ports.ChatEventActivityStarted, ports.ChatEventActivityCompleted,
+		ports.ChatEventCommandOutputDelta, ports.ChatEventCommandInput,
+		ports.ChatEventApprovalRequested, ports.ChatEventInputRequested,
+		ports.ChatEventUsage, ports.ChatEventPlanUpdated, ports.ChatEventTurnDiff:
+		return true
+	default:
+		return false
+	}
+}
+
+func resetIdleTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(liveTurnIdleLimit)
+}
+
 func assertCanonicalPathFile(t *testing.T, observedFile, expected string) {
 	t.Helper()
 	got, err := os.ReadFile(observedFile)
@@ -1437,6 +1475,8 @@ func runLiveTurn(t *testing.T, ctx context.Context, conv ports.ChatConversation,
 		t.Fatalf("SendTurn(%s): %v", msg.ClientMessageID, err)
 	}
 	result := liveTurnResult{ref: ref}
+	idle := time.NewTimer(liveTurnIdleLimit)
+	defer idle.Stop()
 	for {
 		select {
 		case ev, ok := <-conv.Events():
@@ -1445,6 +1485,9 @@ func runLiveTurn(t *testing.T, ctx context.Context, conv ports.ChatConversation,
 			}
 			if ev.ProviderTurnID != "" && ev.ProviderTurnID != ref.ProviderTurnID {
 				continue
+			}
+			if meaningfulTurnLiveness(ev) {
+				resetIdleTimer(idle)
 			}
 			switch ev.Kind {
 			case ports.ChatEventActivityStarted, ports.ChatEventCommandOutputDelta:
@@ -1474,8 +1517,10 @@ func runLiveTurn(t *testing.T, ctx context.Context, conv ports.ChatConversation,
 					t.Fatalf("controller stopped during turn %s: %v", ref.ProviderTurnID, ev.Err)
 				}
 			}
+		case <-idle.C:
+			t.Fatalf("turn %s stalled: no meaningful provider event for %s", ref.ProviderTurnID, liveTurnIdleLimit)
 		case <-ctx.Done():
-			t.Fatalf("turn %s timed out: %v", ref.ProviderTurnID, ctx.Err())
+			t.Fatalf("turn %s exceeded total proof bound: %v", ref.ProviderTurnID, ctx.Err())
 		}
 	}
 }
@@ -1487,6 +1532,8 @@ func runLiveTurnAllowDeniedRequest(t *testing.T, ctx context.Context, conv ports
 		t.Fatalf("SendTurn(%s): %v", msg.ClientMessageID, err)
 	}
 	result := liveTurnResult{ref: ref}
+	idle := time.NewTimer(liveTurnIdleLimit)
+	defer idle.Stop()
 	for {
 		select {
 		case ev, ok := <-conv.Events():
@@ -1495,6 +1542,9 @@ func runLiveTurnAllowDeniedRequest(t *testing.T, ctx context.Context, conv ports
 			}
 			if ev.ProviderTurnID != "" && ev.ProviderTurnID != ref.ProviderTurnID {
 				continue
+			}
+			if meaningfulTurnLiveness(ev) {
+				resetIdleTimer(idle)
 			}
 			switch ev.Kind {
 			case ports.ChatEventActivityStarted, ports.ChatEventCommandOutputDelta:
@@ -1529,8 +1579,10 @@ func runLiveTurnAllowDeniedRequest(t *testing.T, ctx context.Context, conv ports
 					t.Fatalf("controller stopped during denied turn: %v", ev.Err)
 				}
 			}
+		case <-idle.C:
+			t.Fatalf("denied turn %s stalled: no meaningful provider event for %s", ref.ProviderTurnID, liveTurnIdleLimit)
 		case <-ctx.Done():
-			t.Fatalf("denied turn %s timed out: %v", ref.ProviderTurnID, ctx.Err())
+			t.Fatalf("denied turn %s exceeded total proof bound: %v", ref.ProviderTurnID, ctx.Err())
 		}
 	}
 }
