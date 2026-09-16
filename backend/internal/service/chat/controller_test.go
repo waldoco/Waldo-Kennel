@@ -3538,3 +3538,70 @@ type failResolveApprovalStore struct {
 func (s *failResolveApprovalStore) ResolveApproval(context.Context, string, string, string, time.Time) error {
 	return s.err
 }
+
+type governedInterruptRecorder struct {
+	*interruptRecorder
+	dispatch   ports.ChatInterruptDispatch
+	err        error
+	onDispatch func()
+}
+
+func (r *governedInterruptRecorder) DispatchTurn(ctx context.Context, msg ports.ChatUserMessage) (ports.ChatTurnDispatch, error) {
+	ref, err := r.fakeConversation.SendTurn(ctx, msg)
+	return ports.ChatTurnDispatch{Acceptance: ports.ChatTurnAcknowledged, Ref: ref, TransportRequestID: 1, TransportSHA256: "turn-sha", TransportBytes: 10, TransportSequence: 1}, err
+}
+
+func (r *governedInterruptRecorder) DispatchInterrupt(_ context.Context, turn string) (ports.ChatInterruptDispatch, error) {
+	r.activeMu.Lock()
+	r.attempts = append(r.attempts, turn)
+	r.activeMu.Unlock()
+	if r.onDispatch != nil {
+		r.onDispatch()
+	}
+	return r.dispatch, r.err
+}
+
+func TestGovernedInterruptPersistsDispatchAndQuiescenceBeforeSuccess(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	base := newInterruptRecorder()
+	conv := &governedInterruptRecorder{interruptRecorder: base, dispatch: ports.ChatInterruptDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, TransportRequestID: 3, TransportSHA256: "interrupt-sha", TransportBytes: 18, TransportSequence: 3,
+		Quiescence: domain.GovernedCommandQuiescenceCodexTree, QuiescenceEvidenceRef: "tree-stopped",
+	}}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("interrupt")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ctrl.Send(context.Background(), ports.ChatUserMessage{Text: "work", ClientMessageID: "turn"}); err != nil {
+		t.Fatal(err)
+	}
+	conv.markActive("provider-turn-1")
+	conv.emit(ports.ChatEvent{Kind: ports.ChatEventTurnStarted, ProviderTurnID: "provider-turn-1"})
+	conv.onDispatch = func() {
+		claims, e := st.ListUnsettledGovernedControlCommands(context.Background())
+		if e != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDispatching {
+			t.Fatalf("claims=%+v err=%v", claims, e)
+		}
+	}
+	if err := svc.Interrupt(context.Background(), testSession); err != nil {
+		t.Fatal(err)
+	}
+	claims, err := st.ListUnsettledGovernedControlCommands(context.Background())
+	if err != nil || len(claims) != 0 {
+		t.Fatalf("unsettled=%+v err=%v", claims, err)
+	}
+	if conv.attemptCount() != 1 {
+		t.Fatalf("attempts=%d", conv.attemptCount())
+	}
+	// Exact replay while the same turn remains visible recovers the receipt.
+	if err := ctrl.Interrupt(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if conv.attemptCount() != 1 {
+		t.Fatalf("replay attempts=%d", conv.attemptCount())
+	}
+}
