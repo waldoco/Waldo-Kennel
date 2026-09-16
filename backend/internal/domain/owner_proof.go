@@ -58,3 +58,11 @@ var (
 	ErrOwnerProofConflict       = errors.New("owner proof conflict")
 	ErrOwnerProofAuthentication = errors.New("owner proof authentication failed")
 )
+
+// OwnerCommandClassForTransport is the only mapping between the closed S3.1
+// transport vocabulary and owner-proof classes. It does not grant either kind
+// of authority; callers must authenticate transport and owner proof separately.
+func OwnerCommandClassForTransport(class HarnessCapabilityClass) (OwnerCommandClass, bool) {
+	mapped := OwnerCommandClass(class)
+	return mapped, mapped.Valid()
+}
