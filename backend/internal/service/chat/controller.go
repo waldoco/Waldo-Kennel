@@ -104,6 +104,7 @@ type Store interface {
 
 	UpsertActivity(ctx context.Context, conversationID, providerTurnID string, activity domain.ConversationActivity, now time.Time) error
 	MarkCompacted(ctx context.Context, conversationID string, at time.Time) error
+	PendingApprovalGeneration(ctx context.Context, conversationID, requestID string) (string, bool, error)
 	ResolveApproval(ctx context.Context, conversationID, requestID, detailJSON string, now time.Time) error
 	FailPendingApprovals(ctx context.Context, conversationID string, now time.Time) error
 	FailPendingInputs(ctx context.Context, conversationID string, now time.Time) error
@@ -1367,15 +1368,76 @@ func (c *Controller) AbortHandoff() {
 // Resolve answers a pending approval. The provider is told first: if it rejects
 // the decision, Kennel must not have already recorded the approval as answered.
 func (c *Controller) Resolve(ctx context.Context, requestID string, decision ports.ChatDecision) error {
-	if err := c.conv.ResolveRequest(ctx, requestID, decision); err != nil {
-		return fmt.Errorf("resolve request %s: %w", requestID, err)
+	if c.governance == nil {
+		if err := c.conv.ResolveRequest(ctx, requestID, decision); err != nil {
+			return fmt.Errorf("resolve request %s: %w", requestID, err)
+		}
+		detail, _ := json.Marshal(map[string]string{"decision": decision.ID})
+		if err := c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
+			return fmt.Errorf("record approval %s: %w", requestID, err)
+		}
+		return nil
 	}
-	detail, _ := json.Marshal(map[string]string{"decision": decision.ID})
-	if err := c.store.ResolveApproval(
-		ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
-		return fmt.Errorf("record approval %s: %w", requestID, err)
+	generation, pending, err := c.store.PendingApprovalGeneration(ctx, c.conversation.ID, requestID)
+	if err != nil {
+		return fmt.Errorf("find approval %s: %w", requestID, err)
 	}
-	return nil
+	if !pending {
+		return fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
+	}
+	payload, _ := json.Marshal(decision)
+	now := c.now()
+	claim := domain.GovernedControlCommand{
+		ID: c.newID(), IdempotencyKey: "answer:" + generation,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlAnswer, "answer:"+generation, generation, string(payload)),
+		Class:              domain.GovernedControlAnswer, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision, CapabilityFingerprint: c.governance.capabilityFingerprint,
+		ProviderConversationID: c.conv.ProviderConversationID(), TargetGeneration: generation,
+		Quiescence: domain.GovernedCommandQuiescenceNotApplicable, CreatedAt: now, UpdatedAt: now,
+	}
+	persisted, _, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return fmt.Errorf("claim governed answer: %w", err)
+	}
+	switch persisted.State {
+	case domain.GovernedCommandAcknowledged:
+		return nil
+	case domain.GovernedCommandRejected:
+		return ErrProviderRefused
+	case domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown:
+		return ErrSteerDeliveryUnknown
+	}
+	if err := c.advanceGovernedControl(ctx, &persisted, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching); err != nil {
+		return err
+	}
+	dispatcher, ok := c.conv.(ports.ChatAnswerDispatcher)
+	if !ok {
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return fmt.Errorf("%w: governed answer receipt", ports.ErrChatUnsupported)
+	}
+	dispatch, dispatchErr := dispatcher.DispatchAnswer(ctx, requestID, generation, decision)
+	if validateErr := dispatch.Validate(); validateErr != nil {
+		dispatchErr = errors.Join(dispatchErr, validateErr)
+		dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+	}
+	switch dispatch.Acceptance {
+	case ports.ChatTurnAcknowledged:
+		detail, _ := json.Marshal(map[string]string{"decision": decision.ID})
+		if err := c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
+			_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		if err := c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged); err != nil {
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		return nil
+	case ports.ChatTurnRejected, ports.ChatTurnNotSent:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return errors.Join(ErrProviderRefused, dispatchErr)
+	default:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+		return errors.Join(ErrSteerDeliveryUnknown, dispatchErr)
+	}
 }
 
 // ResolveInput answers a structured form/URL request through the optional driver

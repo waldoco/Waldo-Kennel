@@ -2277,3 +2277,19 @@ func (s *Store) ProviderEventsSince(
 	}
 	return rows, nil
 }
+
+// PendingApprovalGeneration returns the immutable local identity of one pending
+// provider request. Provider request ids can be reused after controller restart;
+// the activity id is the exact request generation the user saw.
+func (s *Store) PendingApprovalGeneration(ctx context.Context, conversationID, requestID string) (string, bool, error) {
+	rows, err := s.conversationReader(ctx).SelectConversationActivities(ctx, conversationID)
+	if err != nil {
+		return "", false, fmt.Errorf("select pending approval %s: %w", requestID, err)
+	}
+	for _, row := range rows {
+		if row.RequestID == requestID && row.Status == domain.ActivityStatusPending {
+			return row.ID, true, nil
+		}
+	}
+	return "", false, nil
+}
