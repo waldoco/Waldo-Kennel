@@ -2,7 +2,7 @@
 INSERT INTO governed_control_commands (
  id,session_id,idempotency_key,request_fingerprint,command_class,state,
  controller_generation,expected_revision,capability_fingerprint,provider_conversation_id,
- client_message_id,provider_turn_id,target_generation,quiescence,quiescence_evidence_ref,created_at,updated_at
+ client_message_id,provider_turn_id,request_instance_id,quiescence,quiescence_evidence_ref,created_at,updated_at
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING;
 
 -- name: GetGovernedControlCommand :one
