@@ -1384,8 +1384,9 @@ func (c *Controller) AbortHandoff() {
 	}
 }
 
-// Resolve answers a pending approval. The provider is told first: if it rejects
-// the decision, Kennel must not have already recorded the approval as answered.
+// Resolve answers a pending approval. The provider reply is written first: Kennel
+// must not record the approval as answered before the adapter proves its strongest
+// observable write or SDK-handoff boundary.
 func (c *Controller) Resolve(ctx context.Context, requestID string, decision ports.ChatDecision) error {
 	if c.governance == nil {
 		if err := c.conv.ResolveRequest(ctx, requestID, decision); err != nil {
@@ -1437,10 +1438,10 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 	dispatch, dispatchErr := dispatcher.DispatchAnswer(ctx, requestID, generation, decision)
 	if validateErr := dispatch.Validate(); validateErr != nil {
 		dispatchErr = errors.Join(dispatchErr, validateErr)
-		dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+		dispatch.WriteOutcome = ports.ChatAnswerWriteUnknown
 	}
-	switch dispatch.Acceptance {
-	case ports.ChatTurnAcknowledged:
+	switch dispatch.WriteOutcome {
+	case ports.ChatAnswerFrameWriteComplete, ports.ChatAnswerSDKHandoffComplete:
 		detail, _ := json.Marshal(map[string]string{"decision": decision.ID})
 		if err := c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
 			_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
@@ -1450,7 +1451,7 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 			return errors.Join(ErrSteerDeliveryUnknown, err)
 		}
 		return nil
-	case ports.ChatTurnRejected, ports.ChatTurnNotSent:
+	case ports.ChatAnswerWriteNotStarted:
 		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
 		return errors.Join(ErrProviderRefused, dispatchErr)
 	default:

@@ -352,6 +352,28 @@ func TestSendTurnRejectsEmptyText(t *testing.T) {
 // The whole approval design in one test: the provider blocks on a server->client
 // request, Kennel surfaces it with the provider's own decision list, and the user's
 // choice is what unblocks the turn.
+func TestDispatchAnswerReportsCompleteReplyFrameWrite(t *testing.T) {
+	d, srv := newTestDriver(t)
+	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conv.Close() }()
+	srv.push(`{"id":71,"method":"item/commandExecution/requestApproval","params":{"availableDecisions":["accept"]}}`)
+	ev := nextEvent(t, conv.Events(), ports.ChatEventApprovalRequested)
+	dispatch, err := conv.(ports.ChatAnswerDispatcher).DispatchAnswer(context.Background(), ev.RequestID, "local-card-1", ports.ChatDecision{ID: "accept"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dispatch.WriteOutcome != ports.ChatAnswerFrameWriteComplete {
+		t.Fatalf("write outcome = %q", dispatch.WriteOutcome)
+	}
+	reply := srv.awaitFrame(func(f frame) bool { return f.ID != nil && string(*f.ID) == "71" && f.Method == "" })
+	if len(reply.Result) == 0 {
+		t.Fatal("complete outcome reported without reply result")
+	}
+}
+
 func TestApprovalIsParkedUntilResolved(t *testing.T) {
 	d, srv := newTestDriver(t)
 	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
