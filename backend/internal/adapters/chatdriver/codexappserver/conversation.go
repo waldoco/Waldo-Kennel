@@ -543,7 +543,7 @@ func validateNativePolicyEvidence(records []ports.ChatNativePolicyEvidence, expe
 				record.TransportMethod != "" || record.TransportSHA256 != "" || record.TransportByteCount != 0 {
 				return errors.New("native Start/Resume acknowledgment is incomplete")
 			}
-			if err := validateNativeThreadSandbox(record.ObservedPolicy, expectedPolicy); err != nil {
+			if err := validateNativeThreadSandbox(record.ObservedPolicy); err != nil {
 				return err
 			}
 			continue

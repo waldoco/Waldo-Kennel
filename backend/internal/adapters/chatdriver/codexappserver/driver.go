@@ -374,7 +374,7 @@ func (d *Driver) Start(ctx context.Context, cfg ports.ChatStartConfig) (ports.Ch
 		return nil, errors.New("thread/start returned no thread id")
 	}
 	if nativePolicy != nil {
-		if err := validateNativeThreadSandbox(resp.Sandbox, nativePolicy); err != nil {
+		if err := validateNativeThreadSandbox(resp.Sandbox); err != nil {
 			_ = conv.Close()
 			return nil, err
 		}
@@ -471,7 +471,7 @@ func (d *Driver) Resume(ctx context.Context, cfg ports.ChatResumeConfig) (ports.
 		return nil, fmt.Errorf("%w: %w", ports.ErrChatResumeFailed, err)
 	}
 	if nativePolicy != nil {
-		if err := validateNativeThreadSandbox(resp.Sandbox, nativePolicy); err != nil {
+		if err := validateNativeThreadSandbox(resp.Sandbox); err != nil {
 			_ = conv.Close()
 			return nil, err
 		}
@@ -512,21 +512,17 @@ func nativeSandboxPolicy(profile *ports.ChatNativeSandboxProfile) (map[string]an
 	}, nil
 }
 
-func validateNativeThreadSandbox(observed, expectedDetailed map[string]any) error {
+// validateNativeThreadSandbox validates only the thread-level policy the public
+// protocol lets Kennel request. thread/start and thread/resume accept the coarse
+// `sandbox` enum, while the detailed SandboxPolicy belongs to turn/start. The
+// response may expose resolved detail from provider configuration; those fields
+// are observations, not acknowledgments of parameters this request did not send.
+func validateNativeThreadSandbox(observed map[string]any) error {
 	if observed == nil {
 		return fmt.Errorf("%w: provider returned no structured sandbox", ports.ErrChatProfileMismatch)
 	}
 	if observed["type"] != "workspaceWrite" {
 		return fmt.Errorf("%w: provider sandbox type = %v, want workspaceWrite", ports.ErrChatProfileMismatch, observed["type"])
-	}
-	for _, field := range []string{"networkAccess", "writableRoots", "excludeSlashTmp", "excludeTmpdirEnvVar"} {
-		got, present := observed[field]
-		if !present {
-			continue
-		}
-		if !semanticJSONEqual(got, expectedDetailed[field]) {
-			return fmt.Errorf("%w: provider sandbox %s = %v, want %v", ports.ErrChatProfileMismatch, field, got, expectedDetailed[field])
-		}
 	}
 	return nil
 }

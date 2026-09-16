@@ -1337,21 +1337,24 @@ func TestNativeSandboxProfileMapsOnlyExactStage1Boundary(t *testing.T) {
 	}
 }
 
-func TestNativeThreadSandboxAcknowledgmentIsCoarseAndFailClosed(t *testing.T) {
-	expected, err := nativeSandboxPolicy(&ports.ChatNativeSandboxProfile{
-		Sandbox: ports.ChatNativeSandboxWorkspaceWrite, ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true,
-	})
-	if err != nil {
-		t.Fatal(err)
+func TestNativeThreadSandboxAcknowledgmentMatchesOnlyRequestedEnum(t *testing.T) {
+	// thread/start and thread/resume accept only the coarse sandbox enum. A
+	// response can expose resolved detail from provider configuration, but it is
+	// not an acknowledgment of the detailed policy sent on each turn.
+	for _, observed := range []map[string]any{
+		{"type": "workspaceWrite"},
+		{"type": "workspaceWrite", "networkAccess": false, "writableRoots": []any{}},
+		{"type": "workspaceWrite", "excludeSlashTmp": false, "excludeTmpdirEnvVar": false},
+	} {
+		if err := validateNativeThreadSandbox(observed); err != nil {
+			t.Fatalf("coarse workspace-write acknowledgment %#v: %v", observed, err)
+		}
 	}
-	if err := validateNativeThreadSandbox(map[string]any{"type": "workspaceWrite", "networkAccess": false, "writableRoots": []any{}}, expected); err != nil {
-		t.Fatalf("compatible acknowledgment: %v", err)
+	if err := validateNativeThreadSandbox(nil); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("missing acknowledgment error = %v", err)
 	}
-	if err := validateNativeThreadSandbox(map[string]any{"type": "dangerFullAccess"}, expected); !errors.Is(err, ports.ErrChatProfileMismatch) {
+	if err := validateNativeThreadSandbox(map[string]any{"type": "dangerFullAccess"}); !errors.Is(err, ports.ErrChatProfileMismatch) {
 		t.Fatalf("widened acknowledgment error = %v", err)
-	}
-	if err := validateNativeThreadSandbox(map[string]any{"type": "workspaceWrite", "networkAccess": true}, expected); !errors.Is(err, ports.ErrChatProfileMismatch) {
-		t.Fatalf("network acknowledgment error = %v", err)
 	}
 }
 
