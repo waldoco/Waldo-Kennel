@@ -1,0 +1,6 @@
+-- +goose Up
+CREATE TABLE owner_proofs(id TEXT PRIMARY KEY,verifier TEXT NOT NULL CHECK(length(verifier)=64),app_run_id TEXT NOT NULL,mission_id TEXT NOT NULL,content_digest TEXT NOT NULL CHECK(length(content_digest)=64),target_id TEXT NOT NULL,target_generation INTEGER NOT NULL CHECK(target_generation>=1),command_class TEXT NOT NULL CHECK(command_class IN ('turn','steer','answer','interrupt','cancel','replace','approval','accept')),confirmation_ref TEXT NOT NULL DEFAULT '',expires_at TIMESTAMP NOT NULL,created_at TIMESTAMP NOT NULL,consumed_at TIMESTAMP);
+CREATE TRIGGER owner_proofs_identity_immutable BEFORE UPDATE ON owner_proofs WHEN NEW.id<>OLD.id OR NEW.verifier<>OLD.verifier OR NEW.app_run_id<>OLD.app_run_id OR NEW.mission_id<>OLD.mission_id OR NEW.content_digest<>OLD.content_digest OR NEW.target_id<>OLD.target_id OR NEW.target_generation<>OLD.target_generation OR NEW.command_class<>OLD.command_class OR NEW.confirmation_ref<>OLD.confirmation_ref OR NEW.expires_at<>OLD.expires_at OR NEW.created_at<>OLD.created_at BEGIN SELECT RAISE(ABORT,'owner proof identity is immutable'); END;
+-- +goose Down
+DROP TRIGGER IF EXISTS owner_proofs_identity_immutable;
+DROP TABLE IF EXISTS owner_proofs;

@@ -807,6 +807,21 @@ type OutcomeTrash struct {
 	DeletedAt   time.Time
 }
 
+type OwnerProof struct {
+	ID               string
+	Verifier         string
+	AppRunID         string
+	MissionID        string
+	ContentDigest    string
+	TargetID         string
+	TargetGeneration int64
+	CommandClass     string
+	ConfirmationRef  string
+	ExpiresAt        time.Time
+	CreatedAt        time.Time
+	ConsumedAt       sql.NullTime
+}
+
 type PR struct {
 	URL                      string
 	SessionID                domain.SessionID
