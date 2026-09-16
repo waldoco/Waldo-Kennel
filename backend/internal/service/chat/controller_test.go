@@ -3299,6 +3299,16 @@ func TestGovernedTurnUnknownStaysBlockingAndExactRetryDoesNotRedispatch(t *testi
 	}
 }
 
+func snapshotReader(st *sqlite.Store) chatsvc.SnapshotReader {
+	return chatsvc.SnapshotReaderFunc(func(ctx context.Context, conversationID string) (chatsvc.ConversationRows, error) {
+		rows, err := st.LoadConversationSnapshot(ctx, conversationID)
+		if err != nil {
+			return chatsvc.ConversationRows{}, err
+		}
+		return chatsvc.ConversationRows{Conversation: rows.Conversation, Turns: rows.Turns, Messages: rows.Messages, Activities: rows.Activities}, nil
+	})
+}
+
 func sequentialID(prefix string) func() string {
 	var mu sync.Mutex
 	n := 0
@@ -3328,5 +3338,54 @@ func TestGovernedTurnExplicitRejectionIsNotDeliveryUnknown(t *testing.T) {
 	claim, ok, err := st.GetGovernedCommand(context.Background(), snapshot.Turns[0].ID)
 	if err != nil || !ok || claim.State != domain.GovernedCommandRejected {
 		t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+}
+
+type dispatchHistoryConversation struct {
+	*dispatchConversation
+	history []ports.ChatEvent
+}
+
+func (c *dispatchHistoryConversation) ReadHistory(context.Context) ([]ports.ChatEvent, error) {
+	return append([]ports.ChatEvent(nil), c.history...), nil
+}
+
+func TestGovernedUnknownReconcilesFromStableNativeHistoryWithoutRedispatch(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	first := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnDeliveryUnknown, TransportRequestID: 1, TransportSHA256: "abc", TransportBytes: 10, TransportSequence: 1,
+	}, err: context.DeadlineExceeded}
+	ids := sequentialID("reconcile")
+	firstSvc := chatsvc.New(chatsvc.Options{Store: st, Reader: snapshotReader(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: first}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
+	firstCtrl, err := firstSvc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := firstCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-reconcile"}); !errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) {
+		t.Fatalf("unknown send=%v", err)
+	}
+	if err := firstSvc.Stop(context.Background(), testSession); err != nil {
+		t.Fatal(err)
+	}
+
+	secondBase := newFakeConversation()
+	secondBase.providerConversationID = "thread-1"
+	second := &dispatchHistoryConversation{dispatchConversation: &dispatchConversation{fakeConversation: secondBase}, history: []ports.ChatEvent{
+		{Kind: ports.ChatEventTurnStarted, ProviderEventID: "history-start", ProviderTurnID: "provider-turn-recovered", ProviderConversationID: "thread-1"},
+		{Kind: ports.ChatEventUserMessageCompleted, ProviderEventID: "history-user", ProviderTurnID: "provider-turn-recovered", ProviderConversationID: "thread-1", ProviderItemID: "provider-user", ClientMessageID: "request-reconcile", Text: "do it"},
+	}}
+	secondSvc := chatsvc.New(chatsvc.Options{Store: st, Reader: snapshotReader(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: second}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
+	t.Cleanup(func() { _ = secondSvc.Stop(context.Background(), testSession) })
+	if _, err := secondSvc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: "thread-1", ExecutionPolicy: &policy}); err != nil {
+		t.Fatal(err)
+	}
+	claims, err := st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 0 {
+		t.Fatalf("unsettled=%+v err=%v", claims, err)
+	}
+	if got := len(second.sentMessages()); got != 0 {
+		t.Fatalf("restart redispatched %d turns", got)
 	}
 }

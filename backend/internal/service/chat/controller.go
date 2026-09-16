@@ -309,6 +309,9 @@ func (c *Controller) importNativeHistory(
 	if err != nil {
 		return fmt.Errorf("read native conversation history: %w", err)
 	}
+	if err := c.reconcileGovernedHistory(ctx, events); err != nil {
+		return err
+	}
 	events = reconcileNativeHistory(
 		events, existingTurns, existingMessages, existingActivities,
 	)
@@ -318,6 +321,74 @@ func (c *Controller) importNativeHistory(
 		}
 		if _, _, err := c.projectEvent(ctx, event); err != nil {
 			return fmt.Errorf("import native history event %s: %w", event.Kind, err)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) reconcileGovernedHistory(ctx context.Context, events []ports.ChatEvent) error {
+	if c.governance == nil {
+		return nil
+	}
+	unsettled, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("list governed commands for history reconciliation: %w", err)
+	}
+	providerTurnByClient := make(map[string]string)
+	for _, event := range events {
+		if event.Kind == ports.ChatEventUserMessageCompleted && event.ClientMessageID != "" && event.ProviderTurnID != "" {
+			providerTurnByClient[event.ClientMessageID] = event.ProviderTurnID
+		}
+	}
+	for i := range unsettled {
+		command := &unsettled[i]
+		if command.SessionID != c.sessionID || command.Correlation.ProviderConversationID != c.conv.ProviderConversationID() {
+			continue
+		}
+		if command.ExpectedRevision != c.governance.expectedRevision || command.CapabilityFingerprint != c.governance.capabilityFingerprint {
+			continue
+		}
+		providerTurnID := providerTurnByClient[command.Correlation.ClientMessageID]
+		if providerTurnID == "" {
+			if command.State == domain.GovernedCommandDispatching {
+				if err := c.advanceGovernedTurn(ctx, command, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown, ""); err != nil {
+					return fmt.Errorf("retain governed dispatch ambiguity: %w", err)
+				}
+			}
+			continue
+		}
+		if err := c.store.BindTurnToProvider(ctx, command.ID, providerTurnID, c.now()); err != nil {
+			return fmt.Errorf("bind governed turn from history: %w", err)
+		}
+		switch command.State {
+		case domain.GovernedCommandDispatching:
+			if err := c.advanceGovernedTurn(ctx, command, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged, providerTurnID); err != nil {
+				return fmt.Errorf("acknowledge governed dispatch from history: %w", err)
+			}
+		case domain.GovernedCommandDeliveryUnknown:
+			command.State = domain.GovernedCommandReconciled
+			command.Correlation.ProviderTurnID = providerTurnID
+			command.ReconciliationOutcome = domain.GovernedCommandReconciledAcknowledged
+			command.UpdatedAt = c.now()
+			advanced, err := c.store.AdvanceGovernedCommand(ctx, *command, domain.GovernedCommandDeliveryUnknown,
+				command.ControllerGeneration, command.ExpectedRevision, command.CapabilityFingerprint)
+			if err != nil || !advanced {
+				if err == nil {
+					err = errors.New("governed reconciliation transition fence lost")
+				}
+				return fmt.Errorf("reconcile governed dispatch from history: %w", err)
+			}
+		}
+	}
+	remaining, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("refresh governed commands after history reconciliation: %w", err)
+	}
+	c.governance.blocked = false
+	for _, command := range remaining {
+		if command.SessionID == c.sessionID && (command.State == domain.GovernedCommandDispatching || command.State == domain.GovernedCommandDeliveryUnknown) {
+			c.governance.blocked = true
+			break
 		}
 	}
 	return nil
