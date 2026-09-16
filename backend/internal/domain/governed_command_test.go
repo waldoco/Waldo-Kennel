@@ -160,3 +160,23 @@ func TestRestoreCannotRaceTeardownUnderSameOwnershipFence(t *testing.T) {
 		t.Fatal("stale generation admitted restore or provider event")
 	}
 }
+
+func TestComputeGovernedTurnRequestFingerprintBindsExactRequestAndNormalizesKey(t *testing.T) {
+	base := ComputeGovernedTurnRequestFingerprint("session-1", " request-1 ", "ship it", `[{"type":"resource","text":"spec"}]`)
+	if base != ComputeGovernedTurnRequestFingerprint("session-1", "request-1", "ship it", `[{"type":"resource","text":"spec"}]`) {
+		t.Fatal("trim-equivalent key changed fingerprint")
+	}
+	for name, got := range map[string]string{
+		"session": ComputeGovernedTurnRequestFingerprint("session-2", "request-1", "ship it", `[{"type":"resource","text":"spec"}]`),
+		"key":     ComputeGovernedTurnRequestFingerprint("session-1", "request-2", "ship it", `[{"type":"resource","text":"spec"}]`),
+		"text":    ComputeGovernedTurnRequestFingerprint("session-1", "request-1", "ship this", `[{"type":"resource","text":"spec"}]`),
+		"content": ComputeGovernedTurnRequestFingerprint("session-1", "request-1", "ship it", `[{"type":"resource","text":"other"}]`),
+	} {
+		if got == base {
+			t.Fatalf("%s did not change fingerprint", name)
+		}
+	}
+	if len(base) != len("v1:")+64 {
+		t.Fatalf("fingerprint=%q", base)
+	}
+}

@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -75,6 +78,20 @@ type GovernedCommandCorrelation struct {
 // GovernedCommandContract is the immutable semantic contract plus current
 // delivery evidence for one command. Persistence and service wiring are later
 // Stage 2 slices; this type freezes their shared meaning first.
+// ComputeGovernedTurnRequestFingerprint binds a turn idempotency key to the
+// exact stable request tuple. Provider observations and delivery state are not
+// included, so a retry after partial dispatch still identifies the first claim.
+func ComputeGovernedTurnRequestFingerprint(sessionID SessionID, idempotencyKey, text, deliveryContentJSON string) string {
+	payload, _ := json.Marshal(struct {
+		SessionID           SessionID `json:"sessionId"`
+		IdempotencyKey      string    `json:"idempotencyKey"`
+		Text                string    `json:"text"`
+		DeliveryContentJSON string    `json:"deliveryContentJson"`
+	}{sessionID, strings.TrimSpace(idempotencyKey), text, deliveryContentJSON})
+	sum := sha256.Sum256(payload)
+	return "v1:" + hex.EncodeToString(sum[:])
+}
+
 type GovernedCommandContract struct {
 	ID                    string
 	IdempotencyKey        string
