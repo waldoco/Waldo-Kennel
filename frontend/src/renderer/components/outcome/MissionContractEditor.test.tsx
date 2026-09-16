@@ -12,6 +12,17 @@ const contract: ContractRevisionRecord = {
  temporalCondition: "Today", facets: [{ kind: "research", summary: "Source audit", requirements: ["Citations"] }],
  createdAt: "2026-09-11T00:00:00Z",
 };
+it("exposes stable selectors for the packaged Outcome journey harness", async () => {
+ const user = userEvent.setup();
+ render(<MissionContractEditor outcomeId="one" contract={contract} disabled={false} />);
+ expect(screen.getByTestId("contract-edit")).toBeInTheDocument();
+ await user.click(screen.getByTestId("contract-edit"));
+ expect(screen.getByTestId("contract-goal")).toBeInTheDocument();
+ expect(screen.getByTestId("contract-criterion-0")).toBeInTheDocument();
+ expect(screen.getByTestId("contract-evidence-0")).toBeInTheDocument();
+ expect(screen.getByTestId("contract-save")).toBeInTheDocument();
+ expect(screen.getByTestId("contract-discard")).toBeInTheDocument();
+});
 it("saves a new revision preserving supporting details", async () => {
  save.mockResolvedValue({});
  const user = userEvent.setup();
