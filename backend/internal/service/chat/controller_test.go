@@ -172,6 +172,24 @@ func (f *fakeConversation) ResolveRequest(_ context.Context, id string, d ports.
 	return nil
 }
 
+type answerDispatchConversation struct {
+	*fakeConversation
+	dispatch   ports.ChatAnswerDispatch
+	err        error
+	calls      int
+	generation string
+	onDispatch func()
+}
+
+func (c *answerDispatchConversation) DispatchAnswer(_ context.Context, requestID, generation string, decision ports.ChatDecision) (ports.ChatAnswerDispatch, error) {
+	c.calls++
+	c.generation = generation
+	if c.onDispatch != nil {
+		c.onDispatch()
+	}
+	return c.dispatch, c.err
+}
+
 func (f *fakeConversation) Close() error {
 	f.closeOnce.Do(func() { close(f.events) })
 	return nil
@@ -630,6 +648,8 @@ func newHarnessWithConversationAndStore(
 	} else if recorder, ok := conv.(*interruptRecorder); ok {
 		base = recorder.fakeConversation
 	} else if recorder, ok := conv.(*historyRecorder); ok {
+		base = recorder.fakeConversation
+	} else if recorder, ok := conv.(*answerDispatchConversation); ok {
 		base = recorder.fakeConversation
 	}
 	h := &harness{
@@ -3445,4 +3465,76 @@ func chatCapsDigestForTest(capabilities ports.ChatCapabilities) string {
 	payload, _ := json.Marshal(enabled)
 	sum := sha256.Sum256(payload)
 	return "chat-v1:" + hex.EncodeToString(sum[:])
+}
+
+func TestGovernedAnswerBindsExactPendingGenerationAndReplaysWithoutRedispatch(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &answerDispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{Acceptance: ports.ChatTurnAcknowledged}}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("answer")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conv.emit(ports.ChatEvent{Kind: ports.ChatEventApprovalRequested, RequestID: "7", ProviderItemID: "7", Summary: "allow?", Decisions: []ports.ChatDecisionOption{{ID: "accept"}}})
+	snapshot := awaitStoreSnapshot(t, st, ctrl.ConversationID(), func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
+	generation := snapshot.Activities[0].ID
+	conv.onDispatch = func() {
+		claims, listErr := st.ListUnsettledGovernedControlCommands(context.Background())
+		if listErr != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDispatching || claims[0].TargetGeneration != generation {
+			t.Fatalf("answer was dispatched without exact durable generation: claims=%+v err=%v", claims, listErr)
+		}
+	}
+	decision := ports.ChatDecision{ID: "accept"}
+	if err := svc.Resolve(context.Background(), testSession, "7", decision); err != nil {
+		t.Fatal(err)
+	}
+	if conv.generation != generation {
+		t.Fatalf("generation=%q want %q", conv.generation, generation)
+	}
+	// Exact replay recovers the acknowledged governed receipt without contacting
+	// the provider again.
+	if err := svc.Resolve(context.Background(), testSession, "7", decision); err != nil {
+		t.Fatalf("replay err=%v", err)
+	}
+	if conv.calls != 1 {
+		t.Fatalf("answer dispatches=%d want 1", conv.calls)
+	}
+}
+
+func TestGovernedAnswerProviderAckLocalFailureBecomesUnknown(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &answerDispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{Acceptance: ports.ChatTurnAcknowledged}}
+	injected := errors.New("resolve activity failed")
+	wrapped := &failResolveApprovalStore{Store: st, err: injected}
+	svc := chatsvc.New(chatsvc.Options{Store: wrapped, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("answer-fail")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conv.emit(ports.ChatEvent{Kind: ports.ChatEventApprovalRequested, RequestID: "9", ProviderItemID: "9", Summary: "allow?", Decisions: []ports.ChatDecisionOption{{ID: "accept"}}})
+	awaitStoreSnapshot(t, st, ctrl.ConversationID(), func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
+	if err := svc.Resolve(context.Background(), testSession, "9", ports.ChatDecision{ID: "accept"}); !errors.Is(err, chatsvc.ErrSteerDeliveryUnknown) || !errors.Is(err, injected) {
+		t.Fatalf("resolve err=%v", err)
+	}
+	if err := svc.Resolve(context.Background(), testSession, "9", ports.ChatDecision{ID: "accept"}); !errors.Is(err, chatsvc.ErrSteerDeliveryUnknown) {
+		t.Fatalf("replay err=%v", err)
+	}
+	if conv.calls != 1 {
+		t.Fatalf("answer dispatches=%d want 1", conv.calls)
+	}
+}
+
+type failResolveApprovalStore struct {
+	chatsvc.Store
+	err error
+}
+
+func (s *failResolveApprovalStore) ResolveApproval(context.Context, string, string, string, time.Time) error {
+	return s.err
 }

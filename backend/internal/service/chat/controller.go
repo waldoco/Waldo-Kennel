@@ -104,7 +104,7 @@ type Store interface {
 
 	UpsertActivity(ctx context.Context, conversationID, providerTurnID string, activity domain.ConversationActivity, now time.Time) error
 	MarkCompacted(ctx context.Context, conversationID string, at time.Time) error
-	PendingApprovalGeneration(ctx context.Context, conversationID, requestID string) (string, bool, error)
+	ApprovalGeneration(ctx context.Context, conversationID, requestID string) (string, bool, error)
 	ResolveApproval(ctx context.Context, conversationID, requestID, detailJSON string, now time.Time) error
 	FailPendingApprovals(ctx context.Context, conversationID string, now time.Time) error
 	FailPendingInputs(ctx context.Context, conversationID string, now time.Time) error
@@ -1378,11 +1378,11 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 		}
 		return nil
 	}
-	generation, pending, err := c.store.PendingApprovalGeneration(ctx, c.conversation.ID, requestID)
+	generation, found, err := c.store.ApprovalGeneration(ctx, c.conversation.ID, requestID)
 	if err != nil {
 		return fmt.Errorf("find approval %s: %w", requestID, err)
 	}
-	if !pending {
+	if !found {
 		return fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
 	}
 	payload, _ := json.Marshal(decision)
