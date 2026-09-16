@@ -3072,6 +3072,73 @@ func (s *failingProjectStore) ProjectProviderEvent(
 	return projected, err
 }
 
+func TestGovernedTurnCrashMidProjectionReplaysOneAtomicVisibleEvent(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	firstConv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+		TransportRequestID: 1, TransportSHA256: "projection-sha", TransportBytes: 10, TransportSequence: 1,
+	}}
+	failingStore := &failingProjectStore{Store: st, failMethod: string(ports.ChatEventActivityStarted), failed: make(chan struct{})}
+	first := chatsvc.New(chatsvc.Options{Store: failingStore, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: firstConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("mid-projection-first")})
+	firstCtrl, err := first.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := firstCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-mid-projection"}); err != nil {
+		t.Fatal(err)
+	}
+	event := ports.ChatEvent{
+		Kind: ports.ChatEventActivityStarted, ProviderEventID: "event-mid-projection", ProviderTurnID: "provider-turn-1",
+		ProviderConversationID: firstCtrl.ProviderConversationID(), ProviderItemID: "command-1",
+		ActivityKind: domain.ActivityKindCommand, ActivityStatus: domain.ActivityStatusRunning, Summary: "go test ./...",
+	}
+	firstConv.emit(event)
+	select {
+	case <-failingStore.failed:
+	case <-time.After(time.Second):
+		t.Fatal("event did not reach the injected mid-projection rollback")
+	}
+	snapshot, err := st.LoadConversationSnapshot(context.Background(), firstCtrl.ConversationID())
+	if err != nil || len(snapshot.Activities) != 0 {
+		t.Fatalf("rolled-back activities=%+v err=%v", snapshot.Activities, err)
+	}
+	events, err := st.ProviderEventsSince(context.Background(), firstCtrl.ConversationID(), 0, 10)
+	if err != nil || len(events) != 0 {
+		t.Fatalf("rolled-back archive=%+v err=%v", events, err)
+	}
+
+	// A fresh daemon resumes the same native thread. Stable history repeats the
+	// event whose prior archive+projection transaction never committed; import
+	// must make exactly one visible activity and one archive row.
+	history := &nativeHistoryConversation{fakeConversation: newFakeConversation(), events: []ports.ChatEvent{event}}
+	second := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: history}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("mid-projection-second")})
+	t.Cleanup(func() { _ = second.Stop(context.Background(), testSession) })
+	secondCtrl, err := second.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: firstCtrl.ProviderConversationID(), ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = st.LoadConversationSnapshot(context.Background(), secondCtrl.ConversationID())
+	if err != nil || len(snapshot.Activities) != 1 || snapshot.Activities[0].ProviderItemID != event.ProviderItemID || snapshot.Activities[0].Status != domain.ActivityStatusRunning {
+		t.Fatalf("replayed activities=%+v err=%v", snapshot.Activities, err)
+	}
+	events, err = st.ProviderEventsSince(context.Background(), secondCtrl.ConversationID(), 0, 10)
+	if err != nil || len(events) != 1 || events[0].ProviderEventID != event.ProviderEventID {
+		t.Fatalf("replayed archive=%+v err=%v", events, err)
+	}
+
+	// Repeating the same stable event after restart is a no-op for both archive
+	// and projection, so recovery cannot duplicate the visible activity.
+	history.emit(event)
+	time.Sleep(20 * time.Millisecond)
+	snapshot, err = st.LoadConversationSnapshot(context.Background(), secondCtrl.ConversationID())
+	events, eventsErr := st.ProviderEventsSince(context.Background(), secondCtrl.ConversationID(), 0, 10)
+	if err != nil || eventsErr != nil || len(snapshot.Activities) != 1 || len(events) != 1 {
+		t.Fatalf("duplicate replay activities=%+v events=%+v err=%v eventsErr=%v", snapshot.Activities, events, err, eventsErr)
+	}
+}
+
 // The exact #3749 sequence: the turn/completed projection fails (so the durable
 // row stays 'running' and the UI keeps showing "Working"), then the user presses
 // Stop and the provider refuses because the turn already ended on its side.
