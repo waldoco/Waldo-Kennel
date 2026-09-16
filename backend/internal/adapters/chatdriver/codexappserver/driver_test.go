@@ -1651,3 +1651,22 @@ func TestDispatchTurnReportsUnknownWhenWrittenResponseHasNoTurnID(t *testing.T) 
 		t.Fatalf("missing-id evidence=%+v err=%v", got, err)
 	}
 }
+
+func TestDispatchInterruptReportsAcknowledgedAndQuiescent(t *testing.T) {
+	d, _ := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	dispatch, err := opened.(ports.ChatInterruptDispatcher).DispatchInterrupt(context.Background(), "turn-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dispatch.Acceptance != ports.ChatTurnAcknowledged || dispatch.TransportRequestID <= 0 || dispatch.TransportSHA256 == "" || dispatch.TransportBytes <= 0 || dispatch.TransportSequence <= 0 {
+		t.Fatalf("dispatch=%+v", dispatch)
+	}
+	if dispatch.Quiescence != domain.GovernedCommandQuiescenceCodexTree || dispatch.QuiescenceEvidenceRef == "" {
+		t.Fatalf("quiescence=%+v", dispatch)
+	}
+}

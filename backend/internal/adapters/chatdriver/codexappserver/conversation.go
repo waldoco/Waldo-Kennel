@@ -900,25 +900,35 @@ func (c *conversation) trackInterruptState(ev ports.ChatEvent) {
 	}
 }
 
-// Interrupt cancels a turn. An empty turn id targets the active one.
+// Interrupt preserves the legacy error contract while governed callers consume
+// the stronger dispatch and quiescence receipt.
 func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) error {
+	_, err := c.DispatchInterrupt(ctx, providerTurnID)
+	return err
+}
+
+// DispatchInterrupt cancels a turn and does not report process quiescence until
+// Stage 1's owned-process boundary has been crossed.
+func (c *conversation) DispatchInterrupt(ctx context.Context, providerTurnID string) (ports.ChatInterruptDispatch, error) {
 	if providerTurnID == "" {
 		c.mu.Lock()
 		providerTurnID = c.activeTurn
 		c.mu.Unlock()
 	}
 	if providerTurnID == "" {
-		return ports.ErrChatNoActiveTurn
+		return ports.ChatInterruptDispatch{Acceptance: ports.ChatTurnNotSent}, ports.ErrChatNoActiveTurn
 	}
 	c.interruptWG.Add(1)
 	defer c.interruptWG.Done()
 	c.mu.Lock()
 	c.interrupting[providerTurnID] = true
 	c.mu.Unlock()
-	if err := c.conn.request(ctx, "turn/interrupt", map[string]any{
+	receipt, err := c.conn.requestWithTransportReceipt(ctx, "turn/interrupt", map[string]any{
 		"threadId": c.threadID,
 		"turnId":   providerTurnID,
-	}, nil); err != nil {
+	}, nil, nil)
+	dispatch := ports.ChatInterruptDispatch{TransportRequestID: receipt.RequestID, TransportSHA256: receipt.SHA256, TransportBytes: receipt.ByteCount, TransportSequence: receipt.WriteSequence, Quiescence: domain.GovernedCommandQuiescencePending}
+	if err != nil {
 		// The provider refuses an interrupt for a turn it does not consider
 		// active — which happens either side of the turn: pressed before it has
 		// acknowledged the start, or after it already finished. Neither is an
@@ -926,16 +936,25 @@ func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) err
 		// vocabulary is known, instead of escaping as a protocol error and
 		// reaching the user as "Internal server error".
 		c.clearInterrupt(providerTurnID, false)
-		if isNoActiveTurn(err) {
-			return ports.ErrChatNoActiveTurn
+		if !receipt.SuccessfulWrite {
+			dispatch.Acceptance = ports.ChatTurnNotSent
+		} else {
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
 		}
-		return fmt.Errorf("turn/interrupt: %w", err)
+		if isNoActiveTurn(err) {
+			dispatch.Acceptance = ports.ChatTurnRejected
+			return dispatch, ports.ErrChatNoActiveTurn
+		}
+		return dispatch, fmt.Errorf("turn/interrupt: %w", err)
 	}
+	dispatch.Acceptance = ports.ChatTurnAcknowledged
 	// Pipe-backed tests have no owned process to police. A real app-server does:
 	// do not report Stop complete until its command lifecycle has settled.
 	if c.proc.forceStop == nil {
 		c.clearInterrupt(providerTurnID, true)
-		return nil
+		dispatch.Quiescence = domain.GovernedCommandQuiescenceCodexTree
+		dispatch.QuiescenceEvidenceRef = "codex-process-tree:no-owned-process:" + receipt.SHA256
+		return dispatch, nil
 	}
 	deadline := time.NewTimer(interruptQuiescenceWait)
 	defer deadline.Stop()
@@ -945,7 +964,8 @@ func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) err
 		select {
 		case <-ctx.Done():
 			c.clearInterrupt(providerTurnID, true)
-			return ctx.Err()
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+			return dispatch, ctx.Err()
 		case <-ticker.C:
 			// Provider lifecycle settlement is useful transcript evidence, but Codex
 			// 0.154.0 can settle both turn and command before the shell's final write.
@@ -954,10 +974,12 @@ func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) err
 		case <-deadline.C:
 			if err := c.proc.forceStop(); err != nil {
 				c.clearInterrupt(providerTurnID, true)
-				return fmt.Errorf("force-stop interrupted app-server: %w", err)
+				return dispatch, fmt.Errorf("force-stop interrupted app-server: %w", err)
 			}
 			c.clearInterrupt(providerTurnID, true)
-			return ports.ErrChatInterruptRestartRequired
+			dispatch.Quiescence = domain.GovernedCommandQuiescenceCodexTree
+			dispatch.QuiescenceEvidenceRef = "codex-process-tree:force-stopped:" + receipt.SHA256
+			return dispatch, ports.ErrChatInterruptRestartRequired
 		}
 	}
 }
