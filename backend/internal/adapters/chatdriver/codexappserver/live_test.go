@@ -541,17 +541,38 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	// shell command adds three quoting layers and can turn the intended assertion
 	// failure into an unrelated compile failure before the proof begins.
 	writePersistentSubstrateFixture(t, workspace)
+	requiredCommand := "pwd > observed-pwd.txt && git rev-parse --show-toplevel > observed-git-root.txt && " +
+		"printf PERSISTENT-SUBSTRATE > substrate-marker.txt && go test ./..."
 	first := runLiveTurn(t, liveTurnContext(t), opened, ports.ChatUserMessage{
-		Text: "Inspect the assigned repository, then run this exact local command: " +
-			"pwd > observed-pwd.txt && git rev-parse --show-toplevel > observed-git-root.txt && " +
-			"printf PERSISTENT-SUBSTRATE > substrate-marker.txt && go test ./... . " +
-			"The failing TestValue assertion is expected; report FIRST-FAIL-OBSERVED after it runs.",
+		// Earlier wording ("Inspect the assigned repository, then run...") invited
+		// free-form exploration first and, live, sometimes got only that exploration
+		// in the turn — the model never reached the required command at all. This
+		// is deliberately front-loaded and closed off instead of relying on ordering.
+		Text: "Run exactly this one local command right now, as your first and only command " +
+			"this turn, with no other command before it (no ls, rg, find, cat, or similar): " +
+			requiredCommand + " . The failing TestValue assertion is expected; " +
+			"report FIRST-FAIL-OBSERVED after it runs.",
 		ClientMessageID: "persistent-substrate-failing-test", Origin: domain.MessageOriginHuman,
 	})
 	logLatestNativePolicyEvidence(t, opened, "turn_start", first.ref.ProviderTurnID)
 	if first.ref.ProviderTurnID == "" || first.state != domain.TurnStateCompleted || !first.sawFailedCommand ||
 		!first.failedTestValueAssertion() {
-		t.Fatalf("expected TestValue assertion was not the failed command: %s", first.sanitizedEvidence())
+		// A single live sample is not fully deterministic. Re-steer once, in the
+		// same thread, exactly as a real session would: this is Stage 1's own
+		// steering primitive, not a retry that hides a product defect — the
+		// assertion below stays exactly as strict either way.
+		t.Logf("first attempt did not produce the required failing command, steering again: %s reply=%q", first.sanitizedEvidence(), first.text)
+		first = runLiveTurn(t, liveTurnContext(t), opened, ports.ChatUserMessage{
+			Text: "You have not yet run the required command in this worktree. Run it now, exactly, " +
+				"as your only command, before anything else: " + requiredCommand +
+				" . The failing TestValue assertion is expected; report FIRST-FAIL-OBSERVED after it runs.",
+			ClientMessageID: "persistent-substrate-failing-test-resteer", Origin: domain.MessageOriginHuman,
+		})
+		logLatestNativePolicyEvidence(t, opened, "turn_start", first.ref.ProviderTurnID)
+	}
+	if first.ref.ProviderTurnID == "" || first.state != domain.TurnStateCompleted || !first.sawFailedCommand ||
+		!first.failedTestValueAssertion() {
+		t.Fatalf("expected TestValue assertion was not the failed command, even after one re-steer: %s reply=%q", first.sanitizedEvidence(), first.text)
 	}
 	assertCanonicalPathFile(t, filepath.Join(workspace, "observed-pwd.txt"), workspace)
 	assertCanonicalPathFile(t, filepath.Join(workspace, "observed-git-root.txt"), workspace)
@@ -957,9 +978,22 @@ func liveCodexBin(t *testing.T) string {
 func startLiveConversation(t *testing.T, d *Driver, workspace string) ports.ChatConversation {
 	t.Helper()
 	ctx := phaseContext(t, 30*time.Second)
+	env := liveCodexEnv()
+	// The native profile's only writable root is the worktree itself (excludeSlashTmp
+	// and excludeTmpdirEnvVar deliberately deny both /tmp and $TMPDIR). go test/build
+	// writes to two places outside that root by default: the build cache (GOCACHE,
+	// under $HOME) and scratch build/link artifacts (GOTMPDIR, which falls back to
+	// $TMPDIR). Both must be redirected inside the one root this profile allows, or
+	// go test fails with "operation not permitted" before TestValue ever runs.
+	env["GOCACHE"] = filepath.Join(workspace, ".gocache")
+	env["GOTMPDIR"] = filepath.Join(workspace, ".gotmp")
+	// GOTMPDIR (unlike GOCACHE) must already exist; go does not create it.
+	if err := os.MkdirAll(env["GOTMPDIR"], 0o755); err != nil {
+		t.Fatalf("create GOTMPDIR: %v", err)
+	}
 	opened, err := d.Start(ctx, ports.ChatStartConfig{
 		SessionID: "kennel-live-persistent-substrate", WorkspacePath: workspace,
-		Env: liveCodexEnv(), Permissions: ports.PermissionModeAcceptEdits,
+		Env: env, Permissions: ports.PermissionModeAcceptEdits,
 		SystemPrompt: nativeWorktreeProfileInstructions, NativeSandboxProfile: nativeLiveProfile(),
 	})
 	if err != nil {
