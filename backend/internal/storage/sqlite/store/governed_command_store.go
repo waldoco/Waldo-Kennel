@@ -5,10 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/gen"
 )
+
+var _ ports.GovernedCommandStore = (*Store)(nil)
 
 // CreateGovernedCommandClaim records the pre-effect claim. A retry with the
 // same session, idempotency key, and request fingerprint returns the original
@@ -62,6 +66,57 @@ func (s *Store) GetGovernedCommand(ctx context.Context, id string) (domain.Gover
 		return domain.GovernedCommandRecord{}, false, fmt.Errorf("get governed command %s: %w", id, err)
 	}
 	return governedCommandFromGen(row), true, nil
+}
+
+// AdvanceGovernedCommand compare-and-sets delivery evidence under all
+// ownership bindings captured by the caller. Those bindings are deliberately
+// separate arguments so mutating rec cannot also move its own fence.
+func (s *Store) AdvanceGovernedCommand(ctx context.Context, rec domain.GovernedCommandRecord, expectedState domain.GovernedCommandState, expectedGeneration, expectedRevision, expectedCapabilityFingerprint string) (bool, error) {
+	if err := rec.GovernedCommandContract.Validate(); err != nil {
+		return false, err
+	}
+	if !domain.CanTransitionGovernedCommand(expectedState, rec.State) {
+		return false, fmt.Errorf("%w: %s -> %s", domain.ErrGovernedCommandTransition, expectedState, rec.State)
+	}
+	if strings.TrimSpace(expectedGeneration) == "" || strings.TrimSpace(expectedRevision) == "" || strings.TrimSpace(expectedCapabilityFingerprint) == "" {
+		return false, fmt.Errorf("%w: transition fences are required", domain.ErrGovernedCommandInvalid)
+	}
+	if rec.ControllerGeneration != expectedGeneration || rec.ExpectedRevision != expectedRevision || rec.CapabilityFingerprint != expectedCapabilityFingerprint {
+		return false, fmt.Errorf("%w: record and expected ownership bindings differ", domain.ErrGovernedCommandInvalid)
+	}
+	if rec.UpdatedAt.IsZero() {
+		return false, fmt.Errorf("%w: transition time is required", domain.ErrGovernedCommandInvalid)
+	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	n, err := s.qw.AdvanceGovernedCommand(ctx, gen.AdvanceGovernedCommandParams{
+		NextState: string(rec.State), ProviderTurnID: rec.Correlation.ProviderTurnID,
+		ProviderEventID: rec.Correlation.ProviderEventID, ProviderCursor: rec.Correlation.ProviderCursor,
+		ReconciliationOutcome: string(rec.ReconciliationOutcome), Quiescence: string(rec.Quiescence),
+		QuiescenceEvidenceRef: rec.QuiescenceEvidenceRef, UpdatedAt: rec.UpdatedAt, ID: rec.ID,
+		ExpectedState: string(expectedState), ExpectedControllerGeneration: expectedGeneration,
+		ExpectedRevision: expectedRevision, ExpectedCapabilityFingerprint: expectedCapabilityFingerprint,
+	})
+	if err != nil {
+		return false, fmt.Errorf("advance governed command %s: %w", rec.ID, err)
+	}
+	return n > 0, nil
+}
+
+// ListUnsettledGovernedCommands returns claims that need dispatch or recovery.
+// delivery_unknown remains included because restart never turns ambiguity into
+// permission to redeliver.
+func (s *Store) ListUnsettledGovernedCommands(ctx context.Context) ([]domain.GovernedCommandRecord, error) {
+	rows, err := s.qr.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list unsettled governed commands: %w", err)
+	}
+	out := make([]domain.GovernedCommandRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, governedCommandFromGen(row))
+	}
+	return out, nil
 }
 
 func validateGovernedCommandClaim(rec domain.GovernedCommandRecord) error {

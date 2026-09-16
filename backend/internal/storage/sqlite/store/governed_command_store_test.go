@@ -131,3 +131,117 @@ func TestCreateGovernedCommandClaimRejectsNonClaimedOrMismatchedTimes(t *testing
 		t.Fatalf("mismatched timestamps err=%v", err)
 	}
 }
+
+func advanceGovernedCommand(t *testing.T, s interface {
+	AdvanceGovernedCommand(context.Context, domain.GovernedCommandRecord, domain.GovernedCommandState, string, string, string) (bool, error)
+}, rec *domain.GovernedCommandRecord, next domain.GovernedCommandState, at time.Time, mutate func(*domain.GovernedCommandRecord)) bool {
+	t.Helper()
+	expected := rec.State
+	if mutate != nil {
+		mutate(rec)
+	}
+	rec.State = next
+	rec.UpdatedAt = at
+	ok, err := s.AdvanceGovernedCommand(context.Background(), *rec, expected, rec.ControllerGeneration, rec.ExpectedRevision, rec.CapabilityFingerprint)
+	if err != nil {
+		t.Fatalf("advance %s -> %s: %v", expected, next, err)
+	}
+	return ok
+}
+
+func TestGovernedCommandTransitionsFenceStaleWritersAndRetainUnknownForRecovery(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "governed-transition")
+	session, err := s.CreateSession(ctx, sampleRecord("governed-transition"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	claim := governedCommandClaim(session.ID, "command-transition", "transition-key", "transition-fingerprint", at)
+	if _, created, err := s.CreateGovernedCommandClaim(ctx, claim); err != nil || !created {
+		t.Fatalf("claim: created=%v err=%v", created, err)
+	}
+
+	stale := claim
+	stale.State = domain.GovernedCommandDispatching
+	stale.UpdatedAt = at.Add(time.Second)
+	stale.ControllerGeneration = "stale-generation"
+	if ok, err := s.AdvanceGovernedCommand(ctx, stale, domain.GovernedCommandClaimed, stale.ControllerGeneration, claim.ExpectedRevision, claim.CapabilityFingerprint); err != nil || ok {
+		t.Fatalf("stale generation: ok=%v err=%v", ok, err)
+	}
+	stale = claim
+	stale.State = domain.GovernedCommandDispatching
+	stale.UpdatedAt = at.Add(time.Second)
+	stale.ExpectedRevision = "stale-revision"
+	if ok, err := s.AdvanceGovernedCommand(ctx, stale, domain.GovernedCommandClaimed, claim.ControllerGeneration, stale.ExpectedRevision, claim.CapabilityFingerprint); err != nil || ok {
+		t.Fatalf("stale revision: ok=%v err=%v", ok, err)
+	}
+	stale = claim
+	stale.State = domain.GovernedCommandDispatching
+	stale.UpdatedAt = at.Add(time.Second)
+	stale.CapabilityFingerprint = "stale-capabilities"
+	if ok, err := s.AdvanceGovernedCommand(ctx, stale, domain.GovernedCommandClaimed, claim.ControllerGeneration, claim.ExpectedRevision, stale.CapabilityFingerprint); err != nil || ok {
+		t.Fatalf("stale capabilities: ok=%v err=%v", ok, err)
+	}
+	if !advanceGovernedCommand(t, s, &claim, domain.GovernedCommandDispatching, at.Add(time.Second), nil) {
+		t.Fatal("claim did not advance to dispatching")
+	}
+	if !advanceGovernedCommand(t, s, &claim, domain.GovernedCommandDeliveryUnknown, at.Add(2*time.Second), func(rec *domain.GovernedCommandRecord) {
+		rec.Correlation.ProviderEventID = "provider-event-before-disconnect"
+	}) {
+		t.Fatal("dispatching did not advance to delivery_unknown")
+	}
+
+	unsettled, err := s.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unsettled) != 1 || unsettled[0].ID != claim.ID || unsettled[0].State != domain.GovernedCommandDeliveryUnknown {
+		t.Fatalf("unsettled=%+v", unsettled)
+	}
+	redispatch := claim
+	redispatch.State = domain.GovernedCommandDispatching
+	redispatch.UpdatedAt = at.Add(3 * time.Second)
+	if ok, err := s.AdvanceGovernedCommand(ctx, redispatch, domain.GovernedCommandDeliveryUnknown, claim.ControllerGeneration, claim.ExpectedRevision, claim.CapabilityFingerprint); !errors.Is(err, domain.ErrGovernedCommandTransition) || ok {
+		t.Fatalf("unknown redispatch: ok=%v err=%v", ok, err)
+	}
+	if !advanceGovernedCommand(t, s, &claim, domain.GovernedCommandReconciled, at.Add(3*time.Second), func(rec *domain.GovernedCommandRecord) {
+		rec.ReconciliationOutcome = domain.GovernedCommandReconciledAcknowledged
+		rec.Correlation.ProviderTurnID = "provider-turn-recovered"
+	}) {
+		t.Fatal("unknown did not reconcile")
+	}
+	unsettled, err = s.ListUnsettledGovernedCommands(ctx)
+	if err != nil || len(unsettled) != 0 {
+		t.Fatalf("settled list=%+v err=%v", unsettled, err)
+	}
+}
+
+func TestGovernedCommandTransitionRejectsOldStateAndClaimTime(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "governed-transition-race")
+	session, err := s.CreateSession(ctx, sampleRecord("governed-transition-race"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	claim := governedCommandClaim(session.ID, "command-race-transition", "race-transition-key", "race-transition-fingerprint", at)
+	if _, _, err := s.CreateGovernedCommandClaim(ctx, claim); err != nil {
+		t.Fatal(err)
+	}
+	next := claim
+	next.State = domain.GovernedCommandDispatching
+	next.UpdatedAt = at
+	if ok, err := s.AdvanceGovernedCommand(ctx, next, domain.GovernedCommandClaimed, claim.ControllerGeneration, claim.ExpectedRevision, claim.CapabilityFingerprint); err != nil || ok {
+		t.Fatalf("same-time transition: ok=%v err=%v", ok, err)
+	}
+	next.UpdatedAt = at.Add(time.Second)
+	if ok, err := s.AdvanceGovernedCommand(ctx, next, domain.GovernedCommandClaimed, claim.ControllerGeneration, claim.ExpectedRevision, claim.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("valid transition: ok=%v err=%v", ok, err)
+	}
+	if ok, err := s.AdvanceGovernedCommand(ctx, next, domain.GovernedCommandClaimed, claim.ControllerGeneration, claim.ExpectedRevision, claim.CapabilityFingerprint); err != nil || ok {
+		t.Fatalf("stale state transition: ok=%v err=%v", ok, err)
+	}
+}

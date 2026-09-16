@@ -10,6 +10,62 @@ import (
 	"time"
 )
 
+const advanceGovernedCommand = `-- name: AdvanceGovernedCommand :execrows
+UPDATE governed_commands SET
+    state = ?1,
+    provider_turn_id = ?2,
+    provider_event_id = ?3,
+    provider_cursor = ?4,
+    reconciliation_outcome = ?5,
+    quiescence = ?6,
+    quiescence_evidence_ref = ?7,
+    updated_at = ?8
+WHERE id = ?9
+  AND state = ?10
+  AND controller_generation = ?11
+  AND expected_revision = ?12
+  AND capability_fingerprint = ?13
+  AND ?8 > created_at
+`
+
+type AdvanceGovernedCommandParams struct {
+	NextState                     string
+	ProviderTurnID                string
+	ProviderEventID               string
+	ProviderCursor                string
+	ReconciliationOutcome         string
+	Quiescence                    string
+	QuiescenceEvidenceRef         string
+	UpdatedAt                     time.Time
+	ID                            string
+	ExpectedState                 string
+	ExpectedControllerGeneration  string
+	ExpectedRevision              string
+	ExpectedCapabilityFingerprint string
+}
+
+func (q *Queries) AdvanceGovernedCommand(ctx context.Context, arg AdvanceGovernedCommandParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, advanceGovernedCommand,
+		arg.NextState,
+		arg.ProviderTurnID,
+		arg.ProviderEventID,
+		arg.ProviderCursor,
+		arg.ReconciliationOutcome,
+		arg.Quiescence,
+		arg.QuiescenceEvidenceRef,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedState,
+		arg.ExpectedControllerGeneration,
+		arg.ExpectedRevision,
+		arg.ExpectedCapabilityFingerprint,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getGovernedCommand = `-- name: GetGovernedCommand :one
 SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state,
     controller_generation, expected_revision, capability_fingerprint,
@@ -153,4 +209,60 @@ func (q *Queries) InsertGovernedCommandClaim(ctx context.Context, arg InsertGove
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const listUnsettledGovernedCommands = `-- name: ListUnsettledGovernedCommands :many
+SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state,
+    controller_generation, expected_revision, capability_fingerprint,
+    provider_conversation_id, client_message_id, provider_turn_id,
+    provider_event_id, provider_cursor, replay_strategy,
+    reconciliation_outcome, quiescence, quiescence_evidence_ref,
+    created_at, updated_at
+FROM governed_commands
+WHERE state IN ('claimed','dispatching','delivery_unknown')
+ORDER BY created_at ASC, id ASC
+`
+
+func (q *Queries) ListUnsettledGovernedCommands(ctx context.Context) ([]GovernedCommand, error) {
+	rows, err := q.db.QueryContext(ctx, listUnsettledGovernedCommands)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GovernedCommand{}
+	for rows.Next() {
+		var i GovernedCommand
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.IdempotencyKey,
+			&i.RequestFingerprint,
+			&i.CommandClass,
+			&i.State,
+			&i.ControllerGeneration,
+			&i.ExpectedRevision,
+			&i.CapabilityFingerprint,
+			&i.ProviderConversationID,
+			&i.ClientMessageID,
+			&i.ProviderTurnID,
+			&i.ProviderEventID,
+			&i.ProviderCursor,
+			&i.ReplayStrategy,
+			&i.ReconciliationOutcome,
+			&i.Quiescence,
+			&i.QuiescenceEvidenceRef,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
