@@ -2,10 +2,13 @@ package chat_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -3388,4 +3391,53 @@ func TestGovernedUnknownReconcilesFromStableNativeHistoryWithoutRedispatch(t *te
 	if got := len(second.sentMessages()); got != 0 {
 		t.Fatalf("restart redispatched %d turns", got)
 	}
+}
+
+func TestGovernedClaimBlocksDifferentWork(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-exact"},
+		TransportRequestID: 1, TransportSHA256: "abc", TransportBytes: 10, TransportSequence: 1,
+	}}
+	ids := sequentialID("claimed")
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := chatCapsDigestForTest(productionCaps())
+	at := time.Now().UTC()
+	claim := domain.GovernedCommandRecord{GovernedCommandContract: domain.GovernedCommandContract{
+		ID: "claimed-existing", IdempotencyKey: "request-existing", RequestFingerprint: domain.ComputeGovernedTurnRequestFingerprint(testSession, "request-existing", "first", ""),
+		Class: domain.GovernedCommandTurn, State: domain.GovernedCommandClaimed, SessionID: testSession,
+		ControllerGeneration: ctrl.Generation(), ExpectedRevision: policy.PlanRevisionID.String(), CapabilityFingerprint: digest,
+		Correlation: domain.GovernedCommandCorrelation{ProviderConversationID: "thread-1", ClientMessageID: "request-existing"}, ReplayStrategy: domain.GovernedCommandReplayUnavailable, Quiescence: domain.GovernedCommandQuiescenceNotApplicable,
+	}, CreatedAt: at, UpdatedAt: at}
+	if _, made, err := st.CreateGovernedCommandClaim(context.Background(), claim); err != nil || !made {
+		t.Fatalf("seed claim made=%v err=%v", made, err)
+	}
+	queued, err := ctrl.Send(context.Background(), ports.ChatUserMessage{Text: "second", ClientMessageID: "request-second"})
+	if err != nil || queued.State != domain.TurnStateQueued || len(conv.sentMessages()) != 0 {
+		t.Fatalf("different request turn=%+v sends=%d err=%v", queued, len(conv.sentMessages()), err)
+	}
+	claimAfter, ok, err := st.GetGovernedCommand(context.Background(), "claimed-existing")
+	if err != nil || !ok || claimAfter.State != domain.GovernedCommandClaimed || len(conv.sentMessages()) != 0 {
+		t.Fatalf("claim=%+v ok=%v sends=%d err=%v", claimAfter, ok, len(conv.sentMessages()), err)
+	}
+}
+
+func chatCapsDigestForTest(capabilities ports.ChatCapabilities) string {
+	enabled := make([]string, 0, len(capabilities))
+	for capability, available := range capabilities {
+		if available {
+			enabled = append(enabled, string(capability))
+		}
+	}
+	sort.Strings(enabled)
+	payload, _ := json.Marshal(enabled)
+	sum := sha256.Sum256(payload)
+	return "chat-v1:" + hex.EncodeToString(sum[:])
 }

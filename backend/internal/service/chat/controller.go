@@ -386,7 +386,7 @@ func (c *Controller) reconcileGovernedHistory(ctx context.Context, events []port
 	}
 	c.governance.blocked = false
 	for _, command := range remaining {
-		if command.SessionID == c.sessionID && (command.State == domain.GovernedCommandDispatching || command.State == domain.GovernedCommandDeliveryUnknown) {
+		if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
 			c.governance.blocked = true
 			break
 		}
@@ -719,7 +719,7 @@ func (c *Controller) configureGovernedTurns(ctx context.Context, policy *domain.
 		return fmt.Errorf("list unsettled governed chat commands: %w", err)
 	}
 	for _, command := range unsettled {
-		if command.SessionID == c.sessionID && (command.State == domain.GovernedCommandDispatching || command.State == domain.GovernedCommandDeliveryUnknown) {
+		if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
 			governance.blocked = true
 			break
 		}
@@ -780,6 +780,22 @@ func (c *Controller) advanceGovernedTurn(ctx context.Context, rec *domain.Govern
 		return fmt.Errorf("governed command %s lost its %s transition fence", rec.ID, expected)
 	}
 	return nil
+}
+
+func (c *Controller) governedBlockedExcept(ctx context.Context, commandID string) (bool, error) {
+	if c.governance == nil {
+		return false, nil
+	}
+	unsettled, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, command := range unsettled {
+		if command.SessionID == c.sessionID && command.ID != commandID && command.State.BlocksConflictingDispatch() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Send records a message and dispatches it, or queues it if the agent is busy.
@@ -846,7 +862,18 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 		return domain.ConversationTurn{}, nil
 	}
 
-	if c.busy() {
+	blockedByOther := false
+	if governed != nil {
+		var err error
+		blockedByOther, err = c.governedBlockedExcept(ctx, governed.ID)
+		if err != nil {
+			return domain.ConversationTurn{}, fmt.Errorf("check governed dispatch blockers: %w", err)
+		}
+	}
+	c.mu.Lock()
+	providerBusy := c.pendingTurnID != ""
+	c.mu.Unlock()
+	if providerBusy || blockedByOther {
 		// AppendUserMessage wrote it as queued, which is exactly where it belongs
 		// until the running turn ends. drain picks it up from there.
 		return domain.ConversationTurn{
@@ -929,7 +956,7 @@ func (c *Controller) mergeUsage(update ports.ChatUsage) domain.ConversationUsage
 func (c *Controller) busy() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.pendingTurnID != "" || c.governance != nil && c.governance.blocked
+	return c.pendingTurnID != ""
 }
 
 // dispatch hands a recorded turn to the provider. Callers must hold sendMu.
