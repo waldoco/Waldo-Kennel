@@ -556,6 +556,24 @@ type GovernedControlCommand struct {
 	RequestInstanceID      string
 }
 
+type HarnessConnection struct {
+	ID                  string
+	InstallationID      string
+	AdapterDigest       string
+	HarnessIdentity     string
+	ProviderVersion     string
+	ProtocolFingerprint string
+	MissionID           string
+	AppRunID            string
+	CapabilityClasses   string
+	CapabilityVerifier  string
+	Generation          int64
+	ExpiresAt           time.Time
+	RevokedAt           sql.NullTime
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type IntakeAnalysisRequest struct {
 	ID                       domain.IntakeAnalysisRequestID
 	IntakeID                 string
