@@ -86,6 +86,11 @@ type conversation struct {
 	// standard commandExecution item can win without duplicate activities. Pump owns it.
 	rawExecCompleted map[string]ports.ChatEvent
 	closed           bool
+	// emitWG tracks in-flight emit calls so c.events is only closed once every
+	// send that started before closed flipped true has returned. Without this,
+	// a caller outside pump (Interrupt's clearInterrupt, in particular) can be
+	// sending on c.events at the exact moment pump's own shutdown closes it.
+	emitWG sync.WaitGroup
 
 	// sendMu serializes turn dispatch so only one operation mutates the provider
 	// conversation at a time.
@@ -216,7 +221,7 @@ func (c *conversation) Events() <-chan ports.ChatEvent { return c.events }
 // connection ends, then reports why and closes the stream.
 func (c *conversation) pump() {
 	defer close(c.pumpDone)
-	defer close(c.events)
+	defer c.closeEvents()
 
 	for n := range c.conn.notifs() {
 		// Before normalizing, because a token-usage report is the only place the
@@ -277,6 +282,14 @@ func (c *conversation) pump() {
 		}
 	}
 
+	// The connection ending is itself proof of quiescence: nothing this process
+	// owned can still be running. Release any interrupted-turn completion still
+	// held back for Interrupt to confirm that on its own goroutine, rather than
+	// leaving it to a race between that goroutine and this shutdown — a forced
+	// kill that itself causes this connection to end can otherwise finish this
+	// shutdown, and close the stream, before Interrupt gets back to deliver it.
+	c.flushDeferredTerminals()
+
 	// The connection ended. Say so explicitly rather than letting the stream go
 	// quiet: a silent channel close is indistinguishable from an idle agent.
 	state := ports.ChatEvent{Kind: ports.ChatEventControllerState, ControllerState: ports.ChatControllerStopped}
@@ -289,7 +302,22 @@ func (c *conversation) pump() {
 
 // emit delivers an event, preferring to drop a delta over blocking the reader. A
 // lifecycle event is never dropped silently.
+//
+// pump is not the only emitter: Interrupt's forced-stop path emits its own
+// terminal event from the caller's goroutine, after the app-server process (and
+// so pump's connection) may already have ended. Sending on c.events after pump
+// has closed it would panic, so every send is gated on closed, and closeEvents
+// waits for every emit that got past that gate before it closes the channel.
 func (c *conversation) emit(ev ports.ChatEvent) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.emitWG.Add(1)
+	c.mu.Unlock()
+	defer c.emitWG.Done()
+
 	select {
 	case c.events <- ev:
 		return
@@ -315,6 +343,19 @@ func (c *conversation) emit(ev ports.ChatEvent) {
 	case <-time.After(5 * time.Second):
 		c.log.Error("dropped chat lifecycle event: consumer stalled", "kind", ev.Kind)
 	}
+}
+
+// closeEvents ends the event stream once every emit already admitted past the
+// closed gate has returned. Setting closed here is redundant with the common
+// path (failPendingApprovals already set it before pump's defers run), but
+// Close can end the connection before pump ever reaches that point, so this
+// stays the single place that guarantees closed is true before the channel is.
+func (c *conversation) closeEvents() {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	c.emitWG.Wait()
+	close(c.events)
 }
 
 // SendTurn delivers one message to the provider.
@@ -798,6 +839,22 @@ func (c *conversation) clearInterrupt(turnID string, emitTerminal bool) {
 	delete(c.deferredTerminal, turnID)
 	c.mu.Unlock()
 	if emitTerminal && ok {
+		c.emit(ev)
+	}
+}
+
+// flushDeferredTerminals releases every interrupted-turn completion pump is
+// still holding back for Interrupt to confirm quiescence on. Called only from
+// pump's own shutdown, after the connection that would carry further command
+// output has already ended — which is itself the quiescence proof Interrupt
+// would otherwise still be waiting to establish.
+func (c *conversation) flushDeferredTerminals() {
+	c.mu.Lock()
+	pending := c.deferredTerminal
+	c.deferredTerminal = map[string]ports.ChatEvent{}
+	c.interrupting = map[string]bool{}
+	c.mu.Unlock()
+	for _, ev := range pending {
 		c.emit(ev)
 	}
 }
