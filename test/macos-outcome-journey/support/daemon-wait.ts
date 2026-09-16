@@ -20,16 +20,27 @@ export async function readRunFile(runFile: string): Promise<RunFile | null> {
 	}
 }
 
-/** Bounded poll on a named condition — never a fixed sleep (plan §5). */
+/**
+ * Bounded poll on a named condition — never a fixed sleep (plan §5).
+ *
+ * `signal`, when given, is checked on every iteration so a caller can cancel
+ * a poll cooperatively (Promise.race alone does not stop the losing promise
+ * from continuing to run — review round 2 item 4). A poll that observes an
+ * already-aborted signal rejects immediately, before running `check()` again.
+ */
 export async function waitFor<T>(
 	label: string,
 	timeoutMs: number,
 	check: () => Promise<T | false | undefined | null>,
 	intervalMs = 1000,
+	signal?: AbortSignal,
 ): Promise<T> {
 	const deadline = Date.now() + timeoutMs;
 	let lastObserved: unknown;
 	for (;;) {
+		if (signal?.aborted) {
+			throw new Error(`aborted while waiting for ${label}: ${signal.reason instanceof Error ? signal.reason.message : String(signal.reason)}`);
+		}
 		let result: T | false | undefined | null;
 		try {
 			result = await check();
@@ -44,12 +55,12 @@ export async function waitFor<T>(
 				`timed out after ${Math.round(timeoutMs / 1000)}s waiting for ${label} (last observed: ${JSON.stringify(lastObserved)})`,
 			);
 		}
-		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+		await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, deadline - Date.now() > 0 ? intervalMs : 0)));
 	}
 }
 
 /** Polls the run file until it reports a live, ready daemon; returns its facts. */
-export async function waitForDaemonReady(runFile: string, timeoutMs: number): Promise<RunFile & { port: number }> {
+export async function waitForDaemonReady(runFile: string, timeoutMs: number, signal?: AbortSignal): Promise<RunFile & { port: number }> {
 	const info = await waitFor(
 		"the run file to report a bound port",
 		timeoutMs,
@@ -58,6 +69,7 @@ export async function waitForDaemonReady(runFile: string, timeoutMs: number): Pr
 			return parsed?.port ? parsed : false;
 		},
 		500,
+		signal,
 	);
 	await waitFor(
 		`/readyz on port ${info.port}`,
@@ -71,6 +83,7 @@ export async function waitForDaemonReady(runFile: string, timeoutMs: number): Pr
 			}
 		},
 		1000,
+		signal,
 	);
 	return info as RunFile & { port: number };
 }

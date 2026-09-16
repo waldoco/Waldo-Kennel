@@ -41,6 +41,7 @@ import {
 	validateManifest,
 } from "./manifest.mjs";
 import { checkBuildIdentity, findStaleKennelProcesses } from "./process-guard.mjs";
+import { ORCHESTRATOR_EXTRA_MARGIN_MS, TEARDOWN_GRACE_MS } from "./timeouts.mjs";
 import { renderMarkdown, toJSON as flawsToJSON } from "./ux-flaws.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -303,11 +304,18 @@ async function run(opts) {
 			if (!existsSync(playwrightBin)) {
 				throw new Error(`playwright binary not found at ${playwrightBin} — run \`npm install\` under frontend/`);
 			}
+			// Review round 2 item 4: this MUST exceed the spec's own outer
+			// test.setTimeout (overallJourneyMs + TEARDOWN_GRACE_MS), or the
+			// orchestrator can kill the child mid-teardown/evidence-write before
+			// the spec's own grace window closes. Both sides import
+			// TEARDOWN_GRACE_MS from the same module so they cannot silently drift
+			// apart again; ORCHESTRATOR_EXTRA_MARGIN_MS covers process spawn/
+			// signal-delivery overhead on top of that.
 			const r = spawnSync(playwrightBin, ["test", "-c", PLAYWRIGHT_CONFIG], {
 				cwd: REPO_ROOT,
 				env,
 				stdio: "inherit",
-				timeout: opts.overallJourneyMs + 60_000,
+				timeout: opts.overallJourneyMs + TEARDOWN_GRACE_MS + ORCHESTRATOR_EXTRA_MARGIN_MS,
 			});
 			// A nonzero Playwright exit is not itself the manifest's classification —
 			// journey-result.json (written by the spec even on failure/timeout) is
