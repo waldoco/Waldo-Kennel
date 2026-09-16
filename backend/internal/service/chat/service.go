@@ -676,12 +676,11 @@ type Snapshot struct {
 	// controller is live, because an unstarted session's abilities are not yet known
 	// and guessing them is how a control appears and then vanishes.
 	Capabilities ports.ChatCapabilities
-	// GovernedTurnBlocks and GovernedControlBlocks are every governed claim in this
-	// session whose state still owns the command effect (BlocksConflictingDispatch),
-	// across both the turn table and the steer/answer/interrupt control table. A
-	// client that only reads a turn's own delivery state cannot see a stuck control
-	// claim blocking every later Send -- these lists are the session-wide truth
-	// that claim already enforces in Controller.governedBlockedExcept.
+	// GovernedTurnBlocks and GovernedControlBlocks are every claim in this session
+	// still blocking dispatch (BlocksConflictingDispatch), across both the turn
+	// table and the steer/answer/interrupt control table -- the same session-wide
+	// truth Controller.governedBlockedExcept already enforces, which a turn's own
+	// delivery state alone cannot show.
 	GovernedTurnBlocks    []GovernedTurnBlock
 	GovernedControlBlocks []GovernedControlBlock
 }
@@ -697,10 +696,9 @@ type GovernedTurnBlock struct {
 }
 
 // GovernedControlBlock is one unsettled steer/answer/interrupt control claim
-// still blocking conflicting dispatch in this session. ProviderTurnID is set
-// for steer/interrupt claims and empty for answer claims; RequestInstanceID is
-// set for answer claims and empty for steer/interrupt claims -- exactly one of
-// the two is ever non-empty, per domain.GovernedControlCommand.Validate.
+// still blocking conflicting dispatch. Exactly one of ProviderTurnID
+// (steer/interrupt) and RequestInstanceID (answer) is ever non-empty, per
+// domain.GovernedControlCommand.Validate.
 type GovernedControlBlock struct {
 	ID                    string
 	Class                 domain.GovernedControlClass

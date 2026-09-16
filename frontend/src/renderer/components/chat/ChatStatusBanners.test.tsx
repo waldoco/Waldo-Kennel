@@ -168,7 +168,7 @@ describe("GovernedDispatchBlockedBanner", () => {
 			/>,
 		);
 		expect(screen.getByRole("alert")).toBeInTheDocument();
-		expect(screen.getByText(/Waiting on the provider/)).toBeInTheDocument();
+		expect(screen.getByText(/Waiting for the provider to acknowledge/)).toBeInTheDocument();
 		expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
 		expect(screen.queryByText(/safe to retry/i)).not.toBeInTheDocument();
 	});
@@ -176,6 +176,33 @@ describe("GovernedDispatchBlockedBanner", () => {
 	// A control claim blocks every turn's dispatch without living on any turn --
 	// this is the exact false negative a per-turn note alone would miss.
 	it("surfaces a control claim even with no turn claim at all", () => {
+		render(
+			<GovernedDispatchBlockedBanner
+				turnBlocks={[]}
+				controlBlocks={[
+					{
+						kind: "steer",
+						id: "control-1",
+						state: "delivery_unknown",
+						quiescence: "not_applicable",
+						providerTurnId: "provider-turn-1",
+						since: "2026-09-16T12:00:00Z",
+					},
+				]}
+			/>,
+		);
+		expect(screen.getByText(/Steer/)).toBeInTheDocument();
+		expect(screen.getByText(/Whether the provider received this is not known/)).toBeInTheDocument();
+		expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/safe to retry/i)).not.toBeInTheDocument();
+	});
+
+	// Regression for the reviewer's HIGH finding: a containment-failed
+	// interrupt can be provider-acknowledged and still land in
+	// delivery_unknown purely because the process-tree check failed. The copy
+	// must not assert "delivery is uncertain" here -- that is not what this
+	// claim's fields support.
+	it("does not claim delivery is uncertain for a containment-failed interrupt", () => {
 		render(
 			<GovernedDispatchBlockedBanner
 				turnBlocks={[]}
@@ -191,35 +218,61 @@ describe("GovernedDispatchBlockedBanner", () => {
 				]}
 			/>,
 		);
-		expect(screen.getByText(/Delivery is uncertain/)).toBeInTheDocument();
 		expect(screen.getByText(/Interrupt/)).toBeInTheDocument();
+		expect(screen.getByText(/whether the process actually stopped/)).toBeInTheDocument();
+		expect(screen.queryByText(/[Dd]elivery is uncertain/)).not.toBeInTheDocument();
 		expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
 		expect(screen.queryByText(/safe to retry/i)).not.toBeInTheDocument();
 	});
 
-	// Exercises the fallback branch of the worst-state calculation: no turn
-	// blocks at all, and the sole control block is not delivery_unknown.
-	it("reads as waiting for a control-only claimed/dispatching block", () => {
+	// Regression for the reviewer's second HIGH finding: an answer has no
+	// provider acceptance step (Resolve's evidence is Kennel's own write
+	// completeness), so its copy must never invent one.
+	it("never invents a provider acceptance step for an answer claim", () => {
 		render(
 			<GovernedDispatchBlockedBanner
 				turnBlocks={[]}
 				controlBlocks={[
 					{
-						kind: "steer",
+						kind: "answer",
 						id: "control-1",
-						state: "dispatching",
+						state: "claimed",
 						quiescence: "not_applicable",
-						providerTurnId: "provider-turn-1",
+						requestInstanceId: "request-instance-1",
 						since: "2026-09-16T12:00:00Z",
 					},
 				]}
 			/>,
 		);
-		expect(screen.getByText(/Waiting on the provider/)).toBeInTheDocument();
-		expect(screen.queryByText(/Delivery is uncertain/)).not.toBeInTheDocument();
+		expect(screen.getByText(/Answer/)).toBeInTheDocument();
+		expect(screen.getByText(/no provider acceptance step/)).toBeInTheDocument();
+		expect(screen.queryByText(/waiting on the provider to accept/i)).not.toBeInTheDocument();
 	});
 
-	it("leads with delivery_unknown when the two lists disagree", () => {
+	it("says an answer's delivery is unknown without inventing acceptance either", () => {
+		render(
+			<GovernedDispatchBlockedBanner
+				turnBlocks={[]}
+				controlBlocks={[
+					{
+						kind: "answer",
+						id: "control-1",
+						state: "delivery_unknown",
+						quiescence: "not_applicable",
+						requestInstanceId: "request-instance-1",
+						since: "2026-09-16T12:00:00Z",
+					},
+				]}
+			/>,
+		);
+		expect(
+			screen.getByText(/recorded locally, but whether the provider ever received it is not known/),
+		).toBeInTheDocument();
+	});
+
+	// Two different kinds, two different unknowns, on screen at once: neither
+	// line may borrow the other's wording.
+	it("gives each block its own line when the two lists disagree", () => {
 		render(
 			<GovernedDispatchBlockedBanner
 				turnBlocks={[
@@ -233,16 +286,17 @@ describe("GovernedDispatchBlockedBanner", () => {
 				]}
 				controlBlocks={[
 					{
-						kind: "steer",
+						kind: "interrupt",
 						id: "control-1",
 						state: "delivery_unknown",
-						quiescence: "not_applicable",
+						quiescence: "pending",
 						providerTurnId: "provider-turn-1",
 						since: "2026-09-16T12:00:00Z",
 					},
 				]}
 			/>,
 		);
-		expect(screen.getByText(/Delivery is uncertain/)).toBeInTheDocument();
+		expect(screen.getByText(/Waiting for the provider to acknowledge/)).toBeInTheDocument();
+		expect(screen.getByText(/whether the process actually stopped/)).toBeInTheDocument();
 	});
 });

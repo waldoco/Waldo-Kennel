@@ -158,10 +158,10 @@ export const ThreadStateBanner = memo(function ThreadStateBanner({
  * Drawn from `governedTurnBlocks`/`governedControlBlocks` on the snapshot,
  * never from a single turn's own `dispatchBlockedState`: a control claim
  * blocks dispatch without living on any turn, so a per-turn note alone would
- * miss it and read as "just this message is stuck" when nothing else can send
- * either. Named per kind so a stuck interrupt is not mistaken for a stuck
- * turn. Never says "failed" or "safe to retry" -- the claim still owns the
- * command effect, and nothing here may suggest a retry would be harmless.
+ * miss it. Each item gets its own line from `governedBlockCopy` rather than
+ * one shared headline: different kinds are unknown for different reasons, and
+ * a single summary sentence cannot state more than one of them without either
+ * inventing a fact or picking the wrong one to report.
  */
 export const GovernedDispatchBlockedBanner = memo(function GovernedDispatchBlockedBanner({
 	turnBlocks,
@@ -172,12 +172,6 @@ export const GovernedDispatchBlockedBanner = memo(function GovernedDispatchBlock
 }) {
 	if (turnBlocks.length === 0 && controlBlocks.length === 0) return null;
 
-	const worstState = [...turnBlocks.map((b) => b.state), ...controlBlocks.map((b) => b.state)].includes(
-		"delivery_unknown",
-	)
-		? "delivery_unknown"
-		: turnBlocks[0]?.state ?? controlBlocks[0]?.state ?? "claimed";
-
 	return (
 		<div
 			role="alert"
@@ -187,21 +181,21 @@ export const GovernedDispatchBlockedBanner = memo(function GovernedDispatchBlock
 			<Hourglass aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
 			<div className="flex min-w-0 flex-col gap-1">
 				<strong className="text-xs font-medium text-warning">
-					{governedBlockCopy(worstState)}
+					Nothing else will send until the following settle
 				</strong>
 				<ul className="flex flex-col gap-0.5">
 					{turnBlocks.map((block) => (
 						<li key={`turn-${block.turnId}`} className="text-[11px] leading-snug text-muted-foreground">
 							Turn <span className="font-mono text-foreground">{block.turnId}</span>
-							{" · "}
-							{block.state}
+							{" — "}
+							{governedBlockCopy("turn", block.state, block.quiescence)}
 						</li>
 					))}
 					{controlBlocks.map((block) => (
 						<li key={`control-${block.id}`} className="text-[11px] leading-snug text-muted-foreground">
 							{block.kind.charAt(0).toUpperCase() + block.kind.slice(1)}
-							{" · "}
-							{block.state}
+							{" — "}
+							{governedBlockCopy(block.kind, block.state, block.quiescence)}
 						</li>
 					))}
 				</ul>

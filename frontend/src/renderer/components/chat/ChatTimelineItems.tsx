@@ -275,7 +275,9 @@ export function HumanMessage({
 			)}
 			{dispatchBlockedState ? (
 				<div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-					<span>{governedBlockCopy(dispatchBlockedState)}</span>
+					{/* A turn claim's quiescence is always "not_applicable" (service.go's
+					    claimGovernedTurn) -- only steer/answer/interrupt claims vary it. */}
+					<span>{governedBlockCopy("turn", dispatchBlockedState, "not_applicable")}</span>
 				</div>
 			) : queued ? (
 				<div className="flex items-center gap-2 text-[11px] text-muted-foreground">

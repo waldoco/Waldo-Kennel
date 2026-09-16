@@ -863,19 +863,32 @@ export function sessionDispatchBlocked(snapshot: ConversationSnapshot): boolean 
 }
 
 /**
- * The one place a governed block's state is put into words. `claimed` and
- * `dispatching` both read as still-in-flight; only `delivery_unknown` reads as
- * uncertain. Neither ever says "failed" or "safe to retry" -- the claim owns
- * the command effect until it durably settles, and nothing here may suggest a
- * retry would be harmless.
+ * The one place a governed block's state is put into words. Keyed on kind and
+ * quiescence, not state alone: `answer` has no provider acceptance step at all
+ * (Resolve's evidence is whether Kennel's own write completed, not whether the
+ * provider "accepted" anything), and an `interrupt` sitting in
+ * `delivery_unknown` with `quiescence: "pending"` can be provider-acknowledged
+ * and still land there purely because the process-tree check failed --
+ * asserting "delivery is uncertain" would be wrong in that case.
+ *
+ * Never says "failed" or "safe to retry": the claim owns the command effect
+ * until it durably settles.
  */
-export function governedBlockCopy(state: GovernedBlockState): string {
-	switch (state) {
-		case "delivery_unknown":
-			return "Delivery is uncertain. Nothing else will send until this resolves.";
-		case "dispatching":
-		case "claimed":
-		default:
-			return "Waiting on the provider to accept this before anything else can send.";
+export function governedBlockCopy(
+	kind: "turn" | GovernedControlBlock["kind"],
+	state: GovernedBlockState,
+	quiescence: GovernedQuiescence,
+): string {
+	if (kind === "answer") {
+		return state === "delivery_unknown"
+			? "This answer was recorded locally, but whether the provider ever received it is not known."
+			: "This answer is being recorded locally. There is no provider acceptance step to wait on here -- only the local write is being confirmed.";
 	}
+	if (kind === "interrupt" && state === "delivery_unknown" && quiescence === "pending") {
+		return "This stop has not settled: whether the provider ever received it, and whether the process actually stopped, are both unconfirmed.";
+	}
+	if (state === "delivery_unknown") {
+		return "Whether the provider received this is not known.";
+	}
+	return "Waiting for the provider to acknowledge this.";
 }
