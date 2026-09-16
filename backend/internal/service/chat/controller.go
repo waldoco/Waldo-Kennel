@@ -164,9 +164,14 @@ type Controller struct {
 	// the legacy delivery path and its existing compatibility semantics.
 	governance *governedTurnConfig
 
-	// sendMu serializes command dispatch so only one operation mutates the
-	// provider conversation at a time.
-	sendMu sync.Mutex
+	// sendMu serializes turn dispatch and queue/cutoff transitions.
+	// governedControlMu separately serializes durable control claim-to-receipt
+	// transitions. Store claims still linearize duplicate callers, but without
+	// this lock two callers can both read `claimed`; the loser then reports a
+	// false delivery_unknown when its claimed->dispatching CAS loses after the
+	// winner has already recorded a terminal receipt.
+	sendMu            sync.Mutex
+	governedControlMu sync.Mutex
 
 	mu sync.Mutex
 	// activeTurn maps a provider turn id to Kennel's turn id for the turn currently
@@ -1416,6 +1421,8 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 		}
 		return nil
 	}
+	c.governedControlMu.Lock()
+	defer c.governedControlMu.Unlock()
 	generation, found, err := c.store.ApprovalGeneration(ctx, c.conversation.ID, requestID)
 	if err != nil {
 		return fmt.Errorf("find approval %s: %w", requestID, err)
@@ -1729,6 +1736,8 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 }
 
 func (c *Controller) dispatchGovernedInterrupt(ctx context.Context, turn string) error {
+	c.governedControlMu.Lock()
+	defer c.governedControlMu.Unlock()
 	now := c.now()
 	key := "interrupt:" + turn
 	claim := domain.GovernedControlCommand{

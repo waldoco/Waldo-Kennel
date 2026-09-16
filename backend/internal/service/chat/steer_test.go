@@ -743,3 +743,50 @@ func TestGovernedSteerProviderAckWithTimelineFailureBecomesUnknown(t *testing.T)
 		t.Fatalf("claims=%+v err=%v", claims, err)
 	}
 }
+
+func TestGovernedSteerConcurrentDuplicateAndConflictHaveOneEffect(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		messages   []ports.ChatUserMessage
+		wantErrors int
+	}{
+		{name: "exact duplicates", messages: []ports.ChatUserMessage{{Text: "narrow it", ClientMessageID: "concurrent-steer"}, {Text: "narrow it", ClientMessageID: "concurrent-steer"}}},
+		{name: "changed fingerprint", messages: []ports.ChatUserMessage{{Text: "first", ClientMessageID: "concurrent-steer"}, {Text: "changed", ClientMessageID: "concurrent-steer"}}, wantErrors: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conv := &governedSteerRecorder{steerRecorder: newSteerRecorder(), dispatch: ports.ChatSteerDispatch{
+				Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+				TransportRequestID: 2, TransportSHA256: "steer-sha", TransportBytes: 17, TransportSequence: 2,
+			}}
+			h, _ := governedSteerHarness(t, conv, nil)
+			start := make(chan struct{})
+			errs := make(chan error, len(tc.messages))
+			var wg sync.WaitGroup
+			for _, message := range tc.messages {
+				message := message
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					<-start
+					_, err := h.svc.Steer(context.Background(), testSession, message)
+					errs <- err
+				}()
+			}
+			close(start)
+			wg.Wait()
+			close(errs)
+			errorCount := 0
+			for err := range errs {
+				if err != nil {
+					errorCount++
+					if !errors.Is(err, domain.ErrGovernedCommandIdempotencyConflict) {
+						t.Errorf("unexpected error: %v", err)
+					}
+				}
+			}
+			if errorCount != tc.wantErrors || len(conv.steers()) != 1 {
+				t.Fatalf("errors=%d want=%d provider dispatches=%d", errorCount, tc.wantErrors, len(conv.steers()))
+			}
+		})
+	}
+}

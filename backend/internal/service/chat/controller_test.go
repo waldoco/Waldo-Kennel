@@ -4516,3 +4516,119 @@ func TestSnapshotGovernedBlocksIsolatedPerSessionAndKind(t *testing.T) {
 		t.Fatalf("containment-failed-shaped control block=%+v", block)
 	}
 }
+
+type concurrentAnswerConversation struct {
+	*fakeConversation
+	mu         sync.Mutex
+	dispatches int
+	dispatch   ports.ChatAnswerDispatch
+}
+
+func (c *concurrentAnswerConversation) DispatchAnswer(_ context.Context, _, _ string, _ ports.ChatDecision) (ports.ChatAnswerDispatch, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.dispatches++
+	return c.dispatch, nil
+}
+
+func (c *concurrentAnswerConversation) dispatchCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.dispatches
+}
+
+func TestGovernedAnswerConcurrentDuplicateAndConflictHaveOneEffect(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		decisions  []ports.ChatDecision
+		wantErrors int
+	}{
+		{name: "exact duplicates", decisions: []ports.ChatDecision{{ID: "accept"}, {ID: "accept"}}},
+		{name: "changed fingerprint", decisions: []ports.ChatDecision{{ID: "accept"}, {ID: "decline"}}, wantErrors: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := openStore(t)
+			workspace := t.TempDir()
+			policy := governedPolicy(t, workspace)
+			conv := &concurrentAnswerConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerFrameWriteComplete}}
+			svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("concurrent-answer")})
+			t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+			ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+			if err != nil {
+				t.Fatal(err)
+			}
+			conv.emit(ports.ChatEvent{Kind: ports.ChatEventApprovalRequested, RequestID: "answer-race", ProviderItemID: "answer-race", Summary: "allow?", Decisions: []ports.ChatDecisionOption{{ID: "accept"}, {ID: "decline"}}})
+			awaitStoreSnapshot(t, st, ctrl.ConversationID(), func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
+			start := make(chan struct{})
+			errs := make(chan error, len(tc.decisions))
+			var wg sync.WaitGroup
+			for _, decision := range tc.decisions {
+				decision := decision
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					<-start
+					errs <- svc.Resolve(context.Background(), testSession, "answer-race", decision)
+				}()
+			}
+			close(start)
+			wg.Wait()
+			close(errs)
+			errorCount := 0
+			for resolveErr := range errs {
+				if resolveErr != nil {
+					errorCount++
+					if tc.wantErrors == 1 && !errors.Is(resolveErr, domain.ErrGovernedCommandIdempotencyConflict) {
+						t.Errorf("unexpected error: %v", resolveErr)
+					}
+				}
+			}
+			if errorCount != tc.wantErrors || conv.dispatchCount() != 1 {
+				t.Fatalf("errors=%d want=%d provider dispatches=%d", errorCount, tc.wantErrors, conv.dispatchCount())
+			}
+		})
+	}
+}
+
+func TestGovernedInterruptConcurrentDuplicatesPreserveOneCutoffAndEffect(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &governedInterruptRecorder{interruptRecorder: newInterruptRecorder(), dispatch: ports.ChatInterruptDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, TransportRequestID: 3, TransportSHA256: "interrupt-sha", TransportBytes: 18, TransportSequence: 3,
+		Quiescence: domain.GovernedCommandQuiescenceCodexTree, QuiescenceEvidenceRef: "tree-stopped",
+	}}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("concurrent-interrupt")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ctrl.Send(context.Background(), ports.ChatUserMessage{Text: "work", ClientMessageID: "interrupt-race-turn"}); err != nil {
+		t.Fatal(err)
+	}
+	conv.markActive("provider-turn-1")
+	conv.emit(ports.ChatEvent{Kind: ports.ChatEventTurnStarted, ProviderTurnID: "provider-turn-1"})
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); <-start; errs <- ctrl.Interrupt(context.Background()) }()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for interruptErr := range errs {
+		if interruptErr != nil {
+			t.Errorf("interrupt error: %v", interruptErr)
+		}
+	}
+	if conv.attemptCount() != 1 {
+		t.Fatalf("provider interrupts=%d want 1", conv.attemptCount())
+	}
+	claims, err := st.ListUnsettledGovernedControlCommands(context.Background())
+	if err != nil || len(claims) != 0 {
+		t.Fatalf("unsettled=%+v err=%v", claims, err)
+	}
+}

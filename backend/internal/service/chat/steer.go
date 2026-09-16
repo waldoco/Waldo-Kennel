@@ -310,6 +310,10 @@ func (c *Controller) Steer(ctx context.Context, msg ports.ChatUserMessage) (Stee
 		return SteerResult{}, ErrNoActiveTurn
 	}
 
+	if c.governance != nil {
+		c.governedControlMu.Lock()
+		defer c.governedControlMu.Unlock()
+	}
 	governed, err := c.claimGovernedSteer(ctx, turn, &msg)
 	if err != nil {
 		return SteerResult{}, fmt.Errorf("claim governed steer: %w", err)
