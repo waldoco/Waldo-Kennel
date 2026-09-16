@@ -133,6 +133,7 @@ func newTestDriver(t *testing.T) (*Driver, *scriptedServer) {
 			"model/list":     `{"data":[{"id":"gpt-test","displayName":"GPT Test","isDefault":true}]}`,
 			"thread/start":   `{"thread":{"id":"thread-1"},"model":"gpt-test","cwd":"/tmp/ws","approvalPolicy":"never","activePermissionProfile":{"id":":read-only"}}`,
 			"turn/start":     `{"turn":{"id":"turn-1","status":"inProgress","items":[]}}`,
+			"turn/steer":     `{"turnId":"turn-1"}`,
 			"turn/interrupt": `{}`,
 			"thread/resume":  `{"thread":{"id":"thread-1"}}`,
 		},
