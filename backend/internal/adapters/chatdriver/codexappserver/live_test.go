@@ -1483,7 +1483,10 @@ func runLiveTurn(t *testing.T, ctx context.Context, conv ports.ChatConversation,
 			if !ok {
 				t.Fatalf("event stream closed during turn %s", ref.ProviderTurnID)
 			}
-			if ev.ProviderTurnID != "" && ev.ProviderTurnID != ref.ProviderTurnID {
+			// Liveness must belong to this turn. Thread/account-level usage and rate
+			// updates can continue while a model turn is dead; letting empty-turn
+			// events reset the timer turns background noise into a false heartbeat.
+			if ev.ProviderTurnID != ref.ProviderTurnID {
 				continue
 			}
 			if meaningfulTurnLiveness(ev) {
@@ -1540,7 +1543,10 @@ func runLiveTurnAllowDeniedRequest(t *testing.T, ctx context.Context, conv ports
 			if !ok {
 				t.Fatalf("event stream closed during denied turn %s", ref.ProviderTurnID)
 			}
-			if ev.ProviderTurnID != "" && ev.ProviderTurnID != ref.ProviderTurnID {
+			// Liveness must belong to this turn. Thread/account-level usage and rate
+			// updates can continue while a model turn is dead; letting empty-turn
+			// events reset the timer turns background noise into a false heartbeat.
+			if ev.ProviderTurnID != ref.ProviderTurnID {
 				continue
 			}
 			if meaningfulTurnLiveness(ev) {
