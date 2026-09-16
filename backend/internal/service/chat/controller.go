@@ -1612,6 +1612,35 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 		return nil
 	}
 
+	if c.governance != nil {
+		if err := c.dispatchGovernedInterrupt(ctx, turn); err != nil {
+			if errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+				return err
+			}
+			if errors.Is(err, ports.ErrChatNoActiveTurn) {
+				c.sendMu.Lock()
+				defer c.sendMu.Unlock()
+				c.mu.Lock()
+				stillPending := c.pendingTurnID == turn
+				c.mu.Unlock()
+				if !stillPending {
+					return nil
+				}
+				providerTurnIDs, listErr := c.store.ListVisibleRunningTurnProviderIDs(ctx, c.conversation.ID)
+				if listErr != nil {
+					return fmt.Errorf("check running turns after provider refusal: %w", listErr)
+				}
+				return c.reconcileDurableTurnsLocked(ctx, turn, providerTurnIDs, cutoff)
+			} else {
+				c.mu.Lock()
+				c.cancelQueuedAt = time.Time{}
+				c.mu.Unlock()
+				return fmt.Errorf("interrupt turn %s: %w", turn, err)
+			}
+		} else {
+			return nil
+		}
+	}
 	if err := c.conv.Interrupt(ctx, turn); err != nil {
 		if errors.Is(err, ports.ErrChatInterruptRestartRequired) {
 			// The driver already killed the non-quiescent provider tree. Preserve the
@@ -1647,6 +1676,56 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 		return fmt.Errorf("interrupt turn %s: %w", turn, err)
 	}
 	return nil
+}
+
+func (c *Controller) dispatchGovernedInterrupt(ctx context.Context, turn string) error {
+	now := c.now()
+	key := "interrupt:" + turn
+	claim := domain.GovernedControlCommand{
+		ID: c.newID(), IdempotencyKey: key,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlInterrupt, key, turn, "{}"),
+		Class:              domain.GovernedControlInterrupt, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision,
+		CapabilityFingerprint: c.governance.capabilityFingerprint, ProviderConversationID: c.conv.ProviderConversationID(),
+		ProviderTurnID: turn, Quiescence: domain.GovernedCommandQuiescencePending, CreatedAt: now, UpdatedAt: now,
+	}
+	persisted, _, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return err
+	}
+	switch persisted.State {
+	case domain.GovernedCommandAcknowledged, domain.GovernedCommandReconciled:
+		return nil
+	case domain.GovernedCommandRejected:
+		return ports.ErrChatNoActiveTurn
+	case domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown:
+		return ErrSteerDeliveryUnknown
+	}
+	if persisted.ControllerGeneration != c.generation {
+		return ErrSteerDeliveryUnknown
+	}
+	if err := c.advanceGovernedControl(ctx, &persisted, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching); err != nil {
+		return err
+	}
+	dispatcher, ok := c.conv.(ports.ChatInterruptDispatcher)
+	if !ok {
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return fmt.Errorf("%w: governed interrupt receipt", ports.ErrChatUnsupported)
+	}
+	dispatch, dispatchErr := dispatcher.DispatchInterrupt(ctx, turn)
+	if dispatch.Acceptance == ports.ChatTurnAcknowledged && dispatch.Quiescence == domain.GovernedCommandQuiescenceCodexTree && dispatch.QuiescenceEvidenceRef != "" {
+		persisted.Quiescence, persisted.QuiescenceEvidenceRef = dispatch.Quiescence, dispatch.QuiescenceEvidenceRef
+		if err := c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged); err != nil {
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		return dispatchErr
+	}
+	if dispatch.Acceptance == ports.ChatTurnRejected || dispatch.Acceptance == ports.ChatTurnNotSent {
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return dispatchErr
+	}
+	_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+	return errors.Join(ErrSteerDeliveryUnknown, dispatchErr)
 }
 
 // reconcileDurableTurnsLocked settles work the controller can no longer cancel
