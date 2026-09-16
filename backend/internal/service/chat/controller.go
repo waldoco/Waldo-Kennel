@@ -335,7 +335,12 @@ func (c *Controller) reconcileGovernedHistory(ctx context.Context, events []port
 		return fmt.Errorf("list governed commands for history reconciliation: %w", err)
 	}
 	providerTurnByClient := make(map[string]string)
+	providerTurnState := make(map[string]domain.TurnState)
 	for _, event := range events {
+		if event.Kind == ports.ChatEventTurnCompleted && event.ProviderTurnID != "" {
+			providerTurnState[event.ProviderTurnID] = event.TurnState
+		}
+
 		if event.Kind == ports.ChatEventUserMessageCompleted && event.ClientMessageID != "" && event.ProviderTurnID != "" {
 			providerTurnByClient[event.ClientMessageID] = event.ProviderTurnID
 		}
@@ -377,6 +382,11 @@ func (c *Controller) reconcileGovernedHistory(ctx context.Context, events []port
 					err = errors.New("governed reconciliation transition fence lost")
 				}
 				return fmt.Errorf("reconcile governed dispatch from history: %w", err)
+			}
+		}
+		if state := providerTurnState[providerTurnID]; state.Terminal() {
+			if err := c.store.SettleTurn(ctx, c.conversation.ID, providerTurnID, state, "", c.now()); err != nil {
+				return fmt.Errorf("settle governed turn from native history: %w", err)
 			}
 		}
 	}

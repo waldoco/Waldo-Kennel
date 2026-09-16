@@ -3378,6 +3378,7 @@ func TestGovernedUnknownReconcilesFromStableNativeHistoryWithoutRedispatch(t *te
 	second := &dispatchHistoryConversation{dispatchConversation: &dispatchConversation{fakeConversation: secondBase}, history: []ports.ChatEvent{
 		{Kind: ports.ChatEventTurnStarted, ProviderEventID: "history-start", ProviderTurnID: "provider-turn-recovered", ProviderConversationID: "thread-1"},
 		{Kind: ports.ChatEventUserMessageCompleted, ProviderEventID: "history-user", ProviderTurnID: "provider-turn-recovered", ProviderConversationID: "thread-1", ProviderItemID: "provider-user", ClientMessageID: "request-reconcile", Text: "do it"},
+		{Kind: ports.ChatEventTurnCompleted, ProviderEventID: "history-complete", ProviderTurnID: "provider-turn-recovered", ProviderConversationID: "thread-1", TurnState: domain.TurnStateCompleted},
 	}}
 	secondSvc := chatsvc.New(chatsvc.Options{Store: st, Reader: snapshotReader(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: second}}, Log: slog.New(slog.DiscardHandler), NewID: ids})
 	t.Cleanup(func() { _ = secondSvc.Stop(context.Background(), testSession) })
@@ -3390,6 +3391,10 @@ func TestGovernedUnknownReconcilesFromStableNativeHistoryWithoutRedispatch(t *te
 	}
 	if got := len(second.sentMessages()); got != 0 {
 		t.Fatalf("restart redispatched %d turns", got)
+	}
+	snapshot, err := st.LoadConversationSnapshot(context.Background(), firstCtrl.ConversationID())
+	if err != nil || len(snapshot.Turns) != 1 || snapshot.Turns[0].State != domain.TurnStateCompleted {
+		t.Fatalf("reconciled timeline=%+v err=%v", snapshot.Turns, err)
 	}
 }
 
