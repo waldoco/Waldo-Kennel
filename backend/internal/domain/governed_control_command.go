@@ -20,8 +20,9 @@ const (
 )
 
 // GovernedControlCommand is an additive claim for an effect that does not open
-// a conversation turn. TargetGeneration is the provider request generation for
-// answers and empty for steer/interrupt, whose ProviderTurnID is their target.
+// a conversation turn. RequestInstanceID is Kennel's durable activity identity
+// for the exact request card being answered. It deliberately has no provider
+// wire counterpart. Steer/interrupt instead target ProviderTurnID.
 type GovernedControlCommand struct {
 	ID, IdempotencyKey, RequestFingerprint string
 	Class                                  GovernedControlClass
@@ -31,7 +32,7 @@ type GovernedControlCommand struct {
 	CapabilityFingerprint                  string
 	ProviderConversationID                 string
 	ClientMessageID, ProviderTurnID        string
-	TargetGeneration                       string
+	RequestInstanceID                      string
 	Quiescence                             GovernedCommandQuiescence
 	QuiescenceEvidenceRef                  string
 	CreatedAt, UpdatedAt                   time.Time
@@ -49,15 +50,15 @@ func (c GovernedControlCommand) Validate() error {
 	}
 	switch c.Class {
 	case GovernedControlSteer:
-		if strings.TrimSpace(c.ClientMessageID) == "" || strings.TrimSpace(c.ProviderTurnID) == "" || c.TargetGeneration != "" {
+		if strings.TrimSpace(c.ClientMessageID) == "" || strings.TrimSpace(c.ProviderTurnID) == "" || c.RequestInstanceID != "" {
 			return fmt.Errorf("%w: steer requires client message and provider turn only", ErrGovernedCommandInvalid)
 		}
 	case GovernedControlAnswer:
-		if strings.TrimSpace(c.TargetGeneration) == "" || c.ClientMessageID != "" || c.ProviderTurnID != "" {
-			return fmt.Errorf("%w: answer requires exact request generation only", ErrGovernedCommandInvalid)
+		if strings.TrimSpace(c.RequestInstanceID) == "" || c.ClientMessageID != "" || c.ProviderTurnID != "" {
+			return fmt.Errorf("%w: answer requires exact durable request instance only", ErrGovernedCommandInvalid)
 		}
 	case GovernedControlInterrupt:
-		if strings.TrimSpace(c.ProviderTurnID) == "" || c.ClientMessageID != "" || c.TargetGeneration != "" {
+		if strings.TrimSpace(c.ProviderTurnID) == "" || c.ClientMessageID != "" || c.RequestInstanceID != "" {
 			return fmt.Errorf("%w: interrupt requires exact provider turn only", ErrGovernedCommandInvalid)
 		}
 	default:

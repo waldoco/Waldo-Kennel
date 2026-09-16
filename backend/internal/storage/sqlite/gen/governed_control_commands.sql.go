@@ -51,7 +51,7 @@ func (q *Queries) AdvanceGovernedControlCommand(ctx context.Context, arg Advance
 }
 
 const getGovernedControlCommand = `-- name: GetGovernedControlCommand :one
-SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state, controller_generation, expected_revision, capability_fingerprint, provider_conversation_id, client_message_id, provider_turn_id, target_generation, quiescence, quiescence_evidence_ref, created_at, updated_at FROM governed_control_commands WHERE id = ?
+SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state, controller_generation, expected_revision, capability_fingerprint, provider_conversation_id, client_message_id, provider_turn_id, target_generation, quiescence, quiescence_evidence_ref, created_at, updated_at, request_instance_id FROM governed_control_commands WHERE id = ?
 `
 
 func (q *Queries) GetGovernedControlCommand(ctx context.Context, id string) (GovernedControlCommand, error) {
@@ -75,12 +75,13 @@ func (q *Queries) GetGovernedControlCommand(ctx context.Context, id string) (Gov
 		&i.QuiescenceEvidenceRef,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RequestInstanceID,
 	)
 	return i, err
 }
 
 const getGovernedControlCommandByKey = `-- name: GetGovernedControlCommandByKey :one
-SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state, controller_generation, expected_revision, capability_fingerprint, provider_conversation_id, client_message_id, provider_turn_id, target_generation, quiescence, quiescence_evidence_ref, created_at, updated_at FROM governed_control_commands WHERE session_id = ? AND idempotency_key = ?
+SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state, controller_generation, expected_revision, capability_fingerprint, provider_conversation_id, client_message_id, provider_turn_id, target_generation, quiescence, quiescence_evidence_ref, created_at, updated_at, request_instance_id FROM governed_control_commands WHERE session_id = ? AND idempotency_key = ?
 `
 
 type GetGovernedControlCommandByKeyParams struct {
@@ -109,6 +110,7 @@ func (q *Queries) GetGovernedControlCommandByKey(ctx context.Context, arg GetGov
 		&i.QuiescenceEvidenceRef,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RequestInstanceID,
 	)
 	return i, err
 }
@@ -117,7 +119,7 @@ const insertGovernedControlCommandClaim = `-- name: InsertGovernedControlCommand
 INSERT INTO governed_control_commands (
  id,session_id,idempotency_key,request_fingerprint,command_class,state,
  controller_generation,expected_revision,capability_fingerprint,provider_conversation_id,
- client_message_id,provider_turn_id,target_generation,quiescence,quiescence_evidence_ref,created_at,updated_at
+ client_message_id,provider_turn_id,request_instance_id,quiescence,quiescence_evidence_ref,created_at,updated_at
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
 `
 
@@ -134,7 +136,7 @@ type InsertGovernedControlCommandClaimParams struct {
 	ProviderConversationID string
 	ClientMessageID        string
 	ProviderTurnID         string
-	TargetGeneration       string
+	RequestInstanceID      string
 	Quiescence             string
 	QuiescenceEvidenceRef  string
 	CreatedAt              time.Time
@@ -155,7 +157,7 @@ func (q *Queries) InsertGovernedControlCommandClaim(ctx context.Context, arg Ins
 		arg.ProviderConversationID,
 		arg.ClientMessageID,
 		arg.ProviderTurnID,
-		arg.TargetGeneration,
+		arg.RequestInstanceID,
 		arg.Quiescence,
 		arg.QuiescenceEvidenceRef,
 		arg.CreatedAt,
@@ -168,7 +170,7 @@ func (q *Queries) InsertGovernedControlCommandClaim(ctx context.Context, arg Ins
 }
 
 const listUnsettledGovernedControlCommands = `-- name: ListUnsettledGovernedControlCommands :many
-SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state, controller_generation, expected_revision, capability_fingerprint, provider_conversation_id, client_message_id, provider_turn_id, target_generation, quiescence, quiescence_evidence_ref, created_at, updated_at FROM governed_control_commands
+SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state, controller_generation, expected_revision, capability_fingerprint, provider_conversation_id, client_message_id, provider_turn_id, target_generation, quiescence, quiescence_evidence_ref, created_at, updated_at, request_instance_id FROM governed_control_commands
 WHERE state IN ('claimed','dispatching','delivery_unknown')
 ORDER BY created_at,id
 `
@@ -200,6 +202,7 @@ func (q *Queries) ListUnsettledGovernedControlCommands(ctx context.Context) ([]G
 			&i.QuiescenceEvidenceRef,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RequestInstanceID,
 		); err != nil {
 			return nil, err
 		}

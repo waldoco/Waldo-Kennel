@@ -1411,7 +1411,7 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlAnswer, "answer:"+generation, generation, string(payload)),
 		Class:              domain.GovernedControlAnswer, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
 		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision, CapabilityFingerprint: c.governance.capabilityFingerprint,
-		ProviderConversationID: c.conv.ProviderConversationID(), TargetGeneration: generation,
+		ProviderConversationID: c.conv.ProviderConversationID(), RequestInstanceID: generation,
 		Quiescence: domain.GovernedCommandQuiescenceNotApplicable, CreatedAt: now, UpdatedAt: now,
 	}
 	persisted, _, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)

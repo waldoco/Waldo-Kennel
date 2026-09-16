@@ -3483,7 +3483,7 @@ func TestGovernedAnswerBindsExactPendingGenerationAndReplaysWithoutRedispatch(t 
 	generation := snapshot.Activities[0].ID
 	conv.onDispatch = func() {
 		claims, listErr := st.ListUnsettledGovernedControlCommands(context.Background())
-		if listErr != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDispatching || claims[0].TargetGeneration != generation {
+		if listErr != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDispatching || claims[0].RequestInstanceID != generation {
 			t.Fatalf("answer was dispatched without exact durable generation: claims=%+v err=%v", claims, listErr)
 		}
 	}

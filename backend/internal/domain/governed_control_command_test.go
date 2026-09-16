@@ -12,7 +12,7 @@ func validControl(class GovernedControlClass) GovernedControlCommand {
 	case GovernedControlSteer:
 		c.ClientMessageID, c.ProviderTurnID = "message-1", "turn-1"
 	case GovernedControlAnswer:
-		c.TargetGeneration = "request-7"
+		c.RequestInstanceID = "request-7"
 	case GovernedControlInterrupt:
 		c.ProviderTurnID, c.Quiescence = "turn-1", GovernedCommandQuiescencePending
 	}
@@ -33,7 +33,7 @@ func TestGovernedControlClassCorrelation(t *testing.T) {
 		}(),
 		func() GovernedControlCommand {
 			c := validControl(GovernedControlAnswer)
-			c.TargetGeneration = ""
+			c.RequestInstanceID = ""
 			return c
 		}(),
 		func() GovernedControlCommand {

@@ -553,6 +553,7 @@ type GovernedControlCommand struct {
 	QuiescenceEvidenceRef  string
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
+	RequestInstanceID      string
 }
 
 type IntakeAnalysisRequest struct {
