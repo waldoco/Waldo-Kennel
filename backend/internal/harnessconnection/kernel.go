@@ -75,12 +75,13 @@ func (k *Kernel) Issue(ctx context.Context, in IssueRequest) (IssuedConnection, 
 }
 
 type Binding struct {
-	ConnectionID                         domain.HarnessConnectionID
-	InstallationID                       string
-	AdapterDigest                        domain.SHA256Digest
-	HarnessIdentity, MissionID, AppRunID string
-	Generation                           int64
-	Class                                domain.HarnessCapabilityClass
+	ConnectionID                                          domain.HarnessConnectionID
+	InstallationID                                        string
+	AdapterDigest                                         domain.SHA256Digest
+	HarnessIdentity, ProviderVersion, MissionID, AppRunID string
+	ProtocolFingerprint                                   domain.SHA256Digest
+	Generation                                            int64
+	Class                                                 domain.HarnessCapabilityClass
 }
 
 func (k *Kernel) Authenticate(ctx context.Context, bearer string, binding Binding, now time.Time) (domain.HarnessConnection, error) {
@@ -105,6 +106,8 @@ func (k *Kernel) Authenticate(ctx context.Context, bearer string, binding Bindin
 	valid &= equalString(rec.InstallationID, binding.InstallationID)
 	valid &= equalString(rec.AdapterDigest.String(), binding.AdapterDigest.String())
 	valid &= equalString(rec.HarnessIdentity, binding.HarnessIdentity)
+	valid &= equalString(rec.ProviderVersion, binding.ProviderVersion)
+	valid &= equalString(rec.ProtocolFingerprint.String(), binding.ProtocolFingerprint.String())
 	valid &= equalString(rec.MissionID, binding.MissionID)
 	valid &= equalString(rec.AppRunID, binding.AppRunID)
 	valid &= equalGeneration(rec.Generation, binding.Generation)

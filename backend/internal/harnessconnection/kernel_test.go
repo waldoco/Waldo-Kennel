@@ -19,7 +19,7 @@ func issueFixture(t *testing.T, k *Kernel) (IssuedConnection, Binding, time.Time
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := Binding{ConnectionID: req.ConnectionID, InstallationID: req.InstallationID, AdapterDigest: req.AdapterDigest, HarnessIdentity: req.HarnessIdentity, MissionID: req.MissionID, AppRunID: req.AppRunID, Generation: 1, Class: domain.HarnessCapabilityTurn}
+	binding := Binding{ConnectionID: req.ConnectionID, InstallationID: req.InstallationID, AdapterDigest: req.AdapterDigest, HarnessIdentity: req.HarnessIdentity, ProviderVersion: req.ProviderVersion, ProtocolFingerprint: req.ProtocolFingerprint, MissionID: req.MissionID, AppRunID: req.AppRunID, Generation: 1, Class: domain.HarnessCapabilityTurn}
 	return issued, binding, now
 }
 func TestIssueAuthenticateRestartAndNoBearerPersistence(t *testing.T) {
@@ -48,7 +48,7 @@ func TestAuthenticateRejectsSpoofStaleUndeclaredExpiredRevokedAndRotation(t *tes
 		name   string
 		mutate func(*Binding)
 		at     time.Time
-	}{{"mission", func(b *Binding) { b.MissionID = "other" }, now}, {"app", func(b *Binding) { b.AppRunID = "other" }, now}, {"digest", func(b *Binding) { b.AdapterDigest = domain.DigestSHA256([]byte("other")) }, now}, {"harness", func(b *Binding) { b.HarnessIdentity = "other" }, now}, {"generation", func(b *Binding) { b.Generation = 2 }, now}, {"class", func(b *Binding) { b.Class = domain.HarnessCapabilityAccept }, now}, {"expired", func(*Binding) {}, now.Add(time.Hour)}}
+	}{{"mission", func(b *Binding) { b.MissionID = "other" }, now}, {"app", func(b *Binding) { b.AppRunID = "other" }, now}, {"digest", func(b *Binding) { b.AdapterDigest = domain.DigestSHA256([]byte("other")) }, now}, {"harness", func(b *Binding) { b.HarnessIdentity = "other" }, now}, {"provider version", func(b *Binding) { b.ProviderVersion = "other" }, now}, {"protocol", func(b *Binding) { b.ProtocolFingerprint = domain.DigestSHA256([]byte("other")) }, now}, {"generation", func(b *Binding) { b.Generation = 2 }, now}, {"class", func(b *Binding) { b.Class = domain.HarnessCapabilityAccept }, now}, {"expired", func(*Binding) {}, now.Add(time.Hour)}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := binding
