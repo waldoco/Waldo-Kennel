@@ -25,3 +25,18 @@ WHERE governed_control_commands.id=sqlc.arg(id) AND governed_control_commands.st
 SELECT * FROM governed_control_commands
 WHERE state IN ('claimed','dispatching','delivery_unknown')
 ORDER BY created_at,id;
+
+-- name: AdoptClaimedGovernedControlCommandGeneration :execrows
+-- A fresh controller may take custody only while a control effect is still
+-- pre-dispatch. Dispatching and later states may already have crossed the
+-- provider boundary and are never adopted.
+UPDATE governed_control_commands SET
+ controller_generation=sqlc.arg(next_controller_generation), updated_at=sqlc.arg(updated_at)
+WHERE governed_control_commands.id=sqlc.arg(id)
+ AND governed_control_commands.state='claimed'
+ AND governed_control_commands.controller_generation=sqlc.arg(expected_controller_generation)
+ AND governed_control_commands.expected_revision=sqlc.arg(expected_revision)
+ AND governed_control_commands.capability_fingerprint=sqlc.arg(expected_capability_fingerprint)
+ AND governed_control_commands.request_fingerprint=sqlc.arg(expected_request_fingerprint)
+ AND sqlc.arg(next_controller_generation)=(SELECT sessions.controller_generation FROM sessions WHERE sessions.id=governed_control_commands.session_id)
+ AND sqlc.arg(updated_at)>governed_control_commands.created_at;

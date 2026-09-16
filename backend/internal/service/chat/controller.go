@@ -779,6 +779,29 @@ func (c *Controller) configureGovernedTurns(ctx context.Context, policy *domain.
 	return nil
 }
 
+func (c *Controller) adoptGovernedControlClaim(ctx context.Context, persisted domain.GovernedControlCommand, created bool, now time.Time) (domain.GovernedControlCommand, error) {
+	if created || persisted.State != domain.GovernedCommandClaimed || persisted.ControllerGeneration == c.generation {
+		return persisted, nil
+	}
+	adopted, err := c.store.AdoptClaimedGovernedControlCommandGeneration(ctx, persisted, c.generation, now)
+	if err != nil {
+		return domain.GovernedControlCommand{}, err
+	}
+	if adopted {
+		persisted.ControllerGeneration = c.generation
+		persisted.UpdatedAt = now
+		return persisted, nil
+	}
+	latest, ok, err := c.store.GetGovernedControlCommand(ctx, persisted.ID)
+	if err != nil {
+		return domain.GovernedControlCommand{}, err
+	}
+	if !ok {
+		return domain.GovernedControlCommand{}, fmt.Errorf("governed control command %s vanished during adoption", persisted.ID)
+	}
+	return latest, nil
+}
+
 func chatCapabilityFingerprint(capabilities ports.ChatCapabilities) string {
 	enabled := make([]string, 0, len(capabilities))
 	for capability, available := range capabilities {
@@ -1478,9 +1501,13 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 		ProviderConversationID: c.conv.ProviderConversationID(), RequestInstanceID: generation,
 		Quiescence: domain.GovernedCommandQuiescenceNotApplicable, CreatedAt: now, UpdatedAt: now,
 	}
-	persisted, _, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	persisted, created, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
 	if err != nil {
 		return fmt.Errorf("claim governed answer: %w", err)
+	}
+	persisted, err = c.adoptGovernedControlClaim(ctx, persisted, created, now)
+	if err != nil {
+		return fmt.Errorf("adopt governed answer: %w", err)
 	}
 	switch persisted.State {
 	case domain.GovernedCommandAcknowledged:
@@ -1786,7 +1813,11 @@ func (c *Controller) dispatchGovernedInterrupt(ctx context.Context, turn string)
 		CapabilityFingerprint: c.governance.capabilityFingerprint, ProviderConversationID: c.conv.ProviderConversationID(),
 		ProviderTurnID: turn, Quiescence: domain.GovernedCommandQuiescencePending, CreatedAt: now, UpdatedAt: now,
 	}
-	persisted, _, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	persisted, created, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return err
+	}
+	persisted, err = c.adoptGovernedControlClaim(ctx, persisted, created, now)
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
@@ -41,6 +43,26 @@ func (s *Store) CreateGovernedControlCommandClaim(ctx context.Context, rec domai
 		return domain.GovernedControlCommand{}, false, err
 	}
 	return domain.GovernedControlCommand{}, false, domain.ErrGovernedCommandIdempotencyConflict
+}
+
+// AdoptClaimedGovernedControlCommandGeneration transfers a pre-dispatch
+// control claim to the active controller. Dispatching and later states are
+// deliberately immovable because provider contact may already have happened.
+func (s *Store) AdoptClaimedGovernedControlCommandGeneration(ctx context.Context, rec domain.GovernedControlCommand, nextGeneration string, now time.Time) (bool, error) {
+	if rec.State != domain.GovernedCommandClaimed || strings.TrimSpace(nextGeneration) == "" || now.IsZero() {
+		return false, domain.ErrGovernedCommandInvalid
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	n, err := s.qw.AdoptClaimedGovernedControlCommandGeneration(ctx, gen.AdoptClaimedGovernedControlCommandGenerationParams{
+		NextControllerGeneration: nextGeneration, UpdatedAt: now, ID: rec.ID,
+		ExpectedControllerGeneration: rec.ControllerGeneration, ExpectedRevision: rec.ExpectedRevision,
+		ExpectedCapabilityFingerprint: rec.CapabilityFingerprint, ExpectedRequestFingerprint: rec.RequestFingerprint,
+	})
+	if err != nil {
+		return false, fmt.Errorf("adopt governed control command %s: %w", rec.ID, err)
+	}
+	return n > 0, nil
 }
 
 func (s *Store) GetGovernedControlCommand(ctx context.Context, id string) (domain.GovernedControlCommand, bool, error) {

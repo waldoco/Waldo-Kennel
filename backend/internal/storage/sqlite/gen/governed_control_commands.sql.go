@@ -10,6 +10,48 @@ import (
 	"time"
 )
 
+const adoptClaimedGovernedControlCommandGeneration = `-- name: AdoptClaimedGovernedControlCommandGeneration :execrows
+UPDATE governed_control_commands SET
+ controller_generation=?1, updated_at=?2
+WHERE governed_control_commands.id=?3
+ AND governed_control_commands.state='claimed'
+ AND governed_control_commands.controller_generation=?4
+ AND governed_control_commands.expected_revision=?5
+ AND governed_control_commands.capability_fingerprint=?6
+ AND governed_control_commands.request_fingerprint=?7
+ AND ?1=(SELECT sessions.controller_generation FROM sessions WHERE sessions.id=governed_control_commands.session_id)
+ AND ?2>governed_control_commands.created_at
+`
+
+type AdoptClaimedGovernedControlCommandGenerationParams struct {
+	NextControllerGeneration      string
+	UpdatedAt                     time.Time
+	ID                            string
+	ExpectedControllerGeneration  string
+	ExpectedRevision              string
+	ExpectedCapabilityFingerprint string
+	ExpectedRequestFingerprint    string
+}
+
+// A fresh controller may take custody only while a control effect is still
+// pre-dispatch. Dispatching and later states may already have crossed the
+// provider boundary and are never adopted.
+func (q *Queries) AdoptClaimedGovernedControlCommandGeneration(ctx context.Context, arg AdoptClaimedGovernedControlCommandGenerationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adoptClaimedGovernedControlCommandGeneration,
+		arg.NextControllerGeneration,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedControllerGeneration,
+		arg.ExpectedRevision,
+		arg.ExpectedCapabilityFingerprint,
+		arg.ExpectedRequestFingerprint,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const advanceGovernedControlCommand = `-- name: AdvanceGovernedControlCommand :execrows
 UPDATE governed_control_commands SET state=?1, quiescence=?2,
  quiescence_evidence_ref=?3, updated_at=?4

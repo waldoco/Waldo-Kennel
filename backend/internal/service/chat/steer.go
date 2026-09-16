@@ -259,7 +259,11 @@ func (c *Controller) claimGovernedSteer(ctx context.Context, turn string, msg *p
 		ProviderTurnID: turn, Quiescence: domain.GovernedCommandQuiescenceNotApplicable,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	persisted, _, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	persisted, created, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return nil, err
+	}
+	persisted, err = c.adoptGovernedControlClaim(ctx, persisted, created, now)
 	if err != nil {
 		return nil, err
 	}

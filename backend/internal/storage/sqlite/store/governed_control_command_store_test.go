@@ -138,3 +138,44 @@ func TestGovernedControlTransitionFencesAndRetainsUnknown(t *testing.T) {
 		t.Fatalf("stale ok=%v err=%v", ok, err)
 	}
 }
+
+func TestGovernedControlClaimAdoptionIsPreDispatchAndGenerationFenced(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "control-adopt")
+	rec := sampleRecord("control-adopt")
+	rec.Mode = domain.SessionModeChat
+	session, err := s.CreateSession(ctx, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	claim := controlClaim(session.ID, "control-adopt-1", "key-adopt", "fp-adopt", at)
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, made, err := s.CreateGovernedControlCommandClaim(ctx, claim); err != nil || !made {
+		t.Fatalf("create made=%v err=%v", made, err)
+	}
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, "gen-2", at.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.AdoptClaimedGovernedControlCommandGeneration(ctx, claim, "stale-gen", at.Add(2*time.Second)); err != nil || ok {
+		t.Fatalf("inactive generation adopted ok=%v err=%v", ok, err)
+	}
+	if ok, err := s.AdoptClaimedGovernedControlCommandGeneration(ctx, claim, "gen-2", at.Add(2*time.Second)); err != nil || !ok {
+		t.Fatalf("active generation adoption ok=%v err=%v", ok, err)
+	}
+	adopted, found, err := s.GetGovernedControlCommand(ctx, claim.ID)
+	if err != nil || !found || adopted.ControllerGeneration != "gen-2" || adopted.State != domain.GovernedCommandClaimed {
+		t.Fatalf("adopted=%+v found=%v err=%v", adopted, found, err)
+	}
+	adopted.State = domain.GovernedCommandDispatching
+	adopted.UpdatedAt = at.Add(3 * time.Second)
+	if ok, err := s.AdvanceGovernedControlCommand(ctx, adopted, domain.GovernedCommandClaimed, "gen-2", adopted.ExpectedRevision, adopted.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("dispatch ok=%v err=%v", ok, err)
+	}
+	if ok, err := s.AdoptClaimedGovernedControlCommandGeneration(ctx, adopted, "gen-2", at.Add(4*time.Second)); !errors.Is(err, domain.ErrGovernedCommandInvalid) || ok {
+		t.Fatalf("dispatching adoption ok=%v err=%v", ok, err)
+	}
+}
