@@ -153,12 +153,17 @@ func TestGovernedCommandTransitionsFenceStaleWritersAndRetainUnknownForRecovery(
 	s := newTestStore(t)
 	ctx := context.Background()
 	seedProject(t, s, "governed-transition")
-	session, err := s.CreateSession(ctx, sampleRecord("governed-transition"))
+	rec := sampleRecord("governed-transition")
+	rec.Mode = domain.SessionModeChat
+	session, err := s.CreateSession(ctx, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	at := time.Now().UTC().Truncate(time.Second)
 	claim := governedCommandClaim(session.ID, "command-transition", "transition-key", "transition-fingerprint", at)
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+		t.Fatal(err)
+	}
 	if _, created, err := s.CreateGovernedCommandClaim(ctx, claim); err != nil || !created {
 		t.Fatalf("claim: created=%v err=%v", created, err)
 	}
@@ -222,12 +227,17 @@ func TestGovernedCommandTransitionRejectsOldStateAndClaimTime(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	seedProject(t, s, "governed-transition-race")
-	session, err := s.CreateSession(ctx, sampleRecord("governed-transition-race"))
+	rec := sampleRecord("governed-transition-race")
+	rec.Mode = domain.SessionModeChat
+	session, err := s.CreateSession(ctx, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	at := time.Now().UTC().Truncate(time.Second)
 	claim := governedCommandClaim(session.ID, "command-race-transition", "race-transition-key", "race-transition-fingerprint", at)
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := s.CreateGovernedCommandClaim(ctx, claim); err != nil {
 		t.Fatal(err)
 	}

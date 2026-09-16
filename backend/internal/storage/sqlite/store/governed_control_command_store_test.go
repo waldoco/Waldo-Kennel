@@ -99,12 +99,17 @@ func TestGovernedControlTransitionFencesAndRetainsUnknown(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	seedProject(t, s, "control-transition")
-	session, err := s.CreateSession(ctx, sampleRecord("control-transition"))
+	rec := sampleRecord("control-transition")
+	rec.Mode = domain.SessionModeChat
+	session, err := s.CreateSession(ctx, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	at := time.Now().UTC().Truncate(time.Second)
 	claim := controlClaim(session.ID, "control-1", "key-1", "fp-1", at)
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+		t.Fatal(err)
+	}
 	if _, made, err := s.CreateGovernedControlCommandClaim(ctx, claim); err != nil || !made {
 		t.Fatal(err)
 	}

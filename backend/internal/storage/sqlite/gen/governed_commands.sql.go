@@ -10,6 +10,49 @@ import (
 	"time"
 )
 
+const adoptClaimedGovernedCommandGeneration = `-- name: AdoptClaimedGovernedCommandGeneration :execrows
+UPDATE governed_commands SET
+    controller_generation = ?1,
+    updated_at = ?2
+WHERE governed_commands.id = ?3
+  AND governed_commands.state = 'claimed'
+  AND governed_commands.controller_generation = ?4
+  AND governed_commands.expected_revision = ?5
+  AND governed_commands.capability_fingerprint = ?6
+  AND governed_commands.request_fingerprint = ?7
+  AND ?1 = (SELECT sessions.controller_generation FROM sessions WHERE sessions.id = governed_commands.session_id)
+  AND ?2 > governed_commands.created_at
+`
+
+type AdoptClaimedGovernedCommandGenerationParams struct {
+	NextControllerGeneration      string
+	UpdatedAt                     time.Time
+	ID                            string
+	ExpectedControllerGeneration  string
+	ExpectedRevision              string
+	ExpectedCapabilityFingerprint string
+	ExpectedRequestFingerprint    string
+}
+
+// A fresh controller may take custody only while the command is still claimed.
+// Dispatching is the durable pre-effect boundary, so any later state is never
+// adopted or replayed through this path.
+func (q *Queries) AdoptClaimedGovernedCommandGeneration(ctx context.Context, arg AdoptClaimedGovernedCommandGenerationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adoptClaimedGovernedCommandGeneration,
+		arg.NextControllerGeneration,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedControllerGeneration,
+		arg.ExpectedRevision,
+		arg.ExpectedCapabilityFingerprint,
+		arg.ExpectedRequestFingerprint,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const advanceGovernedCommand = `-- name: AdvanceGovernedCommand :execrows
 UPDATE governed_commands SET
     state = ?1,
@@ -20,12 +63,13 @@ UPDATE governed_commands SET
     quiescence = ?6,
     quiescence_evidence_ref = ?7,
     updated_at = ?8
-WHERE id = ?9
-  AND state = ?10
-  AND controller_generation = ?11
-  AND expected_revision = ?12
-  AND capability_fingerprint = ?13
-  AND ?8 > created_at
+WHERE governed_commands.id = ?9
+  AND governed_commands.state = ?10
+  AND governed_commands.controller_generation = ?11
+  AND governed_commands.expected_revision = ?12
+  AND governed_commands.capability_fingerprint = ?13
+  AND (?10 <> 'claimed' OR governed_commands.controller_generation = (SELECT sessions.controller_generation FROM sessions WHERE sessions.id = governed_commands.session_id))
+  AND ?8 > governed_commands.created_at
 `
 
 type AdvanceGovernedCommandParams struct {

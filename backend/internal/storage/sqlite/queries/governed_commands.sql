@@ -37,12 +37,13 @@ UPDATE governed_commands SET
     quiescence = sqlc.arg(quiescence),
     quiescence_evidence_ref = sqlc.arg(quiescence_evidence_ref),
     updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id)
-  AND state = sqlc.arg(expected_state)
-  AND controller_generation = sqlc.arg(expected_controller_generation)
-  AND expected_revision = sqlc.arg(expected_revision)
-  AND capability_fingerprint = sqlc.arg(expected_capability_fingerprint)
-  AND sqlc.arg(updated_at) > created_at;
+WHERE governed_commands.id = sqlc.arg(id)
+  AND governed_commands.state = sqlc.arg(expected_state)
+  AND governed_commands.controller_generation = sqlc.arg(expected_controller_generation)
+  AND governed_commands.expected_revision = sqlc.arg(expected_revision)
+  AND governed_commands.capability_fingerprint = sqlc.arg(expected_capability_fingerprint)
+  AND (sqlc.arg(expected_state) <> 'claimed' OR governed_commands.controller_generation = (SELECT sessions.controller_generation FROM sessions WHERE sessions.id = governed_commands.session_id))
+  AND sqlc.arg(updated_at) > governed_commands.created_at;
 
 -- name: ListUnsettledGovernedCommands :many
 SELECT id, session_id, idempotency_key, request_fingerprint, command_class, state,
@@ -54,3 +55,19 @@ SELECT id, session_id, idempotency_key, request_fingerprint, command_class, stat
 FROM governed_commands
 WHERE state IN ('claimed','dispatching','delivery_unknown')
 ORDER BY created_at ASC, id ASC;
+
+-- name: AdoptClaimedGovernedCommandGeneration :execrows
+-- A fresh controller may take custody only while the command is still claimed.
+-- Dispatching is the durable pre-effect boundary, so any later state is never
+-- adopted or replayed through this path.
+UPDATE governed_commands SET
+    controller_generation = sqlc.arg(next_controller_generation),
+    updated_at = sqlc.arg(updated_at)
+WHERE governed_commands.id = sqlc.arg(id)
+  AND governed_commands.state = 'claimed'
+  AND governed_commands.controller_generation = sqlc.arg(expected_controller_generation)
+  AND governed_commands.expected_revision = sqlc.arg(expected_revision)
+  AND governed_commands.capability_fingerprint = sqlc.arg(expected_capability_fingerprint)
+  AND governed_commands.request_fingerprint = sqlc.arg(expected_request_fingerprint)
+  AND sqlc.arg(next_controller_generation) = (SELECT sessions.controller_generation FROM sessions WHERE sessions.id = governed_commands.session_id)
+  AND sqlc.arg(updated_at) > governed_commands.created_at;

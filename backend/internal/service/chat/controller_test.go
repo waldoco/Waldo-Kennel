@@ -3345,6 +3345,77 @@ func TestGovernedTurnCrashBeforeClaimLeavesNoEffectAndFreshProcessCanRetry(t *te
 	}
 }
 
+type failFirstGovernedTurnMessageStore struct {
+	chatsvc.Store
+	mu     sync.Mutex
+	failed bool
+	err    error
+}
+
+func (s *failFirstGovernedTurnMessageStore) AppendUserMessage(ctx context.Context, conversationID string, session domain.SessionID, generation string, msg domain.ConversationMessage, turnID string, now time.Time) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.failed {
+		s.failed = true
+		return false, s.err
+	}
+	return s.Store.AppendUserMessage(ctx, conversationID, session, generation, msg, turnID, now)
+}
+
+func TestGovernedTurnCrashAfterClaimBeforeProviderContactAdoptsOnceOnRestart(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	injected := errors.New("daemon stopped after claim before message projection")
+	wrapped := &failFirstGovernedTurnMessageStore{Store: st, err: injected}
+	firstConv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "must-not-dispatch"},
+	}}
+	first := chatsvc.New(chatsvc.Options{Store: wrapped, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: firstConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("post-claim-first")})
+	firstCtrl, err := first.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-post-claim"}
+	if _, err = firstCtrl.Send(context.Background(), msg); !errors.Is(err, injected) {
+		t.Fatalf("first send err=%v", err)
+	}
+	claims, err := st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandClaimed || len(firstConv.sentMessages()) != 0 {
+		t.Fatalf("claims=%+v provider dispatches=%d err=%v", claims, len(firstConv.sentMessages()), err)
+	}
+	oldGeneration := claims[0].ControllerGeneration
+
+	secondConv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-adopted"},
+		TransportRequestID: 1, TransportSHA256: "adopted-sha", TransportBytes: 10, TransportSequence: 1,
+	}}
+	second := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: secondConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("post-claim-second")})
+	t.Cleanup(func() { _ = second.Stop(context.Background(), testSession) })
+	secondCtrl, err := second.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: firstCtrl.ProviderConversationID(), ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := secondCtrl.Send(context.Background(), msg)
+	if err != nil || turn.ProviderTurnID != "provider-adopted" || len(secondConv.sentMessages()) != 1 {
+		t.Fatalf("retry turn=%+v provider dispatches=%d err=%v", turn, len(secondConv.sentMessages()), err)
+	}
+	claim, ok, err := st.GetGovernedCommand(context.Background(), turn.ID)
+	if err != nil || !ok || claim.State != domain.GovernedCommandAcknowledged || claim.ControllerGeneration != secondCtrl.Generation() || claim.ControllerGeneration == oldGeneration {
+		t.Fatalf("adopted claim=%+v ok=%v oldGeneration=%q err=%v", claim, ok, oldGeneration, err)
+	}
+
+	// The stale controller still has the old claim in memory. Active-generation
+	// fencing must stop it before provider contact even after the fresh controller
+	// has settled the one visible effect.
+	if _, err = firstCtrl.Send(context.Background(), msg); err != nil {
+		t.Fatalf("stale exact retry err=%v", err)
+	}
+	if len(firstConv.sentMessages()) != 0 || len(secondConv.sentMessages()) != 1 {
+		t.Fatalf("provider dispatches stale=%d active=%d", len(firstConv.sentMessages()), len(secondConv.sentMessages()))
+	}
+}
+
 type failAcknowledgedGovernedTurnStore struct {
 	chatsvc.Store
 	err error

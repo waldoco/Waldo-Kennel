@@ -13,11 +13,12 @@ import (
 const advanceGovernedControlCommand = `-- name: AdvanceGovernedControlCommand :execrows
 UPDATE governed_control_commands SET state=?1, quiescence=?2,
  quiescence_evidence_ref=?3, updated_at=?4
-WHERE id=?5 AND state=?6
- AND controller_generation=?7
- AND expected_revision=?8
- AND capability_fingerprint=?9
- AND ?4 > created_at
+WHERE governed_control_commands.id=?5 AND governed_control_commands.state=?6
+ AND governed_control_commands.controller_generation=?7
+ AND governed_control_commands.expected_revision=?8
+ AND governed_control_commands.capability_fingerprint=?9
+ AND (?6 <> 'claimed' OR governed_control_commands.controller_generation=(SELECT sessions.controller_generation FROM sessions WHERE sessions.id=governed_control_commands.session_id))
+ AND ?4 > governed_control_commands.created_at
 `
 
 type AdvanceGovernedControlCommandParams struct {

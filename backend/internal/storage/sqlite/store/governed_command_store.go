@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
@@ -55,6 +56,26 @@ func (s *Store) CreateGovernedCommandClaim(ctx context.Context, rec domain.Gover
 		return domain.GovernedCommandRecord{}, false, fmt.Errorf("read conflicting governed command %s: %w", rec.ID, err)
 	}
 	return domain.GovernedCommandRecord{}, false, fmt.Errorf("create governed command %s: conflict row was not found: %w", rec.ID, domain.ErrGovernedCommandIdempotencyConflict)
+}
+
+// AdoptClaimedGovernedCommandGeneration transfers a pre-dispatch claim to the
+// currently active controller. Once dispatching begins the command is never
+// adoptable, because provider contact may already have happened.
+func (s *Store) AdoptClaimedGovernedCommandGeneration(ctx context.Context, rec domain.GovernedCommandRecord, nextGeneration string, now time.Time) (bool, error) {
+	if rec.State != domain.GovernedCommandClaimed || strings.TrimSpace(nextGeneration) == "" || now.IsZero() {
+		return false, domain.ErrGovernedCommandInvalid
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	n, err := s.qw.AdoptClaimedGovernedCommandGeneration(ctx, gen.AdoptClaimedGovernedCommandGenerationParams{
+		NextControllerGeneration: nextGeneration, UpdatedAt: now, ID: rec.ID,
+		ExpectedControllerGeneration: rec.ControllerGeneration, ExpectedRevision: rec.ExpectedRevision,
+		ExpectedCapabilityFingerprint: rec.CapabilityFingerprint, ExpectedRequestFingerprint: rec.RequestFingerprint,
+	})
+	if err != nil {
+		return false, fmt.Errorf("adopt governed command %s: %w", rec.ID, err)
+	}
+	return n > 0, nil
 }
 
 func (s *Store) GetGovernedCommand(ctx context.Context, id string) (domain.GovernedCommandRecord, bool, error) {

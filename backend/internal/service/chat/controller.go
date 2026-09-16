@@ -779,9 +779,27 @@ func (c *Controller) claimGovernedTurn(ctx context.Context, commandID string, ms
 		Correlation:           domain.GovernedCommandCorrelation{ProviderConversationID: c.conv.ProviderConversationID(), ClientMessageID: msg.ClientMessageID},
 		ReplayStrategy:        c.governance.replayStrategy, Quiescence: domain.GovernedCommandQuiescenceNotApplicable,
 	}, CreatedAt: now, UpdatedAt: now}
-	persisted, _, err := c.store.CreateGovernedCommandClaim(ctx, rec)
+	persisted, created, err := c.store.CreateGovernedCommandClaim(ctx, rec)
 	if err != nil {
 		return domain.GovernedCommandRecord{}, err
+	}
+	if !created && persisted.State == domain.GovernedCommandClaimed && persisted.ControllerGeneration != c.generation {
+		adopted, adoptErr := c.store.AdoptClaimedGovernedCommandGeneration(ctx, persisted, c.generation, now)
+		if adoptErr != nil {
+			return domain.GovernedCommandRecord{}, adoptErr
+		}
+		if !adopted {
+			latest, ok, getErr := c.store.GetGovernedCommand(ctx, persisted.ID)
+			if getErr != nil {
+				return domain.GovernedCommandRecord{}, getErr
+			}
+			if !ok {
+				return domain.GovernedCommandRecord{}, fmt.Errorf("governed command %s vanished during adoption", persisted.ID)
+			}
+			return latest, nil
+		}
+		persisted.ControllerGeneration = c.generation
+		persisted.UpdatedAt = now
 	}
 	return persisted, nil
 }

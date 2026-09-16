@@ -14,11 +14,12 @@ SELECT * FROM governed_control_commands WHERE session_id = ? AND idempotency_key
 -- name: AdvanceGovernedControlCommand :execrows
 UPDATE governed_control_commands SET state=sqlc.arg(next_state), quiescence=sqlc.arg(quiescence),
  quiescence_evidence_ref=sqlc.arg(quiescence_evidence_ref), updated_at=sqlc.arg(updated_at)
-WHERE id=sqlc.arg(id) AND state=sqlc.arg(expected_state)
- AND controller_generation=sqlc.arg(expected_controller_generation)
- AND expected_revision=sqlc.arg(expected_revision)
- AND capability_fingerprint=sqlc.arg(expected_capability_fingerprint)
- AND sqlc.arg(updated_at) > created_at;
+WHERE governed_control_commands.id=sqlc.arg(id) AND governed_control_commands.state=sqlc.arg(expected_state)
+ AND governed_control_commands.controller_generation=sqlc.arg(expected_controller_generation)
+ AND governed_control_commands.expected_revision=sqlc.arg(expected_revision)
+ AND governed_control_commands.capability_fingerprint=sqlc.arg(expected_capability_fingerprint)
+ AND (sqlc.arg(expected_state) <> 'claimed' OR governed_control_commands.controller_generation=(SELECT sessions.controller_generation FROM sessions WHERE sessions.id=governed_control_commands.session_id))
+ AND sqlc.arg(updated_at) > governed_control_commands.created_at;
 
 -- name: ListUnsettledGovernedControlCommands :many
 SELECT * FROM governed_control_commands
