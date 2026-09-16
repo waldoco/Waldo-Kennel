@@ -11,9 +11,9 @@ import (
 // Classify is the single deterministic projection used by discovery callers.
 func Classify(manifest domain.HarnessAdapterManifest, installation ports.HarnessInstallation, required, optional []domain.HarnessCapabilityClass) domain.HarnessManifestClassification {
 	if installation.ExecutablePath == "" || !installation.ExecutableDigest.Valid() {
-		return domain.ManifestDigestTamper
+		return domain.ManifestInvalid
 	}
-	if installation.Protocol.ProtocolDigest == "" {
+	if !domain.SHA256Digest(installation.Protocol.ProtocolDigest).Valid() {
 		return domain.ManifestProtocolDrift
 	}
 	return manifest.Verify(installation.Version, domain.SHA256Digest(installation.Protocol.ProtocolDigest), required, optional)

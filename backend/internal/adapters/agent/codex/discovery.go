@@ -124,6 +124,9 @@ func fileDigest(ctx context.Context, path string) (domain.SHA256Digest, error) {
 func runVersion(ctx context.Context, path string) (string, error) {
 	// Kept local and bounded; --version is metadata only and receives no env or credentials.
 	cmd := exec.CommandContext(ctx, path, "--version")
+	// Discovery does not pass the daemon environment (including provider or
+	// cloud credentials) into the metadata-only version probe.
+	cmd.Env = []string{}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", err

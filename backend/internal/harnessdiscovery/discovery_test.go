@@ -8,7 +8,7 @@ import (
 
 func TestClassifyFailsClosedOnMissingIdentity(t *testing.T) {
 	m := domain.HarnessAdapterManifest{}
-	if got := Classify(m, ports.HarnessInstallation{}, nil, nil); got != domain.ManifestDigestTamper {
+	if got := Classify(m, ports.HarnessInstallation{}, nil, nil); got != domain.ManifestInvalid {
 		t.Fatalf("got %s", got)
 	}
 }

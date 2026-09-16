@@ -76,3 +76,26 @@ func TestFileDigestCancelledAndRejectsDirectory(t *testing.T) {
 		t.Fatal("directory accepted")
 	}
 }
+
+func TestDiscoverMissingBinaryFailsClosed(t *testing.T) {
+	p := &Plugin{resolvedBinary: filepath.Join(t.TempDir(), "missing-codex")}
+	if _, err := p.Discover(context.Background(), discoveryProtocol{}); err == nil {
+		t.Fatal("missing binary accepted")
+	}
+}
+
+func TestRunVersionDoesNotPassDaemonCredentials(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	path := filepath.Join(t.TempDir(), "codex")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nif [ -n \"$OPENAI_API_KEY\" ] || [ -n \"$CODEX_HOME\" ]; then exit 9; fi\necho codex-cli 0.154.0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPENAI_API_KEY", "canary-secret")
+	t.Setenv("CODEX_HOME", "/secret/provider/home")
+	out, err := runVersion(context.Background(), path)
+	if err != nil || out != "codex-cli 0.154.0\n" {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+}
