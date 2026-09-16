@@ -76,6 +76,7 @@ import { TurnPlan } from "./TurnPlan";
 import { TurnSettingsBar } from "./TurnSettingsBar";
 import { ElicitationCard } from "./ElicitationCard";
 import {
+	GovernedDispatchBlockedBanner,
 	McpServerBanner,
 	ReauthBanner,
 	ThreadStateBanner,
@@ -100,6 +101,7 @@ import {
 	type ConversationContentSummary,
 	type ConversationItem,
 	type ConversationMessage,
+	type GovernedBlockState,
 	type TurnDiff,
 	type TurnSettings,
 } from "../../types/conversation";
@@ -629,7 +631,8 @@ export function ChatWorkspace({
 			>
 				{/* Ordered by what blocks what. A session that needs credentials cannot make
 				    progress at all, so it is stated first; the controller's own health next;
-				    then the two that degrade a session rather than stopping it. */}
+				    a stuck governed claim blocks every later send just as completely, so it
+				    comes right after; the remaining two degrade a session rather than stopping it. */}
 				{snapshot.account ? (
 					<ReauthBanner account={snapshot.account} harness={snapshot.harness} />
 				) : null}
@@ -642,6 +645,10 @@ export function ChatWorkspace({
 					onOpenShell={onOpenShell}
 					openingShell={openingShell}
 					shellError={shellError}
+				/>
+				<GovernedDispatchBlockedBanner
+					turnBlocks={snapshot.governedTurnBlocks ?? []}
+					controlBlocks={snapshot.governedControlBlocks ?? []}
 				/>
 				{snapshot.threadState ? <ThreadStateBanner threadState={snapshot.threadState} /> : null}
 				<McpServerBanner
@@ -1237,6 +1244,10 @@ function Timeline({
 		() => new Set(snapshot.turns.filter((turn) => turn.providerTurnId).map((turn) => turn.id)),
 		[snapshot.turns],
 	);
+	const turnsById = useMemo(
+		() => new Map(snapshot.turns.map((turn) => [turn.id, turn])),
+		[snapshot.turns],
+	);
 
 	useEffect(() => setMessageEdit(undefined), [snapshot.sessionId]);
 
@@ -1510,6 +1521,9 @@ function Timeline({
 								canRollback={Boolean(onRollback && group.turnId && group.rollbackable)}
 								busy={busy}
 								queued={Boolean(group.turnId && queued.has(group.turnId))}
+								dispatchBlockedState={
+									group.turnId ? turnsById.get(group.turnId)?.dispatchBlockedState : undefined
+								}
 							/>
 						</div>
 					))}
@@ -1657,6 +1671,7 @@ const TurnGroup = memo(function TurnGroup({
 	canRollback,
 	busy,
 	queued,
+	dispatchBlockedState,
 }: {
 	group: TimelineGroup;
 	sessionId: string;
@@ -1683,6 +1698,9 @@ const TurnGroup = memo(function TurnGroup({
 	busy?: boolean;
 	/** This turn was recorded but not sent, so its message can say so. */
 	queued: boolean;
+	/** This turn's own governed claim still owns the command effect, so its
+	 *  message can say why rather than just that it is waiting. */
+	dispatchBlockedState?: GovernedBlockState;
 }) {
 	const runs = useMemo(() => runsOf(group.items), [group.items]);
 	const copyableMessageId = group.outcome
@@ -1725,6 +1743,7 @@ const TurnGroup = memo(function TurnGroup({
 						activateBranchError={activateBranchError}
 						busy={busy}
 						queued={queued}
+						dispatchBlockedState={dispatchBlockedState}
 						showCopy={run.items[0]?.id === copyableMessageId}
 						showStreamingIndicator={group.live && run.items[0]?.id === latestItemId}
 					/>
@@ -1821,6 +1840,7 @@ function TimelineItem({
 	activateBranchError,
 	busy,
 	queued,
+	dispatchBlockedState,
 	showCopy,
 	showStreamingIndicator,
 }: {
@@ -1849,6 +1869,9 @@ function TimelineItem({
 	 * so. A group is one turn, so this holds for every item in it.
 	 */
 	queued?: boolean;
+	/** This turn's own governed claim still owns the command effect. See
+	 *  `HumanMessage`'s prop of the same name for why this is distinct from `queued`. */
+	dispatchBlockedState?: GovernedBlockState;
 	/** This is the final assistant response of a turn that has finished. */
 	showCopy?: boolean;
 	/** This message is the live edge of its turn, rather than an earlier fragment
@@ -1878,6 +1901,7 @@ function TimelineItem({
 					sessionId={sessionId}
 					apiBaseUrl={apiBaseUrl}
 					queued={queued}
+					dispatchBlockedState={dispatchBlockedState}
 					onEdit={editAvailable ? (_turnID, text) => onSubmitMessageEdit(text) : undefined}
 					editing={editing}
 					editText={editing ? messageEdit?.text : undefined}

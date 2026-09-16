@@ -3200,6 +3200,30 @@ export interface components {
             sizeBytes: number;
             sourcePath: string;
         };
+        ControllersGovernedControlBlockResponse: {
+            id: string;
+            /** @enum {string} */
+            kind: "steer" | "answer" | "interrupt";
+            providerTurnId?: string;
+            /** @enum {string} */
+            quiescence: "not_applicable" | "pending" | "codex_process_tree_verified";
+            quiescenceEvidenceRef?: string;
+            requestInstanceId?: string;
+            since: string;
+            /** @enum {string} */
+            state: "claimed" | "dispatching" | "delivery_unknown";
+        };
+        ControllersGovernedTurnBlockResponse: {
+            /** @enum {string} */
+            kind: "turn";
+            /** @enum {string} */
+            quiescence: "not_applicable" | "pending" | "codex_process_tree_verified";
+            quiescenceEvidenceRef?: string;
+            since: string;
+            /** @enum {string} */
+            state: "claimed" | "dispatching" | "delivery_unknown";
+            turnId: string;
+        };
         ControllersIntakeAnalysisRequestEnvelope: {
             request: components["schemas"]["ControllersIntakeAnalysisRequestResponse"];
         };
@@ -3757,6 +3781,8 @@ export interface components {
             /** @enum {string} */
             controller: "connecting" | "ready" | "busy" | "recovering" | "stopped";
             conversationId: string;
+            governedControlBlocks?: components["schemas"]["ControllersGovernedControlBlockResponse"][];
+            governedTurnBlocks?: components["schemas"]["ControllersGovernedTurnBlockResponse"][];
             harness?: string;
             hasMoreBefore: boolean;
             /** Format: int64 */
@@ -3790,6 +3816,9 @@ export interface components {
         ConversationTurnResponse: {
             completedAt?: null | string;
             diff?: components["schemas"]["ConversationTurnDiffResponse"];
+            dispatchBlockedSince?: null | string;
+            /** @enum {string} */
+            dispatchBlockedState?: "claimed" | "dispatching" | "delivery_unknown";
             errorMessage?: string;
             id: string;
             plan?: components["schemas"]["ConversationPlanResponse"];

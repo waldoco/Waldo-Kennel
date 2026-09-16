@@ -13,10 +13,17 @@
  */
 
 import { memo } from "react";
-import { KeyRound, Plug, RefreshCw, TriangleAlert } from "lucide-react";
+import { Hourglass, KeyRound, Plug, RefreshCw, TriangleAlert } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
-import type { ConversationAccount, ConversationThreadState, McpServer } from "../../types/conversation";
+import type {
+	ConversationAccount,
+	ConversationThreadState,
+	GovernedControlBlock,
+	GovernedTurnBlock,
+	McpServer,
+} from "../../types/conversation";
+import { governedBlockCopy } from "../../types/conversation";
 
 /**
  * The provider will not do any more work until someone signs in.
@@ -139,6 +146,59 @@ export const ThreadStateBanner = memo(function ThreadStateBanner({
 						Waiting on: {threadState.waitingOn.join(", ")}
 					</span>
 				) : null}
+			</div>
+		</div>
+	);
+});
+
+/**
+ * A governed claim -- a turn's, or a steer/answer/interrupt control command's
+ * -- is still blocking every later dispatch in this session.
+ *
+ * Drawn from `governedTurnBlocks`/`governedControlBlocks` on the snapshot,
+ * never from a single turn's own `dispatchBlockedState`: a control claim
+ * blocks dispatch without living on any turn, so a per-turn note alone would
+ * miss it. Each item gets its own line from `governedBlockCopy` rather than
+ * one shared headline: different kinds are unknown for different reasons, and
+ * a single summary sentence cannot state more than one of them without either
+ * inventing a fact or picking the wrong one to report.
+ */
+export const GovernedDispatchBlockedBanner = memo(function GovernedDispatchBlockedBanner({
+	turnBlocks,
+	controlBlocks,
+}: {
+	turnBlocks: GovernedTurnBlock[];
+	controlBlocks: GovernedControlBlock[];
+}) {
+	if (turnBlocks.length === 0 && controlBlocks.length === 0) return null;
+
+	return (
+		<div
+			role="alert"
+			aria-atomic="true"
+			className="flex shrink-0 items-start gap-2.5 border-b border-warning/40 bg-warning/10 px-4 py-2.5"
+		>
+			<Hourglass aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+			<div className="flex min-w-0 flex-col gap-1">
+				<strong className="text-xs font-medium text-warning">
+					Nothing else will send until the following settle
+				</strong>
+				<ul className="flex flex-col gap-0.5">
+					{turnBlocks.map((block) => (
+						<li key={`turn-${block.turnId}`} className="text-[11px] leading-snug text-muted-foreground">
+							Turn <span className="font-mono text-foreground">{block.turnId}</span>
+							{" — "}
+							{governedBlockCopy("turn", block.state, block.quiescence)}
+						</li>
+					))}
+					{controlBlocks.map((block) => (
+						<li key={`control-${block.id}`} className="text-[11px] leading-snug text-muted-foreground">
+							{block.kind.charAt(0).toUpperCase() + block.kind.slice(1)}
+							{" — "}
+							{governedBlockCopy(block.kind, block.state, block.quiescence)}
+						</li>
+					))}
+				</ul>
 			</div>
 		</div>
 	);

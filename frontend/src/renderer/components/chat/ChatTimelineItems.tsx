@@ -63,6 +63,7 @@ import {
 import { Button } from "../ui/button";
 import {
 	fileChangeFiles,
+	governedBlockCopy,
 	reviewedPaths,
 	type ActivityKind,
 	type ConversationActivity,
@@ -72,6 +73,7 @@ import {
 	type DeliveryState,
 	type DiffStatus,
 	type FileChangeFile,
+	type GovernedBlockState,
 	type TurnDiff,
 } from "../../types/conversation";
 
@@ -154,6 +156,7 @@ export function HumanMessage({
 	sessionId,
 	apiBaseUrl = getApiBaseUrl(),
 	queued,
+	dispatchBlockedState,
 	onEdit,
 	editing = false,
 	editText,
@@ -175,6 +178,13 @@ export function HumanMessage({
 	apiBaseUrl?: string;
 	/** Typed while the agent was busy, and not sent yet. */
 	queued?: boolean;
+	/**
+	 * This turn's own governed claim still owns the command effect. More
+	 * specific than `queued` alone: it says WHY nothing has moved rather than
+	 * just that nothing has, and it applies even once the provider is idle
+	 * again if the claim itself has not settled.
+	 */
+	dispatchBlockedState?: GovernedBlockState;
 	onEdit?: (turnId: string, text: string) => Promise<unknown> | void;
 	editing?: boolean;
 	editText?: string;
@@ -263,7 +273,13 @@ export function HumanMessage({
 					) : null}
 				</div>
 			)}
-			{queued ? (
+			{dispatchBlockedState ? (
+				<div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+					{/* A turn claim's quiescence is always "not_applicable" (service.go's
+					    claimGovernedTurn) -- only steer/answer/interrupt claims vary it. */}
+					<span>{governedBlockCopy("turn", dispatchBlockedState, "not_applicable")}</span>
+				</div>
+			) : queued ? (
 				<div className="flex items-center gap-2 text-[11px] text-muted-foreground">
 					<span>Queued · sends when the agent finishes</span>
 				</div>

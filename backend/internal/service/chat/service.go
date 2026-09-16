@@ -676,6 +676,87 @@ type Snapshot struct {
 	// controller is live, because an unstarted session's abilities are not yet known
 	// and guessing them is how a control appears and then vanishes.
 	Capabilities ports.ChatCapabilities
+	// GovernedTurnBlocks and GovernedControlBlocks are every claim in this session
+	// still blocking dispatch (BlocksConflictingDispatch), across both the turn
+	// table and the steer/answer/interrupt control table -- the same session-wide
+	// truth Controller.governedBlockedExcept already enforces, which a turn's own
+	// delivery state alone cannot show.
+	GovernedTurnBlocks    []GovernedTurnBlock
+	GovernedControlBlocks []GovernedControlBlock
+}
+
+// GovernedTurnBlock is one unsettled turn-dispatch claim still blocking
+// conflicting dispatch in this session.
+type GovernedTurnBlock struct {
+	TurnID                string
+	State                 domain.GovernedCommandState
+	Quiescence            domain.GovernedCommandQuiescence
+	QuiescenceEvidenceRef string
+	UpdatedAt             time.Time
+}
+
+// GovernedControlBlock is one unsettled steer/answer/interrupt control claim
+// still blocking conflicting dispatch. Exactly one of ProviderTurnID
+// (steer/interrupt) and RequestInstanceID (answer) is ever non-empty, per
+// domain.GovernedControlCommand.Validate.
+type GovernedControlBlock struct {
+	ID                    string
+	Class                 domain.GovernedControlClass
+	State                 domain.GovernedCommandState
+	Quiescence            domain.GovernedCommandQuiescence
+	QuiescenceEvidenceRef string
+	ProviderTurnID        string
+	RequestInstanceID     string
+	UpdatedAt             time.Time
+}
+
+// governedBlocks reads every unsettled governed claim across both tables and
+// keeps only this session's, mirroring the membership rule
+// Controller.governedBlockedExcept already enforces. Errors are propagated
+// rather than degraded to an empty list: silently returning "nothing is
+// blocking" would be the exact false negative this projection exists to rule
+// out. Both list reads are unfiltered full-table scans; that matches the cost
+// governedBlockedExcept already pays on every Send, and a session-scoped
+// query would require a store signature change this pass may not make.
+func (s *Service) governedBlocks(ctx context.Context, id domain.SessionID) ([]GovernedTurnBlock, []GovernedControlBlock, error) {
+	unsettled, err := s.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list unsettled governed commands: %w", err)
+	}
+	var turns []GovernedTurnBlock
+	for _, command := range unsettled {
+		if command.SessionID != id || !command.State.BlocksConflictingDispatch() {
+			continue
+		}
+		turns = append(turns, GovernedTurnBlock{
+			TurnID:                command.ID,
+			State:                 command.State,
+			Quiescence:            command.Quiescence,
+			QuiescenceEvidenceRef: command.QuiescenceEvidenceRef,
+			UpdatedAt:             command.UpdatedAt,
+		})
+	}
+	controls, err := s.store.ListUnsettledGovernedControlCommands(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list unsettled governed control commands: %w", err)
+	}
+	var blocks []GovernedControlBlock
+	for _, command := range controls {
+		if command.SessionID != id || !command.State.BlocksConflictingDispatch() {
+			continue
+		}
+		blocks = append(blocks, GovernedControlBlock{
+			ID:                    command.ID,
+			Class:                 command.Class,
+			State:                 command.State,
+			Quiescence:            command.Quiescence,
+			QuiescenceEvidenceRef: command.QuiescenceEvidenceRef,
+			ProviderTurnID:        command.ProviderTurnID,
+			RequestInstanceID:     command.RequestInstanceID,
+			UpdatedAt:             command.UpdatedAt,
+		})
+	}
+	return turns, blocks, nil
 }
 
 // SnapshotReader is the durable read the service serves snapshots from. Kept
@@ -744,6 +825,11 @@ func (s *Service) Snapshot(ctx context.Context, id domain.SessionID) (Snapshot, 
 		caps = controller.Capabilities()
 	}
 
+	turnBlocks, controlBlocks, err := s.governedBlocks(ctx, id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
 	return Snapshot{
 		Conversation:               rows.Conversation,
 		SessionID:                  id,
@@ -758,6 +844,8 @@ func (s *Service) Snapshot(ctx context.Context, id domain.SessionID) (Snapshot, 
 		Capabilities:               caps,
 		Usage:                      rows.Conversation.Usage,
 		RateLimits:                 rows.Conversation.RateLimits,
+		GovernedTurnBlocks:         turnBlocks,
+		GovernedControlBlocks:      controlBlocks,
 	}, nil
 }
 
@@ -795,6 +883,10 @@ func (s *Service) SnapshotPage(ctx context.Context, id domain.SessionID, beforeS
 		state = controller.State()
 		caps = controller.Capabilities()
 	}
+	turnBlocks, controlBlocks, err := s.governedBlocks(ctx, id)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	return Snapshot{
 		Conversation:               rows.Conversation,
 		SessionID:                  id,
@@ -811,6 +903,8 @@ func (s *Service) SnapshotPage(ctx context.Context, id domain.SessionID, beforeS
 		Capabilities:               caps,
 		Usage:                      rows.Conversation.Usage,
 		RateLimits:                 rows.Conversation.RateLimits,
+		GovernedTurnBlocks:         turnBlocks,
+		GovernedControlBlocks:      controlBlocks,
 	}, nil
 }
 
