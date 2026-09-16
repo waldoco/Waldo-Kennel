@@ -994,6 +994,9 @@ func (c *Controller) dispatch(
 		if governed.State != domain.GovernedCommandClaimed {
 			return domain.ConversationTurn{}, fmt.Errorf("governed command %s blocks dispatch in state %s", governed.ID, governed.State)
 		}
+		if governed.ControllerGeneration != c.generation {
+			return domain.ConversationTurn{}, fmt.Errorf("governed command %s belongs to prior controller generation", governed.ID)
+		}
 		if err = c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching, ""); err == nil {
 			dispatcher, ok := c.conv.(ports.ChatTurnDispatcher)
 			if !ok {
