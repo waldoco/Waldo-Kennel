@@ -3279,6 +3279,72 @@ func TestGovernedTurnPersistsDispatchingBeforeProviderContactAndAcknowledges(t *
 	}
 }
 
+type failFirstGovernedTurnClaimStore struct {
+	chatsvc.Store
+	mu     sync.Mutex
+	failed bool
+	err    error
+}
+
+func (s *failFirstGovernedTurnClaimStore) CreateGovernedCommandClaim(ctx context.Context, rec domain.GovernedCommandRecord) (domain.GovernedCommandRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.failed {
+		s.failed = true
+		return domain.GovernedCommandRecord{}, false, s.err
+	}
+	return s.Store.CreateGovernedCommandClaim(ctx, rec)
+}
+
+func TestGovernedTurnCrashBeforeClaimLeavesNoEffectAndFreshProcessCanRetry(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	injected := errors.New("daemon stopped before durable claim")
+	wrapped := &failFirstGovernedTurnClaimStore{Store: st, err: injected}
+	firstConv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "must-not-dispatch"},
+	}}
+	first := chatsvc.New(chatsvc.Options{Store: wrapped, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: firstConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("pre-claim-first")})
+	firstCtrl, err := first.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-pre-claim"}
+	if _, err = firstCtrl.Send(context.Background(), msg); !errors.Is(err, injected) {
+		t.Fatalf("first send err=%v", err)
+	}
+	claims, err := st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 0 || len(firstConv.sentMessages()) != 0 {
+		t.Fatalf("claims=%+v provider dispatches=%d err=%v", claims, len(firstConv.sentMessages()), err)
+	}
+
+	// Model a killed daemon with a new service over the same durable store. Since
+	// the crash happened before the claim linearization point, this exact retry is
+	// allowed to create the one claim and the one visible provider effect.
+	secondConv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-retry"},
+		TransportRequestID: 1, TransportSHA256: "retry-sha", TransportBytes: 10, TransportSequence: 1,
+	}}
+	second := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: secondConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("pre-claim-second")})
+	t.Cleanup(func() { _ = second.Stop(context.Background(), testSession) })
+	secondCtrl, err := second.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: firstCtrl.ProviderConversationID(), ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := secondCtrl.Send(context.Background(), msg)
+	if err != nil || turn.ProviderTurnID != "provider-retry" {
+		t.Fatalf("retry turn=%+v err=%v", turn, err)
+	}
+	claims, err = st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 0 || len(secondConv.sentMessages()) != 1 {
+		t.Fatalf("unsettled=%+v retry provider dispatches=%d err=%v", claims, len(secondConv.sentMessages()), err)
+	}
+	if claim, ok, err := st.GetGovernedCommand(context.Background(), turn.ID); err != nil || !ok || claim.State != domain.GovernedCommandAcknowledged || claim.Correlation.ProviderTurnID != "provider-retry" {
+		t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+}
+
 type failAcknowledgedGovernedTurnStore struct {
 	chatsvc.Store
 	err error
