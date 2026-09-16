@@ -50,6 +50,10 @@ var (
 	// killed its owned process tree; the service must resume the same native
 	// conversation in a fresh controller before reporting Stop complete.
 	ErrChatInterruptRestartRequired = errors.New("chat interrupt requires controller restart")
+	// ErrChatInterruptContainmentFailed means the provider accepted Stop but the
+	// owned process tree could not be terminated. Effects may still be running;
+	// callers must preserve the Stop cutoff and block further dispatch.
+	ErrChatInterruptContainmentFailed = errors.New("chat interrupt process containment failed")
 	// ErrChatRequestNotPending means the request a decision names is not waiting
 	// for one: already answered, superseded, or from a controller that has been
 	// replaced. Two clients looking at the same approval is normal, so one of them
