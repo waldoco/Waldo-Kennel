@@ -974,7 +974,7 @@ func (c *conversation) DispatchInterrupt(ctx context.Context, providerTurnID str
 		case <-deadline.C:
 			if err := c.proc.forceStop(); err != nil {
 				c.clearInterrupt(providerTurnID, true)
-				return dispatch, fmt.Errorf("force-stop interrupted app-server: %w", err)
+				return dispatch, fmt.Errorf("%w: force-stop interrupted app-server: %v", ports.ErrChatInterruptContainmentFailed, err)
 			}
 			c.clearInterrupt(providerTurnID, true)
 			dispatch.Quiescence = domain.GovernedCommandQuiescenceCodexTree

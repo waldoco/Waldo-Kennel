@@ -1633,7 +1633,14 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 
 	if c.governance != nil {
 		if err := c.dispatchGovernedInterrupt(ctx, turn); err != nil {
-			if errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+			if errors.Is(err, ports.ErrChatInterruptRestartRequired) || errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
+				// Provider acceptance means Stop happened even when local process-tree
+				// containment failed. Preserve the cutoff and block every later effect.
+				c.mu.Lock()
+				if c.governance != nil {
+					c.governance.blocked = true
+				}
+				c.mu.Unlock()
 				return err
 			}
 			if errors.Is(err, ports.ErrChatNoActiveTurn) {
@@ -1661,6 +1668,11 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 		}
 	}
 	if err := c.conv.Interrupt(ctx, turn); err != nil {
+		if errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
+			// Provider accepted Stop, but effects may still be running. Never clear
+			// the cutoff or release queued work into the uncontained tree.
+			return err
+		}
 		if errors.Is(err, ports.ErrChatInterruptRestartRequired) {
 			// The driver already killed the non-quiescent provider tree. Preserve the
 			// Stop cutoff: queued pre-Stop work must not be released by recovery.

@@ -1670,3 +1670,35 @@ func TestDispatchInterruptReportsAcknowledgedAndQuiescent(t *testing.T) {
 		t.Fatalf("quiescence=%+v", dispatch)
 	}
 }
+
+func TestInterruptForceStopFailureIsTypedContainmentFailure(t *testing.T) {
+	clientReads, serverWrites := io.Pipe()
+	serverReads, clientWrites := io.Pipe()
+	containment := errors.New("kill process group denied")
+	conv := newConversation(&process{stdin: clientWrites, stdout: clientReads, stop: func() error { return nil }, forceStop: func() error { return containment }}, slog.New(slog.DiscardHandler))
+	conv.start("thread-1", "", "", nil)
+	defer func() { _ = serverReads.Close(); _ = serverWrites.Close(); _ = conv.Close() }()
+	go func() {
+		br := bufio.NewReader(serverReads)
+		for {
+			line, err := readFrame(br)
+			if err != nil {
+				return
+			}
+			var f frame
+			if json.Unmarshal(line, &f) == nil && f.ID != nil {
+				_, _ = io.WriteString(serverWrites, `{"id":`+string(*f.ID)+`,"result":{}}`+"\n")
+			}
+		}
+	}()
+	conv.mu.Lock()
+	conv.activeCommands["turn-1"] = 1
+	conv.mu.Unlock()
+	dispatch, err := conv.DispatchInterrupt(context.Background(), "turn-1")
+	if !errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
+		t.Fatalf("err=%v", err)
+	}
+	if dispatch.Acceptance != ports.ChatTurnAcknowledged || dispatch.Quiescence != domain.GovernedCommandQuiescencePending {
+		t.Fatalf("dispatch=%+v", dispatch)
+	}
+}
