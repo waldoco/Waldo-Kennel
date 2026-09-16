@@ -14,6 +14,7 @@ package codexappserver
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // frame is the union of every shape that crosses the wire.
@@ -81,6 +83,10 @@ type conn struct {
 
 	// writeMu serializes writes. It is never held while waiting for a response.
 	writeMu sync.Mutex
+	// writeSequence is the actual order of complete client frames handed to the
+	// transport. It is guarded by writeMu and is deliberately distinct from the
+	// JSON-RPC request id: server replies and notifications also use this writer.
+	writeSequence int64
 
 	mu      sync.Mutex
 	pending map[int64]chan frame
@@ -98,6 +104,19 @@ type conn struct {
 	// readErr is set before done closes when the loop failed for a reason other
 	// than clean EOF.
 	readErr error
+}
+
+// transportReceipt proves only that one bounded client request frame was fully
+// written. It intentionally carries no params, prompt text, raw bytes, thread
+// identifiers, credentials, or provider response content.
+type transportReceipt struct {
+	RequestID       int64     `json:"request_id"`
+	Method          string    `json:"method"`
+	SHA256          string    `json:"sha256"`
+	ByteCount       int       `json:"byte_count"`
+	WriteSequence   int64     `json:"write_sequence"`
+	SuccessfulWrite bool      `json:"successful_write"`
+	WrittenAt       time.Time `json:"written_at"`
 }
 
 const notificationBuffer = 4096
@@ -249,30 +268,136 @@ func (c *conn) answer(req serverRequest) {
 }
 
 func (c *conn) write(v any) error {
+	_, err := c.writeSerialized(v, 0, "", nil)
+	return err
+}
+
+// writeSerialized is the only frame serialization/write boundary. For
+// turn/start it validates the policy decoded from these exact serialized bytes
+// before transport and returns a receipt only after the entire newline-delimited
+// frame has been written successfully.
+func (c *conn) writeSerialized(v any, requestID int64, method string, expectedSandboxPolicy map[string]any) (transportReceipt, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("encode frame: %w", err)
+		return transportReceipt{}, fmt.Errorf("encode frame: %w", err)
 	}
 	b = append(b, '\n')
+	if method == "turn/start" {
+		if err := validateSerializedTurnSandboxPolicy(b, expectedSandboxPolicy); err != nil {
+			return transportReceipt{}, err
+		}
+	}
 
 	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	if _, err := c.w.Write(b); err != nil {
-		return fmt.Errorf("write frame: %w", err)
+	n, writeErr := c.w.Write(b)
+	if writeErr != nil {
+		c.writeMu.Unlock()
+		return transportReceipt{}, fmt.Errorf("write frame: %w", writeErr)
+	}
+	if n != len(b) {
+		c.writeMu.Unlock()
+		return transportReceipt{}, fmt.Errorf("write frame: %w: wrote %d of %d bytes", io.ErrShortWrite, n, len(b))
+	}
+	c.writeSequence++
+	sequence := c.writeSequence
+	writtenAt := time.Now().UTC()
+	c.writeMu.Unlock()
+
+	if method != "turn/start" {
+		return transportReceipt{}, nil
+	}
+	return transportReceipt{
+		RequestID:       requestID,
+		Method:          method,
+		SHA256:          fmt.Sprintf("%x", sha256.Sum256(b)),
+		ByteCount:       len(b),
+		WriteSequence:   sequence,
+		SuccessfulWrite: true,
+		WrittenAt:       writtenAt,
+	}, nil
+}
+
+func validateSerializedTurnSandboxPolicy(frameBytes []byte, expected map[string]any) error {
+	if expected == nil {
+		return errors.New("turn/start sandbox policy expectation is missing")
+	}
+	var sent struct {
+		Method string `json:"method"`
+		Params struct {
+			SandboxPolicy json.RawMessage `json:"sandboxPolicy"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(frameBytes, &sent); err != nil {
+		return fmt.Errorf("decode serialized turn/start frame: %w", err)
+	}
+	if sent.Method != "turn/start" {
+		return fmt.Errorf("serialized turn/start method = %q", sent.Method)
+	}
+	if len(sent.Params.SandboxPolicy) == 0 {
+		return errors.New("serialized turn/start sandbox policy is missing")
+	}
+	var got any
+	if err := json.Unmarshal(sent.Params.SandboxPolicy, &got); err != nil {
+		return fmt.Errorf("decode serialized turn/start sandbox policy: %w", err)
+	}
+	if !semanticJSONEqual(got, expected) {
+		gotCanonical, _ := json.Marshal(got)
+		wantCanonical, _ := json.Marshal(expected)
+		return fmt.Errorf("serialized turn/start sandbox policy mismatch: got %s want %s", gotCanonical, wantCanonical)
 	}
 	return nil
+}
+
+func semanticJSONEqual(left, right any) bool {
+	leftBytes, leftErr := json.Marshal(left)
+	rightBytes, rightErr := json.Marshal(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	var leftValue, rightValue any
+	if json.Unmarshal(leftBytes, &leftValue) != nil || json.Unmarshal(rightBytes, &rightValue) != nil {
+		return false
+	}
+	leftCanonical, _ := json.Marshal(leftValue)
+	rightCanonical, _ := json.Marshal(rightValue)
+	return string(leftCanonical) == string(rightCanonical)
+}
+
+func canonicalRequestFrameDigest(requestID int64, method string, params any) (string, int, error) {
+	payload := map[string]any{"id": requestID, "method": method}
+	if params != nil {
+		payload["params"] = params
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", 0, err
+	}
+	b = append(b, '\n')
+	return fmt.Sprintf("%x", sha256.Sum256(b)), len(b), nil
 }
 
 // request sends a client->server request and waits for its response. The caller's
 // context bounds the wait; a late response is discarded by deliver.
 func (c *conn) request(ctx context.Context, method string, params, out any) error {
+	_, err := c.requestFrame(ctx, method, params, out, nil, false)
+	return err
+}
+
+// requestWithTransportReceipt returns the turn/start transport receipt through
+// the same request call that decodes the provider response. Non-turn methods are
+// deliberately filtered and return a zero receipt.
+func (c *conn) requestWithTransportReceipt(ctx context.Context, method string, params, out any, expectedSandboxPolicy map[string]any) (transportReceipt, error) {
+	return c.requestFrame(ctx, method, params, out, expectedSandboxPolicy, true)
+}
+
+func (c *conn) requestFrame(ctx context.Context, method string, params, out any, expectedSandboxPolicy map[string]any, captureReceipt bool) (transportReceipt, error) {
 	id := c.nextID.Add(1)
 	ch := make(chan frame, 1)
 
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
-		return fmt.Errorf("%s: %w", method, ErrConnClosed)
+		return transportReceipt{}, fmt.Errorf("%s: %w", method, ErrConnClosed)
 	}
 	c.pending[id] = ch
 	c.mu.Unlock()
@@ -281,11 +406,16 @@ func (c *conn) request(ctx context.Context, method string, params, out any) erro
 	if params != nil {
 		payload["params"] = params
 	}
-	if err := c.write(payload); err != nil {
+	receiptMethod := ""
+	if captureReceipt && method == "turn/start" {
+		receiptMethod = method
+	}
+	receipt, err := c.writeSerialized(payload, id, receiptMethod, expectedSandboxPolicy)
+	if err != nil {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
-		return fmt.Errorf("%s: %w", method, err)
+		return transportReceipt{}, fmt.Errorf("%s: %w", method, err)
 	}
 
 	select {
@@ -293,21 +423,21 @@ func (c *conn) request(ctx context.Context, method string, params, out any) erro
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
-		return fmt.Errorf("%s: %w", method, ctx.Err())
+		return receipt, fmt.Errorf("%s: %w", method, ctx.Err())
 
 	case f, ok := <-ch:
 		if !ok {
-			return fmt.Errorf("%s: %w", method, ErrConnClosed)
+			return receipt, fmt.Errorf("%s: %w", method, ErrConnClosed)
 		}
 		if f.Error != nil {
-			return fmt.Errorf("%s: %w", method, f.Error)
+			return receipt, fmt.Errorf("%s: %w", method, f.Error)
 		}
 		if out != nil && len(f.Result) > 0 {
 			if err := json.Unmarshal(f.Result, out); err != nil {
-				return fmt.Errorf("%s: decode result: %w", method, err)
+				return receipt, fmt.Errorf("%s: decode result: %w", method, err)
 			}
 		}
-		return nil
+		return receipt, nil
 	}
 }
 

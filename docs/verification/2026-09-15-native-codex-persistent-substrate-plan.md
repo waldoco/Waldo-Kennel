@@ -117,3 +117,11 @@ Not encoded by this slice: durable daemon command envelopes, delivery-unknown re
 ## Genuine decisions
 
 No owner decision is required for this proof package. It introduces no external effect, persistent user data, budget default, migration, authority change, or production cutover. The real-provider test makes model calls only when a maintainer explicitly opts in with `KENNEL_CODEX_LIVE=1`.
+
+## Reconstructed Stage 1 deterministic checkpoint (2026-09-16)
+
+The earlier local checkpoint was lost before export. This checkpoint is a fresh reimplementation from immutable public base `f9095a19ac45175a3dcdbd982b005012a1f7ed12`, the revision-pinned Codex protocol, and archived evidence. It does not claim byte identity with the lost commits.
+
+Before provider work, Kennel binds the exact native profile and requires a daemon-authored compatibility diagnostic. The profile is pinned after caller settings on every `turn/start`: workspace write, network off, no extra writable roots, `/tmp` excluded, and active `TMPDIR` excluded. Start and Resume record only the coarse fields publicly returned by Codex; detailed per-turn provider observation remains explicitly unavailable. Exact serialized turn requests receive full-write transport receipts with request ID, transport sequence, byte count, and SHA-256, without retaining prompt bytes.
+
+The live journey requires deterministic admission, the intended failing test, repair and rerun, steer incorporation, a distinct continuation, exact-turn interrupt, fresh-process resume, stable history, post-resume continuation and cleanup. Interrupt completion is not treated as a lifecycle ordering fence. The acceptance helper drains late item frames by item ID for a bounded settle window, requires every observed effect item to terminate failed or canceled, and continuously requires the effect file to remain unchanged. Successful completion, unmatched activity, continuing output, file mutation or a terminal sentinel fails the proof.

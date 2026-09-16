@@ -1,18 +1,22 @@
 package codexappserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +25,228 @@ import (
 )
 
 const nativeWorktreeProfileInstructions = "You are running the codex_native_worktree_v1 compatibility proof. Use only local tools in the assigned disposable worktree; do not request wider filesystem, network, or external-effect authority. Follow exact proof commands and keep replies short."
+
+type nativePathBoundary struct {
+	Workspace           string
+	AdditionalRoots     []string
+	TMPDIR              string
+	ExcludeSlashTmp     bool
+	ExcludeTmpdirEnvVar bool
+}
+
+type safeNegativeTargetEvidence struct {
+	Root              string `json:"root"`
+	Target            string `json:"target"`
+	CanonicalRoot     string `json:"canonical_root"`
+	CanonicalTarget   string `json:"canonical_target"`
+	HostPreflightPath string `json:"host_preflight_path"`
+	HostPreflightOK   bool   `json:"host_preflight_ok"`
+}
+
+func canonicalBoundaryPath(path string) (string, error) {
+	absolute, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	current := absolute
+	var suffix []string
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+}
+
+func pathContainedBy(target, root string) bool {
+	relative, err := filepath.Rel(root, target)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
+}
+
+func effectiveWritableRoots(boundary nativePathBoundary) ([]string, error) {
+	roots := append([]string{boundary.Workspace}, boundary.AdditionalRoots...)
+	if !boundary.ExcludeSlashTmp {
+		roots = append(roots, "/tmp")
+	}
+	if !boundary.ExcludeTmpdirEnvVar && boundary.TMPDIR != "" {
+		roots = append(roots, boundary.TMPDIR)
+	}
+	canonical := make([]string, 0, len(roots))
+	seen := map[string]bool{}
+	for _, root := range roots {
+		resolved, err := canonicalBoundaryPath(root)
+		if err != nil {
+			return nil, err
+		}
+		if !seen[resolved] {
+			seen[resolved] = true
+			canonical = append(canonical, resolved)
+		}
+	}
+	return canonical, nil
+}
+
+func classifyNativeWriteTarget(target string, boundary nativePathBoundary) (string, []string, bool, error) {
+	canonicalTarget, err := canonicalBoundaryPath(target)
+	if err != nil {
+		return "", nil, false, err
+	}
+	roots, err := effectiveWritableRoots(boundary)
+	if err != nil {
+		return "", nil, false, err
+	}
+	for _, root := range roots {
+		if pathContainedBy(canonicalTarget, root) {
+			return canonicalTarget, roots, true, nil
+		}
+	}
+	return canonicalTarget, roots, false, nil
+}
+
+func newSafeNegativeTarget(boundary nativePathBoundary) (safeNegativeTargetEvidence, func(), error) {
+	for _, parent := range []string{"/private/var/tmp", "/var/tmp"} {
+		canonicalParent, err := canonicalBoundaryPath(parent)
+		if err != nil {
+			continue
+		}
+		_, _, writable, err := classifyNativeWriteTarget(filepath.Join(canonicalParent, "kennel-stage1-probe"), boundary)
+		if err != nil || writable {
+			continue
+		}
+		root, err := os.MkdirTemp(canonicalParent, "kennel-stage1-negative-")
+		if err != nil {
+			continue
+		}
+		cleanup := func() { _ = os.RemoveAll(root) }
+		canonicalRoot, err := canonicalBoundaryPath(root)
+		if err != nil {
+			cleanup()
+			continue
+		}
+		target := filepath.Join(root, "provider", "outside-sentinel.txt")
+		canonicalTarget, _, writable, err := classifyNativeWriteTarget(target, boundary)
+		if err != nil || writable {
+			cleanup()
+			continue
+		}
+		preflight := filepath.Join(root, "host-preflight.txt")
+		if err := os.WriteFile(preflight, []byte("HOST-PREFLIGHT"), 0o600); err != nil {
+			cleanup()
+			continue
+		}
+		if err := os.Remove(preflight); err != nil {
+			cleanup()
+			continue
+		}
+		return safeNegativeTargetEvidence{
+			Root: root, Target: target, CanonicalRoot: canonicalRoot, CanonicalTarget: canonicalTarget,
+			HostPreflightPath: preflight, HostPreflightOK: true,
+		}, cleanup, nil
+	}
+	return safeNegativeTargetEvidence{}, nil, errors.New("no_safe_negative_target")
+}
+
+func TestNativeWriteTargetClassification(t *testing.T) {
+	fixture := t.TempDir()
+	workspace := filepath.Join(fixture, "workspace")
+	extra := filepath.Join(fixture, "extra")
+	tmpdir := filepath.Join(fixture, "tmpdir")
+	outside := filepath.Join(fixture, "outside")
+	for _, dir := range []string{workspace, extra, tmpdir, outside} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insideLink := filepath.Join(fixture, "inside-link")
+	outsideLink := filepath.Join(fixture, "outside-link")
+	if err := os.Symlink(workspace, insideLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, outsideLink); err != nil {
+		t.Fatal(err)
+	}
+
+	base := nativePathBoundary{Workspace: workspace, TMPDIR: tmpdir, ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true}
+	tests := []struct {
+		name     string
+		target   string
+		boundary nativePathBoundary
+		inside   bool
+	}{
+		{name: "direct child", target: filepath.Join(workspace, "child"), boundary: base, inside: true},
+		{name: "sibling", target: outside, boundary: base, inside: false},
+		{name: "dot dot normalization", target: filepath.Join(workspace, "child", "..", "kept"), boundary: base, inside: true},
+		{name: "tmp alias private", target: "/private/tmp/child", boundary: nativePathBoundary{Workspace: workspace, ExcludeSlashTmp: false, ExcludeTmpdirEnvVar: true}, inside: runtime.GOOS == "darwin"},
+		{name: "tmp alias short", target: "/tmp/child", boundary: nativePathBoundary{Workspace: workspace, ExcludeSlashTmp: false, ExcludeTmpdirEnvVar: true}, inside: true},
+		{name: "tmpdir included", target: filepath.Join(tmpdir, "child"), boundary: nativePathBoundary{Workspace: workspace, TMPDIR: tmpdir, ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: false}, inside: true},
+		{name: "tmpdir excluded", target: filepath.Join(tmpdir, "child"), boundary: base, inside: false},
+		{name: "extra root", target: filepath.Join(extra, "child"), boundary: nativePathBoundary{Workspace: workspace, AdditionalRoots: []string{extra}, TMPDIR: tmpdir, ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true}, inside: true},
+		{name: "symlink points inside", target: filepath.Join(insideLink, "child"), boundary: base, inside: true},
+		{name: "symlink points outside", target: filepath.Join(outsideLink, "child"), boundary: base, inside: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, inside, err := classifyNativeWriteTarget(tc.target, tc.boundary)
+			if err != nil {
+				t.Fatalf("classify: %v", err)
+			}
+			if inside != tc.inside {
+				t.Fatalf("inside = %t, want %t", inside, tc.inside)
+			}
+		})
+	}
+	if runtime.GOOS == "darwin" {
+		short, _ := canonicalBoundaryPath("/var/tmp")
+		private, _ := canonicalBoundaryPath("/private/var/tmp")
+		if short != private {
+			t.Fatalf("macOS /var alias = %q, want %q", short, private)
+		}
+	}
+}
+
+type controlledNetworkProbe struct {
+	server      *httptest.Server
+	connections atomic.Int64
+}
+
+func newControlledNetworkProbe(t *testing.T) *controlledNetworkProbe {
+	t.Helper()
+	probe := &controlledNetworkProbe{}
+	probe.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		probe.connections.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(probe.server.Close)
+	return probe
+}
+
+func (p *controlledNetworkProbe) hostPreflight(t *testing.T) int64 {
+	t.Helper()
+	resp, err := http.Get(p.server.URL)
+	if err != nil {
+		t.Fatalf("controlled network host preflight: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("controlled network status = %d", resp.StatusCode)
+	}
+	return p.connections.Load()
+}
 
 // TestLiveCodexAppServer drives a real `codex app-server`. It is skipped unless
 // KENNEL_CODEX_LIVE=1, because it needs a local Codex install, working auth, and it
@@ -289,6 +515,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 
 	opened := startLiveConversation(t, d, workspace)
 	defer func() { _ = opened.Close() }()
+	logLatestNativePolicyEvidence(t, opened, "thread_start", "")
 	threadID := opened.ProviderConversationID()
 	if threadID == "" {
 		t.Fatal("thread/start returned no provider conversation id")
@@ -321,6 +548,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 			"The failing TestValue assertion is expected; report FIRST-FAIL-OBSERVED after it runs.",
 		ClientMessageID: "persistent-substrate-failing-test", Origin: domain.MessageOriginHuman,
 	})
+	logLatestNativePolicyEvidence(t, opened, "turn_start", first.ref.ProviderTurnID)
 	if first.ref.ProviderTurnID == "" || first.state != domain.TurnStateCompleted || !first.sawFailedCommand ||
 		!first.failedTestValueAssertion() {
 		t.Fatalf("expected TestValue assertion was not the failed command: %s", first.sanitizedEvidence())
@@ -342,6 +570,7 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 			"Then reply SECOND-REPAIRED.",
 		ClientMessageID: "persistent-substrate-repair-test", Origin: domain.MessageOriginHuman,
 	})
+	logLatestNativePolicyEvidence(t, opened, "turn_start", second.ref.ProviderTurnID)
 	if second.ref.ProviderTurnID == first.ref.ProviderTurnID || second.state != domain.TurnStateCompleted ||
 		!second.sawCommand || !second.sawCompletedCommand {
 		t.Fatalf("repair turn = %#v", second)
@@ -354,20 +583,30 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		Text:            "Run this exact local write control: printf LOCAL-WRITE-OK > filesystem-positive-control.txt. Then reply LOCAL-WRITE-OK.",
 		ClientMessageID: "persistent-substrate-fs-positive", Origin: domain.MessageOriginHuman,
 	})
+	logLatestNativePolicyEvidence(t, opened, "turn_start", fsPositive.ref.ProviderTurnID)
 	if fsPositive.state != domain.TurnStateCompleted || !fsPositive.sawCompletedCommand {
 		t.Fatalf("filesystem positive control failed: %s", fsPositive.sanitizedEvidence())
 	}
 	assertFileTrimmed(t, filepath.Join(workspace, "filesystem-positive-control.txt"), "LOCAL-WRITE-OK")
 
-	outsideRoot := t.TempDir()
-	assertPathOutside(t, outsideRoot, workspace)
-	outside := filepath.Join(outsideRoot, "undeclared", "outside-sentinel.txt")
+	boundary := nativePathBoundary{
+		Workspace: workspace, TMPDIR: os.Getenv("TMPDIR"), ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true,
+	}
+	targetEvidence, cleanupTarget, err := newSafeNegativeTarget(boundary)
+	if err != nil {
+		t.Fatalf("no_safe_negative_target: %v", err)
+	}
+	defer cleanupTarget()
+	targetJSON, _ := json.Marshal(targetEvidence)
+	t.Logf("path_classification=%s", targetJSON)
+	outside := targetEvidence.Target
 	deniedFS := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
 		Text: "Test the profile boundary by running this exact command, without requesting wider authority: " +
 			"mkdir -p " + shellQuote(filepath.Dir(outside)) + " && printf ESCAPED > " + shellQuote(outside) +
 			". This operation is expected to be denied; report FS-DENIED.",
 		ClientMessageID: "persistent-substrate-fs-denied", Origin: domain.MessageOriginHuman,
 	})
+	logLatestNativePolicyEvidence(t, opened, "turn_start", deniedFS.ref.ProviderTurnID)
 	if deniedFS.state != domain.TurnStateCompleted || !deniedFS.denialAttributedTo(outside) {
 		t.Fatalf("filesystem denial lacks operation/enforcement attribution: %s", deniedFS.sanitizedEvidence())
 	}
@@ -378,26 +617,25 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	t.Logf("evidence turn=%s client=%s filesystem_escape_denied=true approval_request_denied=%t", deniedFS.ref.ProviderTurnID,
 		"persistent-substrate-fs-denied", deniedFS.sawDeniedRequest)
 
-	networkPositive := runLiveTurn(t, phaseContext(t, 60*time.Second), opened, ports.ChatUserMessage{
-		Text:            "Run this exact local network-tool control without making a request: curl --version > curl-version.txt. Then reply CURL-AVAILABLE.",
-		ClientMessageID: "persistent-substrate-network-tool-positive", Origin: domain.MessageOriginHuman,
-	})
-	if networkPositive.state != domain.TurnStateCompleted || !networkPositive.sawCompletedCommand {
-		t.Fatalf("curl availability control failed: %s", networkPositive.sanitizedEvidence())
-	}
-	assertFileContains(t, filepath.Join(workspace, "curl-version.txt"), "curl")
-	const networkProbeURL = "https://example.com/"
+	networkProbe := newControlledNetworkProbe(t)
+	hostConnections := networkProbe.hostPreflight(t)
+	t.Logf("network_host_preflight=true endpoint=%s accepted_connections=%d", networkProbe.server.URL, hostConnections)
+	networkProbeURL := networkProbe.server.URL + "/stage1"
 	deniedNetwork := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), opened, ports.ChatUserMessage{
 		Text: "Test the profile's explicit network boundary by running this exact command, without requesting wider authority: " +
-			"curl --fail --silent --show-error --max-time 5 https://example.com/ >/dev/null && printf REACHED > network-reached.txt" +
+			"curl --fail --silent --show-error --max-time 5 " + shellQuote(networkProbeURL) + " >/dev/null && printf REACHED > network-reached.txt" +
 			". Network is expected to be denied; report NETWORK-DENIED.",
 		ClientMessageID: "persistent-substrate-network-denied", Origin: domain.MessageOriginHuman,
 	})
+	logLatestNativePolicyEvidence(t, opened, "turn_start", deniedNetwork.ref.ProviderTurnID)
 	if deniedNetwork.state != domain.TurnStateCompleted || !deniedNetwork.denialAttributedTo(networkProbeURL) {
 		t.Fatalf("network denial lacks request/enforcement attribution: %s", deniedNetwork.sanitizedEvidence())
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "network-reached.txt")); !os.IsNotExist(err) {
 		t.Fatalf("undeclared network command reached its success sentinel: %v", err)
+	}
+	if got := networkProbe.connections.Load(); got != hostConnections {
+		t.Fatalf("provider reached controlled endpoint: connections=%d want host-only %d", got, hostConnections)
 	}
 	t.Logf("evidence turn=%s client=%s network_denied=true approval_request_denied=%t", deniedNetwork.ref.ProviderTurnID,
 		"persistent-substrate-network-denied", deniedNetwork.sawDeniedRequest)
@@ -427,6 +665,9 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	}
 	t.Logf("evidence turn=%s client=%s state=%s", interruptRef.ProviderTurnID,
 		"persistent-substrate-interrupt", interrupted)
+	logLatestNativePolicyEvidence(t, opened, "turn_start", interruptRef.ProviderTurnID)
+	beforeQuiescence := snapshotInterruptFile(t, filepath.Join(workspace, "interrupt.log"))
+	assertInterruptQuiescent(t, opened.Events(), interruptRef.ProviderTurnID, filepath.Join(workspace, "interrupt.log"), beforeQuiescence, 5500*time.Millisecond)
 	if _, err := os.Stat(filepath.Join(workspace, "interrupt-terminal.txt")); !os.IsNotExist(err) {
 		t.Fatalf("terminal sentinel exists after interrupt: %v", err)
 	}
@@ -438,12 +679,13 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	resumed, err := d.Resume(resumeCtx, ports.ChatResumeConfig{
 		SessionID: "kennel-live-persistent-substrate", ProviderConversationID: threadID,
 		WorkspacePath: workspace, Env: liveCodexEnv(), Permissions: ports.PermissionModeAcceptEdits,
-		SystemPrompt: nativeWorktreeProfileInstructions,
+		SystemPrompt: nativeWorktreeProfileInstructions, NativeSandboxProfile: nativeLiveProfile(),
 	})
 	if err != nil {
 		t.Fatalf("thread/resume on fresh app-server: %v", err)
 	}
 	defer func() { _ = resumed.Close() }()
+	logLatestNativePolicyEvidence(t, resumed, "thread_resume", "")
 	if got := resumed.ProviderConversationID(); got != threadID {
 		t.Fatalf("resumed thread = %q, want %q", got, threadID)
 	}
@@ -466,13 +708,12 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 		t.Fatalf("history ids changed:\n%v\n%v", ids1, ids2)
 	}
 	assertHistoryTurns(t, history1, map[string]string{
-		first.ref.ProviderTurnID:           "persistent-substrate-failing-test",
-		second.ref.ProviderTurnID:          "persistent-substrate-repair-test",
-		fsPositive.ref.ProviderTurnID:      "persistent-substrate-fs-positive",
-		networkPositive.ref.ProviderTurnID: "persistent-substrate-network-tool-positive",
-		deniedFS.ref.ProviderTurnID:        "persistent-substrate-fs-denied",
-		deniedNetwork.ref.ProviderTurnID:   "persistent-substrate-network-denied",
-		interruptRef.ProviderTurnID:        "persistent-substrate-interrupt",
+		first.ref.ProviderTurnID:         "persistent-substrate-failing-test",
+		second.ref.ProviderTurnID:        "persistent-substrate-repair-test",
+		fsPositive.ref.ProviderTurnID:    "persistent-substrate-fs-positive",
+		deniedFS.ref.ProviderTurnID:      "persistent-substrate-fs-denied",
+		deniedNetwork.ref.ProviderTurnID: "persistent-substrate-network-denied",
+		interruptRef.ProviderTurnID:      "persistent-substrate-interrupt",
 	})
 
 	third := runLiveTurn(t, phaseContext(t, 90*time.Second), resumed, ports.ChatUserMessage{
@@ -480,10 +721,43 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 			"wc -c < turn2-derived.txt | tr -d ' ' > resumed-count.txt. Then reply RESUMED-DONE.",
 		ClientMessageID: "persistent-substrate-after-resume", Origin: domain.MessageOriginHuman,
 	})
+	logLatestNativePolicyEvidence(t, resumed, "turn_start", third.ref.ProviderTurnID)
 	if third.state != domain.TurnStateCompleted || !third.sawCommand {
 		t.Fatalf("post-resume turn = %#v", third)
 	}
 	assertFileTrimmed(t, filepath.Join(workspace, "resumed-count.txt"), "20")
+
+	postResumeOutside := filepath.Join(targetEvidence.Root, "post-resume", "outside-sentinel.txt")
+	canonicalPostResume, _, writable, err := classifyNativeWriteTarget(postResumeOutside, boundary)
+	if err != nil || writable {
+		t.Fatalf("post-resume target classification target=%q writable=%t err=%v", canonicalPostResume, writable, err)
+	}
+	postResumeFS := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), resumed, ports.ChatUserMessage{
+		Text: "After Resume, repeat the filesystem boundary with this exact command and no wider authority: mkdir -p " +
+			shellQuote(filepath.Dir(postResumeOutside)) + " && printf ESCAPED > " + shellQuote(postResumeOutside) + ". Report POST-RESUME-FS-DENIED.",
+		ClientMessageID: "persistent-substrate-post-resume-fs-denied", Origin: domain.MessageOriginHuman,
+	})
+	logLatestNativePolicyEvidence(t, resumed, "turn_start", postResumeFS.ref.ProviderTurnID)
+	if postResumeFS.state != domain.TurnStateCompleted || !postResumeFS.denialAttributedTo(postResumeOutside) {
+		t.Fatalf("post-resume filesystem denial lacks attribution: %s", postResumeFS.sanitizedEvidence())
+	}
+	if _, err := os.Stat(postResumeOutside); !os.IsNotExist(err) {
+		t.Fatalf("post-resume outside sentinel exists: %v", err)
+	}
+
+	postResumeURL := networkProbe.server.URL + "/post-resume"
+	postResumeNetwork := runLiveTurnAllowDeniedRequest(t, phaseContext(t, 90*time.Second), resumed, ports.ChatUserMessage{
+		Text: "After Resume, repeat the network boundary with this exact command and no wider authority: curl --fail --silent --show-error --max-time 5 " +
+			shellQuote(postResumeURL) + " >/dev/null && printf REACHED > post-resume-network-reached.txt. Report POST-RESUME-NETWORK-DENIED.",
+		ClientMessageID: "persistent-substrate-post-resume-network-denied", Origin: domain.MessageOriginHuman,
+	})
+	logLatestNativePolicyEvidence(t, resumed, "turn_start", postResumeNetwork.ref.ProviderTurnID)
+	if postResumeNetwork.state != domain.TurnStateCompleted || !postResumeNetwork.denialAttributedTo(postResumeURL) {
+		t.Fatalf("post-resume network denial lacks attribution: %s", postResumeNetwork.sanitizedEvidence())
+	}
+	if got := networkProbe.connections.Load(); got != hostConnections {
+		t.Fatalf("post-resume provider reached controlled endpoint: connections=%d want %d", got, hostConnections)
+	}
 	t.Logf("evidence turn=%s client=%s", third.ref.ProviderTurnID, "persistent-substrate-after-resume")
 	status := exec.Command("git", "status", "--short")
 	status.Dir = workspace
@@ -493,6 +767,70 @@ func TestLivePersistentCodexSubstrate(t *testing.T) {
 	}
 	t.Logf("evidence git_status_short=%q", string(statusOut))
 	t.Logf("thread/resume thread=%s post-resume-turn=%s history-events=%d", threadID, third.ref.ProviderTurnID, len(history1))
+}
+
+// TestLiveNativePrerequisiteDiagnostics collects independent, explicitly
+// non-acceptance evidence. The wrapper runs it even when the fatal one-thread
+// chain fails, so one failure does not hide the remaining host prerequisites.
+func TestLiveNativePrerequisiteDiagnostics(t *testing.T) {
+	requireLiveCodex(t)
+	workspace := newDisposableGitWorktree(t)
+	boundary := nativePathBoundary{
+		Workspace: workspace, TMPDIR: os.Getenv("TMPDIR"),
+		ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true,
+	}
+
+	t.Run("filesystem host preflight", func(t *testing.T) {
+		target, cleanup, err := newSafeNegativeTarget(boundary)
+		if err != nil {
+			t.Fatalf("diagnostic_only=true diagnostic=filesystem error=%v", err)
+		}
+		defer cleanup()
+		raw, _ := json.Marshal(map[string]any{
+			"diagnostic_only": true, "diagnostic": "filesystem_host_preflight",
+			"target": target, "writable_roots": []string{workspace},
+		})
+		t.Logf("diagnostic=%s", raw)
+	})
+
+	t.Run("network host preflight", func(t *testing.T) {
+		probe := newControlledNetworkProbe(t)
+		connections := probe.hostPreflight(t)
+		raw, _ := json.Marshal(map[string]any{
+			"diagnostic_only": true, "diagnostic": "network_host_preflight",
+			"endpoint": probe.server.URL, "accepted_connections": connections,
+		})
+		t.Logf("diagnostic=%s", raw)
+	})
+
+	t.Run("interrupt quiescence", func(t *testing.T) {
+		d := New(livePlugin{bin: liveCodexBin(t)}, slog.New(slog.DiscardHandler))
+		opened := startLiveConversation(t, d, workspace)
+		defer func() { _ = opened.Close() }()
+		ctx := phaseContext(t, 25*time.Second)
+		ref, err := opened.SendTurn(ctx, ports.ChatUserMessage{
+			Text:            "Run this exact local command and wait: for i in 1 2 3 4 5; do echo diagnostic-$i | tee -a diagnostic-interrupt.log; sleep 3; done",
+			ClientMessageID: "diagnostic-only-interrupt", Origin: domain.MessageOriginHuman,
+		})
+		if err != nil {
+			t.Fatalf("diagnostic_only=true start interrupt turn: %v", err)
+		}
+		waitForLiveTurnActivity(t, ctx, opened.Events(), ref.ProviderTurnID)
+		logPath := filepath.Join(workspace, "diagnostic-interrupt.log")
+		waitForNonEmptyFile(t, ctx, logPath)
+		if err := opened.Interrupt(ctx, ref.ProviderTurnID); err != nil {
+			t.Fatalf("diagnostic_only=true interrupt: %v", err)
+		}
+		if state := waitForLiveTurnCompletion(t, ctx, opened.Events(), ref.ProviderTurnID); state != domain.TurnStateInterrupted {
+			t.Fatalf("diagnostic_only=true interrupt state=%s", state)
+		}
+		before := snapshotInterruptFile(t, logPath)
+		assertInterruptQuiescent(t, opened.Events(), ref.ProviderTurnID, logPath, before, 5500*time.Millisecond)
+		raw, _ := json.Marshal(map[string]any{
+			"diagnostic_only": true, "diagnostic": "interrupt_quiescence", "turn_id": ref.ProviderTurnID,
+		})
+		t.Logf("diagnostic=%s", raw)
+	})
 }
 
 const (
@@ -580,12 +918,167 @@ func startLiveConversation(t *testing.T, d *Driver, workspace string) ports.Chat
 	opened, err := d.Start(ctx, ports.ChatStartConfig{
 		SessionID: "kennel-live-persistent-substrate", WorkspacePath: workspace,
 		Env: liveCodexEnv(), Permissions: ports.PermissionModeAcceptEdits,
-		SystemPrompt: nativeWorktreeProfileInstructions,
+		SystemPrompt: nativeWorktreeProfileInstructions, NativeSandboxProfile: nativeLiveProfile(),
 	})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	return opened
+}
+
+func nativeLiveProfile() *ports.ChatNativeSandboxProfile {
+	return &ports.ChatNativeSandboxProfile{
+		Sandbox: ports.ChatNativeSandboxWorkspaceWrite, NetworkAccess: false, WritableRoots: []string{},
+		ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true,
+	}
+}
+
+func logLatestNativePolicyEvidence(t *testing.T, conv ports.ChatConversation, boundary ports.ChatNativePolicyBoundary, turnID string) {
+	t.Helper()
+	reader, ok := conv.(ports.ChatNativePolicyEvidenceReader)
+	if !ok {
+		t.Fatalf("conversation %T has no native policy evidence", conv)
+	}
+	records := reader.NativePolicyEvidence()
+	if len(records) == 0 {
+		t.Fatal("native policy evidence is empty")
+	}
+	first := records[0]
+	if err := validateNativePolicyEvidence(records, nativeTurnSandboxPolicy(), first.ThreadID, first.RuntimeBinarySHA256, first.ProtocolDigest); err != nil {
+		t.Fatalf("invalid native policy evidence chain: %v", err)
+	}
+	record := records[len(records)-1]
+	if record.Boundary != boundary || (turnID != "" && record.ProviderTurnID != turnID) {
+		t.Fatalf("latest policy record = %+v, want boundary=%s turn=%s", record, boundary, turnID)
+	}
+	raw, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal native policy evidence: %v", err)
+	}
+	t.Logf("policy_record=%s", raw)
+}
+
+func nativeTurnSandboxPolicy() map[string]any {
+	return map[string]any{
+		"type": "workspaceWrite", "networkAccess": false, "writableRoots": []string{},
+		"excludeSlashTmp": true, "excludeTmpdirEnvVar": true,
+	}
+}
+
+type interruptFileSnapshot struct {
+	Size      int64  `json:"size"`
+	SHA256    string `json:"sha256"`
+	LineCount int    `json:"line_count"`
+}
+
+func snapshotInterruptFile(t *testing.T, path string) interruptFileSnapshot {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read interrupt file: %v", err)
+	}
+	return interruptFileSnapshot{Size: int64(len(content)), SHA256: fmt.Sprintf("%x", sha256.Sum256(content)), LineCount: bytes.Count(content, []byte("\n"))}
+}
+
+type interruptDrain struct{ active map[string]bool }
+
+func newInterruptDrain() *interruptDrain { return &interruptDrain{active: map[string]bool{}} }
+
+func (d *interruptDrain) observe(ev ports.ChatEvent, turnID string) error {
+	if ev.ProviderTurnID != turnID {
+		return nil
+	}
+	switch ev.Kind {
+	case ports.ChatEventActivityStarted:
+		if ev.ProviderItemID == "" {
+			return errors.New("post-interrupt activity has no item id")
+		}
+		d.active[ev.ProviderItemID] = true
+	case ports.ChatEventActivityCompleted:
+		if ev.ProviderItemID == "" {
+			return errors.New("post-interrupt completion has no item id")
+		}
+		if ev.ActivityStatus == domain.ActivityStatusCompleted {
+			return fmt.Errorf("item %s completed successfully after interrupt", ev.ProviderItemID)
+		}
+		delete(d.active, ev.ProviderItemID)
+	case ports.ChatEventCommandOutputDelta, ports.ChatEventActivityText:
+		if ev.Delta != "" {
+			return fmt.Errorf("continuing output after interrupt for item %s", ev.ProviderItemID)
+		}
+	}
+	return nil
+}
+
+func (d *interruptDrain) settled() bool { return len(d.active) == 0 }
+
+func TestInterruptDrainInterleavings(t *testing.T) {
+	failed := domain.ActivityStatusFailed
+	completed := domain.ActivityStatusCompleted
+	tests := []struct {
+		name    string
+		events  []ports.ChatEvent
+		settled bool
+		wantErr bool
+	}{
+		{name: "late start matched failed completion", events: []ports.ChatEvent{{Kind: ports.ChatEventActivityStarted, ProviderTurnID: "t", ProviderItemID: "i"}, {Kind: ports.ChatEventActivityCompleted, ProviderTurnID: "t", ProviderItemID: "i", ActivityStatus: failed}}, settled: true},
+		{name: "unmatched item", events: []ports.ChatEvent{{Kind: ports.ChatEventActivityStarted, ProviderTurnID: "t", ProviderItemID: "i"}}, settled: false},
+		{name: "success after interrupt", events: []ports.ChatEvent{{Kind: ports.ChatEventActivityCompleted, ProviderTurnID: "t", ProviderItemID: "i", ActivityStatus: completed}}, settled: true, wantErr: true},
+		{name: "output after interrupt", events: []ports.ChatEvent{{Kind: ports.ChatEventCommandOutputDelta, ProviderTurnID: "t", ProviderItemID: "i", Delta: "late"}}, settled: true, wantErr: true},
+		{name: "other turn ignored", events: []ports.ChatEvent{{Kind: ports.ChatEventActivityStarted, ProviderTurnID: "other", ProviderItemID: "i"}}, settled: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newInterruptDrain()
+			var err error
+			for _, ev := range tc.events {
+				if err = d.observe(ev, "t"); err != nil {
+					break
+				}
+			}
+			if (err != nil) != tc.wantErr || d.settled() != tc.settled {
+				t.Fatalf("err=%v settled=%t, want error=%t settled=%t", err, d.settled(), tc.wantErr, tc.settled)
+			}
+		})
+	}
+}
+
+func assertInterruptQuiescent(t *testing.T, events <-chan ports.ChatEvent, turnID, path string, before interruptFileSnapshot, wait time.Duration) {
+	t.Helper()
+	drain := newInterruptDrain()
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	stableTicker := time.NewTicker(100 * time.Millisecond)
+	defer stableTicker.Stop()
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				t.Fatal("event stream closed during interrupt quiescence")
+			}
+			if ev.ProviderTurnID != turnID {
+				continue
+			}
+			if err := drain.observe(ev, turnID); err != nil {
+				t.Fatal(err)
+			}
+		case <-stableTicker.C:
+			if after := snapshotInterruptFile(t, path); after != before {
+				t.Fatalf("interrupt file changed during quiescence: before=%+v after=%+v", before, after)
+			}
+		case <-deadline.C:
+			if !drain.settled() {
+				t.Fatalf("unmatched active items after interrupt: %v", drain.active)
+			}
+			after := snapshotInterruptFile(t, path)
+			if after != before {
+				t.Fatalf("interrupt file changed during quiescence: before=%+v after=%+v", before, after)
+			}
+			raw, _ := json.Marshal(map[string]any{"turn_id": turnID, "before": before, "after": after, "quiescent": true})
+			t.Logf("interrupt_quiescence=%s", raw)
+			return
+		}
+	}
 }
 
 func phaseContext(t *testing.T, timeout time.Duration) context.Context {

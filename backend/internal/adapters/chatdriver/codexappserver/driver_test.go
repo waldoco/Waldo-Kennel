@@ -1311,3 +1311,66 @@ func TestRequestUserInputEmitsTypedQuestionsAndForwardsExactAnswers(t *testing.T
 		}
 	}
 }
+
+func TestNativeSandboxProfileMapsOnlyExactStage1Boundary(t *testing.T) {
+	profile := &ports.ChatNativeSandboxProfile{
+		Sandbox: ports.ChatNativeSandboxWorkspaceWrite, NetworkAccess: false, WritableRoots: []string{},
+		ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true,
+	}
+	got, err := nativeSandboxPolicy(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"type": "workspaceWrite", "networkAccess": false, "writableRoots": []string{}, "excludeSlashTmp": true, "excludeTmpdirEnvVar": true}
+	if !semanticJSONEqual(got, want) {
+		t.Fatalf("policy = %#v, want %#v", got, want)
+	}
+	bad := *profile
+	bad.NetworkAccess = true
+	if _, err := nativeSandboxPolicy(&bad); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("network-enabled profile error = %v", err)
+	}
+	bad = *profile
+	bad.WritableRoots = []string{"/tmp"}
+	if _, err := nativeSandboxPolicy(&bad); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("extra-root profile error = %v", err)
+	}
+}
+
+func TestNativeThreadSandboxAcknowledgmentIsCoarseAndFailClosed(t *testing.T) {
+	expected, err := nativeSandboxPolicy(&ports.ChatNativeSandboxProfile{
+		Sandbox: ports.ChatNativeSandboxWorkspaceWrite, ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateNativeThreadSandbox(map[string]any{"type": "workspaceWrite", "networkAccess": false, "writableRoots": []any{}}, expected); err != nil {
+		t.Fatalf("compatible acknowledgment: %v", err)
+	}
+	if err := validateNativeThreadSandbox(map[string]any{"type": "dangerFullAccess"}, expected); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("widened acknowledgment error = %v", err)
+	}
+	if err := validateNativeThreadSandbox(map[string]any{"type": "workspaceWrite", "networkAccess": true}, expected); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("network acknowledgment error = %v", err)
+	}
+}
+
+func TestNativeTurnWirePolicyIsSemanticAndReceiptDigestIsExact(t *testing.T) {
+	params := map[string]any{"threadId": "thread-1", "input": []any{}, "sandboxPolicy": map[string]any{
+		"type": "workspaceWrite", "networkAccess": false, "writableRoots": []string{}, "excludeSlashTmp": true, "excludeTmpdirEnvVar": true,
+	}}
+	digest, bytes, err := canonicalRequestFrameDigest(17, "turn/start", params)
+	if err != nil || len(digest) != 64 || bytes <= 0 {
+		t.Fatalf("digest = %q bytes=%d err=%v", digest, bytes, err)
+	}
+	payload := map[string]any{"id": int64(17), "method": "turn/start", "params": params}
+	raw, _ := json.Marshal(payload)
+	raw = append(raw, '\n')
+	if err := validateSerializedTurnSandboxPolicy(raw, params["sandboxPolicy"].(map[string]any)); err != nil {
+		t.Fatalf("semantic policy: %v", err)
+	}
+	widened := map[string]any{"type": "workspaceWrite", "networkAccess": true}
+	if err := validateSerializedTurnSandboxPolicy(raw, widened); err == nil {
+		t.Fatal("widened expected policy accepted")
+	}
+}

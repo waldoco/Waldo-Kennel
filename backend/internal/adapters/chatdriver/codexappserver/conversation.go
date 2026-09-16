@@ -56,6 +56,14 @@ type conversation struct {
 	// governedSandboxPolicy is sent on every governed turn. Thread/start only
 	// accepts a broad sandbox name; turn/start carries the effective boundary.
 	governedSandboxPolicy map[string]any
+	// nativeSandboxPolicy is the immutable Stage 1 substrate constraint. It is
+	// separate from governed Outcome execution and is pinned after caller turn
+	// settings. nativePolicyEvidence stores bounded records without raw frames or
+	// prompt content.
+	nativeSandboxPolicy  map[string]any
+	nativePolicyEvidence []ports.ChatNativePolicyEvidence
+	runtimeBinarySHA256  string
+	protocolDigest       string
 	// intelligencePermissions names the request-scoped, injected permission
 	// profile pinned on every Waldo proposal turn. It must never be inferred
 	// from ordinary Chat permission modes.
@@ -134,6 +142,32 @@ func (c *conversation) start(threadID, model, effort string, governedSandboxPoli
 	c.threadEffort = effort
 	c.governedSandboxPolicy = governedSandboxPolicy
 	go c.pump()
+}
+
+func (c *conversation) configureNativeSandbox(policy map[string]any, initial ports.ChatNativePolicyEvidence) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	initial.Sequence = 1
+	initial.RuntimeBinarySHA256 = c.runtimeBinarySHA256
+	initial.ProtocolDigest = c.protocolDigest
+	records := []ports.ChatNativePolicyEvidence{cloneNativePolicyEvidence(initial)}
+	if err := validateNativePolicyEvidence(records, policy, initial.ThreadID, c.runtimeBinarySHA256, c.protocolDigest); err != nil {
+		return err
+	}
+	c.nativeSandboxPolicy = cloneSandboxPolicy(policy)
+	c.nativePolicyEvidence = records
+	return nil
+}
+
+// NativePolicyEvidence returns a defensive copy of the bounded Stage 1 records.
+func (c *conversation) NativePolicyEvidence() []ports.ChatNativePolicyEvidence {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	records := make([]ports.ChatNativePolicyEvidence, len(c.nativePolicyEvidence))
+	for i := range c.nativePolicyEvidence {
+		records[i] = cloneNativePolicyEvidence(c.nativePolicyEvidence[i])
+	}
+	return records
 }
 
 // ProviderConversationID is the Codex thread id Kennel persists for resume.
@@ -290,19 +324,38 @@ func (c *conversation) sendTurn(ctx context.Context, msg ports.ChatUserMessage, 
 		params["approvalPolicy"] = "on-request"
 		params["sandboxPolicy"] = cloneSandboxPolicy(c.governedSandboxPolicy)
 	}
+	if c.nativeSandboxPolicy != nil {
+		// This Stage 1 profile is a substrate constraint, not governed authority.
+		// Pin it after every caller setting so a per-turn choice cannot widen or
+		// drop any frozen field.
+		params["approvalPolicy"] = "on-request"
+		params["sandboxPolicy"] = cloneSandboxPolicy(c.nativeSandboxPolicy)
+	}
 
 	var resp struct {
 		Turn struct {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	if err := c.conn.request(ctx, "turn/start", params, &resp); err != nil {
+	var receipt transportReceipt
+	var err error
+	if c.nativeSandboxPolicy != nil {
+		receipt, err = c.conn.requestWithTransportReceipt(ctx, "turn/start", params, &resp, c.nativeSandboxPolicy)
+	} else {
+		err = c.conn.request(ctx, "turn/start", params, &resp)
+	}
+	if err != nil {
 		return ports.ChatTurnRef{}, fmt.Errorf("turn/start: %w", err)
 	}
 	if strings.TrimSpace(resp.Turn.ID) == "" {
 		return ports.ChatTurnRef{}, errors.New("turn/start returned no turn id")
 	}
 
+	if c.nativeSandboxPolicy != nil {
+		if err := c.appendNativeTurnPolicyEvidence(resp.Turn.ID, receipt, params); err != nil {
+			return ports.ChatTurnRef{}, err
+		}
+	}
 	c.mu.Lock()
 	c.activeTurn = resp.Turn.ID
 	c.mu.Unlock()
@@ -365,11 +418,124 @@ func turnSandboxPolicyForExecution(sandbox string) map[string]any {
 }
 
 func cloneSandboxPolicy(policy map[string]any) map[string]any {
+	if policy == nil {
+		return nil
+	}
 	clone := make(map[string]any, len(policy))
 	for key, value := range policy {
 		clone[key] = value
 	}
 	return clone
+}
+
+func cloneNativePolicyEvidence(record ports.ChatNativePolicyEvidence) ports.ChatNativePolicyEvidence {
+	record.RequestedPolicy = cloneSandboxPolicy(record.RequestedPolicy)
+	record.ObservedPolicy = cloneSandboxPolicy(record.ObservedPolicy)
+	return record
+}
+
+func (c *conversation) appendNativeTurnPolicyEvidence(turnID string, receipt transportReceipt, params map[string]any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	expectedSHA256, expectedByteCount, err := canonicalRequestFrameDigest(receipt.RequestID, "turn/start", params)
+	if err != nil || receipt.Method != "turn/start" || receipt.SHA256 != expectedSHA256 || receipt.ByteCount != expectedByteCount {
+		return fmt.Errorf("native turn transport receipt mismatch: method=%q sha_match=%t bytes=%d want=%d: %v",
+			receipt.Method, receipt.SHA256 == expectedSHA256, receipt.ByteCount, expectedByteCount, err)
+	}
+	record := ports.ChatNativePolicyEvidence{
+		Sequence: int64(len(c.nativePolicyEvidence) + 1), Boundary: ports.ChatNativePolicyBoundaryTurnStart,
+		ClaimClass: ports.ChatNativePolicyClaimRequestIntegrity, ThreadID: c.threadID, ProviderTurnID: turnID,
+		RequestedPolicy: cloneSandboxPolicy(c.nativeSandboxPolicy), ObservedPolicy: nil,
+		ObservationSource:               "public_protocol_unavailable",
+		ProviderObservationAvailability: ports.ChatNativePolicyObservationPublicProtocolUnavailable,
+		ComparisonResult:                ports.ChatNativePolicyComparisonNotObservable,
+		CanonicalizationVersion:         nativePolicyCanonicalizationVersion,
+		RuntimeBinarySHA256:             c.runtimeBinarySHA256, ProtocolDigest: c.protocolDigest,
+		RequestWireShape:   "jsonrpc2 newline-delimited exact-frame-sha256",
+		TransportRequestID: receipt.RequestID, TransportMethod: receipt.Method, TransportWriteSequence: receipt.WriteSequence,
+		TransportSHA256: receipt.SHA256, TransportByteCount: receipt.ByteCount,
+		TransportSuccessfulWrite: receipt.SuccessfulWrite, Timestamp: receipt.WrittenAt,
+	}
+	records := append(append([]ports.ChatNativePolicyEvidence(nil), c.nativePolicyEvidence...), record)
+	if err := validateNativePolicyEvidence(records, c.nativeSandboxPolicy, c.threadID, c.runtimeBinarySHA256, c.protocolDigest); err != nil {
+		return fmt.Errorf("native turn policy evidence: %w", err)
+	}
+	c.nativePolicyEvidence = records
+	return nil
+}
+
+func validateNativePolicyEvidence(records []ports.ChatNativePolicyEvidence, expectedPolicy map[string]any, threadID, runtimeSHA256, protocolDigest string) error {
+	if len(records) == 0 {
+		return errors.New("native policy evidence is empty")
+	}
+	if !isLowerHexSHA256(runtimeSHA256) || protocolDigest == "" {
+		return errors.New("native policy runtime/protocol provenance is missing")
+	}
+	seenTurns := map[string]bool{}
+	seenRequests := map[int64]bool{}
+	seenWrites := map[int64]bool{}
+	var previousWrite int64
+	for i, record := range records {
+		if record.Sequence != int64(i+1) || record.ThreadID != threadID || record.Timestamp.IsZero() ||
+			record.RuntimeBinarySHA256 != runtimeSHA256 || record.ProtocolDigest != protocolDigest ||
+			record.CanonicalizationVersion != nativePolicyCanonicalizationVersion {
+			return fmt.Errorf("record %d has invalid sequence, identity, time, or provenance", i)
+		}
+		if i == 0 {
+			if record.Boundary != ports.ChatNativePolicyBoundaryThreadStart && record.Boundary != ports.ChatNativePolicyBoundaryThreadResume {
+				return errors.New("first native policy record is not Start or Resume")
+			}
+			expectedSource := "thread_start_response.sandbox"
+			expectedWireShape := "thread/start sandbox enum"
+			if record.Boundary == ports.ChatNativePolicyBoundaryThreadResume {
+				expectedSource = "thread_resume_response.sandbox"
+				expectedWireShape = "thread/resume sandbox enum"
+			}
+			if record.ClaimClass != ports.ChatNativePolicyClaimProviderAcknowledgment ||
+				record.ProviderObservationAvailability != ports.ChatNativePolicyObservationAvailable ||
+				record.ComparisonResult != ports.ChatNativePolicyComparisonMatchComparableFields || record.ObservedPolicy == nil ||
+				record.ObservationSource != expectedSource || record.RequestWireShape != expectedWireShape ||
+				!semanticJSONEqual(record.RequestedPolicy, map[string]any{"sandbox": "workspace-write"}) ||
+				record.TransportSuccessfulWrite || record.TransportRequestID != 0 || record.TransportWriteSequence != 0 ||
+				record.TransportMethod != "" || record.TransportSHA256 != "" || record.TransportByteCount != 0 {
+				return errors.New("native Start/Resume acknowledgment is incomplete")
+			}
+			if err := validateNativeThreadSandbox(record.ObservedPolicy, expectedPolicy); err != nil {
+				return err
+			}
+			continue
+		}
+		if record.Boundary != ports.ChatNativePolicyBoundaryTurnStart || record.ClaimClass != ports.ChatNativePolicyClaimRequestIntegrity ||
+			record.ProviderTurnID == "" || record.ObservedPolicy != nil || record.ObservationSource != "public_protocol_unavailable" ||
+			record.ProviderObservationAvailability != ports.ChatNativePolicyObservationPublicProtocolUnavailable ||
+			record.ComparisonResult != ports.ChatNativePolicyComparisonNotObservable || !record.TransportSuccessfulWrite ||
+			record.RequestWireShape != "jsonrpc2 newline-delimited exact-frame-sha256" ||
+			record.TransportRequestID <= 0 || record.TransportMethod != "turn/start" || record.TransportWriteSequence <= previousWrite ||
+			!isLowerHexSHA256(record.TransportSHA256) || record.TransportByteCount <= 0 ||
+			!semanticJSONEqual(record.RequestedPolicy, expectedPolicy) {
+			return fmt.Errorf("turn policy record %d is incomplete, widened, mutated, or out of order", i)
+		}
+		if seenTurns[record.ProviderTurnID] || seenRequests[record.TransportRequestID] || seenWrites[record.TransportWriteSequence] {
+			return fmt.Errorf("turn policy record %d duplicates turn, request, or write identity", i)
+		}
+		seenTurns[record.ProviderTurnID] = true
+		seenRequests[record.TransportRequestID] = true
+		seenWrites[record.TransportWriteSequence] = true
+		previousWrite = record.TransportWriteSequence
+	}
+	return nil
+}
+
+func isLowerHexSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // ListModels asks the provider which models this account may use.

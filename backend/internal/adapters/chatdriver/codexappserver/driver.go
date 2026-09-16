@@ -2,6 +2,7 @@ package codexappserver
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +71,7 @@ type Driver struct {
 	spawn        spawnFunc
 	versionProbe versionProbeFunc
 	surfaceProbe surfaceProbeFunc
+	binaryDigest func(string) (string, error)
 }
 
 // New builds a Chat driver over the existing Codex agent plugin.
@@ -79,7 +81,7 @@ func New(plugin codexPlugin, log *slog.Logger) *Driver {
 	}
 	return &Driver{
 		plugin: plugin, log: log, spawn: spawnAppServer,
-		versionProbe: installedCodexVersion,
+		versionProbe: installedCodexVersion, binaryDigest: binaryFileSHA256,
 	}
 }
 
@@ -306,7 +308,16 @@ func (d *Driver) Start(ctx context.Context, cfg ports.ChatStartConfig) (ports.Ch
 			return nil, err
 		}
 	}
-	conv, err := d.connect(ctx, cfg.WorkspacePath, cfg.Env)
+	nativePolicy, err := nativeSandboxPolicy(cfg.NativeSandboxProfile)
+	if err != nil {
+		return nil, err
+	}
+	var conv *conversation
+	if nativePolicy != nil {
+		conv, err = d.connectNative(ctx, cfg.WorkspacePath, cfg.Env)
+	} else {
+		conv, err = d.connect(ctx, cfg.WorkspacePath, cfg.Env)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +333,10 @@ func (d *Driver) Start(ctx context.Context, cfg ports.ChatStartConfig) (ports.Ch
 		}
 		policy = "on-request"
 		governedSandboxPolicy = turnSandboxPolicyForExecution(sandbox)
+	}
+	if nativePolicy != nil {
+		policy = "on-request"
+		sandbox = "workspace-write"
 	}
 	params := map[string]any{
 		"cwd":            cfg.WorkspacePath,
@@ -339,8 +354,9 @@ func (d *Driver) Start(ctx context.Context, cfg ports.ChatStartConfig) (ports.Ch
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
-		Model           string `json:"model"`
-		ReasoningEffort string `json:"reasoningEffort"`
+		Model           string         `json:"model"`
+		ReasoningEffort string         `json:"reasoningEffort"`
+		Sandbox         map[string]any `json:"sandbox"`
 	}
 	openCtx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -352,8 +368,26 @@ func (d *Driver) Start(ctx context.Context, cfg ports.ChatStartConfig) (ports.Ch
 		_ = conv.Close()
 		return nil, errors.New("thread/start returned no thread id")
 	}
+	if nativePolicy != nil {
+		if err := validateNativeThreadSandbox(resp.Sandbox, nativePolicy); err != nil {
+			_ = conv.Close()
+			return nil, err
+		}
+	}
 
 	conv.start(resp.Thread.ID, resp.Model, resp.ReasoningEffort, governedSandboxPolicy)
+	if nativePolicy != nil {
+		if err := conv.configureNativeSandbox(nativePolicy, ports.ChatNativePolicyEvidence{
+			Boundary: ports.ChatNativePolicyBoundaryThreadStart, ClaimClass: ports.ChatNativePolicyClaimProviderAcknowledgment, ThreadID: resp.Thread.ID,
+			RequestedPolicy: map[string]any{"sandbox": "workspace-write"}, ObservedPolicy: cloneSandboxPolicy(resp.Sandbox),
+			ObservationSource: "thread_start_response.sandbox", ProviderObservationAvailability: ports.ChatNativePolicyObservationAvailable,
+			ComparisonResult: ports.ChatNativePolicyComparisonMatchComparableFields, CanonicalizationVersion: nativePolicyCanonicalizationVersion,
+			RequestWireShape: "thread/start sandbox enum", Timestamp: time.Now().UTC(),
+		}); err != nil {
+			_ = conv.Close()
+			return nil, err
+		}
+	}
 	return conv, nil
 }
 
@@ -371,8 +405,17 @@ func (d *Driver) Resume(ctx context.Context, cfg ports.ChatResumeConfig) (ports.
 			return nil, err
 		}
 	}
+	nativePolicy, err := nativeSandboxPolicy(cfg.NativeSandboxProfile)
+	if err != nil {
+		return nil, err
+	}
 
-	conv, err := d.connect(ctx, cfg.WorkspacePath, cfg.Env)
+	var conv *conversation
+	if nativePolicy != nil {
+		conv, err = d.connectNative(ctx, cfg.WorkspacePath, cfg.Env)
+	} else {
+		conv, err = d.connect(ctx, cfg.WorkspacePath, cfg.Env)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -388,6 +431,10 @@ func (d *Driver) Resume(ctx context.Context, cfg ports.ChatResumeConfig) (ports.
 		}
 		policy = "on-request"
 		governedSandboxPolicy = turnSandboxPolicyForExecution(sandbox)
+	}
+	if nativePolicy != nil {
+		policy = "on-request"
+		sandbox = "workspace-write"
 	}
 	params := map[string]any{
 		"threadId":       cfg.ProviderConversationID,
@@ -407,8 +454,9 @@ func (d *Driver) Resume(ctx context.Context, cfg ports.ChatResumeConfig) (ports.
 	resumeCtx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 	var resp struct {
-		Model           string `json:"model"`
-		ReasoningEffort string `json:"reasoningEffort"`
+		Model           string         `json:"model"`
+		ReasoningEffort string         `json:"reasoningEffort"`
+		Sandbox         map[string]any `json:"sandbox"`
 	}
 	err = conv.conn.request(resumeCtx, "thread/resume", params, &resp)
 	if err != nil {
@@ -417,16 +465,104 @@ func (d *Driver) Resume(ctx context.Context, cfg ports.ChatResumeConfig) (ports.
 		// conversation would present unrelated history as continuous.
 		return nil, fmt.Errorf("%w: %w", ports.ErrChatResumeFailed, err)
 	}
+	if nativePolicy != nil {
+		if err := validateNativeThreadSandbox(resp.Sandbox, nativePolicy); err != nil {
+			_ = conv.Close()
+			return nil, err
+		}
+	}
 
 	conv.start(cfg.ProviderConversationID, resp.Model, resp.ReasoningEffort, governedSandboxPolicy)
+	if nativePolicy != nil {
+		if err := conv.configureNativeSandbox(nativePolicy, ports.ChatNativePolicyEvidence{
+			Boundary: ports.ChatNativePolicyBoundaryThreadResume, ClaimClass: ports.ChatNativePolicyClaimProviderAcknowledgment, ThreadID: cfg.ProviderConversationID,
+			RequestedPolicy: map[string]any{"sandbox": "workspace-write"}, ObservedPolicy: cloneSandboxPolicy(resp.Sandbox),
+			ObservationSource: "thread_resume_response.sandbox", ProviderObservationAvailability: ports.ChatNativePolicyObservationAvailable,
+			ComparisonResult: ports.ChatNativePolicyComparisonMatchComparableFields, CanonicalizationVersion: nativePolicyCanonicalizationVersion,
+			RequestWireShape: "thread/resume sandbox enum", Timestamp: time.Now().UTC(),
+		}); err != nil {
+			_ = conv.Close()
+			return nil, err
+		}
+	}
 	return conv, nil
+}
+
+const nativePolicyCanonicalizationVersion = "codex-native-profile-v1"
+
+func nativeSandboxPolicy(profile *ports.ChatNativeSandboxProfile) (map[string]any, error) {
+	if profile == nil {
+		return nil, nil
+	}
+	if profile.Sandbox != ports.ChatNativeSandboxWorkspaceWrite || profile.NetworkAccess ||
+		len(profile.WritableRoots) != 0 || !profile.ExcludeSlashTmp || !profile.ExcludeTmpdirEnvVar {
+		return nil, fmt.Errorf("%w: unsupported or inconsistent native sandbox profile", ports.ErrChatProfileMismatch)
+	}
+	return map[string]any{
+		"type":                "workspaceWrite",
+		"networkAccess":       false,
+		"writableRoots":       []string{},
+		"excludeSlashTmp":     true,
+		"excludeTmpdirEnvVar": true,
+	}, nil
+}
+
+func validateNativeThreadSandbox(observed, expectedDetailed map[string]any) error {
+	if observed == nil {
+		return fmt.Errorf("%w: provider returned no structured sandbox", ports.ErrChatProfileMismatch)
+	}
+	if observed["type"] != "workspaceWrite" {
+		return fmt.Errorf("%w: provider sandbox type = %v, want workspaceWrite", ports.ErrChatProfileMismatch, observed["type"])
+	}
+	for _, field := range []string{"networkAccess", "writableRoots", "excludeSlashTmp", "excludeTmpdirEnvVar"} {
+		got, present := observed[field]
+		if !present {
+			continue
+		}
+		if !semanticJSONEqual(got, expectedDetailed[field]) {
+			return fmt.Errorf("%w: provider sandbox %s = %v, want %v", ports.ErrChatProfileMismatch, field, got, expectedDetailed[field])
+		}
+	}
+	return nil
+}
+
+func binaryFileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 // connect spawns app-server and completes the initialize handshake.
 func (d *Driver) connect(ctx context.Context, workdir string, env map[string]string) (*conversation, error) {
+	return d.connectWithProvenance(ctx, workdir, env, false)
+}
+
+func (d *Driver) connectNative(ctx context.Context, workdir string, env map[string]string) (*conversation, error) {
+	return d.connectWithProvenance(ctx, workdir, env, true)
+}
+
+func (d *Driver) connectWithProvenance(ctx context.Context, workdir string, env map[string]string, bindNativeProvenance bool) (*conversation, error) {
 	bin, err := d.plugin.ResolveBinary(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ports.ErrChatDriverUnavailable, err)
+	}
+	digest := d.binaryDigest
+	if digest == nil {
+		digest = binaryFileSHA256
+	}
+	var runtimeSHA256 string
+	if bindNativeProvenance {
+		runtimeSHA256, err = digest(bin)
+		if err != nil || !isLowerHexSHA256(runtimeSHA256) {
+			return nil, fmt.Errorf("%w: hash native runtime before launch: %v", ports.ErrChatDriverUnavailable, err)
+		}
 	}
 
 	proc, err := d.spawn(ctx, bin, workdir, envSlice(env))
@@ -435,6 +571,7 @@ func (d *Driver) connect(ctx context.Context, workdir string, env map[string]str
 	}
 
 	conv := newConversation(proc, d.log)
+	conv.runtimeBinarySHA256 = runtimeSHA256
 
 	initCtx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -464,12 +601,35 @@ func (d *Driver) connect(ctx context.Context, workdir string, env map[string]str
 	// refused ahead of thread/start, and so the conversation reports the
 	// negotiated capability set rather than the static table. The fetch is
 	// cached per binary, so Probe and connect do not pay it twice.
-	negotiated, err := d.negotiate(ctx, bin)
+	var negotiated negotiation
+	if bindNativeProvenance {
+		probe := d.surfaceProbe
+		if probe == nil {
+			probe = fetchProtocolSurface
+		}
+		surface, probeErr := probe(ctx, bin)
+		if probeErr != nil {
+			err = fmt.Errorf("%w: verify installed Codex protocol surface: %w", ports.ErrChatDriverIncompatible, probeErr)
+		} else {
+			negotiated = negotiateProtocol(surface)
+			err = negotiated.refuse()
+		}
+	} else {
+		negotiated, err = d.negotiate(ctx, bin)
+	}
 	if err != nil {
 		_ = conv.Close()
 		return nil, err
 	}
+	if bindNativeProvenance {
+		postLaunchSHA256, hashErr := digest(bin)
+		if hashErr != nil || postLaunchSHA256 != runtimeSHA256 {
+			_ = conv.Close()
+			return nil, fmt.Errorf("%w: native runtime changed during launch/protocol binding", ports.ErrChatDriverIncompatible)
+		}
+	}
 	conv.caps = negotiated.caps
+	conv.protocolDigest = negotiated.surface.digest
 	return conv, nil
 }
 

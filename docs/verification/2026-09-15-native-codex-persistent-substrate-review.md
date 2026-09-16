@@ -53,3 +53,13 @@ The deterministic package test passes in the Linux review worktree. The real-pro
 - Wrapper manifest records `source_dirty` from `git status --porcelain`.
 - Hashed live log records every provider turn ID with its exact client message ID, marker content and SHA-256, and final `git status --short`.
 - `requestUserInput` retains both `isSecret` and `isOther`. Secret fields project as password format. An `isOther` question keeps provider options as examples and an explicit other marker rather than an enum-only constraint. Exact raw answers still round-trip unchanged.
+
+## Reconstructed checkpoint review additions (2026-09-16)
+
+- Confirm the source base is exactly `f9095a19ac45175a3dcdbd982b005012a1f7ed12`; do not describe this tree as identical to the lost local checkpoint.
+- Confirm the native profile is separate from governed `AttemptExecutionPolicy`, which remains rejected in App Server mode.
+- Confirm Start/Resume evidence is labeled coarse and every detailed turn record is labeled not observable by the public provider protocol.
+- Confirm receipts hash the exact newline-delimited fully written request and preserve request identity separately from actual write order.
+- Confirm the compatibility diagnostic is the only first turn, is daemon-authored, and ordinary/model work is blocked until it passes.
+- Confirm interrupt uses bounded item-ID drain plus continuous file stability. A late start followed by matching failed/canceled completion is accepted; success, output, mutation, unmatched activity or deadline residue fails.
+- Require focused package, race, ports, vet, backend compile, shell syntax, diff/scope and Git-integrity evidence before a provider call.
