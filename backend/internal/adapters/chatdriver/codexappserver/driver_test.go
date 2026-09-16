@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -1558,5 +1560,26 @@ func TestConnectionCloseDoesNotReleaseUnverifiedInterruptedTerminal(t *testing.T
 		if ev.Kind == ports.ChatEventTurnCompleted && ev.ProviderTurnID == "turn-1" {
 			t.Fatalf("unverified interrupted terminal escaped on connection close: %#v", ev)
 		}
+	}
+}
+
+func TestNativeWorktreeEnvironmentConfinesGoScratch(t *testing.T) {
+	workspace := t.TempDir()
+	env, err := nativeWorktreeEnvironment(workspace, map[string]string{
+		"PATH": "/pinned/bin", "GOCACHE": "/outside/cache", "GOTMPDIR": "/outside/tmp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["PATH"] != "/pinned/bin" {
+		t.Fatalf("unrelated overlay changed: %#v", env)
+	}
+	if want := filepath.Join(workspace, ".gocache"); env["GOCACHE"] != want {
+		t.Errorf("GOCACHE=%q, want %q", env["GOCACHE"], want)
+	}
+	if want := filepath.Join(workspace, ".gotmp"); env["GOTMPDIR"] != want {
+		t.Errorf("GOTMPDIR=%q, want %q", env["GOTMPDIR"], want)
+	} else if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
+		t.Fatalf("GOTMPDIR was not created: info=%v err=%v", info, statErr)
 	}
 }
