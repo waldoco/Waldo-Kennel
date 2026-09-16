@@ -535,6 +535,26 @@ type GovernedCommand struct {
 	UpdatedAt              time.Time
 }
 
+type GovernedControlCommand struct {
+	ID                     string
+	SessionID              string
+	IdempotencyKey         string
+	RequestFingerprint     string
+	CommandClass           string
+	State                  string
+	ControllerGeneration   string
+	ExpectedRevision       string
+	CapabilityFingerprint  string
+	ProviderConversationID string
+	ClientMessageID        string
+	ProviderTurnID         string
+	TargetGeneration       string
+	Quiescence             string
+	QuiescenceEvidenceRef  string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type IntakeAnalysisRequest struct {
 	ID                       domain.IntakeAnalysisRequestID
 	IntakeID                 string
