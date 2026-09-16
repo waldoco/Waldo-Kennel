@@ -9899,6 +9899,74 @@ components:
       - contentDigest
       - sizeBytes
       type: object
+    ControllersGovernedControlBlockResponse:
+      properties:
+        id:
+          type: string
+        kind:
+          enum:
+          - steer
+          - answer
+          - interrupt
+          type: string
+        providerTurnId:
+          type: string
+        quiescence:
+          enum:
+          - not_applicable
+          - pending
+          - codex_process_tree_verified
+          type: string
+        quiescenceEvidenceRef:
+          type: string
+        requestInstanceId:
+          type: string
+        since:
+          type: string
+        state:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
+      required:
+      - kind
+      - id
+      - state
+      - quiescence
+      - since
+      type: object
+    ControllersGovernedTurnBlockResponse:
+      properties:
+        kind:
+          enum:
+          - turn
+          type: string
+        quiescence:
+          enum:
+          - not_applicable
+          - pending
+          - codex_process_tree_verified
+          type: string
+        quiescenceEvidenceRef:
+          type: string
+        since:
+          type: string
+        state:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
+        turnId:
+          type: string
+      required:
+      - kind
+      - turnId
+      - state
+      - quiescence
+      - since
+      type: object
     ControllersIntakeAnalysisRequestEnvelope:
       properties:
         request:
@@ -11389,6 +11457,14 @@ components:
           type: string
         conversationId:
           type: string
+        governedControlBlocks:
+          items:
+            $ref: '#/components/schemas/ControllersGovernedControlBlockResponse'
+          type: array
+        governedTurnBlocks:
+          items:
+            $ref: '#/components/schemas/ControllersGovernedTurnBlockResponse'
+          type: array
         harness:
           type: string
         hasMoreBefore:
@@ -11485,6 +11561,16 @@ components:
           - string
         diff:
           $ref: '#/components/schemas/ConversationTurnDiffResponse'
+        dispatchBlockedSince:
+          type:
+          - "null"
+          - string
+        dispatchBlockedState:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
         errorMessage:
           type: string
         id:

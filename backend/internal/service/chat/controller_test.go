@@ -3435,6 +3435,55 @@ func TestGovernedTurnUnknownStaysBlockingAndExactRetryDoesNotRedispatch(t *testi
 	}
 }
 
+// TestSendDeliveryUnknownStaysDurablyQueued backs the 202-on-delivery-unknown
+// response the HTTP layer sends: it proves the turn that response echoes is
+// not a value invented for the client, but the same durable row a fresh read
+// of the store sees -- non-empty id, queued, and the user's message text
+// already committed. If a future refactor ever made Send return a zero-value
+// turn alongside ErrGovernedDeliveryUnknown, this fails loudly rather than
+// silently starting to 500 every delivery-unknown send.
+func TestSendDeliveryUnknownStaysDurablyQueued(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnDeliveryUnknown, TransportRequestID: 1, TransportSHA256: "abc", TransportBytes: 10, TransportSequence: 1,
+	}, err: context.DeadlineExceeded}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("durable-unknown")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	turn, err := svc.Send(context.Background(), testSession, ports.ChatUserMessage{Text: "must not vanish", ClientMessageID: "durable-request"})
+	if !errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) {
+		t.Fatalf("err=%v", err)
+	}
+	// This is the exact turn the send() handler's 202 branch echoes to the
+	// client -- it must be real, not a zero value returned alongside the error.
+	if turn.ID == "" || turn.State != domain.TurnStateQueued {
+		t.Fatalf("send() handler would echo a fabricated turn: turn=%+v", turn)
+	}
+
+	stored, err := st.LoadConversationSnapshot(context.Background(), ctrl.ConversationID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, msg := range stored.Messages {
+		if msg.Text == "must not vanish" && msg.ClientMessageID == "durable-request" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("message not durably recorded despite 202: messages=%+v", stored.Messages)
+	}
+	if len(stored.Turns) != 1 || stored.Turns[0].ID != turn.ID || stored.Turns[0].State.Terminal() {
+		t.Fatalf("turn not durably queued despite 202: turns=%+v", stored.Turns)
+	}
+}
+
 func snapshotReader(st *sqlite.Store) chatsvc.SnapshotReader {
 	return chatsvc.SnapshotReaderFunc(func(ctx context.Context, conversationID string) (chatsvc.ConversationRows, error) {
 		rows, err := st.LoadConversationSnapshot(ctx, conversationID)
@@ -3888,5 +3937,223 @@ func TestGovernedInterruptContainmentFailurePreservesCutoffAndBlocksDispatch(t *
 	claims, e := st.ListUnsettledGovernedControlCommands(context.Background())
 	if e != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDeliveryUnknown {
 		t.Fatalf("claims=%+v err=%v", claims, e)
+	}
+}
+
+// TestSnapshotReportsGovernedTurnBlockTruthfully drives a turn claim through
+// claimed -> dispatching -> delivery_unknown by hand (mirroring the manual
+// claim construction TestRestartRetainsBlockingGovernedControlUnknown already
+// uses for the control table) and checks the snapshot's GovernedTurnBlocks
+// reports the claim's real state at every step. The point is amendment 5: a
+// claim sitting in claimed or dispatching must never be reported (or
+// mistakable for) delivery_unknown -- only the literal current state is ever
+// echoed.
+func TestSnapshotReportsGovernedTurnBlockTruthfully(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := newFakeConversation()
+	svc := chatsvc.New(chatsvc.Options{
+		Store: st, Sessions: st, Reader: snapshotReader(st),
+		Drivers: fakeRegistry{driver: fakeDriver{conv: conv}},
+		Log:     slog.New(slog.DiscardHandler), NewID: sequentialID("turn-block"),
+	})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{
+		SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex,
+		WorkspacePath: workspace, ExecutionPolicy: &policy,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().UTC()
+	rec := domain.GovernedCommandRecord{GovernedCommandContract: domain.GovernedCommandContract{
+		ID: "manual-turn-1", IdempotencyKey: "manual-turn-1",
+		RequestFingerprint:    domain.ComputeGovernedTurnRequestFingerprint(testSession, "manual-turn-1", "text", ""),
+		Class:                 domain.GovernedCommandTurn,
+		State:                 domain.GovernedCommandClaimed,
+		SessionID:             testSession,
+		ControllerGeneration:  ctrl.Generation(),
+		ExpectedRevision:      policy.PlanRevisionID.String(),
+		CapabilityFingerprint: chatCapabilityFingerprintForTest(conv.Capabilities()),
+		Correlation:           domain.GovernedCommandCorrelation{ProviderConversationID: conv.ProviderConversationID(), ClientMessageID: "manual-turn-1"},
+		ReplayStrategy:        domain.GovernedCommandReplayUnavailable,
+		Quiescence:            domain.GovernedCommandQuiescenceNotApplicable,
+	}, CreatedAt: now, UpdatedAt: now}
+	if _, _, err := st.CreateGovernedCommandClaim(ctx, rec); err != nil {
+		t.Fatalf("create claim: %v", err)
+	}
+
+	// claimed does not yet block: BlocksConflictingDispatch requires
+	// claimed/dispatching/delivery_unknown, and claimed itself qualifies, so the
+	// claim is already visible here.
+	snapshot, err := svc.Snapshot(ctx, testSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.GovernedTurnBlocks) != 1 || snapshot.GovernedTurnBlocks[0].State != domain.GovernedCommandClaimed {
+		t.Fatalf("claimed blocks=%+v", snapshot.GovernedTurnBlocks)
+	}
+	if len(snapshot.GovernedControlBlocks) != 0 {
+		t.Fatalf("unexpected control blocks=%+v", snapshot.GovernedControlBlocks)
+	}
+
+	rec.State = domain.GovernedCommandDispatching
+	rec.UpdatedAt = now.Add(time.Second)
+	if ok, err := st.AdvanceGovernedCommand(ctx, rec, domain.GovernedCommandClaimed, rec.ControllerGeneration, rec.ExpectedRevision, rec.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("advance to dispatching ok=%v err=%v", ok, err)
+	}
+	snapshot, err = svc.Snapshot(ctx, testSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.GovernedTurnBlocks) != 1 || snapshot.GovernedTurnBlocks[0].State != domain.GovernedCommandDispatching {
+		t.Fatalf("dispatching wrongly reported: blocks=%+v", snapshot.GovernedTurnBlocks)
+	}
+
+	rec.State = domain.GovernedCommandDeliveryUnknown
+	rec.UpdatedAt = now.Add(2 * time.Second)
+	if ok, err := st.AdvanceGovernedCommand(ctx, rec, domain.GovernedCommandDispatching, rec.ControllerGeneration, rec.ExpectedRevision, rec.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("advance to delivery_unknown ok=%v err=%v", ok, err)
+	}
+	snapshot, err = svc.Snapshot(ctx, testSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.GovernedTurnBlocks) != 1 || snapshot.GovernedTurnBlocks[0].State != domain.GovernedCommandDeliveryUnknown ||
+		snapshot.GovernedTurnBlocks[0].TurnID != "manual-turn-1" || !snapshot.GovernedTurnBlocks[0].UpdatedAt.Equal(rec.UpdatedAt) {
+		t.Fatalf("delivery_unknown blocks=%+v", snapshot.GovernedTurnBlocks)
+	}
+}
+
+// TestSnapshotGovernedBlocksIsolatedPerSessionAndKind seeds two sessions in the
+// same store: session A gets a stuck turn claim, session B gets a stuck
+// interrupt control claim shaped exactly like a containment-failed interrupt
+// (kind=interrupt, state=delivery_unknown, quiescence=pending, ProviderTurnID
+// set, RequestInstanceID empty). Each session's snapshot must see only its own
+// claim, and only in the list matching that claim's own table.
+func TestSnapshotGovernedBlocksIsolatedPerSessionAndKind(t *testing.T) {
+	st := openStore(t)
+	ctx := context.Background()
+	otherSession := domain.SessionID("p1-2")
+	if _, err := st.CreateSession(ctx, domain.SessionRecord{
+		ID: otherSession, ProjectID: testProject, Kind: domain.KindOrchestrator,
+		Harness: domain.HarnessCodex, Mode: domain.SessionModeChat,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed second session: %v", err)
+	}
+	workspaceA, workspaceB := t.TempDir(), t.TempDir()
+	policy := governedPolicy(t, workspaceA)
+	policyB := governedPolicy(t, workspaceB)
+	convA, convB := newFakeConversation(), newFakeConversation()
+	driver := fakeDriver{start: func(cfg ports.ChatStartConfig) (ports.ChatConversation, error) {
+		if cfg.SessionID == otherSession {
+			return convB, nil
+		}
+		return convA, nil
+	}}
+	svc := chatsvc.New(chatsvc.Options{
+		Store: st, Sessions: st, Reader: snapshotReader(st),
+		Drivers: fakeRegistry{driver: driver},
+		Log:     slog.New(slog.DiscardHandler), NewID: sequentialID("isolation"),
+	})
+	t.Cleanup(func() { _ = svc.Stop(ctx, testSession) })
+	t.Cleanup(func() { _ = svc.Stop(ctx, otherSession) })
+	ctrlA, err := svc.Start(ctx, chatsvc.StartConfig{
+		SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex,
+		WorkspacePath: workspaceA, ExecutionPolicy: &policy,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrlB, err := svc.Start(ctx, chatsvc.StartConfig{
+		SessionID: otherSession, ProjectID: testProject, Harness: domain.HarnessCodex,
+		WorkspacePath: workspaceB, ExecutionPolicy: &policyB,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	turnClaim := domain.GovernedCommandRecord{GovernedCommandContract: domain.GovernedCommandContract{
+		ID: "manual-turn-a", IdempotencyKey: "manual-turn-a",
+		RequestFingerprint:    domain.ComputeGovernedTurnRequestFingerprint(testSession, "manual-turn-a", "text", ""),
+		Class:                 domain.GovernedCommandTurn,
+		State:                 domain.GovernedCommandDispatching,
+		SessionID:             testSession,
+		ControllerGeneration:  ctrlA.Generation(),
+		ExpectedRevision:      policy.PlanRevisionID.String(),
+		CapabilityFingerprint: chatCapabilityFingerprintForTest(convA.Capabilities()),
+		Correlation:           domain.GovernedCommandCorrelation{ProviderConversationID: convA.ProviderConversationID(), ClientMessageID: "manual-turn-a"},
+		ReplayStrategy:        domain.GovernedCommandReplayUnavailable,
+		Quiescence:            domain.GovernedCommandQuiescenceNotApplicable,
+	}, CreatedAt: now, UpdatedAt: now}
+	claimedTurn := turnClaim
+	claimedTurn.State = domain.GovernedCommandClaimed
+	if _, _, err := st.CreateGovernedCommandClaim(ctx, claimedTurn); err != nil {
+		t.Fatalf("create turn claim: %v", err)
+	}
+	// AdvanceGovernedCommand's CAS requires updated_at strictly after created_at.
+	turnClaim.UpdatedAt = now.Add(time.Second)
+	if ok, err := st.AdvanceGovernedCommand(ctx, turnClaim, domain.GovernedCommandClaimed, turnClaim.ControllerGeneration, turnClaim.ExpectedRevision, turnClaim.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("advance turn claim ok=%v err=%v", ok, err)
+	}
+
+	controlClaim := domain.GovernedControlCommand{
+		ID: "manual-interrupt-b", IdempotencyKey: "interrupt:turn-b",
+		RequestFingerprint:     domain.ComputeGovernedControlFingerprint(otherSession, domain.GovernedControlInterrupt, "interrupt:turn-b", "turn-b", "{}"),
+		Class:                  domain.GovernedControlInterrupt,
+		State:                  domain.GovernedCommandClaimed,
+		SessionID:              otherSession,
+		ControllerGeneration:   ctrlB.Generation(),
+		ExpectedRevision:       policyB.PlanRevisionID.String(),
+		CapabilityFingerprint:  chatCapabilityFingerprintForTest(convB.Capabilities()),
+		ProviderConversationID: convB.ProviderConversationID(),
+		ProviderTurnID:         "provider-turn-b",
+		Quiescence:             domain.GovernedCommandQuiescencePending,
+		CreatedAt:              now, UpdatedAt: now,
+	}
+	if _, made, err := st.CreateGovernedControlCommandClaim(ctx, controlClaim); err != nil || !made {
+		t.Fatalf("create control claim made=%v err=%v", made, err)
+	}
+	controlClaim.State = domain.GovernedCommandDispatching
+	controlClaim.UpdatedAt = now.Add(time.Second)
+	if ok, err := st.AdvanceGovernedControlCommand(ctx, controlClaim, domain.GovernedCommandClaimed, controlClaim.ControllerGeneration, controlClaim.ExpectedRevision, controlClaim.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("dispatch control claim ok=%v err=%v", ok, err)
+	}
+	controlClaim.State = domain.GovernedCommandDeliveryUnknown
+	controlClaim.UpdatedAt = now.Add(2 * time.Second)
+	if ok, err := st.AdvanceGovernedControlCommand(ctx, controlClaim, domain.GovernedCommandDispatching, controlClaim.ControllerGeneration, controlClaim.ExpectedRevision, controlClaim.CapabilityFingerprint); err != nil || !ok {
+		t.Fatalf("unknown control claim ok=%v err=%v", ok, err)
+	}
+
+	snapshotA, err := svc.Snapshot(ctx, testSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshotA.GovernedTurnBlocks) != 1 || snapshotA.GovernedTurnBlocks[0].TurnID != "manual-turn-a" {
+		t.Fatalf("session A turn blocks=%+v", snapshotA.GovernedTurnBlocks)
+	}
+	if len(snapshotA.GovernedControlBlocks) != 0 {
+		t.Fatalf("session A leaked session B's control block: %+v", snapshotA.GovernedControlBlocks)
+	}
+
+	snapshotB, err := svc.Snapshot(ctx, otherSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshotB.GovernedTurnBlocks) != 0 {
+		t.Fatalf("session B leaked session A's turn block: %+v", snapshotB.GovernedTurnBlocks)
+	}
+	if len(snapshotB.GovernedControlBlocks) != 1 {
+		t.Fatalf("session B control blocks=%+v", snapshotB.GovernedControlBlocks)
+	}
+	block := snapshotB.GovernedControlBlocks[0]
+	if block.Class != domain.GovernedControlInterrupt || block.State != domain.GovernedCommandDeliveryUnknown ||
+		block.Quiescence != domain.GovernedCommandQuiescencePending || block.ProviderTurnID != "provider-turn-b" ||
+		block.RequestInstanceID != "" {
+		t.Fatalf("containment-failed-shaped control block=%+v", block)
 	}
 }

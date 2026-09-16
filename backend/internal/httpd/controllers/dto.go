@@ -1466,6 +1466,18 @@ type ConversationTurnResponse struct {
 	// rather than a history of one: the earlier versions are the same plan with fewer
 	// steps ticked off.
 	Plan *ConversationPlanResponse `json:"plan,omitempty"`
+	// DispatchBlockedSince is when this turn's own governed claim last moved, present
+	// only while that claim still owns the command effect (claimed, dispatching, or
+	// delivery_unknown). Absent means this turn's own claim is not the reason a client
+	// cannot dispatch again -- it does NOT mean nothing in the session is blocking: a
+	// stuck steer/answer/interrupt claim on this same session blocks every turn's
+	// dispatch without living on any turn. See the snapshot's governedTurnBlocks and
+	// governedControlBlocks for that session-wide truth.
+	DispatchBlockedSince *string `json:"dispatchBlockedSince,omitempty"`
+	// DispatchBlockedState is this turn's own claim state whenever
+	// DispatchBlockedSince is set. Never claimed/dispatching mislabeled as
+	// delivery_unknown -- it is always the claim's real, current state.
+	DispatchBlockedState string `json:"dispatchBlockedState,omitempty" enum:"claimed,dispatching,delivery_unknown"`
 }
 
 // ConversationPlanResponse is the agent's plan for one turn.
@@ -1636,6 +1648,41 @@ type ConversationSnapshotResponse struct {
 	// unstarted session's abilities are not yet known — and a client must treat
 	// absent as "do not offer yet" rather than as "cannot".
 	Capabilities []string `json:"capabilities,omitempty"`
+	// GovernedTurnBlocks and GovernedControlBlocks are every unsettled governed claim
+	// in this session that still blocks a later dispatch -- across the turn table and
+	// the steer/answer/interrupt control table alike. Either list being non-empty
+	// means Send() is blocked for this session right now, not merely that a claim was
+	// once made and left unresolved.
+	GovernedTurnBlocks    []GovernedTurnBlockResponse    `json:"governedTurnBlocks,omitempty"`
+	GovernedControlBlocks []GovernedControlBlockResponse `json:"governedControlBlocks,omitempty"`
+}
+
+// GovernedTurnBlockResponse is one turn-dispatch claim currently blocking
+// conflicting dispatch in this session.
+type GovernedTurnBlockResponse struct {
+	Kind                  string `json:"kind" enum:"turn"`
+	TurnID                string `json:"turnId"`
+	State                 string `json:"state" enum:"claimed,dispatching,delivery_unknown"`
+	Quiescence            string `json:"quiescence" enum:"not_applicable,pending,codex_process_tree_verified"`
+	QuiescenceEvidenceRef string `json:"quiescenceEvidenceRef,omitempty"`
+	Since                 string `json:"since"`
+}
+
+// GovernedControlBlockResponse is one steer/answer/interrupt control claim
+// currently blocking conflicting dispatch in this session. ProviderTurnID is
+// present only for steer/interrupt rows; RequestInstanceID is present only for
+// answer rows. A containment-failed interrupt reports here as
+// kind=interrupt, state=delivery_unknown, quiescence=pending -- that shape
+// falls out of passing the claim's real fields through, not a special case.
+type GovernedControlBlockResponse struct {
+	Kind                  string `json:"kind" enum:"steer,answer,interrupt"`
+	ID                    string `json:"id"`
+	State                 string `json:"state" enum:"claimed,dispatching,delivery_unknown"`
+	Quiescence            string `json:"quiescence" enum:"not_applicable,pending,codex_process_tree_verified"`
+	QuiescenceEvidenceRef string `json:"quiescenceEvidenceRef,omitempty"`
+	ProviderTurnID        string `json:"providerTurnId,omitempty"`
+	RequestInstanceID     string `json:"requestInstanceId,omitempty"`
+	Since                 string `json:"since"`
 }
 
 // ConversationBranchPointResponse describes sibling continuations at one prompt.
