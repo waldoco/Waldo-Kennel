@@ -47,6 +47,10 @@ var (
 	// ErrPromotionUncertain prevents automatic redelivery after the provider may
 	// have accepted guidance but Kennel could not durably record the result.
 	ErrPromotionUncertain = errors.New("queued turn promotion delivery is uncertain")
+	// ErrSteerDeliveryUnknown means the complete steer request crossed the
+	// transport but provider acceptance could not be proven. Exact replay is
+	// blocked until reconciliation rather than risking duplicate guidance.
+	ErrSteerDeliveryUnknown = errors.New("steer delivery is unknown")
 	// ErrSteerContentUnsupported means the provider cannot accept every structured
 	// block. The whole queued message stays undelivered.
 	ErrSteerContentUnsupported = errors.New("steer content is unsupported")
@@ -229,6 +233,51 @@ func (c *Controller) PromoteQueuedTurn(
 	}, nil
 }
 
+func (c *Controller) claimGovernedSteer(ctx context.Context, turn string, msg *ports.ChatUserMessage) (*domain.GovernedControlCommand, error) {
+	if c.governance == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(msg.ClientMessageID) == "" {
+		msg.ClientMessageID = c.newID()
+	}
+	content, err := json.Marshal(struct {
+		Text    string               `json:"text"`
+		Content []ports.ChatContent  `json:"content,omitempty"`
+		Origin  domain.MessageOrigin `json:"origin"`
+	}{msg.Text, msg.Content, normalizeOrigin(msg.Origin)})
+	if err != nil {
+		return nil, err
+	}
+	now := c.now()
+	claim := domain.GovernedControlCommand{
+		ID: c.newID(), IdempotencyKey: msg.ClientMessageID,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlSteer, msg.ClientMessageID, turn, string(content)),
+		Class:              domain.GovernedControlSteer, State: domain.GovernedCommandClaimed,
+		SessionID: c.sessionID, ControllerGeneration: c.generation,
+		ExpectedRevision: c.governance.expectedRevision, CapabilityFingerprint: c.governance.capabilityFingerprint,
+		ProviderConversationID: c.conv.ProviderConversationID(), ClientMessageID: msg.ClientMessageID,
+		ProviderTurnID: turn, Quiescence: domain.GovernedCommandQuiescenceNotApplicable,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	persisted, _, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return nil, err
+	}
+	return &persisted, nil
+}
+
+func (c *Controller) advanceGovernedControl(ctx context.Context, rec *domain.GovernedControlCommand, expected, next domain.GovernedCommandState) error {
+	rec.State, rec.UpdatedAt = next, c.now()
+	ok, err := c.store.AdvanceGovernedControlCommand(ctx, *rec, expected, rec.ControllerGeneration, rec.ExpectedRevision, rec.CapabilityFingerprint)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("governed control %s lost its %s transition fence", rec.ID, expected)
+	}
+	return nil
+}
+
 // Steer hands guidance to the provider for the turn currently in flight, then
 // records it on that turn.
 //
@@ -259,6 +308,65 @@ func (c *Controller) Steer(ctx context.Context, msg ports.ChatUserMessage) (Stee
 		// "there is no turn" across every command that needs one; the endpoint says
 		// what to do about it.
 		return SteerResult{}, ErrNoActiveTurn
+	}
+
+	governed, err := c.claimGovernedSteer(ctx, turn, &msg)
+	if err != nil {
+		return SteerResult{}, fmt.Errorf("claim governed steer: %w", err)
+	}
+	if governed != nil {
+		switch governed.State {
+		case domain.GovernedCommandAcknowledged:
+			return SteerResult{ProviderTurnID: governed.ProviderTurnID, ActivityID: governed.ID}, nil
+		case domain.GovernedCommandRejected:
+			return SteerResult{}, ErrProviderRefused
+		case domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown:
+			return SteerResult{ProviderTurnID: governed.ProviderTurnID}, ErrSteerDeliveryUnknown
+		}
+		if governed.ControllerGeneration != c.generation {
+			return SteerResult{}, ErrSteerDeliveryUnknown
+		}
+		if err := c.advanceGovernedControl(ctx, governed, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching); err != nil {
+			return SteerResult{}, err
+		}
+		dispatcher, ok := c.conv.(ports.ChatSteerDispatcher)
+		if !ok {
+			_ = c.advanceGovernedControl(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+			return SteerResult{}, ErrSteerUnsupported
+		}
+		dispatch, dispatchErr := dispatcher.DispatchSteer(ctx, turn, msg)
+		if validateErr := dispatch.Validate(); validateErr != nil {
+			dispatchErr = errors.Join(dispatchErr, validateErr)
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+		}
+		switch dispatch.Acceptance {
+		case ports.ChatTurnAcknowledged:
+			landed := dispatch.Ref.ProviderTurnID
+			if landed == "" {
+				landed = turn
+			}
+			activity, activityErr := makeSteerActivity(governed.ID, msg, "")
+			if activityErr == nil {
+				activityErr = c.store.UpsertActivity(ctx, c.conversation.ID, landed, activity, c.now())
+			}
+			if activityErr != nil {
+				_ = c.advanceGovernedControl(context.WithoutCancel(ctx), governed, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+				return SteerResult{ProviderTurnID: landed}, errors.Join(ErrSteerDeliveryUnknown, activityErr)
+			}
+			if err := c.advanceGovernedControl(context.WithoutCancel(ctx), governed, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged); err != nil {
+				return SteerResult{ProviderTurnID: landed}, errors.Join(ErrSteerDeliveryUnknown, err)
+			}
+			return SteerResult{ProviderTurnID: landed, ActivityID: governed.ID}, nil
+		case ports.ChatTurnRejected, ports.ChatTurnNotSent:
+			_ = c.advanceGovernedControl(context.WithoutCancel(ctx), governed, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+			if dispatchErr != nil {
+				return SteerResult{}, classify(dispatchErr)
+			}
+			return SteerResult{}, ErrProviderRefused
+		default:
+			_ = c.advanceGovernedControl(context.WithoutCancel(ctx), governed, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+			return SteerResult{ProviderTurnID: turn}, errors.Join(ErrSteerDeliveryUnknown, dispatchErr)
+		}
 	}
 
 	ref, err := steerer.Steer(ctx, turn, msg)

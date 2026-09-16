@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -567,5 +568,178 @@ func TestPromoteQueuedTurnAmbiguousProviderFailureSettlesUncertainWithoutRedeliv
 	}
 	if calls := provider.steers(); len(calls) != 1 {
 		t.Fatalf("provider received %d steer attempts, want one", len(calls))
+	}
+}
+
+/* ---- governed steer acceptance --------------------------------------- */
+
+type governedSteerRecorder struct {
+	*steerRecorder
+	dispatch    ports.ChatSteerDispatch
+	dispatchErr error
+	onDispatch  func()
+}
+
+func (s *governedSteerRecorder) DispatchSteer(_ context.Context, turn string, msg ports.ChatUserMessage) (ports.ChatSteerDispatch, error) {
+	s.mu.Lock()
+	s.calls = append(s.calls, steerCall{turnID: turn, msg: msg})
+	s.mu.Unlock()
+	if s.onDispatch != nil {
+		s.onDispatch()
+	}
+	return s.dispatch, s.dispatchErr
+}
+
+type failSteerActivityStore struct {
+	chatsvc.Store
+	err error
+}
+
+func (s *failSteerActivityStore) UpsertActivity(ctx context.Context, conversationID, providerTurnID string, activity domain.ConversationActivity, now time.Time) error {
+	var detail struct {
+		Event string `json:"event"`
+	}
+	if json.Unmarshal(activity.Detail, &detail) == nil && detail.Event == "steer" {
+		return s.err
+	}
+	return s.Store.UpsertActivity(ctx, conversationID, providerTurnID, activity, now)
+}
+
+func (s *governedSteerRecorder) DispatchTurn(_ context.Context, msg ports.ChatUserMessage) (ports.ChatTurnDispatch, error) {
+	s.mu.Lock()
+	s.sent = append(s.sent, msg)
+	s.mu.Unlock()
+	return ports.ChatTurnDispatch{
+		Acceptance:         ports.ChatTurnAcknowledged,
+		Ref:                ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+		TransportRequestID: 1, TransportSHA256: "turn-sha", TransportBytes: 12, TransportSequence: 1,
+	}, nil
+}
+
+func governedSteerHarness(t *testing.T, conv *governedSteerRecorder, wrap func(*store.Store) chatsvc.Store) (*harness, domain.AttemptExecutionPolicy) {
+	t.Helper()
+	st := openStore(t)
+	if wrap == nil {
+		wrap = func(st *store.Store) chatsvc.Store { return st }
+	}
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	h := &harness{st: st, conv: conv.fakeConversation, activity: &recordingActivity{}, clock: time.Date(2026, 8, 2, 10, 0, 0, 0, time.UTC)}
+	svc := chatsvc.New(chatsvc.Options{
+		Store: wrap(st), Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}},
+		Activity: h.activity, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("governed-steer"),
+	})
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{
+		SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex,
+		WorkspacePath: workspace, ExecutionPolicy: &policy,
+	})
+	if err != nil {
+		t.Fatalf("start governed controller: %v", err)
+	}
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	h.svc, h.ctrl = svc, ctrl
+	if _, err := svc.Send(context.Background(), testSession, ports.ChatUserMessage{Text: "work", ClientMessageID: "turn-governed"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	conv.emit(ports.ChatEvent{Kind: ports.ChatEventTurnStarted, ProviderTurnID: "provider-turn-1"})
+	return h, policy
+}
+func TestGovernedSteerPersistsDispatchingBeforeProviderContact(t *testing.T) {
+	conv := &governedSteerRecorder{steerRecorder: newSteerRecorder(), dispatch: ports.ChatSteerDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+		TransportRequestID: 2, TransportSHA256: "steer-sha", TransportBytes: 17, TransportSequence: 2,
+	}}
+	h, _ := governedSteerHarness(t, conv, nil)
+	conv.onDispatch = func() {
+		claims, err := h.st.ListUnsettledGovernedControlCommands(context.Background())
+		if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDispatching || claims[0].Class != domain.GovernedControlSteer {
+			t.Fatalf("provider contacted before durable governed steer dispatch: claims=%+v err=%v", claims, err)
+		}
+	}
+	result, err := h.svc.Steer(context.Background(), testSession, ports.ChatUserMessage{Text: "narrow it", ClientMessageID: "governed-steer-1"})
+	if err != nil {
+		t.Fatalf("Steer: %v", err)
+	}
+	claim, ok, err := h.st.GetGovernedControlCommand(context.Background(), result.ActivityID)
+	if err != nil || !ok || claim.State != domain.GovernedCommandAcknowledged || claim.ProviderTurnID != "provider-turn-1" {
+		t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+}
+
+func TestGovernedSteerRejectedAndUnknownStayDistinct(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		accept ports.ChatTurnAcceptance
+		want   error
+		state  domain.GovernedCommandState
+	}{
+		{"rejected", ports.ChatTurnRejected, chatsvc.ErrProviderRefused, domain.GovernedCommandRejected},
+		{"unknown", ports.ChatTurnDeliveryUnknown, chatsvc.ErrSteerDeliveryUnknown, domain.GovernedCommandDeliveryUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conv := &governedSteerRecorder{steerRecorder: newSteerRecorder(), dispatch: ports.ChatSteerDispatch{
+				Acceptance: tc.accept, TransportRequestID: 2, TransportSHA256: "steer-sha", TransportBytes: 17, TransportSequence: 2,
+			}}
+			h, _ := governedSteerHarness(t, conv, nil)
+			msg := ports.ChatUserMessage{Text: "narrow it", ClientMessageID: "governed-steer-" + tc.name}
+			if _, err := h.svc.Steer(context.Background(), testSession, msg); !errors.Is(err, tc.want) {
+				t.Fatalf("Steer err=%v, want %v", err, tc.want)
+			}
+			claims, err := h.st.ListUnsettledGovernedControlCommands(context.Background())
+			if tc.state == domain.GovernedCommandRejected {
+				// Rejection is settled, so read the claim via its stable generated ID
+				// from the full snapshot is unnecessary; no unsettled claim may remain.
+				if err != nil || len(claims) != 0 {
+					t.Fatalf("rejected claims=%+v err=%v", claims, err)
+				}
+			} else if err != nil || len(claims) != 1 || claims[0].State != tc.state {
+				t.Fatalf("unknown claims=%+v err=%v", claims, err)
+			}
+		})
+	}
+}
+
+func TestGovernedSteerExactReplayDoesNotContactProviderAgain(t *testing.T) {
+	conv := &governedSteerRecorder{steerRecorder: newSteerRecorder(), dispatch: ports.ChatSteerDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+		TransportRequestID: 2, TransportSHA256: "steer-sha", TransportBytes: 17, TransportSequence: 2,
+	}}
+	h, _ := governedSteerHarness(t, conv, nil)
+	msg := ports.ChatUserMessage{Text: "narrow it", ClientMessageID: "governed-steer-replay"}
+	first, err := h.svc.Steer(context.Background(), testSession, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := h.svc.Steer(context.Background(), testSession, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conv.steers()) != 1 || first.ActivityID != second.ActivityID {
+		t.Fatalf("calls=%d first=%+v second=%+v", len(conv.steers()), first, second)
+	}
+}
+
+func TestGovernedSteerProviderAckWithTimelineFailureBecomesUnknown(t *testing.T) {
+	conv := &governedSteerRecorder{steerRecorder: newSteerRecorder(), dispatch: ports.ChatSteerDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+		TransportRequestID: 2, TransportSHA256: "steer-sha", TransportBytes: 17, TransportSequence: 2,
+	}}
+	injected := errors.New("timeline write failed")
+	h, _ := governedSteerHarness(t, conv, func(st *store.Store) chatsvc.Store {
+		return &failSteerActivityStore{Store: st, err: injected}
+	})
+	msg := ports.ChatUserMessage{Text: "narrow it", ClientMessageID: "governed-steer-local-fail"}
+	if _, err := h.svc.Steer(context.Background(), testSession, msg); !errors.Is(err, chatsvc.ErrSteerDeliveryUnknown) || !errors.Is(err, injected) {
+		t.Fatalf("Steer err=%v", err)
+	}
+	if _, err := h.svc.Steer(context.Background(), testSession, msg); !errors.Is(err, chatsvc.ErrSteerDeliveryUnknown) {
+		t.Fatalf("replay err=%v", err)
+	}
+	if len(conv.steers()) != 1 {
+		t.Fatalf("provider contacts=%d, want 1", len(conv.steers()))
+	}
+	claims, err := h.st.ListUnsettledGovernedControlCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDeliveryUnknown {
+		t.Fatalf("claims=%+v err=%v", claims, err)
 	}
 }

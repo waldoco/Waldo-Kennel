@@ -35,6 +35,7 @@ import (
 // the SQLite store.
 type Store interface {
 	ports.GovernedCommandStore
+	ports.GovernedControlCommandStore
 	CreateConversation(ctx context.Context, id string, scope domain.ConversationScope, project domain.ProjectID, session domain.SessionID, now time.Time) (domain.ConversationRecord, error)
 	// RecordChatProtocolProvenance appends one protocol-negotiation episode
 	// for the session (migration 0136, ADR 0016). Append-only: a later
