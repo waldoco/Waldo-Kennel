@@ -1673,5 +1673,22 @@ func TestNativeWorktreeEnvironmentConfinesGoScratch(t *testing.T) {
 		t.Errorf("GOTMPDIR=%q, want %q", env["GOTMPDIR"], want)
 	} else if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
 		t.Fatalf("GOTMPDIR was not created: info=%v err=%v", info, statErr)
+
+func TestDispatchInterruptReportsAcknowledgedAndQuiescent(t *testing.T) {
+	d, _ := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	dispatch, err := opened.(ports.ChatInterruptDispatcher).DispatchInterrupt(context.Background(), "turn-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dispatch.Acceptance != ports.ChatTurnAcknowledged || dispatch.TransportRequestID <= 0 || dispatch.TransportSHA256 == "" || dispatch.TransportBytes <= 0 || dispatch.TransportSequence <= 0 {
+		t.Fatalf("dispatch=%+v", dispatch)
+	}
+	if dispatch.Quiescence != domain.GovernedCommandQuiescenceCodexTree || dispatch.QuiescenceEvidenceRef == "" {
+		t.Fatalf("quiescence=%+v", dispatch)
 	}
 }
