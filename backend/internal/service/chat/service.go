@@ -367,6 +367,10 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	// replaced can be told apart from the current one's.
 	controller := newController(
 		cfg.SessionID, conversation, generation, conv, s.store, s.activity, s.log, s.newID, s.now)
+	if err := controller.configureGovernedTurns(ctx, cfg.ExecutionPolicy); err != nil {
+		_ = conv.Close()
+		return nil, err
+	}
 	if cfg.ProviderConversationID != "" {
 		// The provider's native thread is the continuity authority across TUI and
 		// Chat. Import it before the live projector starts so the first notification

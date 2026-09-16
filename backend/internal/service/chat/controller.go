@@ -16,10 +16,14 @@ package chat
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +34,7 @@ import (
 // Store is the durable conversation surface the controller needs. Implemented by
 // the SQLite store.
 type Store interface {
+	ports.GovernedCommandStore
 	CreateConversation(ctx context.Context, id string, scope domain.ConversationScope, project domain.ProjectID, session domain.SessionID, now time.Time) (domain.ConversationRecord, error)
 	// RecordChatProtocolProvenance appends one protocol-negotiation episode
 	// for the session (migration 0136, ADR 0016). Append-only: a later
@@ -153,6 +158,10 @@ type Controller struct {
 	newID    IDFactory
 	now      Clock
 
+	// governance is present only for an admitted Attempt. Ordinary chat keeps
+	// the legacy delivery path and its existing compatibility semantics.
+	governance *governedTurnConfig
+
 	// sendMu serializes command dispatch so only one operation mutates the
 	// provider conversation at a time.
 	sendMu sync.Mutex
@@ -205,6 +214,20 @@ type Controller struct {
 	once     sync.Once
 	closeErr error
 }
+
+// governedTurnConfig freezes the Attempt facts every command claim and state
+// transition must match. It is derived once at controller start.
+type governedTurnConfig struct {
+	expectedRevision      string
+	capabilityFingerprint string
+	replayStrategy        domain.GovernedCommandReplayStrategy
+	blocked               bool
+}
+
+var (
+	ErrGovernedDeliveryUnknown = errors.New("governed chat turn delivery is unknown")
+	ErrGovernedRejected        = errors.New("governed chat turn was rejected")
+)
 
 // ErrNoActiveTurn reports an interrupt with nothing to cancel.
 var ErrNoActiveTurn = errors.New("no active turn")
@@ -605,6 +628,89 @@ func (c *Controller) Capabilities() ports.ChatCapabilities {
 	return c.conv.Capabilities()
 }
 
+func (c *Controller) configureGovernedTurns(ctx context.Context, policy *domain.AttemptExecutionPolicy) error {
+	if policy == nil {
+		return nil
+	}
+	if err := policy.Validate(); err != nil {
+		return fmt.Errorf("governed chat policy: %w", err)
+	}
+	replay := domain.GovernedCommandReplayUnavailable
+	if _, ok := c.conv.(ports.ChatHistoryReader); ok {
+		replay = domain.GovernedCommandReplayStableHistory
+	}
+	governance := &governedTurnConfig{
+		expectedRevision: policy.PlanRevisionID.String(), capabilityFingerprint: chatCapabilityFingerprint(c.conv.Capabilities()),
+		replayStrategy: replay,
+	}
+	unsettled, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("list unsettled governed chat commands: %w", err)
+	}
+	for _, command := range unsettled {
+		if command.SessionID == c.sessionID && (command.State == domain.GovernedCommandDispatching || command.State == domain.GovernedCommandDeliveryUnknown) {
+			governance.blocked = true
+			break
+		}
+	}
+	c.governance = governance
+	return nil
+}
+
+func chatCapabilityFingerprint(capabilities ports.ChatCapabilities) string {
+	enabled := make([]string, 0, len(capabilities))
+	for capability, available := range capabilities {
+		if available {
+			enabled = append(enabled, string(capability))
+		}
+	}
+	sort.Strings(enabled)
+	payload, _ := json.Marshal(enabled)
+	sum := sha256.Sum256(payload)
+	return "chat-v1:" + hex.EncodeToString(sum[:])
+}
+
+func (c *Controller) claimGovernedTurn(ctx context.Context, commandID string, msg ports.ChatUserMessage, deliveryContent string, now time.Time) (domain.GovernedCommandRecord, error) {
+	if c.governance == nil {
+		return domain.GovernedCommandRecord{}, nil
+	}
+	if strings.TrimSpace(msg.ClientMessageID) == "" {
+		return domain.GovernedCommandRecord{}, fmt.Errorf("governed chat turn requires client message id")
+	}
+	rec := domain.GovernedCommandRecord{GovernedCommandContract: domain.GovernedCommandContract{
+		ID: commandID, IdempotencyKey: msg.ClientMessageID,
+		RequestFingerprint: domain.ComputeGovernedTurnRequestFingerprint(c.sessionID, msg.ClientMessageID, msg.Text, deliveryContent),
+		Class:              domain.GovernedCommandTurn, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision,
+		CapabilityFingerprint: c.governance.capabilityFingerprint,
+		Correlation:           domain.GovernedCommandCorrelation{ProviderConversationID: c.conv.ProviderConversationID(), ClientMessageID: msg.ClientMessageID},
+		ReplayStrategy:        c.governance.replayStrategy, Quiescence: domain.GovernedCommandQuiescenceNotApplicable,
+	}, CreatedAt: now, UpdatedAt: now}
+	persisted, _, err := c.store.CreateGovernedCommandClaim(ctx, rec)
+	if err != nil {
+		return domain.GovernedCommandRecord{}, err
+	}
+	return persisted, nil
+}
+
+func (c *Controller) advanceGovernedTurn(ctx context.Context, rec *domain.GovernedCommandRecord, expected, next domain.GovernedCommandState, providerTurnID string) error {
+	if rec == nil {
+		return nil
+	}
+	rec.State = next
+	rec.Correlation.ProviderTurnID = providerTurnID
+	rec.UpdatedAt = c.now()
+	advanced, err := c.store.AdvanceGovernedCommand(ctx, *rec, expected,
+		rec.ControllerGeneration, rec.ExpectedRevision, rec.CapabilityFingerprint)
+	if err != nil {
+		return err
+	}
+	if !advanced {
+		return fmt.Errorf("governed command %s lost its %s transition fence", rec.ID, expected)
+	}
+	return nil
+}
+
 // Send records a message and dispatches it, or queues it if the agent is busy.
 //
 // The durable record is written first: if the provider call then fails, the user
@@ -628,6 +734,9 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 
 	now := c.now()
 	turnID := c.newID()
+	if c.governance != nil && strings.TrimSpace(msg.ClientMessageID) == "" {
+		msg.ClientMessageID = turnID
+	}
 	deliveryContent := ""
 	if len(msg.Content) > 0 {
 		encoded, err := json.Marshal(msg.Content)
@@ -635,6 +744,16 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 			return domain.ConversationTurn{}, fmt.Errorf("encode chat delivery content: %w", err)
 		}
 		deliveryContent = string(encoded)
+	}
+
+	var governed *domain.GovernedCommandRecord
+	if c.governance != nil {
+		claim, err := c.claimGovernedTurn(ctx, turnID, msg, deliveryContent, now)
+		if err != nil {
+			return domain.ConversationTurn{}, fmt.Errorf("claim governed turn: %w", err)
+		}
+		governed = &claim
+		turnID = claim.ID
 	}
 	record := domain.ConversationMessage{
 		ID:                  c.newID(),
@@ -649,9 +768,8 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 	if err != nil {
 		return domain.ConversationTurn{}, fmt.Errorf("record user message: %w", err)
 	}
-	if !created {
-		// Already delivered under this client message id. Returning the empty turn
-		// signals "nothing new happened" without claiming a second dispatch.
+	if !created && (governed == nil || governed.State != domain.GovernedCommandClaimed) {
+		// Legacy retries and already-crossed governed claims never dispatch again.
 		c.log.Debug("duplicate chat send ignored",
 			"session", c.sessionID, "clientMessageId", msg.ClientMessageID)
 		return domain.ConversationTurn{}, nil
@@ -669,7 +787,7 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 		}, nil
 	}
 
-	return c.dispatch(ctx, turnID, msg, now)
+	return c.dispatch(ctx, turnID, msg, now, governed)
 }
 
 // Settings reports the provider choices for the next turn.
@@ -740,7 +858,7 @@ func (c *Controller) mergeUsage(update ports.ChatUsage) domain.ConversationUsage
 func (c *Controller) busy() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.pendingTurnID != ""
+	return c.pendingTurnID != "" || c.governance != nil && c.governance.blocked
 }
 
 // dispatch hands a recorded turn to the provider. Callers must hold sendMu.
@@ -749,6 +867,7 @@ func (c *Controller) dispatch(
 	turnID string,
 	msg ports.ChatUserMessage,
 	requestedAt time.Time,
+	governed *domain.GovernedCommandRecord,
 ) (domain.ConversationTurn, error) {
 	// Every dispatch carries the conversation's choices, including one Kennel makes on
 	// the user's behalf: a queued message draining, or a relay from `kennel send`. A
@@ -759,13 +878,64 @@ func (c *Controller) dispatch(
 	c.mu.Lock()
 	c.dispatchingTurnID = turnID
 	c.mu.Unlock()
-	ref, err := c.conv.SendTurn(ctx, msg)
+	var (
+		ref ports.ChatTurnRef
+		err error
+	)
+	if governed != nil {
+		if governed.State != domain.GovernedCommandClaimed {
+			return domain.ConversationTurn{}, fmt.Errorf("governed command %s blocks dispatch in state %s", governed.ID, governed.State)
+		}
+		if err = c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching, ""); err == nil {
+			dispatcher, ok := c.conv.(ports.ChatTurnDispatcher)
+			if !ok {
+				err = errors.New("governed chat provider has no truthful dispatch receipt")
+				_ = c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandRejected, "")
+			} else {
+				var dispatch ports.ChatTurnDispatch
+				dispatch, err = dispatcher.DispatchTurn(ctx, msg)
+				if validateErr := dispatch.Validate(); validateErr != nil {
+					// A malformed adapter receipt cannot support success or rejection.
+					err = errors.Join(err, validateErr)
+					dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+				}
+				switch dispatch.Acceptance {
+				case ports.ChatTurnAcknowledged:
+					ref = dispatch.Ref
+					providerWarning := err
+					err = c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged, ref.ProviderTurnID)
+					if err != nil {
+						err = errors.Join(ErrGovernedDeliveryUnknown, providerWarning, err)
+					} else if providerWarning != nil {
+						c.log.Warn("provider acknowledged governed turn with local evidence warning", "turn", turnID, "error", providerWarning)
+					}
+				case ports.ChatTurnRejected, ports.ChatTurnNotSent:
+					err = errors.Join(ErrGovernedRejected, err, c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandRejected, ""))
+				case ports.ChatTurnDeliveryUnknown:
+					err = errors.Join(ErrGovernedDeliveryUnknown, err, c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown, ""))
+				}
+			}
+		}
+	} else {
+		ref, err = c.conv.SendTurn(ctx, msg)
+	}
 	if err != nil {
 		c.mu.Lock()
 		if c.dispatchingTurnID == turnID {
 			c.dispatchingTurnID = ""
 		}
 		c.mu.Unlock()
+		if errors.Is(err, ErrGovernedDeliveryUnknown) {
+			c.mu.Lock()
+			if c.governance != nil {
+				c.governance.blocked = true
+			}
+			c.mu.Unlock()
+			return domain.ConversationTurn{
+				ID: turnID, ConversationID: c.conversation.ID, HandledBySessionID: c.sessionID,
+				State: domain.TurnStateQueued, RequestedAt: requestedAt,
+			}, fmt.Errorf("send turn: %w", err)
+		}
 		// The provider may or may not have accepted it. Settle the turn as failed
 		// rather than retrying: a duplicate turn would run the work twice. Settling
 		// by Kennel's own turn id is required here — an undispatched turn has no
@@ -895,12 +1065,24 @@ func (c *Controller) drainLocked(ctx context.Context) {
 			return
 		}
 	}
+	var governed *domain.GovernedCommandRecord
+	if c.governance != nil {
+		claim, found, claimErr := c.store.GetGovernedCommand(ctx, queued.TurnID)
+		if claimErr != nil || !found {
+			if claimErr == nil {
+				claimErr = errors.New("governed queued turn has no durable command claim")
+			}
+			c.log.Error("failed to read governed queued turn", "session", c.sessionID, "turn", queued.TurnID, "error", claimErr)
+			return
+		}
+		governed = &claim
+	}
 	if _, err := c.dispatch(ctx, queued.TurnID, ports.ChatUserMessage{
 		Text:            queued.Text,
 		Content:         content,
 		Origin:          queued.Origin,
 		ClientMessageID: queued.ClientMessageID,
-	}, c.now()); err != nil {
+	}, c.now(), governed); err != nil {
 		// dispatch already settled this turn as failed. Stopping here rather than
 		// walking the rest of the queue: whatever broke the send is likely to break
 		// the next one too, and failing them all on one bad provider state would

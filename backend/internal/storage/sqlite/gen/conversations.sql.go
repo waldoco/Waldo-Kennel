@@ -416,6 +416,11 @@ WHERE status = 'running'
       SELECT id FROM conversation_turns
       WHERE handled_by_session_id = ?2
         AND state IN ('queued', 'running')
+        AND NOT EXISTS (
+            SELECT 1 FROM governed_commands
+            WHERE governed_commands.id = conversation_turns.id
+              AND governed_commands.state IN ('claimed', 'dispatching', 'delivery_unknown')
+        )
   )
 `
 
@@ -2312,6 +2317,11 @@ SET state = 'failed',
     error_message = 'controller ended before the turn completed',
     completed_at = ?
 WHERE handled_by_session_id = ? AND state IN ('queued', 'running')
+  AND NOT EXISTS (
+      SELECT 1 FROM governed_commands
+      WHERE governed_commands.id = conversation_turns.id
+        AND governed_commands.state IN ('claimed', 'dispatching', 'delivery_unknown')
+  )
 `
 
 type SettleOrphanedConversationTurnsParams struct {
@@ -2319,9 +2329,10 @@ type SettleOrphanedConversationTurnsParams struct {
 	HandledBySessionID domain.SessionID
 }
 
-// Restart reconciliation: a turn left running by a dead controller is not
-// evidence the work finished, so it is settled honestly rather than silently
-// completed.
+// Restart reconciliation: legacy turns left by a dead controller settle as
+// failed. A governed command still owns its timeline turn while claimed,
+// dispatching, or delivery-unknown, so startup must preserve that row until
+// provider history reconciles its delivery evidence.
 func (q *Queries) SettleOrphanedConversationTurns(ctx context.Context, arg SettleOrphanedConversationTurnsParams) error {
 	_, err := q.db.ExecContext(ctx, settleOrphanedConversationTurns, arg.CompletedAt, arg.HandledBySessionID)
 	return err

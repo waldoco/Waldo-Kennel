@@ -3193,3 +3193,140 @@ func awaitStoreSnapshot(t *testing.T, st *sqlite.Store, conversationID string,
 		len(last.Messages), len(last.Activities), len(last.Turns))
 	return last
 }
+
+type dispatchConversation struct {
+	*fakeConversation
+	dispatch   ports.ChatTurnDispatch
+	err        error
+	onDispatch func()
+}
+
+func (c *dispatchConversation) DispatchTurn(_ context.Context, msg ports.ChatUserMessage) (ports.ChatTurnDispatch, error) {
+	c.mu.Lock()
+	c.sent = append(c.sent, msg)
+	c.mu.Unlock()
+	if c.onDispatch != nil {
+		c.onDispatch()
+	}
+	return c.dispatch, c.err
+}
+
+func governedPolicy(t *testing.T, workspace string) domain.AttemptExecutionPolicy {
+	t.Helper()
+	p := domain.AttemptExecutionPolicy{
+		OutcomeID: "out-1", PlanRevisionID: "plan-1", WorkUnitID: "work-1",
+		ContractRevisionNumber: 1, RunBriefCoreDigest: "brief", WorkspaceRoot: workspace,
+		RequiredCapabilities: []string{domain.CapabilityWorktreeRead},
+		Grants:               []domain.CapabilityGrant{{ID: "grant-1", Name: domain.CapabilityWorktreeRead, Scope: "worktree/*"}},
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestGovernedTurnPersistsDispatchingBeforeProviderContactAndAcknowledges(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	base := newFakeConversation()
+	conv := &dispatchConversation{fakeConversation: base, dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+		TransportRequestID: 1, TransportSHA256: "abc", TransportBytes: 10, TransportSequence: 1,
+	}}
+	conv.onDispatch = func() {
+		claims, err := st.ListUnsettledGovernedCommands(context.Background())
+		if err != nil || len(claims) != 1 || claims[0].IdempotencyKey != "request-1" || claims[0].State != domain.GovernedCommandDispatching {
+			t.Fatalf("provider contacted before durable dispatching: claims=%+v err=%v", claims, err)
+		}
+	}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("governed")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := ctrl.Send(context.Background(), ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := st.GetGovernedCommand(context.Background(), turn.ID)
+	if err != nil || !ok || claim.State != domain.GovernedCommandAcknowledged || claim.Correlation.ProviderTurnID != "provider-turn-1" || turn.ProviderTurnID != "provider-turn-1" {
+		t.Fatalf("acknowledged claim/turn: claim=%+v turn=%+v ok=%v err=%v", claim, turn, ok, err)
+	}
+}
+
+func TestGovernedTurnUnknownStaysBlockingAndExactRetryDoesNotRedispatch(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnDeliveryUnknown, TransportRequestID: 1, TransportSHA256: "abc", TransportBytes: 10, TransportSequence: 1,
+	}, err: context.DeadlineExceeded}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("unknown")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-unknown"}
+	if _, err := ctrl.Send(context.Background(), msg); !errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) {
+		t.Fatalf("first err=%v", err)
+	}
+	if _, err := ctrl.Send(context.Background(), msg); err != nil {
+		t.Fatalf("exact retry=%v", err)
+	}
+	if _, err := ctrl.Send(context.Background(), ports.ChatUserMessage{Text: "different work", ClientMessageID: "request-after-unknown"}); err != nil {
+		t.Fatalf("queue behind unknown: %v", err)
+	}
+	if got := len(conv.sentMessages()); got != 1 {
+		t.Fatalf("provider contacts=%d, want 1", got)
+	}
+	snapshot, err := st.LoadConversationSnapshot(context.Background(), ctrl.ConversationID())
+	if err != nil || len(snapshot.Turns) != 2 || snapshot.Turns[0].State.Terminal() || snapshot.Turns[1].State.Terminal() {
+		t.Fatalf("timeline=%+v err=%v", snapshot.Turns, err)
+	}
+	claim, ok, err := st.GetGovernedCommand(context.Background(), snapshot.Turns[0].ID)
+	if err != nil || !ok || claim.State != domain.GovernedCommandDeliveryUnknown {
+		t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+	if err := st.SettleOrphanedTurns(context.Background(), testSession, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = st.LoadConversationSnapshot(context.Background(), ctrl.ConversationID())
+	if err != nil || snapshot.Turns[0].State.Terminal() {
+		t.Fatalf("restart falsely settled unknown: timeline=%+v err=%v", snapshot.Turns, err)
+	}
+}
+
+func sequentialID(prefix string) func() string {
+	var mu sync.Mutex
+	n := 0
+	return func() string { mu.Lock(); defer mu.Unlock(); n++; return fmt.Sprintf("%s-%d", prefix, n) }
+}
+
+func TestGovernedTurnExplicitRejectionIsNotDeliveryUnknown(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnRejected, TransportRequestID: 2, TransportSHA256: "def", TransportBytes: 11, TransportSequence: 2,
+	}, err: errors.New("provider refused request")}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("rejected")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ctrl.Send(context.Background(), ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-rejected"}); !errors.Is(err, chatsvc.ErrGovernedRejected) || errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) {
+		t.Fatalf("rejection classification=%v", err)
+	}
+	snapshot, err := st.LoadConversationSnapshot(context.Background(), ctrl.ConversationID())
+	if err != nil || len(snapshot.Turns) != 1 || snapshot.Turns[0].State != domain.TurnStateFailed {
+		t.Fatalf("timeline=%+v err=%v", snapshot.Turns, err)
+	}
+	claim, ok, err := st.GetGovernedCommand(context.Background(), snapshot.Turns[0].ID)
+	if err != nil || !ok || claim.State != domain.GovernedCommandRejected {
+		t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+}
