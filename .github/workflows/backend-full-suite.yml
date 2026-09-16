@@ -1,0 +1,34 @@
+# Full, unsharded backend gate for the reviewed Outcome loop and its explicit
+# candidate branches. Iteration shards may run elsewhere; this job preserves
+# the monolithic cross-package boundary before promotion.
+name: backend-full-suite
+
+on:
+  push:
+    branches:
+      - outcome-loop
+      - 'instinct/*candidate*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-full-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go-test:
+    name: go-test-full
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Run the unchanged backend full suite
+        working-directory: backend
+        run: go test ./... -count=1
