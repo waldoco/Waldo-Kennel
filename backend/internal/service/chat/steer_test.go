@@ -790,3 +790,24 @@ func TestGovernedSteerConcurrentDuplicateAndConflictHaveOneEffect(t *testing.T) 
 		})
 	}
 }
+
+func TestGovernedSteerStaleGenerationCannotReachProvider(t *testing.T) {
+	conv := &governedSteerRecorder{steerRecorder: newSteerRecorder(), dispatch: ports.ChatSteerDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-turn-1"},
+		TransportRequestID: 2, TransportSHA256: "steer-sha", TransportBytes: 17, TransportSequence: 2,
+	}}
+	h, _ := governedSteerHarness(t, conv, nil)
+	if err := h.st.ClaimChatControllerGeneration(context.Background(), testSession, "replacement-generation", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.ctrl.Steer(context.Background(), ports.ChatUserMessage{Text: "stale guidance", ClientMessageID: "stale-steer"}); err == nil {
+		t.Fatal("stale steer unexpectedly succeeded")
+	}
+	if got := len(conv.steers()); got != 0 {
+		t.Fatalf("stale generation reached provider %d times", got)
+	}
+	claims, err := h.st.ListUnsettledGovernedControlCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandClaimed || claims[0].Class != domain.GovernedControlSteer {
+		t.Fatalf("claims=%+v err=%v", claims, err)
+	}
+}
