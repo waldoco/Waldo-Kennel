@@ -1,11 +1,10 @@
 ---
-
-> **Compatibility CLI note:** these commands describe the currently shipped session CLI. They do not define vNext Outcome authority or session topology. For repository implementation, use `docs/architecture/persistent-mission-runtime.md`; skills and commands remain thin ingress/provider adapters.
-
 name: using-kennel
 description: "Catalog of the Kennel `kennel` CLI: spawning workers, managing sessions and projects, sending messages, controlling the shared browser, previewing pages, and daemon control. Use when using the Kennel CLI, spawning workers, or managing sessions in a Kennel workspace."
 trigger: "Using the Kennel CLI in a Kennel workspace: spawning workers, managing sessions or projects, sending messages, controlling or previewing pages."
 ---
+
+> **Compatibility CLI note:** these commands describe the currently shipped session CLI. They do not define vNext Outcome authority or session topology. For repository implementation, use `docs/architecture/persistent-mission-runtime.md`; skills and commands remain thin ingress/provider adapters.
 
 # Kennel CLI Catalog
 
