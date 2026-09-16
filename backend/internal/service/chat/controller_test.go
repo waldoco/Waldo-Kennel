@@ -3416,6 +3416,118 @@ func TestGovernedTurnCrashAfterClaimBeforeProviderContactAdoptsOnceOnRestart(t *
 	}
 }
 
+type blockingGovernedTurnDispatch struct {
+	*fakeConversation
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+	result  ports.ChatTurnDispatch
+}
+
+func (c *blockingGovernedTurnDispatch) DispatchTurn(_ context.Context, msg ports.ChatUserMessage) (ports.ChatTurnDispatch, error) {
+	c.mu.Lock()
+	c.sent = append(c.sent, msg)
+	c.mu.Unlock()
+	c.once.Do(func() { close(c.started) })
+	<-c.release
+	return c.result, nil
+}
+
+type historyDispatchConversation struct {
+	*dispatchConversation
+	history []ports.ChatEvent
+}
+
+func (c *historyDispatchConversation) ReadHistory(context.Context) ([]ports.ChatEvent, error) {
+	return c.history, nil
+}
+
+func TestGovernedTurnCrashMidDispatchRestartsUnknownWithoutRedelivery(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	firstConv := &blockingGovernedTurnDispatch{
+		fakeConversation: newFakeConversation(), started: make(chan struct{}), release: make(chan struct{}),
+		result: ports.ChatTurnDispatch{Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "late-provider-turn"}, TransportRequestID: 1, TransportSHA256: "late-sha", TransportBytes: 10, TransportSequence: 1},
+	}
+	first := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: firstConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("mid-dispatch-first")})
+	firstCtrl, err := first.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := ports.ChatUserMessage{Text: "do it", ClientMessageID: "request-mid-dispatch"}
+	firstDone := make(chan error, 1)
+	go func() {
+		_, sendErr := firstCtrl.Send(context.Background(), msg)
+		firstDone <- sendErr
+	}()
+	select {
+	case <-firstConv.started:
+	case <-time.After(time.Second):
+		t.Fatal("provider dispatch did not start")
+	}
+	claims, err := st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDispatching || len(firstConv.sentMessages()) != 1 {
+		t.Fatalf("mid-dispatch claims=%+v provider contacts=%d err=%v", claims, len(firstConv.sentMessages()), err)
+	}
+
+	// A new daemon generation resumes the native thread while the old process is
+	// gone from Kennel's point of view. Empty stable history cannot prove whether
+	// the in-flight provider call landed, so restart must retain delivery_unknown.
+	secondBase := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "must-not-redispatch"},
+	}}
+	secondConv := &historyDispatchConversation{dispatchConversation: secondBase}
+	second := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: secondConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("mid-dispatch-second")})
+	t.Cleanup(func() { _ = second.Stop(context.Background(), testSession) })
+	secondCtrl, err := second.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: firstCtrl.ProviderConversationID(), ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err = st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDeliveryUnknown {
+		t.Fatalf("restart claims=%+v err=%v", claims, err)
+	}
+	if _, err = secondCtrl.Send(context.Background(), msg); err != nil {
+		t.Fatalf("exact retry err=%v", err)
+	}
+	if _, err = secondCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "later", ClientMessageID: "request-after-mid-dispatch"}); err != nil {
+		t.Fatalf("conflicting request err=%v", err)
+	}
+	if len(secondConv.sentMessages()) != 0 {
+		t.Fatalf("replacement provider dispatches=%d, want 0", len(secondConv.sentMessages()))
+	}
+
+	// If the dead caller returns after replacement, its stale generation cannot
+	// convert the honest ambiguity into guessed success.
+	close(firstConv.release)
+	select {
+	case sendErr := <-firstDone:
+		if !errors.Is(sendErr, chatsvc.ErrGovernedDeliveryUnknown) {
+			t.Fatalf("stale dispatch return err=%v", sendErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stale dispatch did not return")
+	}
+	claims, err = st.ListUnsettledGovernedCommands(context.Background())
+	var unknown, queued int
+	for _, claim := range claims {
+		switch claim.IdempotencyKey {
+		case msg.ClientMessageID:
+			if claim.State == domain.GovernedCommandDeliveryUnknown {
+				unknown++
+			}
+		case "request-after-mid-dispatch":
+			if claim.State == domain.GovernedCommandClaimed {
+				queued++
+			}
+		}
+	}
+	if err != nil || unknown != 1 || queued != 1 || len(firstConv.sentMessages()) != 1 || len(secondConv.sentMessages()) != 0 {
+		t.Fatalf("final claims=%+v first contacts=%d replacement contacts=%d err=%v", claims, len(firstConv.sentMessages()), len(secondConv.sentMessages()), err)
+	}
+}
+
 type failAcknowledgedGovernedTurnStore struct {
 	chatsvc.Store
 	err error
