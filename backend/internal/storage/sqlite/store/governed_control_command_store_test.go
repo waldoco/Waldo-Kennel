@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,60 @@ func TestGovernedControlClaimIsIdempotentAndConflictsOnChangedRequest(t *testing
 	_, made, err = s.CreateGovernedControlCommandClaim(ctx, changed)
 	if made || !errors.Is(err, domain.ErrGovernedCommandIdempotencyConflict) {
 		t.Fatalf("conflict made=%v err=%v", made, err)
+	}
+}
+
+func TestGovernedControlClaimConcurrentDuplicateAndConflictHaveOneWinner(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "control-race")
+	session, err := s.CreateSession(ctx, sampleRecord("control-race"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	first := controlClaim(session.ID, "control-a", "same-key", "same-fingerprint", at)
+
+	const workers = 12
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	created := make(chan bool, workers)
+	errs := make(chan error, workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			got, made, callErr := s.CreateGovernedControlCommandClaim(ctx, first)
+			if callErr == nil && got.ID != first.ID {
+				callErr = errors.New("duplicate returned wrong control claim")
+			}
+			created <- made
+			errs <- callErr
+		}()
+	}
+	wg.Wait()
+	close(created)
+	close(errs)
+	winners := 0
+	for made := range created {
+		if made {
+			winners++
+		}
+	}
+	for callErr := range errs {
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("created winners=%d, want 1", winners)
+	}
+
+	conflict := first
+	conflict.ID = "control-b"
+	conflict.RequestFingerprint = "changed-fingerprint"
+	got, made, err := s.CreateGovernedControlCommandClaim(ctx, conflict)
+	if made || !errors.Is(err, domain.ErrGovernedCommandIdempotencyConflict) || got.ID != first.ID {
+		t.Fatalf("conflict made=%v existing=%+v err=%v", made, got, err)
 	}
 }
 
