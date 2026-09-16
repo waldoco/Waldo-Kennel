@@ -1618,3 +1618,36 @@ func TestDispatchTurnReportsUnknownAfterFullWriteWithoutResponse(t *testing.T) {
 		t.Fatalf("unknown evidence=%+v", got)
 	}
 }
+
+func TestDispatchTurnReportsNotSentBeforeTransport(t *testing.T) {
+	d, srv := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "   "})
+	if err == nil {
+		t.Fatal("expected local validation failure")
+	}
+	if got.Acceptance != ports.ChatTurnNotSent || got.TransportRequestID != 0 || got.TransportSHA256 != "" || srv.sentMethod("turn/start") {
+		t.Fatalf("not-sent evidence=%+v turn/start sent=%v", got, srv.sentMethod("turn/start"))
+	}
+}
+
+func TestDispatchTurnReportsUnknownWhenWrittenResponseHasNoTurnID(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.respondTo("turn/start", `{"turn":{}}`)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "go"})
+	if err == nil {
+		t.Fatal("expected missing turn id")
+	}
+	if got.Acceptance != ports.ChatTurnDeliveryUnknown || got.TransportSHA256 == "" || got.Ref.ProviderTurnID != "" {
+		t.Fatalf("missing-id evidence=%+v err=%v", got, err)
+	}
+}

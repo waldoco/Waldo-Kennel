@@ -20,6 +20,8 @@ import (
 
 // eventBuffer bounds the normalized event stream. Deltas are dropped when a
 // consumer falls this far behind; lifecycle events are not.
+var _ ports.ChatTurnDispatcher = (*conversation)(nil)
+
 const eventBuffer = 4096
 
 // approvalWait bounds how long the provider is left blocked on an unanswered
