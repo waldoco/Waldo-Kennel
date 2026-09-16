@@ -265,6 +265,12 @@ async function run(opts) {
 		step("run-playwright-journey", () => {
 			const env = {
 				...process.env,
+				// test/macos-outcome-journey/ is not under frontend/ (§2's testDir-
+				// collision fix), so Node's own upward node_modules walk from the
+				// config file's location never finds @playwright/test — the only
+				// package.json that declares it is frontend/package.json. NODE_PATH
+				// is what makes that resolvable without a second install.
+				NODE_PATH: join(FRONTEND_ROOT, "node_modules"),
 				KENNEL_JOURNEY_APP_PATH: appPath,
 				KENNEL_JOURNEY_PROFILE_DIR: profileDir,
 				KENNEL_JOURNEY_RUN_FILE: runFile,
@@ -277,7 +283,15 @@ async function run(opts) {
 				KENNEL_JOURNEY_PLANNING_PROVIDER_TIMEOUT_MS: String(opts.planningProviderMs),
 				KENNEL_JOURNEY_OVERALL_TIMEOUT_MS: String(opts.overallJourneyMs),
 			};
-			const r = spawnSync("npx", ["playwright", "test", "-c", PLAYWRIGHT_CONFIG], {
+			// The playwright binary lives under frontend/node_modules (the only
+			// package.json in this repo that declares @playwright/test) — spawned
+			// directly rather than via `npx`, which would otherwise try to resolve
+			// or install a package from the npm registry when run from REPO_ROOT.
+			const playwrightBin = join(FRONTEND_ROOT, "node_modules", ".bin", "playwright");
+			if (!existsSync(playwrightBin)) {
+				throw new Error(`playwright binary not found at ${playwrightBin} — run \`npm install\` under frontend/`);
+			}
+			const r = spawnSync(playwrightBin, ["test", "-c", PLAYWRIGHT_CONFIG], {
 				cwd: REPO_ROOT,
 				env,
 				stdio: "inherit",
