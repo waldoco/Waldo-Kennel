@@ -3315,6 +3315,69 @@ func governedPolicy(t *testing.T, workspace string) domain.AttemptExecutionPolic
 	return p
 }
 
+func TestGovernedTurnConcurrentDuplicateAndConflictHaveOneEffect(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		messages   []ports.ChatUserMessage
+		wantErrors int
+	}{
+		{name: "exact duplicates", messages: []ports.ChatUserMessage{{Text: "do it", ClientMessageID: "concurrent-key"}, {Text: "do it", ClientMessageID: "concurrent-key"}}},
+		{name: "changed fingerprint", messages: []ports.ChatUserMessage{{Text: "first", ClientMessageID: "concurrent-key"}, {Text: "changed", ClientMessageID: "concurrent-key"}}, wantErrors: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := openStore(t)
+			workspace := t.TempDir()
+			policy := governedPolicy(t, workspace)
+			conv := &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+				Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "provider-winner"},
+				TransportRequestID: 1, TransportSHA256: "winner-sha", TransportBytes: 10, TransportSequence: 1,
+			}}
+			svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("concurrent-turn")})
+			t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+			ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+			if err != nil {
+				t.Fatal(err)
+			}
+			start := make(chan struct{})
+			errs := make(chan error, len(tc.messages))
+			var wg sync.WaitGroup
+			for _, message := range tc.messages {
+				message := message
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					<-start
+					_, sendErr := ctrl.Send(context.Background(), message)
+					errs <- sendErr
+				}()
+			}
+			close(start)
+			wg.Wait()
+			close(errs)
+			errorCount := 0
+			for sendErr := range errs {
+				if sendErr != nil {
+					errorCount++
+					if !errors.Is(sendErr, domain.ErrGovernedCommandIdempotencyConflict) {
+						t.Errorf("unexpected error: %v", sendErr)
+					}
+				}
+			}
+			if errorCount != tc.wantErrors || len(conv.sentMessages()) != 1 {
+				t.Fatalf("errors=%d want=%d provider dispatches=%d", errorCount, tc.wantErrors, len(conv.sentMessages()))
+			}
+			turns, err := st.LoadConversationSnapshot(context.Background(), ctrl.ConversationID())
+			if err != nil || len(turns.Turns) != 1 {
+				t.Fatalf("turns=%+v err=%v", turns.Turns, err)
+			}
+			claim, ok, err := st.GetGovernedCommand(context.Background(), turns.Turns[0].ID)
+			if err != nil || !ok || claim.State != domain.GovernedCommandAcknowledged || claim.Correlation.ProviderTurnID != "provider-winner" {
+				t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+			}
+		})
+	}
+}
+
 func TestGovernedTurnPersistsDispatchingBeforeProviderContactAndAcknowledges(t *testing.T) {
 	st := openStore(t)
 	workspace := t.TempDir()
