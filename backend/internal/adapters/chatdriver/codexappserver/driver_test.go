@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -1649,5 +1651,26 @@ func TestDispatchTurnReportsUnknownWhenWrittenResponseHasNoTurnID(t *testing.T) 
 	}
 	if got.Acceptance != ports.ChatTurnDeliveryUnknown || got.TransportSHA256 == "" || got.Ref.ProviderTurnID != "" {
 		t.Fatalf("missing-id evidence=%+v err=%v", got, err)
+	}
+}
+
+func TestNativeWorktreeEnvironmentConfinesGoScratch(t *testing.T) {
+	workspace := t.TempDir()
+	env, err := nativeWorktreeEnvironment(workspace, map[string]string{
+		"PATH": "/pinned/bin", "GOCACHE": "/outside/cache", "GOTMPDIR": "/outside/tmp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["PATH"] != "/pinned/bin" {
+		t.Fatalf("unrelated overlay changed: %#v", env)
+	}
+	if want := filepath.Join(workspace, ".gocache"); env["GOCACHE"] != want {
+		t.Errorf("GOCACHE=%q, want %q", env["GOCACHE"], want)
+	}
+	if want := filepath.Join(workspace, ".gotmp"); env["GOTMPDIR"] != want {
+		t.Errorf("GOTMPDIR=%q, want %q", env["GOTMPDIR"], want)
+	} else if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
+		t.Fatalf("GOTMPDIR was not created: info=%v err=%v", info, statErr)
 	}
 }

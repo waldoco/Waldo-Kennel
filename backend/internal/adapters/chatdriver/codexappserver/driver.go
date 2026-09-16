@@ -318,7 +318,11 @@ func (d *Driver) Start(ctx context.Context, cfg ports.ChatStartConfig) (ports.Ch
 	}
 	var conv *conversation
 	if nativePolicy != nil {
-		conv, err = d.connectNative(ctx, cfg.WorkspacePath, cfg.Env)
+		nativeEnv, envErr := nativeWorktreeEnvironment(cfg.WorkspacePath, cfg.Env)
+		if envErr != nil {
+			return nil, envErr
+		}
+		conv, err = d.connectNative(ctx, cfg.WorkspacePath, nativeEnv)
 	} else {
 		conv, err = d.connect(ctx, cfg.WorkspacePath, cfg.Env)
 	}
@@ -417,7 +421,11 @@ func (d *Driver) Resume(ctx context.Context, cfg ports.ChatResumeConfig) (ports.
 
 	var conv *conversation
 	if nativePolicy != nil {
-		conv, err = d.connectNative(ctx, cfg.WorkspacePath, cfg.Env)
+		nativeEnv, envErr := nativeWorktreeEnvironment(cfg.WorkspacePath, cfg.Env)
+		if envErr != nil {
+			return nil, envErr
+		}
+		conv, err = d.connectNative(ctx, cfg.WorkspacePath, nativeEnv)
 	} else {
 		conv, err = d.connect(ctx, cfg.WorkspacePath, cfg.Env)
 	}
@@ -517,6 +525,20 @@ func nativeSandboxPolicy(profile *ports.ChatNativeSandboxProfile) (map[string]an
 // `sandbox` enum, while the detailed SandboxPolicy belongs to turn/start. The
 // response may expose resolved detail from provider configuration; those fields
 // are observations, not acknowledgments of parameters this request did not send.
+
+func nativeWorktreeEnvironment(workspace string, overlay map[string]string) (map[string]string, error) {
+	env := make(map[string]string, len(overlay)+2)
+	for key, value := range overlay {
+		env[key] = value
+	}
+	env["GOCACHE"] = filepath.Join(workspace, ".gocache")
+	env["GOTMPDIR"] = filepath.Join(workspace, ".gotmp")
+	if err := os.MkdirAll(env["GOTMPDIR"], 0o700); err != nil {
+		return nil, fmt.Errorf("create native worktree GOTMPDIR: %w", err)
+	}
+	return env, nil
+}
+
 func validateNativeThreadSandbox(observed map[string]any) error {
 	if observed == nil {
 		return fmt.Errorf("%w: provider returned no structured sandbox", ports.ErrChatProfileMismatch)
