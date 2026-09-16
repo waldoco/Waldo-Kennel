@@ -126,3 +126,37 @@ func TestGovernedCommandContractAcceptsEvidenceBackedVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestEarlyProviderEventCannotEscapeBeforeDurableClaim(t *testing.T) {
+	fence := GovernedSessionEffectFence{
+		ExpectedGeneration: "generation-1", CurrentGeneration: "generation-1",
+	}
+	if fence.AllowsDispatch(GovernedCommandDispatching) || fence.AllowsProviderEvent(GovernedCommandDispatching) {
+		t.Fatal("provider effect/event escaped before the claim was durably visible")
+	}
+	fence.ClaimVisible = true
+	if !fence.AllowsDispatch(GovernedCommandDispatching) || !fence.AllowsProviderEvent(GovernedCommandDispatching) {
+		t.Fatal("durably claimed dispatch was not admitted")
+	}
+	if fence.AllowsDispatch(GovernedCommandClaimed) || fence.AllowsProviderEvent(GovernedCommandClaimed) {
+		t.Fatal("claimed-but-not-dispatching command admitted provider effects")
+	}
+}
+
+func TestRestoreCannotRaceTeardownUnderSameOwnershipFence(t *testing.T) {
+	fence := GovernedSessionEffectFence{
+		ExpectedGeneration: "generation-7", CurrentGeneration: "generation-7", ClaimVisible: true,
+	}
+	if !fence.AllowsDispatch(GovernedCommandDispatching) {
+		t.Fatal("healthy matching fence rejected dispatch")
+	}
+	fence.TeardownInFlight = true
+	if fence.AllowsDispatch(GovernedCommandDispatching) || fence.AllowsProviderEvent(GovernedCommandAcknowledged) {
+		t.Fatal("matching generation bypassed teardown already in flight")
+	}
+	fence.TeardownInFlight = false
+	fence.CurrentGeneration = "generation-8"
+	if fence.AllowsDispatch(GovernedCommandDispatching) || fence.AllowsProviderEvent(GovernedCommandAcknowledged) {
+		t.Fatal("stale generation admitted restore or provider event")
+	}
+}

@@ -190,3 +190,40 @@ func CanTransitionGovernedCommand(from, to GovernedCommandState) bool {
 func (s GovernedCommandState) BlocksConflictingDispatch() bool {
 	return s == GovernedCommandClaimed || s == GovernedCommandDispatching || s == GovernedCommandDeliveryUnknown
 }
+
+// GovernedSessionEffectFence is checked at the pre-effect boundary, before a
+// provider process starts or a restore can observe/emit provider events. A
+// generation check only at the final database write is too late: teardown may
+// already be destroying the same process tree or worktree.
+type GovernedSessionEffectFence struct {
+	ExpectedGeneration string
+	CurrentGeneration  string
+	ClaimVisible       bool
+	TeardownInFlight   bool
+}
+
+// AllowsDispatch reports whether a durable command may cross into provider
+// effects. The claimed row must already be visible, its state must have moved
+// durably to dispatching, the ownership generation must still match, and no
+// teardown may hold the same per-session fence.
+func (f GovernedSessionEffectFence) AllowsDispatch(state GovernedCommandState) bool {
+	return state == GovernedCommandDispatching && f.ClaimVisible &&
+		strings.TrimSpace(f.ExpectedGeneration) != "" && f.ExpectedGeneration == f.CurrentGeneration &&
+		!f.TeardownInFlight
+}
+
+// AllowsProviderEvent reports whether an event can escape into projection.
+// Early provider events are rejected until the durable claim is visible under
+// the same live ownership fence as dispatch.
+func (f GovernedSessionEffectFence) AllowsProviderEvent(state GovernedCommandState) bool {
+	if !f.ClaimVisible || strings.TrimSpace(f.ExpectedGeneration) == "" ||
+		f.ExpectedGeneration != f.CurrentGeneration || f.TeardownInFlight {
+		return false
+	}
+	switch state {
+	case GovernedCommandDispatching, GovernedCommandAcknowledged, GovernedCommandDeliveryUnknown, GovernedCommandReconciled:
+		return true
+	default:
+		return false
+	}
+}
