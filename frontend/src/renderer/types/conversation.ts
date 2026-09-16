@@ -885,7 +885,7 @@ export function governedBlockCopy(
 			: "This answer is being recorded locally. There is no provider acceptance step to wait on here -- only the local write is being confirmed.";
 	}
 	if (kind === "interrupt" && state === "delivery_unknown" && quiescence === "pending") {
-		return "This stop has not settled: whether the provider ever received it, and whether the process actually stopped, are both unconfirmed.";
+		return "This stop has not settled because Kennel could not verify that the process stopped. Nothing else will send until this is resolved.";
 	}
 	if (state === "delivery_unknown") {
 		return "Whether the provider received this is not known.";

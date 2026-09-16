@@ -200,9 +200,9 @@ describe("GovernedDispatchBlockedBanner", () => {
 	// Regression for the reviewer's HIGH finding: a containment-failed
 	// interrupt can be provider-acknowledged and still land in
 	// delivery_unknown purely because the process-tree check failed. The copy
-	// must not assert "delivery is uncertain" here -- that is not what this
-	// claim's fields support.
-	it("does not claim delivery is uncertain for a containment-failed interrupt", () => {
+	// must state only the proven fact -- verification failed -- and must not
+	// speculate either way on whether the provider received the stop.
+	it("states only the proven fact for a containment-failed interrupt", () => {
 		render(
 			<GovernedDispatchBlockedBanner
 				turnBlocks={[]}
@@ -219,8 +219,13 @@ describe("GovernedDispatchBlockedBanner", () => {
 			/>,
 		);
 		expect(screen.getByText(/Interrupt/)).toBeInTheDocument();
-		expect(screen.getByText(/whether the process actually stopped/)).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/This stop has not settled because Kennel could not verify that the process stopped\. Nothing else will send until this is resolved\./,
+			),
+		).toBeInTheDocument();
 		expect(screen.queryByText(/[Dd]elivery is uncertain/)).not.toBeInTheDocument();
+		expect(screen.queryByText(/whether the provider received/i)).not.toBeInTheDocument();
 		expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
 		expect(screen.queryByText(/safe to retry/i)).not.toBeInTheDocument();
 	});
@@ -297,6 +302,8 @@ describe("GovernedDispatchBlockedBanner", () => {
 			/>,
 		);
 		expect(screen.getByText(/Waiting for the provider to acknowledge/)).toBeInTheDocument();
-		expect(screen.getByText(/whether the process actually stopped/)).toBeInTheDocument();
+		expect(screen.getByText(/could not verify that the process stopped/)).toBeInTheDocument();
+		expect(screen.queryByText(/[Dd]elivery is uncertain/)).not.toBeInTheDocument();
+		expect(screen.queryByText(/whether the provider received/i)).not.toBeInTheDocument();
 	});
 });
