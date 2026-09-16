@@ -3471,7 +3471,7 @@ func TestGovernedAnswerBindsExactPendingGenerationAndReplaysWithoutRedispatch(t 
 	st := openStore(t)
 	workspace := t.TempDir()
 	policy := governedPolicy(t, workspace)
-	conv := &answerDispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{Acceptance: ports.ChatTurnAcknowledged}}
+	conv := &answerDispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerFrameWriteComplete}}
 	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("answer")})
 	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
 	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
@@ -3504,11 +3504,36 @@ func TestGovernedAnswerBindsExactPendingGenerationAndReplaysWithoutRedispatch(t 
 	}
 }
 
-func TestGovernedAnswerProviderAckLocalFailureBecomesUnknown(t *testing.T) {
+func TestGovernedAnswerNotStartedIsRejectedWithoutResolvingApproval(t *testing.T) {
 	st := openStore(t)
 	workspace := t.TempDir()
 	policy := governedPolicy(t, workspace)
-	conv := &answerDispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{Acceptance: ports.ChatTurnAcknowledged}}
+	conv := &answerDispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteNotStarted}, err: ports.ErrChatDecisionNotOffered}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("answer-not-started")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conv.emit(ports.ChatEvent{Kind: ports.ChatEventApprovalRequested, RequestID: "8", ProviderItemID: "8", Summary: "allow?", Decisions: []ports.ChatDecisionOption{{ID: "accept"}}})
+	awaitStoreSnapshot(t, st, ctrl.ConversationID(), func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
+	if err := svc.Resolve(context.Background(), testSession, "8", ports.ChatDecision{ID: "accept"}); !errors.Is(err, chatsvc.ErrProviderRefused) {
+		t.Fatalf("resolve err=%v", err)
+	}
+	snapshot, err := st.LoadConversationSnapshot(context.Background(), ctrl.ConversationID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Activities[0].Status != domain.ActivityStatusPending {
+		t.Fatalf("activity status=%q want pending", snapshot.Activities[0].Status)
+	}
+}
+
+func TestGovernedAnswerCompleteWriteLocalFailureBecomesUnknown(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &answerDispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerFrameWriteComplete}}
 	injected := errors.New("resolve activity failed")
 	wrapped := &failResolveApprovalStore{Store: st, err: injected}
 	svc := chatsvc.New(chatsvc.Options{Store: wrapped, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("answer-fail")})

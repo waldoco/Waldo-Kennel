@@ -148,6 +148,7 @@ var _ ports.ChatUsageReporter = (*conversation)(nil)
 // Same reason, for compaction. Losing this method does not break a build; it just
 // makes the control disappear and long conversations start failing again.
 var _ ports.ChatCompactor = (*conversation)(nil)
+var _ ports.ChatAnswerDispatcher = (*conversation)(nil)
 
 // Same reason, for the MCP reload: a dropped method makes the affordance vanish and
 // leaves a session with a dead tool server no way back.
@@ -1005,32 +1006,53 @@ func isNoActiveTurn(err error) bool {
 // consuming the request on a bad one would leave the user's real answer with
 // nothing left to answer while the provider waits out its timeout.
 func (c *conversation) ResolveRequest(ctx context.Context, requestID string, decision ports.ChatDecision) error {
+	_, err := c.resolveRequest(ctx, requestID, decision)
+	return err
+}
+
+// DispatchAnswer waits for the complete JSON-RPC reply-frame write. The app-server
+// protocol has no response to that reply, so this is transport evidence only.
+func (c *conversation) DispatchAnswer(ctx context.Context, requestID, _ string, decision ports.ChatDecision) (ports.ChatAnswerDispatch, error) {
+	written, err := c.resolveRequest(ctx, requestID, decision)
+	if err != nil {
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteNotStarted}, err
+	}
+	select {
+	case writeErr := <-written:
+		if writeErr != nil {
+			return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteUnknown}, writeErr
+		}
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerFrameWriteComplete}, nil
+	case <-ctx.Done():
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteUnknown}, ctx.Err()
+	}
+}
+
+func (c *conversation) resolveRequest(ctx context.Context, requestID string, decision ports.ChatDecision) (<-chan error, error) {
 	c.mu.Lock()
 	parked, ok := c.pending[requestID]
 	closed := c.closed
 	if closed {
 		c.mu.Unlock()
-		return errConversationClosed
+		return nil, errConversationClosed
 	}
 	if !ok {
 		c.mu.Unlock()
-		// Already resolved, superseded, or from a previous controller. Refusing is
-		// required: a stale card must never resolve a newer request.
-		return fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
+		return nil, fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
 	}
 	reply, err := parked.reply(decision)
 	if err != nil {
 		c.mu.Unlock()
-		return err
+		return nil, err
 	}
 	delete(c.pending, requestID)
 	c.mu.Unlock()
 
 	select {
 	case parked.ch <- reply:
-		return nil
+		return parked.written, nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -1043,6 +1065,7 @@ func (c *conversation) ResolveRequest(ctx context.Context, requestID string, dec
 // reconstruct them. Kennel echoes what the provider sent rather than rebuilding it.
 type parkedRequest struct {
 	ch      chan ports.ChatDecision
+	written chan error
 	method  string
 	offered map[string]json.RawMessage
 }
@@ -1106,12 +1129,13 @@ func (c *conversation) handleServerRequest(ctx context.Context, req serverReques
 	}
 
 	ch := make(chan ports.ChatDecision, 1)
+	written := make(chan error, 1)
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
 		return nil, errConversationClosed
 	}
-	c.pending[requestID] = &parkedRequest{ch: ch, method: req.Method, offered: offered}
+	c.pending[requestID] = &parkedRequest{ch: ch, written: written, method: req.Method, offered: offered}
 	c.mu.Unlock()
 
 	event := ports.ChatEvent{
@@ -1132,7 +1156,7 @@ func (c *conversation) handleServerRequest(ctx context.Context, req serverReques
 
 	select {
 	case decision := <-ch:
-		return approvalReply(req.Method, decision), nil
+		return serverReply{value: approvalReply(req.Method, decision), written: written}, nil
 
 	case <-time.After(approvalWait):
 		c.discardPending(requestID)

@@ -114,6 +114,7 @@ type conversation struct {
 }
 
 var _ ports.ChatConversation = (*conversation)(nil)
+var _ ports.ChatAnswerDispatcher = (*conversation)(nil)
 var _ ports.ChatHistoryReader = (*conversation)(nil)
 var _ ports.ChatDeferredTurnStarter = (*conversation)(nil)
 var _ ports.ChatConfigOptionController = (*conversation)(nil)
@@ -645,4 +646,14 @@ func (c *conversation) promptContent(message ports.ChatUserMessage) ([]acpsdk.Co
 		return nil, errors.New("chat message has no content")
 	}
 	return prompt, nil
+}
+
+// DispatchAnswer exposes the strongest boundary available through the ACP SDK.
+// A successful channel handoff is observable; a provider wire write is not.
+func (c *conversation) DispatchAnswer(ctx context.Context, requestID, _ string, decision ports.ChatDecision) (ports.ChatAnswerDispatch, error) {
+	err := c.ResolveRequest(ctx, requestID, decision)
+	if err != nil {
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteNotStarted}, err
+	}
+	return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerSDKHandoffComplete}, nil
 }

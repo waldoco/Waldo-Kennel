@@ -62,6 +62,13 @@ type serverRequest struct {
 	Params json.RawMessage
 }
 
+// serverReply carries an optional completion signal for the full reply-frame write.
+// It is local plumbing only; value is the JSON-RPC result placed on the wire.
+type serverReply struct {
+	value   any
+	written chan<- error
+}
+
 // serverRequestHandler answers a server->client request. Returning an error
 // sends a JSON-RPC error back, which the provider treats as a refusal to answer
 // rather than as a decision.
@@ -255,6 +262,11 @@ func (c *conn) deliver(f frame) {
 // stall the read loop and starve streaming deltas.
 func (c *conn) answer(req serverRequest) {
 	result, err := c.onServerRequest(context.Background(), req)
+	var writeDone chan<- error
+	if tracked, ok := result.(serverReply); ok {
+		result = tracked.value
+		writeDone = tracked.written
+	}
 
 	reply := map[string]any{"id": req.ID}
 	if err != nil {
@@ -262,7 +274,11 @@ func (c *conn) answer(req serverRequest) {
 	} else {
 		reply["result"] = result
 	}
-	if werr := c.write(reply); werr != nil {
+	werr := c.write(reply)
+	if writeDone != nil {
+		writeDone <- werr
+	}
+	if werr != nil {
 		c.log.Error("failed to answer app-server request", "method", req.Method, "error", werr)
 	}
 }
