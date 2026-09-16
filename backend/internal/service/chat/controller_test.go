@@ -3311,9 +3311,9 @@ func TestGovernedTurnCrashAfterProviderAcceptanceLeavesDispatchingAndBlocksRepla
 	if _, err = ctrl.Send(context.Background(), msg); !errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) || !errors.Is(err, injected) {
 		t.Fatalf("first send err=%v", err)
 	}
-	claim, ok, err := st.GetGovernedCommand(context.Background(), "post-accept-1")
-	if err != nil || !ok || claim.State != domain.GovernedCommandDispatching {
-		t.Fatalf("claim=%+v ok=%v err=%v", claim, ok, err)
+	claims, err := st.ListUnsettledGovernedCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDispatching || claims[0].Correlation.ClientMessageID != msg.ClientMessageID {
+		t.Fatalf("claims=%+v err=%v", claims, err)
 	}
 	if _, err = ctrl.Send(context.Background(), msg); err != nil {
 		t.Fatalf("exact replay err=%v", err)
