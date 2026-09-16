@@ -205,9 +205,15 @@ async function run(opts) {
 			execFileSync("git", ["status", "--porcelain"], { cwd: REPO_ROOT, encoding: "utf8" }).trim().length > 0,
 		);
 
-		step("codex-preflight", () => {
+		// Cheap, fast-fail PATH sanity check only (Instinct review item 7):
+		// `codex --version` proves the binary is on PATH, nothing about
+		// authentication. It exists to avoid spending 10+ minutes packaging an
+		// app when Codex isn't even installed. The real authentication gate
+		// runs inside the Playwright spec, against the daemon's own agent
+		// inventory, after the daemon is up and before any UI action.
+		step("codex-path-sanity-check", () => {
 			if (!probeCodexAvailable(opts.codexPreflightMs)) {
-				throw blockedError("codex_unavailable", "No authenticated Codex CLI found on PATH within the preflight ceiling");
+				throw blockedError("codex_unavailable", "No Codex CLI found on PATH within the preflight ceiling");
 			}
 		});
 
@@ -236,11 +242,17 @@ async function run(opts) {
 			});
 		}
 
+		// Fail-closed (Instinct review item 3a): a mismatched identity aborts
+		// HERE, before any fixture/profile/Playwright work — it must never fall
+		// through to "continue with a failed flag set", which risks the rest of
+		// the run proceeding against a build that is not what it claims to be.
 		const packageIdentityCheck = step("package-identity-gate", () => {
 			const r = spawnSync("node", [join(FRONTEND_ROOT, "scripts", "assert-package-identity.mjs"), appPath], { encoding: "utf8" });
-			return r.status === 0 ? "passed" : "failed";
+			if (r.status !== 0) {
+				throw new Error(`package-identity gate failed for ${appPath}: ${(r.stderr || r.stdout || "").trim()}`);
+			}
+			return "passed";
 		});
-		if (packageIdentityCheck !== "passed") failed = true;
 
 		const executableName = step("read-executable-name", () => readExecutableName(appPath));
 		const executablePath = join(appPath, "Contents", "MacOS", executableName);
