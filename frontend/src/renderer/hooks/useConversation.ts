@@ -25,6 +25,10 @@ import type {
 	ControllerState,
 	DecisionOption,
 	DiffStatus,
+	GovernedBlockState,
+	GovernedControlBlock,
+	GovernedQuiescence,
+	GovernedTurnBlock,
 	McpServer,
 	MessageOrigin,
 	MessageRole,
@@ -759,6 +763,35 @@ function toSnapshot(wire: WireSnapshot): ConversationSnapshot {
 			previousBranchId: point.previousBranchId || undefined,
 			nextBranchId: point.nextBranchId || undefined,
 		})),
+		// Session-wide governed claims still blocking dispatch, across the turn
+		// table and the steer/answer/interrupt control table alike. Either list
+		// non-empty means Send() is blocked right now, not just once was.
+		governedTurnBlocks: wire.governedTurnBlocks?.length
+			? wire.governedTurnBlocks.map(
+					(block): GovernedTurnBlock => ({
+						kind: "turn",
+						turnId: block.turnId,
+						state: block.state as GovernedBlockState,
+						quiescence: block.quiescence as GovernedQuiescence,
+						quiescenceEvidenceRef: block.quiescenceEvidenceRef || undefined,
+						since: block.since,
+					}),
+				)
+			: undefined,
+		governedControlBlocks: wire.governedControlBlocks?.length
+			? wire.governedControlBlocks.map(
+					(block): GovernedControlBlock => ({
+						kind: block.kind,
+						id: block.id,
+						state: block.state as GovernedBlockState,
+						quiescence: block.quiescence as GovernedQuiescence,
+						quiescenceEvidenceRef: block.quiescenceEvidenceRef || undefined,
+						providerTurnId: block.providerTurnId || undefined,
+						requestInstanceId: block.requestInstanceId || undefined,
+						since: block.since,
+					}),
+				)
+			: undefined,
 		turns: (wire.turns ?? []).map((turn) => ({
 			id: turn.id,
 			state: turn.state as TurnState,
@@ -767,6 +800,10 @@ function toSnapshot(wire: WireSnapshot): ConversationSnapshot {
 			requestedAt: turn.requestedAt,
 			startedAt: turn.startedAt ?? undefined,
 			completedAt: turn.completedAt ?? undefined,
+			// This turn's own claim only -- absent does not mean the session is
+			// unblocked, since a control claim can block without living on a turn.
+			dispatchBlockedSince: turn.dispatchBlockedSince ?? undefined,
+			dispatchBlockedState: (turn.dispatchBlockedState as GovernedBlockState | undefined) || undefined,
 			// Left undefined when the daemon reported none, so the surface can tell
 			// "this turn changed nothing" from "this agent does not report diffs".
 			diff: turn.diff

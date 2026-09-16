@@ -46,6 +46,8 @@ type fakeConversationService struct {
 	sent           ports.ChatUserMessage
 	inputRequestID string
 	inputResponse  ports.ChatInputResponse
+	sendTurn       domain.ConversationTurn
+	sendErr        error
 }
 
 func (f *fakeConversationService) EditMessage(context.Context, domain.SessionID, string, ports.ChatUserMessage) (chatsvc.EditMessageResult, error) {
@@ -62,6 +64,9 @@ func (f *fakeConversationService) Snapshot(context.Context, domain.SessionID) (c
 
 func (f *fakeConversationService) Send(_ context.Context, _ domain.SessionID, message ports.ChatUserMessage) (domain.ConversationTurn, error) {
 	f.sent = message
+	if f.sendErr != nil {
+		return f.sendTurn, f.sendErr
+	}
 	return domain.ConversationTurn{ID: "turn-1", State: domain.TurnStateRunning}, nil
 }
 
@@ -417,5 +422,140 @@ func TestSnapshotKeepsAggregateWhenNoStreamArrived(t *testing.T) {
 	}
 	if _, present := detail["outputTruncated"]; present {
 		t.Error("untruncated output still carried the truncation flag")
+	}
+}
+
+// TestSendConversationReturns202OnDeliveryUnknown proves the send route maps
+// chatsvc.ErrGovernedDeliveryUnknown to the same 202 shape as an ordinary
+// accepted send, echoing the real turn the service returned alongside that
+// error rather than failing the request or fabricating a body.
+func TestSendConversationReturns202OnDeliveryUnknown(t *testing.T) {
+	service := &fakeConversationService{
+		sendErr:  chatsvc.ErrGovernedDeliveryUnknown,
+		sendTurn: domain.ConversationTurn{ID: "turn-unknown-1", State: domain.TurnStateQueued},
+	}
+	server := conversationTestServer(t, service)
+	body := []byte(`{"text":"do it","clientMessageId":"message-unknown"}`)
+	request, err := http.NewRequest(http.MethodPost,
+		server.URL+"/api/v1/sessions/p1-1/conversation/messages", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("POST message: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusAccepted {
+		got, _ := io.ReadAll(response.Body)
+		t.Fatalf("status = %d, body = %s", response.StatusCode, got)
+	}
+	var decoded map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if decoded["turnId"] != "turn-unknown-1" || decoded["state"] != "queued" || decoded["duplicate"] != false {
+		t.Fatalf("body = %#v", decoded)
+	}
+}
+
+// TestSendConversationOtherErrorsStillFail confirms the new delivery-unknown
+// branch changed nothing else: an ordinary chat-service error still maps
+// through writeConversationError, not through the 202 path.
+func TestSendConversationOtherErrorsStillFail(t *testing.T) {
+	service := &fakeConversationService{sendErr: chatsvc.ErrNoController}
+	server := conversationTestServer(t, service)
+	body := []byte(`{"text":"do it","clientMessageId":"message-1"}`)
+	request, err := http.NewRequest(http.MethodPost,
+		server.URL+"/api/v1/sessions/p1-1/conversation/messages", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("POST message: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusConflict {
+		got, _ := io.ReadAll(response.Body)
+		t.Fatalf("status = %d, body = %s", response.StatusCode, got)
+	}
+}
+
+// TestSnapshotExposesGovernedTurnAndControlBlocks checks the wire shape for
+// both new session-wide lists, and that a turn's own dispatchBlockedSince /
+// dispatchBlockedState only appear when that turn has a matching entry in
+// governedTurnBlocks -- with the block's real state echoed, not forced to
+// delivery_unknown.
+func TestSnapshotExposesGovernedTurnAndControlBlocks(t *testing.T) {
+	now := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
+	body := conversationSnapshotBody(t, chatsvc.Snapshot{
+		SessionID: domain.SessionID("p1-1"),
+		Mode:      domain.SessionModeChat,
+		Turns: []domain.ConversationTurn{
+			{ID: "turn-blocked", State: domain.TurnStateQueued, RequestedAt: now},
+			{ID: "turn-free", State: domain.TurnStateCompleted, RequestedAt: now},
+		},
+		GovernedTurnBlocks: []chatsvc.GovernedTurnBlock{{
+			TurnID: "turn-blocked", State: domain.GovernedCommandDispatching,
+			Quiescence: domain.GovernedCommandQuiescenceNotApplicable, UpdatedAt: now,
+		}},
+		GovernedControlBlocks: []chatsvc.GovernedControlBlock{
+			{
+				ID: "control-interrupt", Class: domain.GovernedControlInterrupt,
+				State: domain.GovernedCommandDeliveryUnknown, Quiescence: domain.GovernedCommandQuiescencePending,
+				ProviderTurnID: "provider-turn-1", UpdatedAt: now,
+			},
+			{
+				ID: "control-answer", Class: domain.GovernedControlAnswer,
+				State: domain.GovernedCommandClaimed, Quiescence: domain.GovernedCommandQuiescenceNotApplicable,
+				RequestInstanceID: "request-instance-1", UpdatedAt: now,
+			},
+		},
+	})
+
+	turns := body["turns"].([]any)
+	blocked := turns[0].(map[string]any)
+	if blocked["dispatchBlockedSince"] != now.Format(time.RFC3339) || blocked["dispatchBlockedState"] != "dispatching" {
+		t.Fatalf("blocked turn = %#v", blocked)
+	}
+	free := turns[1].(map[string]any)
+	if _, present := free["dispatchBlockedSince"]; present {
+		t.Fatalf("unblocked turn wrongly carries dispatchBlockedSince: %#v", free)
+	}
+	if _, present := free["dispatchBlockedState"]; present {
+		t.Fatalf("unblocked turn wrongly carries dispatchBlockedState: %#v", free)
+	}
+
+	turnBlocks := body["governedTurnBlocks"].([]any)
+	if len(turnBlocks) != 1 {
+		t.Fatalf("governedTurnBlocks = %#v", turnBlocks)
+	}
+	turnBlock := turnBlocks[0].(map[string]any)
+	if turnBlock["kind"] != "turn" || turnBlock["turnId"] != "turn-blocked" ||
+		turnBlock["state"] != "dispatching" || turnBlock["since"] != now.Format(time.RFC3339) {
+		t.Fatalf("turn block = %#v", turnBlock)
+	}
+
+	controlBlocks := body["governedControlBlocks"].([]any)
+	if len(controlBlocks) != 2 {
+		t.Fatalf("governedControlBlocks = %#v", controlBlocks)
+	}
+	interrupt := controlBlocks[0].(map[string]any)
+	if interrupt["kind"] != "interrupt" || interrupt["state"] != "delivery_unknown" ||
+		interrupt["quiescence"] != "pending" || interrupt["providerTurnId"] != "provider-turn-1" {
+		t.Fatalf("containment-failed-shaped interrupt block = %#v", interrupt)
+	}
+	if _, present := interrupt["requestInstanceId"]; present {
+		t.Fatalf("interrupt block wrongly carries requestInstanceId: %#v", interrupt)
+	}
+	answer := controlBlocks[1].(map[string]any)
+	if answer["kind"] != "answer" || answer["state"] != "claimed" || answer["requestInstanceId"] != "request-instance-1" {
+		t.Fatalf("answer block = %#v", answer)
+	}
+	if _, present := answer["providerTurnId"]; present {
+		t.Fatalf("answer block wrongly carries providerTurnId: %#v", answer)
 	}
 }

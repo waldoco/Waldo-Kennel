@@ -102,6 +102,53 @@ export interface ConversationTurn {
 	diff?: TurnDiff;
 	/** The agent's plan for this turn, or absent when it made none. */
 	plan?: ConversationPlan;
+	/**
+	 * When this turn's own governed claim last moved, present only while that
+	 * claim still owns the command effect. Absent means this turn's own claim is
+	 * not blocking -- it does NOT mean nothing in the session is blocking: a
+	 * stuck steer/answer/interrupt claim on the same session blocks every turn's
+	 * dispatch without living on any turn. Read the snapshot's
+	 * `governedTurnBlocks`/`governedControlBlocks` for that session-wide truth.
+	 */
+	dispatchBlockedSince?: string;
+	/** This turn's own claim state whenever `dispatchBlockedSince` is set. Never
+	 *  `claimed`/`dispatching` shown as `delivery_unknown` -- always the real state. */
+	dispatchBlockedState?: GovernedBlockState;
+}
+
+/** A governed claim's durable delivery state. Shared by the turn-dispatch table
+ *  and the steer/answer/interrupt control table. */
+export type GovernedBlockState = "claimed" | "dispatching" | "delivery_unknown";
+
+/** Whether a governed claim's effect boundary is known safe to act around. */
+export type GovernedQuiescence = "not_applicable" | "pending" | "codex_process_tree_verified";
+
+/** One unsettled turn-dispatch claim currently blocking conflicting dispatch. */
+export interface GovernedTurnBlock {
+	kind: "turn";
+	turnId: string;
+	state: GovernedBlockState;
+	quiescence: GovernedQuiescence;
+	quiescenceEvidenceRef?: string;
+	since: string;
+}
+
+/**
+ * One unsettled steer/answer/interrupt control claim currently blocking
+ * conflicting dispatch in this session. `providerTurnId` is set only for
+ * steer/interrupt rows; `requestInstanceId` only for answer rows -- exactly
+ * one is ever present. A containment-failed interrupt reports here as
+ * `kind: "interrupt", state: "delivery_unknown", quiescence: "pending"`.
+ */
+export interface GovernedControlBlock {
+	kind: "steer" | "answer" | "interrupt";
+	id: string;
+	state: GovernedBlockState;
+	quiescence: GovernedQuiescence;
+	quiescenceEvidenceRef?: string;
+	providerTurnId?: string;
+	requestInstanceId?: string;
+	since: string;
 }
 
 /** How a file changed. The daemon's neutral names, not a provider's. */
@@ -709,6 +756,15 @@ export interface ConversationSnapshot {
 	 * Read it through `can()`, which encodes that distinction once.
 	 */
 	capabilities?: string[];
+	/**
+	 * Every unsettled governed claim in this session that still blocks a later
+	 * dispatch -- across the turn table and the steer/answer/interrupt control
+	 * table alike. Either list being non-empty means Send() is blocked for this
+	 * session right now, not merely that a claim was once made and left
+	 * unresolved.
+	 */
+	governedTurnBlocks?: GovernedTurnBlock[];
+	governedControlBlocks?: GovernedControlBlock[];
 }
 
 /**
@@ -789,4 +845,37 @@ export function pendingUserInput(
 		(item): item is ConversationActivity =>
 			item.kind === "activity" && item.activityKind === "user_input" && item.status === "pending",
 	);
+}
+
+/**
+ * Whether anything governed is currently blocking a later dispatch in this
+ * session -- a turn claim, or a steer/answer/interrupt control claim.
+ *
+ * A turn's own `dispatchBlockedState` is not sufficient on its own: a control
+ * claim blocks every turn's dispatch without living on any turn, which is
+ * exactly the false negative this checks for instead.
+ */
+export function sessionDispatchBlocked(snapshot: ConversationSnapshot): boolean {
+	return (
+		(snapshot.governedTurnBlocks?.length ?? 0) > 0 ||
+		(snapshot.governedControlBlocks?.length ?? 0) > 0
+	);
+}
+
+/**
+ * The one place a governed block's state is put into words. `claimed` and
+ * `dispatching` both read as still-in-flight; only `delivery_unknown` reads as
+ * uncertain. Neither ever says "failed" or "safe to retry" -- the claim owns
+ * the command effect until it durably settles, and nothing here may suggest a
+ * retry would be harmless.
+ */
+export function governedBlockCopy(state: GovernedBlockState): string {
+	switch (state) {
+		case "delivery_unknown":
+			return "Delivery is uncertain. Nothing else will send until this resolves.";
+		case "dispatching":
+		case "claimed":
+		default:
+			return "Waiting on the provider to accept this before anything else can send.";
+	}
 }

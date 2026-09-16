@@ -13,10 +13,17 @@
  */
 
 import { memo } from "react";
-import { KeyRound, Plug, RefreshCw, TriangleAlert } from "lucide-react";
+import { Hourglass, KeyRound, Plug, RefreshCw, TriangleAlert } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
-import type { ConversationAccount, ConversationThreadState, McpServer } from "../../types/conversation";
+import type {
+	ConversationAccount,
+	ConversationThreadState,
+	GovernedControlBlock,
+	GovernedTurnBlock,
+	McpServer,
+} from "../../types/conversation";
+import { governedBlockCopy } from "../../types/conversation";
 
 /**
  * The provider will not do any more work until someone signs in.
@@ -139,6 +146,65 @@ export const ThreadStateBanner = memo(function ThreadStateBanner({
 						Waiting on: {threadState.waitingOn.join(", ")}
 					</span>
 				) : null}
+			</div>
+		</div>
+	);
+});
+
+/**
+ * A governed claim -- a turn's, or a steer/answer/interrupt control command's
+ * -- is still blocking every later dispatch in this session.
+ *
+ * Drawn from `governedTurnBlocks`/`governedControlBlocks` on the snapshot,
+ * never from a single turn's own `dispatchBlockedState`: a control claim
+ * blocks dispatch without living on any turn, so a per-turn note alone would
+ * miss it and read as "just this message is stuck" when nothing else can send
+ * either. Named per kind so a stuck interrupt is not mistaken for a stuck
+ * turn. Never says "failed" or "safe to retry" -- the claim still owns the
+ * command effect, and nothing here may suggest a retry would be harmless.
+ */
+export const GovernedDispatchBlockedBanner = memo(function GovernedDispatchBlockedBanner({
+	turnBlocks,
+	controlBlocks,
+}: {
+	turnBlocks: GovernedTurnBlock[];
+	controlBlocks: GovernedControlBlock[];
+}) {
+	if (turnBlocks.length === 0 && controlBlocks.length === 0) return null;
+
+	const worstState = [...turnBlocks.map((b) => b.state), ...controlBlocks.map((b) => b.state)].includes(
+		"delivery_unknown",
+	)
+		? "delivery_unknown"
+		: turnBlocks[0]?.state ?? controlBlocks[0]?.state ?? "claimed";
+
+	return (
+		<div
+			role="alert"
+			aria-atomic="true"
+			className="flex shrink-0 items-start gap-2.5 border-b border-warning/40 bg-warning/10 px-4 py-2.5"
+		>
+			<Hourglass aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+			<div className="flex min-w-0 flex-col gap-1">
+				<strong className="text-xs font-medium text-warning">
+					{governedBlockCopy(worstState)}
+				</strong>
+				<ul className="flex flex-col gap-0.5">
+					{turnBlocks.map((block) => (
+						<li key={`turn-${block.turnId}`} className="text-[11px] leading-snug text-muted-foreground">
+							Turn <span className="font-mono text-foreground">{block.turnId}</span>
+							{" · "}
+							{block.state}
+						</li>
+					))}
+					{controlBlocks.map((block) => (
+						<li key={`control-${block.id}`} className="text-[11px] leading-snug text-muted-foreground">
+							{block.kind.charAt(0).toUpperCase() + block.kind.slice(1)}
+							{" · "}
+							{block.state}
+						</li>
+					))}
+				</ul>
 			</div>
 		</div>
 	);

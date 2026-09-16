@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { McpServerBanner, ReauthBanner, ThreadStateBanner } from "./ChatStatusBanners";
+import {
+	GovernedDispatchBlockedBanner,
+	McpServerBanner,
+	ReauthBanner,
+	ThreadStateBanner,
+} from "./ChatStatusBanners";
 
 // Each of these answers a question the timeline structurally cannot, so the tests are
 // about what is said and when it is withheld — a banner for an ordinary state is noise
@@ -136,5 +141,108 @@ describe("McpServerBanner", () => {
 	it("says nothing when no server is broken", () => {
 		const { container } = render(<McpServerBanner servers={[]} />);
 		expect(container).toBeEmptyDOMElement();
+	});
+});
+
+describe("GovernedDispatchBlockedBanner", () => {
+	it("says nothing when neither list has a claim", () => {
+		const { container } = render(
+			<GovernedDispatchBlockedBanner turnBlocks={[]} controlBlocks={[]} />,
+		);
+		expect(container).toBeEmptyDOMElement();
+	});
+
+	it("reads as waiting, not uncertain, for a claimed/dispatching turn", () => {
+		render(
+			<GovernedDispatchBlockedBanner
+				turnBlocks={[
+					{
+						kind: "turn",
+						turnId: "turn-1",
+						state: "dispatching",
+						quiescence: "not_applicable",
+						since: "2026-09-16T12:00:00Z",
+					},
+				]}
+				controlBlocks={[]}
+			/>,
+		);
+		expect(screen.getByRole("alert")).toBeInTheDocument();
+		expect(screen.getByText(/Waiting on the provider/)).toBeInTheDocument();
+		expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/safe to retry/i)).not.toBeInTheDocument();
+	});
+
+	// A control claim blocks every turn's dispatch without living on any turn --
+	// this is the exact false negative a per-turn note alone would miss.
+	it("surfaces a control claim even with no turn claim at all", () => {
+		render(
+			<GovernedDispatchBlockedBanner
+				turnBlocks={[]}
+				controlBlocks={[
+					{
+						kind: "interrupt",
+						id: "control-1",
+						state: "delivery_unknown",
+						quiescence: "pending",
+						providerTurnId: "provider-turn-1",
+						since: "2026-09-16T12:00:00Z",
+					},
+				]}
+			/>,
+		);
+		expect(screen.getByText(/Delivery is uncertain/)).toBeInTheDocument();
+		expect(screen.getByText(/Interrupt/)).toBeInTheDocument();
+		expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/safe to retry/i)).not.toBeInTheDocument();
+	});
+
+	// Exercises the fallback branch of the worst-state calculation: no turn
+	// blocks at all, and the sole control block is not delivery_unknown.
+	it("reads as waiting for a control-only claimed/dispatching block", () => {
+		render(
+			<GovernedDispatchBlockedBanner
+				turnBlocks={[]}
+				controlBlocks={[
+					{
+						kind: "steer",
+						id: "control-1",
+						state: "dispatching",
+						quiescence: "not_applicable",
+						providerTurnId: "provider-turn-1",
+						since: "2026-09-16T12:00:00Z",
+					},
+				]}
+			/>,
+		);
+		expect(screen.getByText(/Waiting on the provider/)).toBeInTheDocument();
+		expect(screen.queryByText(/Delivery is uncertain/)).not.toBeInTheDocument();
+	});
+
+	it("leads with delivery_unknown when the two lists disagree", () => {
+		render(
+			<GovernedDispatchBlockedBanner
+				turnBlocks={[
+					{
+						kind: "turn",
+						turnId: "turn-1",
+						state: "claimed",
+						quiescence: "not_applicable",
+						since: "2026-09-16T12:00:00Z",
+					},
+				]}
+				controlBlocks={[
+					{
+						kind: "steer",
+						id: "control-1",
+						state: "delivery_unknown",
+						quiescence: "not_applicable",
+						providerTurnId: "provider-turn-1",
+						since: "2026-09-16T12:00:00Z",
+					},
+				]}
+			/>,
+		);
+		expect(screen.getByText(/Delivery is uncertain/)).toBeInTheDocument();
 	});
 });
