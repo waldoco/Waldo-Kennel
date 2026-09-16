@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -626,6 +627,16 @@ type ChatTurnRef struct {
 // unknown, not rejection and not permission to retry.
 type ChatTurnAcceptance string
 
+// Valid reports whether the transport result has defined delivery semantics.
+func (a ChatTurnAcceptance) Valid() bool {
+	switch a {
+	case ChatTurnNotSent, ChatTurnRejected, ChatTurnDeliveryUnknown, ChatTurnAcknowledged:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	ChatTurnNotSent         ChatTurnAcceptance = "not_sent"
 	ChatTurnRejected        ChatTurnAcceptance = "rejected"
@@ -643,6 +654,31 @@ type ChatTurnDispatch struct {
 	TransportSHA256    string
 	TransportBytes     int
 	TransportSequence  int64
+}
+
+// Validate rejects contradictory transport evidence before a controller can
+// turn it into durable command state.
+func (d ChatTurnDispatch) Validate() error {
+	if !d.Acceptance.Valid() {
+		return errors.New("chat turn dispatch acceptance is invalid")
+	}
+	written := d.TransportRequestID > 0 && strings.TrimSpace(d.TransportSHA256) != "" &&
+		d.TransportBytes > 0 && d.TransportSequence > 0
+	switch d.Acceptance {
+	case ChatTurnNotSent:
+		if written || d.Ref.ProviderTurnID != "" {
+			return errors.New("not-sent chat turn cannot carry transport or provider evidence")
+		}
+	case ChatTurnRejected, ChatTurnDeliveryUnknown:
+		if !written || d.Ref.ProviderTurnID != "" {
+			return errors.New("unacknowledged written chat turn has contradictory evidence")
+		}
+	case ChatTurnAcknowledged:
+		if !written || strings.TrimSpace(d.Ref.ProviderTurnID) == "" {
+			return errors.New("acknowledged chat turn requires transport and provider turn evidence")
+		}
+	}
+	return nil
 }
 
 // ChatTurnDispatcher is an optional stronger send boundary. Controllers use it
