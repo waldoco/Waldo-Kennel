@@ -1523,3 +1523,40 @@ func TestInterruptForceStopsNonQuiescentOwnedProcess(t *testing.T) {
 		t.Fatal("forceStop was not called")
 	}
 }
+
+func TestConnectionCloseDoesNotReleaseUnverifiedInterruptedTerminal(t *testing.T) {
+	clientReads, serverWrites := io.Pipe()
+	serverReads, clientWrites := io.Pipe()
+	conv := newConversation(&process{stdin: clientWrites, stdout: clientReads, stop: func() error { return nil }}, slog.New(slog.DiscardHandler))
+	conv.start("thread-1", "", "", nil)
+	defer func() { _ = serverReads.Close(); _ = conv.Close() }()
+
+	conv.mu.Lock()
+	conv.interrupting["turn-1"] = true
+	conv.mu.Unlock()
+	serverWrites.Write([]byte(`{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","items":[]}}}` + "\n"))
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		conv.mu.Lock()
+		_, deferred := conv.deferredTerminal["turn-1"]
+		conv.mu.Unlock()
+		if deferred {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("interrupted terminal was not deferred")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// A generic connection close proves only that app-server transport ended.
+	// A detached child can still be producing effects, so this must not release
+	// the deferred interrupted terminal.
+	_ = serverWrites.Close()
+	for ev := range conv.Events() {
+		if ev.Kind == ports.ChatEventTurnCompleted && ev.ProviderTurnID == "turn-1" {
+			t.Fatalf("unverified interrupted terminal escaped on connection close: %#v", ev)
+		}
+	}
+}

@@ -91,6 +91,11 @@ type conversation struct {
 	// a caller outside pump (Interrupt's clearInterrupt, in particular) can be
 	// sending on c.events at the exact moment pump's own shutdown closes it.
 	emitWG sync.WaitGroup
+	// interruptWG keeps the event stream open for an Interrupt already in
+	// progress. Only that caller can release a deferred interrupted terminal
+	// after it verifies process-tree quiescence; generic connection shutdown
+	// cannot make that claim.
+	interruptWG sync.WaitGroup
 
 	// sendMu serializes turn dispatch so only one operation mutates the provider
 	// conversation at a time.
@@ -282,14 +287,6 @@ func (c *conversation) pump() {
 		}
 	}
 
-	// The connection ending is itself proof of quiescence: nothing this process
-	// owned can still be running. Release any interrupted-turn completion still
-	// held back for Interrupt to confirm that on its own goroutine, rather than
-	// leaving it to a race between that goroutine and this shutdown — a forced
-	// kill that itself causes this connection to end can otherwise finish this
-	// shutdown, and close the stream, before Interrupt gets back to deliver it.
-	c.flushDeferredTerminals()
-
 	// The connection ended. Say so explicitly rather than letting the stream go
 	// quiet: a silent channel close is indistinguishable from an idle agent.
 	state := ports.ChatEvent{Kind: ports.ChatEventControllerState, ControllerState: ports.ChatControllerStopped}
@@ -351,6 +348,10 @@ func (c *conversation) emit(ev ports.ChatEvent) {
 // Close can end the connection before pump ever reaches that point, so this
 // stays the single place that guarantees closed is true before the channel is.
 func (c *conversation) closeEvents() {
+	// If an Interrupt is already verifying quiescence, let it release (or
+	// discard) its deferred terminal before closing the stream. A connection
+	// close with no active Interrupt never releases deferred terminals.
+	c.interruptWG.Wait()
 	c.mu.Lock()
 	c.closed = true
 	c.mu.Unlock()
@@ -843,22 +844,6 @@ func (c *conversation) clearInterrupt(turnID string, emitTerminal bool) {
 	}
 }
 
-// flushDeferredTerminals releases every interrupted-turn completion pump is
-// still holding back for Interrupt to confirm quiescence on. Called only from
-// pump's own shutdown, after the connection that would carry further command
-// output has already ended — which is itself the quiescence proof Interrupt
-// would otherwise still be waiting to establish.
-func (c *conversation) flushDeferredTerminals() {
-	c.mu.Lock()
-	pending := c.deferredTerminal
-	c.deferredTerminal = map[string]ports.ChatEvent{}
-	c.interrupting = map[string]bool{}
-	c.mu.Unlock()
-	for _, ev := range pending {
-		c.emit(ev)
-	}
-}
-
 // trackInterruptState records only the lifecycle needed to know whether Stop
 // has actually settled. Provider prose and output are deliberately irrelevant.
 func (c *conversation) trackInterruptState(ev ports.ChatEvent) {
@@ -893,6 +878,8 @@ func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) err
 	if providerTurnID == "" {
 		return ports.ErrChatNoActiveTurn
 	}
+	c.interruptWG.Add(1)
+	defer c.interruptWG.Done()
 	c.mu.Lock()
 	c.interrupting[providerTurnID] = true
 	c.mu.Unlock()

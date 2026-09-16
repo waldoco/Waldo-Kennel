@@ -47,8 +47,8 @@ func killAppServerProcessTree(cmd *exec.Cmd) error {
 	// Belt-and-suspenders group kill first, for the common case where nothing
 	// detached; then every captured pid individually.
 	_ = syscall.Kill(-root, syscall.SIGKILL)
-	for _, pid := range targets {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+	for _, process := range targets {
+		_ = syscall.Kill(process.pid, syscall.SIGKILL)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -61,8 +61,8 @@ func killAppServerProcessTree(cmd *exec.Cmd) error {
 		if len(survivors) == 0 {
 			return nil
 		}
-		for _, pid := range survivors {
-			_ = syscall.Kill(pid, syscall.SIGKILL)
+		for _, process := range survivors {
+			_ = syscall.Kill(process.pid, syscall.SIGKILL)
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("process tree for pid %d did not fully quiesce, still running: %v", root, survivors)
@@ -72,18 +72,24 @@ func killAppServerProcessTree(cmd *exec.Cmd) error {
 }
 
 type procInfo struct {
-	ppid   int
-	zombie bool
+	ppid      int
+	zombie    bool
+	startedAt string
+}
+
+type processIdentity struct {
+	pid       int
+	startedAt string
 }
 
 // descendants returns root and every pid reachable from it by parent links in
 // tree, in the shape observed at the moment tree was captured.
-func descendants(tree map[int]procInfo, root int) []int {
+func descendants(tree map[int]procInfo, root int) []processIdentity {
 	byParent := map[int][]int{}
 	for pid, info := range tree {
 		byParent[info.ppid] = append(byParent[info.ppid], pid)
 	}
-	var out []int
+	var out []processIdentity
 	queue := []int{root}
 	seen := map[int]bool{}
 	for len(queue) > 0 {
@@ -93,30 +99,34 @@ func descendants(tree map[int]procInfo, root int) []int {
 			continue
 		}
 		seen[pid] = true
-		out = append(out, pid)
+		info, ok := tree[pid]
+		if !ok {
+			continue
+		}
+		out = append(out, processIdentity{pid: pid, startedAt: info.startedAt})
 		queue = append(queue, byParent[pid]...)
 	}
 	return out
 }
 
-// stillRunning reports which of pids are present in tree and not a zombie. A
+// stillRunning reports captured processes still present with the same start identity and not a zombie. A
 // zombie is already dead and can produce no further effect; it only awaits
 // reaping, which is a resource-cleanup concern, not a quiescence one. kill(pid,
 // 0) cannot make this distinction on its own: it still succeeds for a zombie.
-func stillRunning(tree map[int]procInfo, pids []int) []int {
-	var running []int
-	for _, pid := range pids {
-		if info, ok := tree[pid]; ok && !info.zombie {
-			running = append(running, pid)
+func stillRunning(tree map[int]procInfo, processes []processIdentity) []processIdentity {
+	var running []processIdentity
+	for _, process := range processes {
+		if info, ok := tree[process.pid]; ok && !info.zombie && info.startedAt == process.startedAt {
+			running = append(running, process)
 		}
 	}
 	return running
 }
 
-// processTable snapshots the system process table as pid -> {ppid, zombie}.
+// processTable snapshots the system process table as pid -> {ppid, zombie, start identity}.
 // ps, not /proc, so this works on Darwin as well as Linux.
 func processTable() (map[int]procInfo, error) {
-	out, err := exec.Command("ps", "-axo", "pid=,ppid=,stat=").Output()
+	out, err := exec.Command("ps", "-axo", "pid=,ppid=,stat=,lstart=").Output()
 	if err != nil {
 		return nil, fmt.Errorf("ps: %w", err)
 	}
@@ -124,7 +134,7 @@ func processTable() (map[int]procInfo, error) {
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) < 3 {
+		if len(fields) < 8 {
 			continue
 		}
 		pid, errPid := strconv.Atoi(fields[0])
@@ -132,7 +142,10 @@ func processTable() (map[int]procInfo, error) {
 		if errPid != nil || errPpid != nil {
 			continue
 		}
-		table[pid] = procInfo{ppid: ppid, zombie: strings.HasPrefix(fields[2], "Z")}
+		table[pid] = procInfo{
+			ppid: ppid, zombie: strings.HasPrefix(fields[2], "Z"),
+			startedAt: strings.Join(fields[3:], " "),
+		}
 	}
 	return table, scanner.Err()
 }

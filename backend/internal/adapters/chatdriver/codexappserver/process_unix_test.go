@@ -108,3 +108,13 @@ func TestHelperProcess_DetachedWriter(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+func TestStillRunningRejectsReusedPID(t *testing.T) {
+	captured := []processIdentity{{pid: 42, startedAt: "Wed Sep 16 12:00:00 2026"}}
+	if got := stillRunning(map[int]procInfo{42: {startedAt: "Wed Sep 16 12:00:01 2026"}}, captured); len(got) != 0 {
+		t.Fatalf("reused pid was treated as captured process: %+v", got)
+	}
+	if got := stillRunning(map[int]procInfo{42: {startedAt: captured[0].startedAt}}, captured); len(got) != 1 {
+		t.Fatalf("same process identity was not running: %+v", got)
+	}
+}
