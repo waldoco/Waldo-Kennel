@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { readDaemonBuildRevision, waitFor, waitForDaemonReady, waitForPidGone } from "./support/daemon-wait";
 import { captureCheckpoint, type CapturedArtifact } from "./support/screenshot";
 import { stubFolderPicker } from "./support/dialog-stub";
+import { guardedStep, raceWithDeadline, unguardedStep } from "../../scripts/outcome-journey/deadline-control.mjs";
 import { redactHeaders } from "../../scripts/outcome-journey/manifest.mjs";
 import { TEARDOWN_GRACE_MS } from "../../scripts/outcome-journey/timeouts.mjs";
 
@@ -122,23 +123,20 @@ function markFailed(reason: string) {
 }
 
 /**
- * Round 2 item 4: a real AbortController, not just a losing Promise.race
- * branch. `Promise.race` alone does not stop the losing promise from
- * continuing to run — once the deadline fires, every in-flight and future
- * poll must observe `signal.aborted` and stop cooperatively, or the
- * "abandoned" journey body keeps mutating the same steps/networkEntries
- * arrays the teardown code is concurrently reading to write the evidence
- * fragment. This signal is threaded through every wait/act helper below.
+ * Round 2 item 4 / round 3 defects 1 and 2: the actual abort/deadline/
+ * teardown-safety logic lives in scripts/outcome-journey/deadline-control.mjs
+ * and is unit-tested there (deadline-control.test.mjs) with fast, real
+ * timing assertions — not just structurally verified here. This file uses
+ * that tested module rather than re-implementing it inline, so the code that
+ * runs is the code that was actually exercised by a test.
  */
 const overallAbort = new AbortController();
 
+/** Ordinary journey steps: refuses to start once overallAbort has fired. */
 async function step<T>(name: string, fn: () => Promise<T>): Promise<T> {
-	if (overallAbort.signal.aborted) {
-		throw new Error(`skipped (overall deadline already exceeded): ${name}`);
-	}
 	const startedAt = new Date().toISOString();
 	try {
-		const result = await fn();
+		const result = await guardedStep(overallAbort.signal, fn);
 		steps.push({ name, startedAt, endedAt: new Date().toISOString(), durationMs: Date.now() - Date.parse(startedAt), result: "passed", failureCode: null });
 		return result;
 	} catch (err) {
@@ -156,23 +154,55 @@ async function step<T>(name: string, fn: () => Promise<T>): Promise<T> {
 	}
 }
 
-/** Round 2 item 4: fires overallAbort (not just a rejected promise) the
- * moment the deadline elapses, so every signal-aware poll in flight stops
- * immediately instead of running out its own separately-configured timeout. */
-async function withOverallDeadline<T>(ms: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
-	let timer: ReturnType<typeof setTimeout>;
-	const deadline = new Promise<never>((_, reject) => {
-		timer = setTimeout(() => {
-			const err = new Error(`overall journey ceiling of ${Math.round(ms / 1000)}s exceeded`);
-			overallAbort.abort(err);
-			reject(err);
-		}, ms);
-	});
+/**
+ * Round-3 defect 1 (CRITICAL): teardown must run unconditionally on every
+ * exit path, including the deadline path — `step()` above deliberately
+ * refuses to start a new journey action once `overallAbort` has fired, and
+ * reusing that same gate for teardown meant `app.close()` was silently
+ * skipped (swallowed by a bare `.catch(() => undefined)`) on the exact path
+ * this harness exists to prove is safe: a leaked Electron process on a run
+ * that timed out. `teardownStep` records a step the same way `step()` does,
+ * but is backed by `unguardedStep` and never used for anything but
+ * teardown's own actions.
+ */
+async function teardownStep<T>(name: string, fn: () => Promise<T>): Promise<T> {
+	const startedAt = new Date().toISOString();
 	try {
-		return await Promise.race([fn(overallAbort.signal), deadline]);
-	} finally {
-		clearTimeout(timer!);
+		const result = await unguardedStep(fn);
+		steps.push({ name, startedAt, endedAt: new Date().toISOString(), durationMs: Date.now() - Date.parse(startedAt), result: "passed", failureCode: null });
+		return result;
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		steps.push({
+			name,
+			startedAt,
+			endedAt: new Date().toISOString(),
+			durationMs: Date.now() - Date.parse(startedAt),
+			result: "failed",
+			failureCode: message,
+		});
+		throw err;
 	}
+}
+
+/**
+ * Round-3 defect 2 (HIGH): a bare `Promise.race` settles the instant the
+ * deadline timer rejects, without stopping the losing `fn(signal)` promise
+ * from continuing to run and mutating `steps`/`networkEntries`/`identities`
+ * concurrently with whatever the caller (teardown) does next.
+ * raceWithDeadline (tested in deadline-control.test.mjs) waits for that
+ * promise to actually settle, bounded so a non-cooperative body cannot hang
+ * the harness forever.
+ */
+async function withOverallDeadline<T>(ms: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+	const outcome = await raceWithDeadline(fn, ms, { signal: overallAbort });
+	if (outcome.ok) return outcome.value;
+	if (!outcome.settledInTime) {
+		unverifiedClaims.push(
+			`the journey body did not settle before proceeding to teardown after the overall deadline fired — treat any evidence captured after this point as unverified`,
+		);
+	}
+	throw outcome.error;
 }
 
 function safeJson<T>(value: unknown): T | undefined {
@@ -790,7 +820,11 @@ test("packaged macOS Outcome journey: Contract through Plan approval, stopping a
 		// setTimeout and the orchestrator's parent process timeout.
 		const lastKnownPid = (identities.relaunchDaemonPid ?? identities.daemonPid) as number | undefined;
 		if (app) {
-			await step("close-app-final", () => app!.close()).catch(() => undefined);
+			// teardownStep, NOT step() — this must run even when overallAbort has
+			// already fired (defect 1). step() would refuse to invoke app.close()
+			// at all on that path, silently leaking the Electron process on
+			// exactly the runs this harness exists to prove clean up correctly.
+			await teardownStep("close-app-final", () => app!.close()).catch(() => undefined);
 		}
 		if (lastKnownPid) {
 			try {
