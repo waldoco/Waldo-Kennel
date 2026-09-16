@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // GovernedCommandClass identifies the provider effect a durable command claims.
@@ -91,9 +92,19 @@ type GovernedCommandContract struct {
 	QuiescenceEvidenceRef string
 }
 
+// GovernedCommandRecord is the durable form of a command claim. CreatedAt is
+// fixed at claim time; UpdatedAt is reserved for later compare-and-set state
+// transitions and equals CreatedAt for S2.1 claims.
+type GovernedCommandRecord struct {
+	GovernedCommandContract
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 var (
-	ErrGovernedCommandInvalid    = errors.New("governed command contract is invalid")
-	ErrGovernedCommandTransition = errors.New("governed command state transition is invalid")
+	ErrGovernedCommandInvalid             = errors.New("governed command contract is invalid")
+	ErrGovernedCommandTransition          = errors.New("governed command state transition is invalid")
+	ErrGovernedCommandIdempotencyConflict = errors.New("governed command idempotency conflict")
 )
 
 // Validate checks intrinsic Stage 2.0 invariants. Authority, persistence and

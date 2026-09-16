@@ -25,6 +25,17 @@ type AcceptanceDecision struct {
 	CreatedAt           time.Time
 }
 
+type AdmissionVerdict struct {
+	ID                     string
+	OutcomeID              string
+	PlanRevisionID         sql.NullString
+	ContractRevisionNumber sql.NullInt64
+	Status                 string
+	PolicyVersion          string
+	EvaluatedAt            time.Time
+	VerdictJson            string
+}
+
 type AgentModelCatalog struct {
 	AgentID       string
 	ProjectID     string
@@ -88,6 +99,13 @@ type AppSetting struct {
 	RepositoryContextMaxFiles        sql.NullInt64
 	RepositoryContextMaxBytes        sql.NullInt64
 	RepositoryContextMaxVisited      sql.NullInt64
+}
+
+type ApprovedExecutableSpec struct {
+	PlanRevisionID string
+	WorkUnitID     string
+	Digest         string
+	SpecJson       string
 }
 
 type Attempt struct {
@@ -191,6 +209,21 @@ type AttemptRecoveryReceipt struct {
 	ReplacementAttemptID string
 	Detail               string
 	CreatedAt            time.Time
+}
+
+type AttemptReplacementDecision struct {
+	ID                     string
+	OutcomeID              string
+	PredecessorAttemptID   string
+	PlanRevisionID         string
+	WorkUnitID             string
+	RunIntentGeneration    int64
+	ContractRevisionNumber int64
+	Action                 string
+	RequestKey             string
+	RequestFingerprint     string
+	OwnerPrincipal         string
+	CreatedAt              time.Time
 }
 
 type AttemptSession struct {
@@ -477,6 +510,29 @@ type EvidenceItem struct {
 	RequestKey         string
 	RequestFingerprint string
 	CreatedAt          time.Time
+}
+
+type GovernedCommand struct {
+	ID                     string
+	SessionID              string
+	IdempotencyKey         string
+	RequestFingerprint     string
+	CommandClass           string
+	State                  string
+	ControllerGeneration   string
+	ExpectedRevision       string
+	CapabilityFingerprint  string
+	ProviderConversationID string
+	ClientMessageID        string
+	ProviderTurnID         string
+	ProviderEventID        string
+	ProviderCursor         string
+	ReplayStrategy         string
+	ReconciliationOutcome  string
+	Quiescence             string
+	QuiescenceEvidenceRef  string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 type IntakeAnalysisRequest struct {
@@ -1321,6 +1377,15 @@ type WorkUnitProviderBinding struct {
 type WorkUnitRequiredCapability struct {
 	WorkUnitID string
 	Capability string
+}
+
+type WorkspaceBoundLaunchPacket struct {
+	AttemptID  string
+	SpecDigest string
+	SessionID  string
+	Digest     string
+	PacketJson string
+	CreatedAt  time.Time
 }
 
 type WorkspaceRepo struct {

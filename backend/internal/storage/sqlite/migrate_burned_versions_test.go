@@ -143,6 +143,7 @@ var shippedMigrations = map[int64]string{
 	137: "0137_admission_packets.sql",
 	138: "0138_work_unit_intent_and_execution_usage.sql",
 	139: "0139_attempt_replacement_decisions.sql",
+	140: "0140_governed_commands.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they
