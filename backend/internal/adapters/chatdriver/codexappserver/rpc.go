@@ -303,7 +303,7 @@ func (c *conn) writeSerialized(v any, requestID int64, method string, expectedSa
 	writtenAt := time.Now().UTC()
 	c.writeMu.Unlock()
 
-	if method != "turn/start" {
+	if method == "" {
 		return transportReceipt{}, nil
 	}
 	return transportReceipt{
@@ -383,9 +383,9 @@ func (c *conn) request(ctx context.Context, method string, params, out any) erro
 	return err
 }
 
-// requestWithTransportReceipt returns the turn/start transport receipt through
-// the same request call that decodes the provider response. Non-turn methods are
-// deliberately filtered and return a zero receipt.
+// requestWithTransportReceipt returns content-free evidence that the complete
+// request frame crossed the transport through the same call that decodes the
+// provider response.
 func (c *conn) requestWithTransportReceipt(ctx context.Context, method string, params, out any, expectedSandboxPolicy map[string]any) (transportReceipt, error) {
 	return c.requestFrame(ctx, method, params, out, expectedSandboxPolicy, true)
 }
@@ -407,7 +407,7 @@ func (c *conn) requestFrame(ctx context.Context, method string, params, out any,
 		payload["params"] = params
 	}
 	receiptMethod := ""
-	if captureReceipt && method == "turn/start" {
+	if captureReceipt {
 		receiptMethod = method
 	}
 	receipt, err := c.writeSerialized(payload, id, receiptMethod, expectedSandboxPolicy)

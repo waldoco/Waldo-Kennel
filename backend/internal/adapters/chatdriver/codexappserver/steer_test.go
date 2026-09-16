@@ -405,3 +405,77 @@ func TestSteerCapabilityMatchesTheDeclaredProtocol(t *testing.T) {
 		t.Error("the driver implements turn/steer but does not advertise the capability")
 	}
 }
+
+func TestDispatchSteerReportsAcknowledgedWithTransportEvidence(t *testing.T) {
+	d, _ := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	dispatcher, ok := opened.(ports.ChatSteerDispatcher)
+	if !ok {
+		t.Fatal("Codex conversation has no evidence-aware steer")
+	}
+	got, err := dispatcher.DispatchSteer(context.Background(), "turn-1", ports.ChatUserMessage{Text: "change it", ClientMessageID: "steer-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Acceptance != ports.ChatTurnAcknowledged || got.Ref.ProviderTurnID != "turn-1" || got.TransportRequestID <= 0 || got.TransportSHA256 == "" || got.TransportBytes <= 0 || got.TransportSequence <= 0 {
+		t.Fatalf("dispatch evidence=%+v", got)
+	}
+}
+
+func TestDispatchSteerReportsRejectionAfterFullWrite(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.replyError("turn/steer", -32600, "no active turn to steer")
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatSteerDispatcher).DispatchSteer(context.Background(), "turn-1", ports.ChatUserMessage{Text: "change it"})
+	if !errors.Is(err, ports.ErrChatNoSteerableTurn) {
+		t.Fatalf("err=%v", err)
+	}
+	if got.Acceptance != ports.ChatTurnRejected || got.TransportSHA256 == "" || got.Ref.ProviderTurnID != "" {
+		t.Fatalf("rejection evidence=%+v", got)
+	}
+}
+
+func TestDispatchSteerReportsUnknownAfterFullWriteWithoutResponse(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.mu.Lock()
+	delete(srv.responses, "turn/steer")
+	srv.mu.Unlock()
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	got, err := opened.(ports.ChatSteerDispatcher).DispatchSteer(ctx, "turn-1", ports.ChatUserMessage{Text: "change it"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err=%v", err)
+	}
+	if got.Acceptance != ports.ChatTurnDeliveryUnknown || got.TransportSHA256 == "" || got.TransportBytes <= 0 || got.TransportSequence <= 0 {
+		t.Fatalf("unknown evidence=%+v", got)
+	}
+}
+
+func TestDispatchSteerReportsNotSentBeforeTransport(t *testing.T) {
+	d, srv := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatSteerDispatcher).DispatchSteer(context.Background(), "turn-1", ports.ChatUserMessage{Text: "   "})
+	if err == nil {
+		t.Fatal("expected local validation failure")
+	}
+	if got.Acceptance != ports.ChatTurnNotSent || got.TransportRequestID != 0 || got.TransportSHA256 != "" || srv.sentMethod("turn/steer") {
+		t.Fatalf("not-sent=%+v sent=%v", got, srv.sentMethod("turn/steer"))
+	}
+}
