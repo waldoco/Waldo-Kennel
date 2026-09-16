@@ -4105,6 +4105,52 @@ func TestGovernedInterruptAcknowledgedWithoutQuiescenceStaysUnknown(t *testing.T
 	}
 }
 
+func TestGovernedInterruptCrashAfterAcceptanceBeforeQuiescenceStaysBlockedOnRestart(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	firstConv := &governedInterruptRecorder{interruptRecorder: newInterruptRecorder(), dispatch: ports.ChatInterruptDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, TransportRequestID: 3, TransportSHA256: "interrupt-accepted", TransportBytes: 18, TransportSequence: 3,
+		Quiescence: domain.GovernedCommandQuiescencePending,
+	}}
+	first := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: firstConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("interrupt-crash-first")})
+	firstCtrl, err := first.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := firstCtrl.Send(context.Background(), ports.ChatUserMessage{Text: "work", ClientMessageID: "interrupt-crash-turn"}); err != nil {
+		t.Fatal(err)
+	}
+	firstConv.markActive("provider-turn-1")
+	firstConv.emit(ports.ChatEvent{Kind: ports.ChatEventTurnStarted, ProviderTurnID: "provider-turn-1"})
+	if err := first.Interrupt(context.Background(), testSession); !errors.Is(err, chatsvc.ErrSteerDeliveryUnknown) {
+		t.Fatalf("interrupt err=%v", err)
+	}
+	claims, err := st.ListUnsettledGovernedControlCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].Class != domain.GovernedControlInterrupt || claims[0].State != domain.GovernedCommandDeliveryUnknown || claims[0].Quiescence != domain.GovernedCommandQuiescencePending || firstConv.attemptCount() != 1 {
+		t.Fatalf("post-acceptance claims=%+v interrupt attempts=%d err=%v", claims, firstConv.attemptCount(), err)
+	}
+
+	// Model the daemon dying after provider Stop acceptance but before process-tree
+	// quiescence was proven. A fresh generation may resume the conversation, but
+	// must retain the visible unknown and must not release new work to the provider.
+	secondConv := &historyDispatchConversation{dispatchConversation: &dispatchConversation{fakeConversation: newFakeConversation(), dispatch: ports.ChatTurnDispatch{
+		Acceptance: ports.ChatTurnAcknowledged, Ref: ports.ChatTurnRef{ProviderTurnID: "must-not-dispatch"},
+	}}}
+	second := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: secondConv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("interrupt-crash-second")})
+	t.Cleanup(func() { _ = second.Stop(context.Background(), testSession) })
+	if _, err := second.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ProviderConversationID: firstCtrl.ProviderConversationID(), ExecutionPolicy: &policy}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Send(context.Background(), testSession, ports.ChatUserMessage{Text: "must remain queued", ClientMessageID: "after-interrupt-crash"}); err != nil {
+		t.Fatal(err)
+	}
+	claims, err = st.ListUnsettledGovernedControlCommands(context.Background())
+	if err != nil || len(claims) != 1 || claims[0].State != domain.GovernedCommandDeliveryUnknown || claims[0].Quiescence != domain.GovernedCommandQuiescencePending || len(secondConv.sentMessages()) != 0 || firstConv.attemptCount() != 1 {
+		t.Fatalf("restart claims=%+v replacement sends=%d interrupt attempts=%d err=%v", claims, len(secondConv.sentMessages()), firstConv.attemptCount(), err)
+	}
+}
+
 func TestRestartRetainsBlockingGovernedControlUnknown(t *testing.T) {
 	st := openStore(t)
 	workspace := t.TempDir()
