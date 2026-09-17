@@ -10,6 +10,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/attachmentstore"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/cdc"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/config"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/apispec"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
@@ -68,6 +69,7 @@ type APIDeps struct {
 
 	OwnerAuthority       *ownercommand.Authority
 	ReplacementDecisions ports.AttemptReplacementDecisionStore
+	PairingCoordinator   *harnesspairing.Coordinator
 }
 
 // normalizeAPIDeps closes the Presence/DeviceLive duplication trap structurally.

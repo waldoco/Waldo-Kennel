@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/config"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessconnection"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/sqlitetest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -106,5 +109,65 @@ func TestOwnerCommandOriginAndLoopbackHostMatrix(t *testing.T) {
 				t.Fatalf("code=%d body=%s want=%d", w.Code, w.Body.String(), tc.want)
 			}
 		})
+	}
+}
+
+func pairingIntentBody() string {
+	return `{"kind":"pair","connectionId":"hc-owner","installationId":"install","adapterDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","harnessIdentity":"codex","providerVersion":"0.154.0","protocolFingerprint":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","missionId":"mission","appRunId":"apprun-test","capabilityClasses":["turn"],"expectedGeneration":1}`
+}
+func TestPairingIntentRequiresOwnerCapabilityAndNeverExposesAdapterIssue(t *testing.T) {
+	store := sqlitetest.MustOpen(t)
+	coordinator := harnesspairing.New(store, harnessconnection.New(store))
+	authority := ownercommand.NewAuthority(strings.Repeat("t", 32), "apprun-test")
+	r := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{}, ControlDeps{OwnerAuthority: authority, PairingCoordinator: coordinator})
+	for _, tc := range []struct {
+		name, auth string
+		want       int
+	}{{"missing", "", 401}, {"wrong", "KennelOwner " + strings.Repeat("x", 32), 401}, {"owner", "KennelOwner " + strings.Repeat("t", 32), 201}} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/internal/owner-commands/harness-pairing-intents", strings.NewReader(pairingIntentBody()))
+			req.Header.Set("Authorization", tc.auth)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != tc.want {
+				t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+			}
+			if tc.want == 201 {
+				var body struct {
+					Data struct {
+						IntentID string `json:"intentId"`
+						Secret   string `json:"secret"`
+					} `json:"data"`
+				}
+				if json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Data.IntentID == "" || body.Data.Secret == "" {
+					t.Fatalf("body=%s", w.Body.String())
+				}
+			}
+		})
+	}
+	// The public/adapter-shaped route does not exist on HTTP, even with an exact tuple.
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/harness-pairing/request-challenge", strings.NewReader(pairingIntentBody()))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 404 {
+		t.Fatalf("adapter Issue route code=%d", w.Code)
+	}
+}
+func TestPairingIntentOwnerRouteRejectsLANHostAndUnknownFields(t *testing.T) {
+	store := sqlitetest.MustOpen(t)
+	c := harnesspairing.New(store, harnessconnection.New(store))
+	r := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{}, ControlDeps{OwnerAuthority: ownercommand.NewAuthority(strings.Repeat("t", 32), "run"), PairingCoordinator: c})
+	auth := "KennelOwner " + strings.Repeat("t", 32)
+	for _, tc := range []struct {
+		url, body string
+		want      int
+	}{{"http://evil.example/internal/owner-commands/harness-pairing-intents", pairingIntentBody(), 404}, {"http://127.0.0.1/internal/owner-commands/harness-pairing-intents", strings.TrimSuffix(pairingIntentBody(), "}") + `,"approval":true}`, 400}} {
+		req := httptest.NewRequest(http.MethodPost, tc.url, strings.NewReader(tc.body))
+		req.Header.Set("Authorization", auth)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != tc.want {
+			t.Fatalf("url=%s code=%d body=%s", tc.url, w.Code, w.Body.String())
+		}
 	}
 }

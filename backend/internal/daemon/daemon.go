@@ -26,6 +26,8 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/daemon/supervisor"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/governedtools"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessconnection"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/mobilebridge"
@@ -593,6 +595,7 @@ func Run() error {
 		SessionCapabilities:  browserAuthority,
 		OwnerAuthority:       ownerAuthority,
 		ReplacementDecisions: store,
+		PairingCoordinator:   harnesspairing.New(store, harnessconnection.New(store)),
 	})
 	if err != nil {
 		stop()
