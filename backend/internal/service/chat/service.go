@@ -500,6 +500,19 @@ func (s *Service) Resolve(
 	return controller.Resolve(ctx, requestID, decision)
 }
 
+// ResolveWithKey answers through the same governed singleton claim while binding
+// the public caller's retry key into the immutable request fingerprint.
+func (s *Service) ResolveWithKey(ctx context.Context, id domain.SessionID, requestID, requestKey string, decision ports.ChatDecision) error {
+	if _, err := s.requireChatSession(ctx, id); err != nil {
+		return err
+	}
+	controller, err := s.Controller(id)
+	if err != nil {
+		return err
+	}
+	return controller.ResolveWithKey(ctx, requestID, requestKey, decision)
+}
+
 // ResolveInput answers a structured user-input request. It remains a separate
 // command from approval resolution because the response carries typed form data
 // (or URL consent), not a provider-offered permission id.
@@ -517,6 +530,18 @@ func (s *Service) ResolveInput(
 		return err
 	}
 	return controller.ResolveInput(ctx, requestID, response)
+}
+
+// ResolveInputWithKey is the keyed public facade for typed answers.
+func (s *Service) ResolveInputWithKey(ctx context.Context, id domain.SessionID, requestID, requestKey string, response ports.ChatInputResponse) error {
+	if _, err := s.requireChatSession(ctx, id); err != nil {
+		return err
+	}
+	controller, err := s.Controller(id)
+	if err != nil {
+		return err
+	}
+	return controller.ResolveInputWithKey(ctx, requestID, requestKey, response)
 }
 
 // Interrupt cancels a session's in-flight turn.

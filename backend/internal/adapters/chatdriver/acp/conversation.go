@@ -657,3 +657,12 @@ func (c *conversation) DispatchAnswer(ctx context.Context, requestID, _ string, 
 	}
 	return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerSDKHandoffComplete}, nil
 }
+
+// DispatchInput exposes the ACP in-process response handoff as the strongest
+// observable boundary for a typed input answer.
+func (c *conversation) DispatchInput(ctx context.Context, requestID, _ string, response ports.ChatInputResponse) (ports.ChatAnswerDispatch, error) {
+	if err := c.ResolveInput(ctx, requestID, response); err != nil {
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteNotStarted}, err
+	}
+	return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerSDKHandoffComplete}, nil
+}

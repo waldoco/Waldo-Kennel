@@ -1472,6 +1472,10 @@ func (c *Controller) AbortHandoff() {
 // must not record the approval as answered before the adapter proves its strongest
 // observable write or SDK-handoff boundary.
 func (c *Controller) Resolve(ctx context.Context, requestID string, decision ports.ChatDecision) error {
+	return c.ResolveWithKey(ctx, requestID, "", decision)
+}
+
+func (c *Controller) ResolveWithKey(ctx context.Context, requestID, requestKey string, decision ports.ChatDecision) error {
 	if c.governance == nil {
 		if err := c.conv.ResolveRequest(ctx, requestID, decision); err != nil {
 			return fmt.Errorf("resolve request %s: %w", requestID, err)
@@ -1493,9 +1497,14 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 	}
 	payload, _ := json.Marshal(decision)
 	now := c.now()
+	key := "answer:" + generation
+	fingerprintKey := requestKey
+	if strings.TrimSpace(fingerprintKey) == "" {
+		fingerprintKey = key
+	}
 	claim := domain.GovernedControlCommand{
-		ID: c.newID(), IdempotencyKey: "answer:" + generation,
-		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlAnswer, "answer:"+generation, generation, string(payload)),
+		ID: c.newID(), IdempotencyKey: key,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlAnswer, fingerprintKey, generation, string(payload)),
 		Class:              domain.GovernedControlAnswer, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
 		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision, CapabilityFingerprint: c.governance.capabilityFingerprint,
 		ProviderConversationID: c.conv.ProviderConversationID(), RequestInstanceID: generation,
@@ -1553,27 +1562,90 @@ func (c *Controller) Resolve(ctx context.Context, requestID string, decision por
 // ResolveInput answers a structured form/URL request through the optional driver
 // capability. The provider is told first for the same consent reason as an
 // approval: Kennel must not record an answer that the live provider rejected.
-func (c *Controller) ResolveInput(
-	ctx context.Context,
-	requestID string,
-	response ports.ChatInputResponse,
-) error {
-	responder, ok := c.conv.(ports.ChatInputResponder)
+func (c *Controller) ResolveInput(ctx context.Context, requestID string, response ports.ChatInputResponse) error {
+	return c.ResolveInputWithKey(ctx, requestID, "", response)
+}
+
+func (c *Controller) ResolveInputWithKey(ctx context.Context, requestID, requestKey string, response ports.ChatInputResponse) error {
+	if c.governance == nil {
+		responder, ok := c.conv.(ports.ChatInputResponder)
+		if !ok {
+			return fmt.Errorf("%w: structured input", ports.ErrChatUnsupported)
+		}
+		if err := responder.ResolveInput(ctx, requestID, response); err != nil {
+			return fmt.Errorf("resolve input %s: %w", requestID, err)
+		}
+		detail, _ := json.Marshal(map[string]any{"action": response.Action, "content": response.Content})
+		return c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now())
+	}
+	c.governedControlMu.Lock()
+	defer c.governedControlMu.Unlock()
+	generation, found, err := c.store.ApprovalGeneration(ctx, c.conversation.ID, requestID)
+	if err != nil {
+		return fmt.Errorf("find input %s: %w", requestID, err)
+	}
+	if !found {
+		return fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
+	}
+	payload, _ := json.Marshal(response)
+	now := c.now()
+	key := "answer:" + generation
+	fingerprintKey := requestKey
+	if strings.TrimSpace(fingerprintKey) == "" {
+		fingerprintKey = key
+	}
+	claim := domain.GovernedControlCommand{ID: c.newID(), IdempotencyKey: key,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlAnswer, fingerprintKey, generation, string(payload)),
+		Class:              domain.GovernedControlAnswer, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision, CapabilityFingerprint: c.governance.capabilityFingerprint,
+		ProviderConversationID: c.conv.ProviderConversationID(), RequestInstanceID: generation, Quiescence: domain.GovernedCommandQuiescenceNotApplicable, CreatedAt: now, UpdatedAt: now}
+	persisted, created, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return fmt.Errorf("claim governed input answer: %w", err)
+	}
+	persisted, err = c.adoptGovernedControlClaim(ctx, persisted, created, now)
+	if err != nil {
+		return err
+	}
+	switch persisted.State {
+	case domain.GovernedCommandAcknowledged:
+		return nil
+	case domain.GovernedCommandRejected:
+		return ErrProviderRefused
+	case domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown:
+		return ErrSteerDeliveryUnknown
+	}
+	if err := c.advanceGovernedControl(ctx, &persisted, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching); err != nil {
+		return err
+	}
+	dispatcher, ok := c.conv.(ports.ChatInputDispatcher)
 	if !ok {
-		return fmt.Errorf("%w: structured input", ports.ErrChatUnsupported)
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return fmt.Errorf("%w: governed typed-input receipt", ports.ErrChatUnsupported)
 	}
-	if err := responder.ResolveInput(ctx, requestID, response); err != nil {
-		return fmt.Errorf("resolve input %s: %w", requestID, err)
+	dispatch, dispatchErr := dispatcher.DispatchInput(ctx, requestID, generation, response)
+	if validateErr := dispatch.Validate(); validateErr != nil {
+		dispatchErr = errors.Join(dispatchErr, validateErr)
+		dispatch.WriteOutcome = ports.ChatAnswerWriteUnknown
 	}
-	detail, _ := json.Marshal(map[string]any{
-		"action":  response.Action,
-		"content": response.Content,
-	})
-	if err := c.store.ResolveApproval(
-		ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
-		return fmt.Errorf("record input %s: %w", requestID, err)
+	switch dispatch.WriteOutcome {
+	case ports.ChatAnswerFrameWriteComplete, ports.ChatAnswerSDKHandoffComplete:
+		detail, _ := json.Marshal(map[string]any{"action": response.Action, "content": response.Content})
+		if err := c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
+			_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		if err := c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged); err != nil {
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		return nil
+	case ports.ChatAnswerWriteNotStarted:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return errors.Join(ErrProviderRefused, dispatchErr)
+	default:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+		return errors.Join(ErrSteerDeliveryUnknown, dispatchErr)
 	}
-	return nil
 }
 
 // ErrCompactionUnsupported reports a driver whose provider cannot summarize

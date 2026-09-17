@@ -4785,3 +4785,57 @@ func TestGovernedInterruptStaleGenerationCannotReachProviderOrClaimQuiescence(t 
 		t.Fatalf("claims=%+v err=%v", claims, err)
 	}
 }
+
+type concurrentInputAnswerConversation struct {
+	*fakeConversation
+	mu         sync.Mutex
+	dispatches int
+}
+
+func (c *concurrentInputAnswerConversation) DispatchInput(_ context.Context, _, _ string, _ ports.ChatInputResponse) (ports.ChatAnswerDispatch, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.dispatches++
+	return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerFrameWriteComplete}, nil
+}
+func TestGovernedTypedInputConcurrentAnswersHaveOneEffect(t *testing.T) {
+	st := openStore(t)
+	workspace := t.TempDir()
+	policy := governedPolicy(t, workspace)
+	conv := &concurrentInputAnswerConversation{fakeConversation: newFakeConversation()}
+	svc := chatsvc.New(chatsvc.Options{Store: st, Sessions: st, Drivers: fakeRegistry{driver: fakeDriver{conv: conv}}, Log: slog.New(slog.DiscardHandler), NewID: sequentialID("typed-answer")})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+	ctrl, err := svc.Start(context.Background(), chatsvc.StartConfig{SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex, WorkspacePath: workspace, ExecutionPolicy: &policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conv.emit(ports.ChatEvent{Kind: ports.ChatEventInputRequested, RequestID: "input-race", ProviderItemID: "input-race", Input: &ports.ChatInputRequest{Mode: ports.ChatInputModeForm, Message: "name", Schema: map[string]any{"type": "object"}}})
+	awaitStoreSnapshot(t, st, ctrl.ConversationID(), func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, v := range []string{"a", "b"} {
+		v := v
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- svc.ResolveInputWithKey(context.Background(), testSession, "input-race", "key-"+v, ports.ChatInputResponse{Action: ports.ChatInputActionAccept, Content: map[string]any{"name": v}})
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	errorCount := 0
+	for e := range errs {
+		if e != nil {
+			errorCount++
+		}
+	}
+	conv.mu.Lock()
+	calls := conv.dispatches
+	conv.mu.Unlock()
+	if calls != 1 || errorCount != 1 {
+		t.Fatalf("dispatches=%d errors=%d", calls, errorCount)
+	}
+}

@@ -200,6 +200,78 @@ func (q *Queries) GetCommandSessionTarget(ctx context.Context, sessionID string)
 	return i, err
 }
 
+const getNeedsYouQuestionRow = `-- name: GetNeedsYouQuestionRow :one
+SELECT q.id,q.conversation_id,q.request_id,q.generation,q.status AS question_status,q.created_at,q.updated_at,
+       ca.kind,ca.summary,ca.detail_json,ca.status AS activity_status,
+       a.outcome_id,a.plan_revision_id,a.work_unit_id,a.id AS attempt_id,a.status AS attempt_status,
+       ats.session_id, g.id AS command_id,g.state AS command_state
+FROM owner_answer_questions q
+JOIN conversation_activities ca ON ca.id=q.id AND ca.conversation_id=q.conversation_id
+JOIN conversations c ON c.id=q.conversation_id
+JOIN attempt_sessions ats ON ats.session_id=c.current_session_id
+JOIN attempts a ON a.id=ats.attempt_id
+LEFT JOIN governed_control_commands g ON g.session_id=ats.session_id AND g.idempotency_key=('answer:' || q.generation)
+WHERE a.outcome_id=? AND q.id=?
+  AND ats.seq=(SELECT MAX(x.seq) FROM attempt_sessions x WHERE x.attempt_id=a.id)
+  AND a.id=(SELECT x.id FROM attempts x WHERE x.outcome_id=a.outcome_id AND x.work_unit_id=a.work_unit_id ORDER BY x.number DESC LIMIT 1)
+  AND a.plan_revision_id=(SELECT p.id FROM plan_revisions p WHERE p.outcome_id=a.outcome_id ORDER BY p.number DESC LIMIT 1)
+LIMIT 1
+`
+
+type GetNeedsYouQuestionRowParams struct {
+	OutcomeID domain.OutcomeID
+	ID        string
+}
+
+type GetNeedsYouQuestionRowRow struct {
+	ID             string
+	ConversationID string
+	RequestID      string
+	Generation     string
+	QuestionStatus string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Kind           domain.ActivityKind
+	Summary        string
+	DetailJson     string
+	ActivityStatus domain.ActivityStatus
+	OutcomeID      domain.OutcomeID
+	PlanRevisionID domain.PlanRevisionID
+	WorkUnitID     domain.WorkUnitID
+	AttemptID      domain.AttemptID
+	AttemptStatus  domain.AttemptStatus
+	SessionID      string
+	CommandID      sql.NullString
+	CommandState   sql.NullString
+}
+
+func (q *Queries) GetNeedsYouQuestionRow(ctx context.Context, arg GetNeedsYouQuestionRowParams) (GetNeedsYouQuestionRowRow, error) {
+	row := q.db.QueryRowContext(ctx, getNeedsYouQuestionRow, arg.OutcomeID, arg.ID)
+	var i GetNeedsYouQuestionRowRow
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.RequestID,
+		&i.Generation,
+		&i.QuestionStatus,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.Summary,
+		&i.DetailJson,
+		&i.ActivityStatus,
+		&i.OutcomeID,
+		&i.PlanRevisionID,
+		&i.WorkUnitID,
+		&i.AttemptID,
+		&i.AttemptStatus,
+		&i.SessionID,
+		&i.CommandID,
+		&i.CommandState,
+	)
+	return i, err
+}
+
 const getOwnerAnswerQuestion = `-- name: GetOwnerAnswerQuestion :one
 SELECT id, conversation_id, request_id, generation, status, created_at, updated_at FROM owner_answer_questions WHERE id=?
 `
@@ -398,6 +470,90 @@ func (q *Queries) InsertOwnerProof(ctx context.Context, arg InsertOwnerProofPara
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const listCurrentNeedsYouQuestionRows = `-- name: ListCurrentNeedsYouQuestionRows :many
+SELECT q.id,q.conversation_id,q.request_id,q.generation,q.status AS question_status,q.created_at,q.updated_at,
+       ca.kind,ca.summary,ca.detail_json,ca.status AS activity_status,
+       a.outcome_id,a.plan_revision_id,a.work_unit_id,a.id AS attempt_id,a.status AS attempt_status,
+       ats.session_id, g.id AS command_id,g.state AS command_state
+FROM owner_answer_questions q
+JOIN conversation_activities ca ON ca.id=q.id AND ca.conversation_id=q.conversation_id
+JOIN conversations c ON c.id=q.conversation_id
+JOIN attempt_sessions ats ON ats.session_id=c.current_session_id
+JOIN attempts a ON a.id=ats.attempt_id
+LEFT JOIN governed_control_commands g ON g.session_id=ats.session_id AND g.idempotency_key=('answer:' || q.generation)
+WHERE a.outcome_id=?
+  AND ats.seq=(SELECT MAX(x.seq) FROM attempt_sessions x WHERE x.attempt_id=a.id)
+  AND a.id=(SELECT x.id FROM attempts x WHERE x.outcome_id=a.outcome_id AND x.work_unit_id=a.work_unit_id ORDER BY x.number DESC LIMIT 1)
+  AND a.plan_revision_id=(SELECT p.id FROM plan_revisions p WHERE p.outcome_id=a.outcome_id ORDER BY p.number DESC LIMIT 1)
+  AND q.id=(SELECT q2.id FROM owner_answer_questions q2 WHERE q2.conversation_id=q.conversation_id AND q2.request_id=q.request_id ORDER BY q2.created_at DESC,q2.id DESC LIMIT 1)
+ORDER BY a.number DESC,ca.sequence DESC
+`
+
+type ListCurrentNeedsYouQuestionRowsRow struct {
+	ID             string
+	ConversationID string
+	RequestID      string
+	Generation     string
+	QuestionStatus string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Kind           domain.ActivityKind
+	Summary        string
+	DetailJson     string
+	ActivityStatus domain.ActivityStatus
+	OutcomeID      domain.OutcomeID
+	PlanRevisionID domain.PlanRevisionID
+	WorkUnitID     domain.WorkUnitID
+	AttemptID      domain.AttemptID
+	AttemptStatus  domain.AttemptStatus
+	SessionID      string
+	CommandID      sql.NullString
+	CommandState   sql.NullString
+}
+
+func (q *Queries) ListCurrentNeedsYouQuestionRows(ctx context.Context, outcomeID domain.OutcomeID) ([]ListCurrentNeedsYouQuestionRowsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCurrentNeedsYouQuestionRows, outcomeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCurrentNeedsYouQuestionRowsRow{}
+	for rows.Next() {
+		var i ListCurrentNeedsYouQuestionRowsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConversationID,
+			&i.RequestID,
+			&i.Generation,
+			&i.QuestionStatus,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.Summary,
+			&i.DetailJson,
+			&i.ActivityStatus,
+			&i.OutcomeID,
+			&i.PlanRevisionID,
+			&i.WorkUnitID,
+			&i.AttemptID,
+			&i.AttemptStatus,
+			&i.SessionID,
+			&i.CommandID,
+			&i.CommandState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPendingHarnessCommandOutbox = `-- name: ListPendingHarnessCommandOutbox :many

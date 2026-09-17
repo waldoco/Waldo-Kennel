@@ -44,3 +44,10 @@ func (d ChatAnswerDispatch) Validate() error {
 type ChatAnswerDispatcher interface {
 	DispatchAnswer(ctx context.Context, requestID, requestInstanceID string, decision ChatDecision) (ChatAnswerDispatch, error)
 }
+
+// ChatInputDispatcher is the governed typed-input seam. Like approval answers,
+// a successful handoff is the strongest observable boundary and is never
+// mislabeled as provider acknowledgement.
+type ChatInputDispatcher interface {
+	DispatchInput(ctx context.Context, requestID, requestInstanceID string, response ChatInputResponse) (ChatAnswerDispatch, error)
+}

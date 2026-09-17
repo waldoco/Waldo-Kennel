@@ -474,7 +474,8 @@ func Run() error {
 		WithDocuments(store, artifactContent).
 		WithProofStore(store).
 		WithDelivery(store, artifactContent).
-		WithAnalystSessionReaper(reaper)
+		WithAnalystSessionReaper(reaper).
+		WithNeedsYou(store, chatSvc)
 	outcomeSvc.AdmissionPolicy = admissionPolicy
 	if recovered, recoveryErr := outcomeSvc.RecoverInterruptedPlanning(ctx); recoveryErr != nil {
 		return fmt.Errorf("recover interrupted Outcome planning: %w", recoveryErr)
@@ -570,6 +571,7 @@ func Run() error {
 		ResponsibilityLinks: responsibilityLinkSvc,
 		Attempts:            outcomeSvc,
 		Proof:               outcomeSvc,
+		NeedsYou:            outcomeSvc,
 		NotificationStream:  notificationHub,
 		Push:                pushRegistry,
 		Presence:            presenceTracker,
