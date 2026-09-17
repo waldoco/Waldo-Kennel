@@ -89,7 +89,7 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 							</Dialog.Close>
 						</div>
 					</header>
-					<div className="board-scrollbar h-[340px] shrink-0 overflow-y-auto px-5 py-5.5">
+					<div className="board-scrollbar h-[390px] shrink-0 overflow-y-auto px-5 py-5.5">
 						{step === "welcome" ? <WelcomeStep /> : null}
 						{step === "system" ? <SystemStep /> : null}
 						{step === "codex" ? <CodexStep /> : null}
@@ -341,7 +341,14 @@ function StatusRow({
 	const Icon =
 		state === "ready" ? CheckCircle2 : state === "error" ? XCircle : Circle;
 	return (
-		<div className="flex items-center gap-3 rounded-lg hairline border-border bg-popover/55 p-3.5">
+		<div
+			className={cn(
+				"rounded-lg hairline border-border bg-popover/55 p-3.5",
+				action
+					? "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
+					: "flex items-center gap-3",
+			)}
+		>
 			<Icon
 				className={cn(
 					"size-icon-base shrink-0",
@@ -356,7 +363,11 @@ function StatusRow({
 				<p className="text-xs font-medium">{title}</p>
 				<p className="mt-0.5 text-2xs leading-body text-passive">{body}</p>
 			</div>
-			{action}
+			{action ? (
+				<div className="col-start-2 sm:col-start-3 sm:row-start-1">
+					{action}
+				</div>
+			) : null}
 		</div>
 	);
 }
