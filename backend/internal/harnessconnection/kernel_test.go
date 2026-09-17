@@ -42,7 +42,7 @@ func TestIssueAuthenticateRestartAndNoBearerPersistence(t *testing.T) {
 }
 func TestAuthenticateRejectsSpoofStaleUndeclaredExpiredRevokedAndRotation(t *testing.T) {
 	store := sqlitetest.MustOpen(t)
-	k := NewWithRandom(store, bytes.NewReader(bytes.Repeat([]byte{1}, 256)))
+	k := NewWithRandom(store, bytes.NewReader(append(bytes.Repeat([]byte{1}, 32), bytes.Repeat([]byte{2}, 224)...)))
 	issued, binding, now := issueFixture(t, k)
 	tests := []struct {
 		name   string
@@ -79,7 +79,7 @@ func TestAuthenticateRejectsSpoofStaleUndeclaredExpiredRevokedAndRotation(t *tes
 }
 func TestConcurrentRotationHasOneWinner(t *testing.T) {
 	store := sqlitetest.MustOpen(t)
-	k := NewWithRandom(store, bytes.NewReader(bytes.Repeat([]byte{2}, 512)))
+	k := NewWithRandom(store, bytes.NewReader(append(bytes.Repeat([]byte{2}, 32), bytes.Repeat([]byte{3}, 480)...)))
 	_, binding, now := issueFixture(t, k)
 	var wg sync.WaitGroup
 	successes := 0
