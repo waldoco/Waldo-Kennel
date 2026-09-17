@@ -168,3 +168,81 @@ func TestConcurrentExactInstallConverges(t *testing.T) {
 		}
 	}
 }
+
+func TestCandidateSymlinkRejected(t *testing.T) {
+	root := t.TempDir()
+	req, got := fixture(t, root, 1, 0)
+	real := req.ArtifactPath
+	link := real + "-link"
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	req.ArtifactPath = link
+	s := Stager{Root: root, Quiescer: quiescer{}, Health: probe{installation: got}, Pairing: pairing{}}
+	op, err := s.Install(context.Background(), req)
+	if err == nil || op.State != domain.AdapterInstallActionNeeded {
+		t.Fatalf("op=%+v err=%v", op, err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "active")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("active created: %v", err)
+	}
+}
+
+func TestRestartPendingActivationRollsBack(t *testing.T) {
+	root := t.TempDir()
+	old := installOld(t, root)
+	req, _ := fixture(t, root, 2, 1)
+	req.ExpectedActive = old
+	s := Stager{Root: root}
+	digest, err := requestDigest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := filepath.Join(root, "generations", "pending")
+	if err := os.MkdirAll(candidate, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(candidate, artifactName), []byte("candidate"), 0500); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Readlink(filepath.Join(root, "active"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous = filepath.Join(root, previous)
+	if err := s.swapLink(candidate); err != nil {
+		t.Fatal(err)
+	}
+	op := domain.HarnessAdapterInstallOperation{ID: req.OperationID, RequestDigest: digest, State: domain.AdapterInstallActivatedPendingHealth, PreviousPath: previous, PreviousDigest: old, CandidatePath: candidate, CandidateDigest: req.Release.ArtifactDigest, ReleaseSequence: req.Release.Sequence, CreatedAt: req.Now, UpdatedAt: req.Now}
+	if err := s.persist(&op); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := s.Install(context.Background(), req)
+	if err != nil || recovered.State != domain.AdapterInstallRolledBack {
+		t.Fatalf("recovered=%+v err=%v", recovered, err)
+	}
+	a, err := s.activeTargetAndDigest(context.Background())
+	if err != nil || a.digest != old {
+		t.Fatalf("active=%+v err=%v", a, err)
+	}
+}
+
+func TestCommitPinsLastKnownGood(t *testing.T) {
+	root := t.TempDir()
+	req, got := fixture(t, root, 1, 0)
+	s := Stager{Root: root, Quiescer: quiescer{}, Health: probe{installation: got}, Pairing: pairing{}}
+	if _, err := s.Install(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	activeTarget, err := os.Readlink(filepath.Join(root, "active"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastTarget, err := os.Readlink(filepath.Join(root, "last-known-good"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if activeTarget != lastTarget {
+		t.Fatalf("active=%q last-known-good=%q", activeTarget, lastTarget)
+	}
+}

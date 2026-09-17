@@ -59,6 +59,23 @@ func (s *Stager) Install(ctx context.Context, req Request) (domain.HarnessAdapte
 		if existing.RequestDigest != digest {
 			return existing, domain.ErrHarnessAdapterInstallConflict
 		}
+		if existing.State == domain.AdapterInstallActivatedPendingHealth {
+			if rollbackErr := s.rollback(existing.PreviousPath); rollbackErr != nil {
+				existing.State = domain.AdapterInstallActionNeeded
+				existing.Drift = domain.AdapterDriftRollbackFailed
+				existing.Repair = domain.AdapterRepairManual
+				existing.Failure = rollbackErr.Error()
+			} else {
+				existing.State = domain.AdapterInstallRolledBack
+				existing.Drift = domain.AdapterDriftActivationIncomplete
+				existing.Repair = domain.AdapterRepairReconcileRollback
+				existing.Failure = "recovered activation pending health after restart"
+			}
+			existing.UpdatedAt = time.Now().UTC()
+			if persistErr := s.persist(&existing); persistErr != nil {
+				return existing, persistErr
+			}
+		}
 		return existing, nil
 	}
 	if s.Pairing == nil {
@@ -125,6 +142,11 @@ func (s *Stager) Install(ctx context.Context, req Request) (domain.HarnessAdapte
 	if err = s.Quiescer.QuiesceHarnessAdapter(ctx, previous.digest); err != nil {
 		return s.fail(&op, domain.AdapterDriftActivationIncomplete, err)
 	}
+	if previous.path != "" {
+		if err = s.swapLinkNamed("last-known-good", previous.path); err != nil {
+			return s.fail(&op, domain.AdapterDriftActivationIncomplete, err)
+		}
+	}
 	if err = s.activate(candidate); err != nil {
 		return s.fail(&op, domain.AdapterDriftActivationIncomplete, err)
 	}
@@ -147,6 +169,12 @@ func (s *Stager) Install(ctx context.Context, req Request) (domain.HarnessAdapte
 			return op, persistErr
 		}
 		return op, err
+	}
+	if err = s.swapLinkNamed("last-known-good", candidate); err != nil {
+		if rb := s.rollback(previous.path); rb != nil {
+			return s.fail(&op, domain.AdapterDriftRollbackFailed, fmt.Errorf("last-known-good: %v; rollback: %w", err, rb))
+		}
+		return s.fail(&op, domain.AdapterDriftActivationIncomplete, err)
 	}
 	op.State = domain.AdapterInstallCommitted
 	op.Drift = domain.AdapterDriftInSync
@@ -187,8 +215,9 @@ func (s *Stager) prepare(ctx context.Context, req Request) (string, error) {
 	}
 	defer in.Close()
 	info, err := in.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return "", fmt.Errorf("candidate is not a regular file")
+	pathInfo, pathErr := os.Lstat(req.ArtifactPath)
+	if err != nil || pathErr != nil || !info.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(info, pathInfo) {
+		return "", fmt.Errorf("candidate is not one stable regular file")
 	}
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if errors.Is(err, os.ErrExist) {
@@ -279,11 +308,12 @@ func (s *Stager) rollback(previous string) error {
 	}
 	return s.swapLink(previous)
 }
-func (s *Stager) swapLink(target string) error {
+func (s *Stager) swapLink(target string) error { return s.swapLinkNamed("active", target) }
+func (s *Stager) swapLinkNamed(name, target string) error {
 	if err := os.MkdirAll(s.Root, 0700); err != nil {
 		return err
 	}
-	tmp := filepath.Join(s.Root, ".active-next")
+	tmp := filepath.Join(s.Root, "."+name+"-next")
 	_ = os.Remove(tmp)
 	rel, err := filepath.Rel(s.Root, target)
 	if err != nil {
@@ -292,7 +322,7 @@ func (s *Stager) swapLink(target string) error {
 	if err = os.Symlink(rel, tmp); err != nil {
 		return err
 	}
-	if err = os.Rename(tmp, filepath.Join(s.Root, "active")); err != nil {
+	if err = os.Rename(tmp, filepath.Join(s.Root, name)); err != nil {
 		return err
 	}
 	return syncDir(s.Root)
