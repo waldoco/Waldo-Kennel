@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { useOutcomeAttempts } from "../../hooks/useOutcome";
 import { OUTCOME_SHAPES, useOutcomeComposition } from "../../hooks/useOutcomeComposition";
+import type { OutcomeDestinationStage } from "../../lib/outcome-tree";
 import { useUiStore } from "../../stores/ui-store";
 import { NotificationCenter } from "../NotificationCenter";
 import { TopbarButton } from "../TopbarButton";
@@ -19,6 +20,9 @@ type WorkShellProps = {
 	projectId?: string;
 	/** Absent until an Outcome exists. */
 	outcomeId?: string;
+	/** Absent on Enter/Understand (defaults there). Governs whether the
+	 *  List/Board switch below has a real Board behind it. */
+	stage?: OutcomeDestinationStage;
 	children: ReactNode;
 };
 
@@ -45,7 +49,7 @@ type WorkShellProps = {
  * falls back to a bare "Board" crumb here). `_shell.tsx` suppresses both for
  * every Work route so this is the only copy.
  */
-export function WorkShell({ projectId, outcomeId, children }: WorkShellProps) {
+export function WorkShell({ projectId, outcomeId, stage, children }: WorkShellProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const router = useRouter();
@@ -58,6 +62,12 @@ export function WorkShell({ projectId, outcomeId, children }: WorkShellProps) {
 
 	const outcomeRunViewMode = useUiStore((state) => state.outcomeRunViewMode);
 	const setOutcomeRunViewMode = useUiStore((state) => state.setOutcomeRunViewMode);
+	// Act & Observe's Mission graph is List-only in this slice — Canvas is not
+	// built (`@xyflow/react` is not an approved/installed dependency), so
+	// there is no second view behind Board here. A control a click on this
+	// stage would silently do nothing to is a dead end, not an inert
+	// placeholder — disable it outright rather than leave it clickable.
+	const missionViewIsListOnly = stage === "act_observe";
 	const isAttemptPanelOpen = useUiStore((state) => state.isOutcomeAttemptPanelOpen);
 	const panelAttemptId = useUiStore((state) => state.outcomeAttemptPanelAttemptId);
 	const toggleAttemptPanel = useUiStore((state) => state.toggleOutcomeAttemptPanel);
@@ -168,13 +178,14 @@ export function WorkShell({ projectId, outcomeId, children }: WorkShellProps) {
 				<div className="min-w-0 flex-1" />
 
 				<SessionsViewSwitch
+					disabled={missionViewIsListOnly}
 					labels={{
 						ariaLabel: t("mission.portfolioView"),
 						board: t("outcome.run.viewBoard"),
 						list: t("outcome.run.viewList"),
 					}}
 					onChange={setOutcomeRunViewMode}
-					value={outcomeRunViewMode}
+					value={missionViewIsListOnly ? "list" : outcomeRunViewMode}
 				/>
 
 				<div className="min-w-0 flex-1" />

@@ -78,7 +78,7 @@ function WorkRoute() {
 	// this replaces (OutcomeLifecycleShell's inert pill row used to be the
 	// ONLY visible chrome above a stage surface).
 	return (
-		<WorkShell outcomeId={outcome} projectId={project}>
+		<WorkShell outcomeId={outcome} projectId={project} stage={stage}>
 			{renderStageBody({ intake, navigate, outcome, project, stage, view, portfolio })}
 		</WorkShell>
 	);

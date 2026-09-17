@@ -1,7 +1,6 @@
 import { OutcomeRunControls } from "./OutcomeRunControls";
-import { SessionsBoardGridView, SessionsListView } from "@pin4sf/kennel-product-ui";
 import { ShieldAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { MessageKey } from "../../i18n/messages";
@@ -9,24 +8,19 @@ import {
 	useAttemptAction,
 	useAttemptRecovery,
 	useOutcomeAttempts,
+	useOutcomeMission,
 	useOutcomePlan,
 	useOutcomeProof,
 	useOutcomeSchedule,
+	useStartOutcomeAttempt,
 	type AttemptRecord,
 } from "../../hooks/useOutcome";
-import { boardAttentionZoneOrder, getAttentionZoneViewForZone } from "../../lib/session-presentation";
 import { useUiStore } from "../../stores/ui-store";
 import { MissionPlanView } from "./MissionPlanView";
+import { MissionWorkUnitList } from "./MissionWorkUnitList";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import {
-	AttemptCardAdapter,
-	AttemptRowAdapter,
-	outcomeRunBoardLabels,
-	newestAttempt,
-	toAttemptBoardPresentation,
-	type AttemptBoardPresentation,
-} from "./OutcomeRunBoardAdapters";
+import { newestAttempt } from "./OutcomeRunBoardAdapters";
 
 type OutcomeRunSurfaceProps = {
 	outcomeId: string;
@@ -77,6 +71,8 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 	const planApproved = plan?.status === "approved";
 	const scheduleQuery = useOutcomeSchedule(outcomeId, planApproved ? plan?.id : undefined);
 	const schedule = scheduleQuery.schedule;
+	const missionQuery = useOutcomeMission(outcomeId, planApproved ? plan?.id : undefined);
+	const startAttempt = useStartOutcomeAttempt(outcomeId);
 	const proofQuery = useOutcomeProof(outcomeId);
 	const criterionText = useCallback(
 		(criterionId: string) =>
@@ -87,14 +83,16 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 	const attempts = attemptsQuery.attempts ?? [];
 	const current = newestAttempt(attempts);
 
+	// The Mission WorkUnit graph carries no workUnitId-scoped start endpoint —
+	// `POST /attempts` only ever takes `planRevisionId` and the daemon itself
+	// picks the next runnable WorkUnit, which is exactly the node the
+	// projection already marked with the returned `start` action (invariant
+	// G: only the server-selected action is ever actionable).
+	const startNextRunnable = useCallback(() => {
+		if (!plan || startAttempt.pending) return;
+		void startAttempt.start({ planRevisionId: plan.id });
+	}, [plan, startAttempt]);
 
-	const outcomeRunViewMode = useUiStore((state) => state.outcomeRunViewMode);
-	const boardColumns = useMemo(() => boardAttentionZoneOrder.map((zone) => getAttentionZoneViewForZone(zone, t)), [t]);
-	const boardLabels = useMemo(() => outcomeRunBoardLabels(t), [t]);
-	const attemptPresentations: AttemptBoardPresentation[] = useMemo(
-		() => attempts.map((attempt) => toAttemptBoardPresentation(attempt, plan, attempt.id === current?.id, t)),
-		[attempts, plan, current?.id, t],
-	);
 	// Instruct (Board) / Choose / Engage (List) drills into the current
 	// attempt's real bound session in a terminal panel. The panel itself is
 	// docked by WorkShell (components/outcome/WorkShell.tsx) beside every
@@ -163,41 +161,15 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 				</section>
 			)}
 
-			{/* The Board/List reading of this Outcome's full attempt lineage,
-			    bucketed into the same four lanes the Sessions board uses. A single
-			    Outcome only ever has one live attempt at a time, but past attempts
-			    (replaced, halted, reconciled) stay visible here as real history —
-			    nothing here is fabricated, every card comes from `attempts`. */}
-			{attempts.length > 0 && (
-				<div className="flex min-h-0 flex-1 flex-col gap-2.5" data-testid="outcome-run-board">
-					{/* List/Board itself is hoisted into WorkShell's persistent top bar
-					    (Figma shows it there on every Work stage, not just this one) —
-					    it still governs this reading of the lineage via the same
-					    outcomeRunViewMode store slice. */}
-					<h3 className="text-sm font-medium text-foreground">{t("outcome.run.lineageHeading")}</h3>
-					<div className="h-[24rem] min-h-0 flex-1">
-						{outcomeRunViewMode === "list" ? (
-							<SessionsListView
-								columns={boardColumns}
-								labels={boardLabels}
-								renderSessionRow={(presentation) => (
-									<AttemptRowAdapter onEngage={() => engageAttempt(presentation.attempt)} presentation={presentation} />
-								)}
-								sessions={attemptPresentations}
-							/>
-						) : (
-							<SessionsBoardGridView
-								columns={boardColumns}
-								labels={boardLabels}
-								renderSessionCard={(presentation) => (
-									<AttemptCardAdapter onEngage={() => engageAttempt(presentation.attempt)} presentation={presentation} />
-								)}
-								sessions={attemptPresentations}
-							/>
-						)}
-					</div>
-				</div>
-			)}
+			{/* The Mission WorkUnit graph (F2): the authenticated `/mission`
+			    projection only, never joined with Plan/Schedule/Attempt/session
+			    responses to recreate its authority. Canvas is not built in this
+			    slice (`@xyflow/react` is not an approved/installed dependency) —
+			    List is the sole, first-class reading, not a fallback. */}
+			<h3 className="text-sm font-medium text-foreground">{t("mission.list.heading")}</h3>
+			<div className="min-h-0 flex-1">
+				<MissionWorkUnitList missionQuery={missionQuery} onStart={startNextRunnable} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
+			</div>
 
 			{current && <CurrentAttemptCard
 				attempt={current}

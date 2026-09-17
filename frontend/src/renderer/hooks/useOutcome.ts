@@ -395,6 +395,105 @@ export function useOutcomeSchedule(outcomeId: string | undefined, planId: string
 }
 
 /**
+ * The authoritative, read-only Mission WorkUnit graph (F2). This is the sole
+ * runtime contract for Canvas/List rendering — never joined with Plan,
+ * Schedule, Attempt, session, proof, or Needs You responses to recreate
+ * authority. `planRevisionId + topologyFingerprint + topologyGeneration`
+ * is the topology identity; `generation` (projection and per-node) is an
+ * opaque change token, never a timestamp.
+ */
+export type MissionRecord = components["schemas"]["ControllersMissionProjectionResponse"];
+export type MissionNodeRecord = components["schemas"]["ControllersMissionNodeResponse"];
+export type MissionEdgeRecord = components["schemas"]["ControllersMissionEdgeResponse"];
+export type MissionAttentionRecord = components["schemas"]["ControllersMissionAttentionResponse"];
+export type MissionAttemptRecord = components["schemas"]["ControllersMissionAttemptResponse"];
+export type MissionSessionRecord = components["schemas"]["ControllersMissionSessionResponse"];
+type MissionEnvelope = components["schemas"]["ControllersMissionEnvelope"];
+
+export function outcomeMissionQueryKey(outcomeId: string | undefined, planId?: string | undefined) {
+	return ["outcome-mission", outcomeId ?? "", planId ?? ""] as const;
+}
+
+/** A preview Mission mirrors the preview Schedule stub: no attempts, no
+ *  attention, and only the first WorkUnit runnable — enough to render
+ *  topology honestly without inventing runtime facts. */
+export async function fetchOutcomeMission(outcomeId: string, planId: string): Promise<MissionRecord> {
+	if (usesPreviewWorkspaceData) {
+		const plan = getPreviewPlan(outcomeId);
+		if (!plan || plan.id !== planId) throw { code: PLAN_NOT_FOUND, message: "No preview plan exists yet." };
+		const nextRunnableWorkUnitId = plan.workUnits[0]?.id;
+		const now = new Date().toISOString();
+		return {
+			version: 1,
+			outcomeId,
+			missionId: `${outcomeId}:mission`,
+			contractRevisionNumber: plan.contractRevisionNumber,
+			planRevisionId: plan.id,
+			planRevisionNumber: plan.number,
+			topologyFingerprint: `preview:${plan.id}:${plan.number}`,
+			topologyGeneration: plan.number,
+			generation: plan.number,
+			updatedAt: now,
+			nodes: plan.workUnits.map((workUnit, index) => ({
+				workUnitId: workUnit.id,
+				planRevisionId: plan.id,
+				title: workUnit.title,
+				dependsOn: workUnit.dependsOn,
+				scheduleState: index === 0 ? "runnable" : "blocked",
+				blockingDependencies: index === 0 ? [] : [plan.workUnits[index - 1]?.id ?? ""],
+				criterionIds: workUnit.criterionIds,
+				criterionReady: Object.fromEntries(workUnit.criterionIds.map((id) => [id, false])),
+				responsibility: "unconfirmed",
+				updatedAt: now,
+				generation: index,
+				...(workUnit.id === nextRunnableWorkUnitId ? { nextAction: "start" } : {}),
+			})),
+			edges: plan.workUnits.flatMap((workUnit) =>
+				workUnit.dependsOn.map((dependsOnId) => ({ from: dependsOnId, to: workUnit.id })),
+			),
+			...(nextRunnableWorkUnitId ? { nextRunnableWorkUnitId } : {}),
+		};
+	}
+	const { data, error } = await apiClient.GET("/api/v1/outcomes/{outcomeId}/plans/{planId}/mission", {
+		params: { path: { outcomeId, planId } },
+	});
+	if (error) throw error;
+	return (data as MissionEnvelope).mission;
+}
+
+export interface OutcomeMissionQueryResult {
+	mission?: MissionRecord;
+	isLoading: boolean;
+	isFetching: boolean;
+	failure?: OutcomeFailure;
+	refetch: () => void;
+}
+
+export function useOutcomeMission(outcomeId: string | undefined, planId: string | undefined): OutcomeMissionQueryResult {
+	const query = useQuery({
+		queryKey: outcomeMissionQueryKey(outcomeId, planId),
+		enabled: Boolean(outcomeId && planId),
+		queryFn: () => fetchOutcomeMission(outcomeId as string, planId as string),
+		retry: (attempt, error) => {
+			const code = apiErrorCode(error);
+			if (code === OUTCOME_NOT_FOUND || code === PLAN_NOT_FOUND) return false;
+			return attempt < 2;
+		},
+		// The topology protocol (F2 invariant E/F) depends on a stable previous
+		// value while a refetch is in flight — never render a transient empty
+		// graph as if the mission had none.
+		placeholderData: (previous) => previous,
+	});
+	return {
+		mission: query.data,
+		isLoading: query.isLoading,
+		isFetching: query.isFetching,
+		failure: query.error ? classifyOutcomeFailure(query.error) : undefined,
+		refetch: () => void query.refetch(),
+	};
+}
+
+/**
  * The newest plan of any status for one Outcome.
  */
 export function useOutcomePlan(outcomeId: string | undefined): OutcomePlanQueryResult {

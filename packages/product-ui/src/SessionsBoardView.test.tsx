@@ -11,7 +11,7 @@ import {
 	type BoardSessionPresentation,
 	type BoardSplitLaneLabels,
 } from "./SessionsBoardView";
-import { SessionRowView, SessionsListView } from "./SessionsListView";
+import { SessionRowView, SessionsListView, SessionsViewSwitch } from "./SessionsListView";
 import {
 	boardAttentionZoneOrder,
 	getAttentionZoneViewForZone,
@@ -286,5 +286,26 @@ describe("SessionsBoardView", () => {
 		await screen.findByRole("list", { name: "Archived sessions" });
 		expect(lastArchiveMotionTransition.current).toEqual({ duration: 0 });
 		expect(archiveButton.querySelector("svg")).toHaveClass("transition-none");
+	});
+});
+
+describe("SessionsViewSwitch", () => {
+	const labels = { ariaLabel: "View", board: "Board", list: "List" };
+
+	it("calls onChange for the clicked mode when enabled", () => {
+		const onChange = vi.fn();
+		render(<SessionsViewSwitch labels={labels} onChange={onChange} value="list" />);
+		fireEvent.click(screen.getByRole("tab", { name: "Board" }));
+		expect(onChange).toHaveBeenCalledWith("board");
+	});
+
+	it("disabled renders both segments non-interactive and never calls onChange, rather than silently ignoring the click", () => {
+		const onChange = vi.fn();
+		render(<SessionsViewSwitch disabled labels={labels} onChange={onChange} value="list" />);
+		expect(screen.getByTestId("sessions-view-switch")).toHaveAttribute("aria-disabled", "true");
+		expect(screen.getByRole("tab", { name: "Board" })).toBeDisabled();
+		expect(screen.getByRole("tab", { name: "List" })).toBeDisabled();
+		fireEvent.click(screen.getByRole("tab", { name: "Board" }));
+		expect(onChange).not.toHaveBeenCalled();
 	});
 });

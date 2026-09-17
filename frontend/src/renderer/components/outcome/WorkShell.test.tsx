@@ -107,6 +107,18 @@ describe("WorkShell", () => {
 		expect(useUiStore.getState().outcomeRunViewMode).toBe("list");
 	});
 
+	it("disables the List/Board control on Act & Observe instead of leaving it a dead click — Mission's graph is List-only until Canvas ships", async () => {
+		const user = userEvent.setup();
+		renderShell({ stage: "act_observe" });
+		expect(screen.getByTestId("sessions-view-switch")).toHaveAttribute("aria-disabled", "true");
+		expect(screen.getByRole("tab", { name: /board/i })).toBeDisabled();
+		expect(screen.getByRole("tab", { name: /list/i })).toHaveAttribute("aria-selected", "true");
+		await user.click(screen.getByRole("tab", { name: /board/i }));
+		// The shared store slice never moves — the click was refused, not
+		// silently accepted and then ignored by the stage body.
+		expect(useUiStore.getState().outcomeRunViewMode).toBe("board");
+	});
+
 	it("disables the terminal toggle when there is no current attempt", () => {
 		renderShell({ outcomeId: "out-1" });
 		expect(screen.getByTestId("work-shell-terminal-toggle")).toBeDisabled();

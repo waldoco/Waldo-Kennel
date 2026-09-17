@@ -80,6 +80,40 @@ function scheduleEnvelope() {
 	};
 }
 
+function missionEnvelope() {
+	const plan = planEnvelope("approved").plan;
+	return {
+		mission: {
+			version: 1,
+			outcomeId: "out-1",
+			missionId: "out-1:mission",
+			contractRevisionNumber: 1,
+			planRevisionId: plan.id,
+			planRevisionNumber: plan.number,
+			topologyFingerprint: "fp-test",
+			topologyGeneration: plan.number,
+			generation: 1,
+			updatedAt: "2026-08-24T09:00:00Z",
+			nodes: plan.workUnits.map((workUnit) => ({
+				workUnitId: workUnit.id,
+				planRevisionId: plan.id,
+				title: workUnit.title,
+				dependsOn: [],
+				scheduleState: "runnable",
+				blockingDependencies: [],
+				criterionIds: [],
+				criterionReady: {},
+				responsibility: "unconfirmed",
+				updatedAt: "2026-08-24T09:00:00Z",
+				generation: 1,
+				nextAction: "start",
+			})),
+			edges: [],
+			nextRunnableWorkUnitId: "wu-1",
+		},
+	};
+}
+
 type attemptOverrides = {
 	id?: string;
 	number?: number;
@@ -142,6 +176,7 @@ describe("OutcomeRunSurface", () => {
 		const onReviewProof = vi.fn();
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -161,6 +196,7 @@ describe("OutcomeRunSurface", () => {
 	it("shows the waiting-for-plan card when no approved plan exists and never offers start", async () => {
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("proposed"), error: undefined });
 			}
@@ -179,6 +215,7 @@ describe("OutcomeRunSurface", () => {
 		getMock.mockImplementation((url: string) => {
  if(url.endsWith("/run")) return Promise.resolve({data:{runState:{outcomeId:"out-1", projectId:"p", state:"needs_you", freshness:{contractRevisionNumber:1, planRevisionId:"plan-1", proofGeneration:0}, eligibleActions:[{action:"start",available:true}]}}});
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -208,6 +245,7 @@ describe("OutcomeRunSurface", () => {
 	it("renders a healthy run as Waiting without any Needs You banner", async () => {
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -228,6 +266,7 @@ describe("OutcomeRunSurface", () => {
 	it("shows only the execution graph before the Attempt lineage, without repeating Plan detail", async () => {
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/attempts") return Promise.resolve({ data: { attempts: [attemptEnvelope().attempt] }, error: undefined });
 			return Promise.resolve({ data: undefined, error: { code: "NOT_FOUND", message: url } });
@@ -238,7 +277,7 @@ describe("OutcomeRunSurface", () => {
 		expect(within(schedule).getByTestId("mission-work-unit-graph")).toBeInTheDocument();
 		expect(within(schedule).queryByRole("button", { name: "Table" })).not.toBeInTheDocument();
 		expect(within(schedule).queryByTestId("mission-unit-detail")).not.toBeInTheDocument();
-		expect(screen.getByTestId("outcome-run-board")).toBeInTheDocument();
+		expect(await screen.findByTestId("mission-work-unit-list")).toBeInTheDocument();
 	});
 
 	it("opens the selected WorkUnit's execution detail with attempt lineage and result navigation", async () => {
@@ -246,6 +285,7 @@ describe("OutcomeRunSurface", () => {
 		const onReviewProof = vi.fn();
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/attempts") return Promise.resolve({ data: { attempts: [attemptEnvelope().attempt] }, error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/proof") {
@@ -286,6 +326,7 @@ describe("OutcomeRunSurface", () => {
 		const user = userEvent.setup();
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -332,6 +373,7 @@ describe("OutcomeRunSurface", () => {
 		const user = userEvent.setup();
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -375,6 +417,7 @@ describe("OutcomeRunSurface", () => {
 	it("presents an ended attempt as result-unclassified, never as success", async () => {
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -407,6 +450,7 @@ describe("OutcomeRunSurface", () => {
 		const user = userEvent.setup();
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -439,6 +483,7 @@ describe("OutcomeRunSurface", () => {
 	it("renders Needs You with decision-specific copy per attention kind", async () => {
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -463,6 +508,7 @@ describe("OutcomeRunSurface", () => {
 
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -492,6 +538,7 @@ describe("OutcomeRunSurface", () => {
 	it("gives cancelled attempts a reconcile/confirm custody path", async () => {
 		getMock.mockImplementation((url: string) => {
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}
@@ -514,6 +561,7 @@ describe("OutcomeRunSurface", () => {
 		getMock.mockImplementation((url: string) => {
  if(url.endsWith("/run")) return Promise.resolve({data:{runState:{outcomeId:"out-1", projectId:"p", state:"needs_you", freshness:{contractRevisionNumber:1, planRevisionId:"plan-1", proofGeneration:0}, eligibleActions:[{action:"start",available:true}]}}});
 			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
 			if (url === "/api/v1/outcomes/{outcomeId}/plan") {
 				return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
 			}

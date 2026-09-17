@@ -196,6 +196,9 @@ describe("createEventTransport", () => {
 			expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
 				queryKey: ["outcome-schedule", "outcome-1", "plan-1"],
 			});
+			expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["outcome-mission", "outcome-1", "plan-1"],
+			});
 		} finally {
 			vi.useRealTimers();
 		}
@@ -290,7 +293,7 @@ it("refreshes portfolio and Mission facts after CDC and reconnect gaps", () => {
 			vi.mocked(client.invalidateQueries).mockClear();
 			trigger();
 			vi.advanceTimersByTime(200);
-			for (const root of ["project-outcomes", "outcome", "outcome-plan", "outcome-proof", "outcome-attempts", "outcome-schedule", "outcome-run-state", "project-run-states"]) {
+			for (const root of ["project-outcomes", "outcome", "outcome-plan", "outcome-proof", "outcome-attempts", "outcome-schedule", "outcome-mission", "outcome-run-state", "project-run-states"]) {
 				expect(client.invalidateQueries).toHaveBeenCalledWith({queryKey: [root]});
 			}
 		}

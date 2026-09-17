@@ -305,32 +305,40 @@ export type SessionsViewSwitchLabels = {
 /**
  * List / Board switch. A two-item segmented control rather than an icon toggle:
  * the two views are peers, and naming both makes the alternative discoverable
- * without a hover.
+ * without a hover. `disabled` renders it inert *visibly* — muted, non-clickable,
+ * `aria-disabled` — for a caller with only one real view behind it right now:
+ * a control that silently ignores clicks (present but wired to nothing) is
+ * never an acceptable reading, only an explicitly disabled one is.
  */
 export function SessionsViewSwitch({
+	disabled = false,
 	labels,
 	onChange,
 	value,
 }: {
+	disabled?: boolean;
 	labels: SessionsViewSwitchLabels;
 	onChange: (mode: SessionsViewMode) => void;
 	value: SessionsViewMode;
 }) {
 	return (
 		<div
+			aria-disabled={disabled || undefined}
 			aria-label={labels.ariaLabel}
-			className="inline-flex h-control-segment shrink-0 items-center rounded-lg bg-shell"
+			className={cn("inline-flex h-control-segment shrink-0 items-center rounded-lg bg-shell", disabled && "opacity-50")}
 			data-testid="sessions-view-switch"
 			role="tablist"
 		>
 			<SessionsViewSwitchItem
 				active={value === "list"}
+				disabled={disabled}
 				label={labels.list}
 				mode="list"
 				onSelect={onChange}
 			/>
 			<SessionsViewSwitchItem
 				active={value === "board"}
+				disabled={disabled}
 				label={labels.board}
 				mode="board"
 				onSelect={onChange}
@@ -341,11 +349,13 @@ export function SessionsViewSwitch({
 
 function SessionsViewSwitchItem({
 	active,
+	disabled,
 	label,
 	mode,
 	onSelect,
 }: {
 	active: boolean;
+	disabled: boolean;
 	label: string;
 	mode: SessionsViewMode;
 	onSelect: (mode: SessionsViewMode) => void;
@@ -355,11 +365,15 @@ function SessionsViewSwitchItem({
 			aria-selected={active}
 			className={cn(
 				"inline-flex h-full items-center justify-center rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+				disabled && "cursor-not-allowed",
 				active
 					? "hairline border-border bg-card font-medium text-foreground"
 					: "text-muted-foreground hover:text-foreground",
 			)}
-			onClick={() => onSelect(mode)}
+			disabled={disabled}
+			onClick={() => {
+				if (!disabled) onSelect(mode);
+			}}
 			role="tab"
 			type="button"
 		>

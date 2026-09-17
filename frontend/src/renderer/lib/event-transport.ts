@@ -7,7 +7,7 @@ import { sessionScmSummaryQueryKey } from "../hooks/useSessionScmSummary";
 import { conversationQueryKey } from "../hooks/useConversation";
 import { agentSwitchesQueryRoot } from "../hooks/useAgentSwitches";
 import { sessionUsageQueryRoot } from "../hooks/useSessionUsageSummaries";
-import { outcomeScheduleQueryKey } from "../hooks/useOutcome";
+import { outcomeScheduleQueryKey, outcomeMissionQueryKey } from "../hooks/useOutcome";
 
 export type EventTransport = {
 	connect: () => () => void;
@@ -123,8 +123,10 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 												: "";
 							if (outcomeId && planId) {
 								pendingOutcomeSchedules.add(outcomeScheduleQueryKey(outcomeId, planId));
+								pendingOutcomeSchedules.add(outcomeMissionQueryKey(outcomeId, planId));
 							} else if (outcomeId) {
 								pendingOutcomeSchedules.add(outcomeScheduleQueryKey(outcomeId));
+								pendingOutcomeSchedules.add(outcomeMissionQueryKey(outcomeId));
 							} else {
 								allOutcomeSchedulesInvalidationPending = true;
 							}
@@ -141,7 +143,7 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 					if (outcomeFactsInvalidationPending) {
 						// A connected stream does not make cached responsibility facts current.
 						// Refresh the Mission and portfolio together after CDC or a reconnect gap.
-						for (const root of ["project-outcomes", "outcome", "outcome-plan", "outcome-attempts", "outcome-proof", "outcome-schedule", "outcome-run-state", "project-run-states", "outcome-planning-session", "outcome-planning-candidates"]) {
+						for (const root of ["project-outcomes", "outcome", "outcome-plan", "outcome-attempts", "outcome-proof", "outcome-schedule", "outcome-mission", "outcome-run-state", "project-run-states", "outcome-planning-session", "outcome-planning-candidates"]) {
 							void queryClient.invalidateQueries({ queryKey: [root] });
 						}
 						outcomeFactsInvalidationPending = false;
@@ -155,8 +157,9 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 					}
 					if (allOutcomeSchedulesInvalidationPending) {
 						void queryClient.invalidateQueries({ queryKey: ["outcome-schedule"] });
- void queryClient.invalidateQueries({ queryKey: ["outcome-run-state"] });
- void queryClient.invalidateQueries({ queryKey: ["project-run-states"] });
+						void queryClient.invalidateQueries({ queryKey: ["outcome-mission"] });
+						void queryClient.invalidateQueries({ queryKey: ["outcome-run-state"] });
+						void queryClient.invalidateQueries({ queryKey: ["project-run-states"] });
 						allOutcomeSchedulesInvalidationPending = false;
 					}
 					for (const queryKey of pendingOutcomeSchedules) {
