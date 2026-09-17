@@ -12242,6 +12242,81 @@ components:
       - state
       - lastActivityAt
       type: object
+    DomainCapabilityEscalation:
+      properties:
+        artifactVersion:
+          type: string
+        attemptGeneration:
+          format: int64
+          type: integer
+        attemptId:
+          type: string
+        attemptSessionRefId:
+          type: string
+        checkId:
+          type: string
+        contractRevisionNumber:
+          format: int64
+          type: integer
+        controllerGeneration:
+          type: string
+        denialSource:
+          type: string
+        digest:
+          type: string
+        executorKind:
+          type: string
+        grantFingerprint:
+          type: string
+        operationId:
+          type: string
+        outcomeId:
+          type: string
+        planRevisionId:
+          type: string
+        policyDigest:
+          type: string
+        questionGeneration:
+          type: string
+        requestFingerprint:
+          type: string
+        requestedCapability:
+          type: string
+        runtimeLaunchId:
+          type: string
+        sessionGeneration:
+          format: int64
+          type: integer
+        sessionId:
+          type: string
+        version:
+          type: string
+        withinContractCeiling:
+          type: boolean
+        workUnitId:
+          type: string
+      required:
+      - version
+      - outcomeId
+      - contractRevisionNumber
+      - planRevisionId
+      - workUnitId
+      - attemptId
+      - attemptGeneration
+      - sessionId
+      - sessionGeneration
+      - executorKind
+      - attemptSessionRefId
+      - policyDigest
+      - requestedCapability
+      - denialSource
+      - grantFingerprint
+      - operationId
+      - requestFingerprint
+      - questionGeneration
+      - withinContractCeiling
+      - digest
+      type: object
     DomainReviewerConfig:
       properties:
         harness:
@@ -12897,6 +12972,8 @@ components:
       properties:
         attemptId:
           type: string
+        capabilityEscalation:
+          $ref: '#/components/schemas/DomainCapabilityEscalation'
         commandId:
           type: string
         conversationId:

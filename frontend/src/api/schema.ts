@@ -929,6 +929,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/outcomes/{outcomeId}/needs-you": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read current typed owner questions for the Outcome's active Attempt and WorkUnits */
+        get: operations["getOutcomeNeedsYou"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/outcomes/{outcomeId}/needs-you/{questionId}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer one exact Needs-You generation through the governed command lifecycle */
+        post: operations["answerOutcomeNeedsYou"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/outcomes/{outcomeId}/needs-you/{questionId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle delivery_unknown only when later provider evidence closed the question */
+        post: operations["reconcileOutcomeNeedsYou"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/outcomes/{outcomeId}/plan": {
         parameters: {
             query?: never;
@@ -3042,6 +3093,16 @@ export interface components {
             name: string;
             scope: string;
         };
+        ChatDecisionAnswer: {
+            id: string;
+            raw?: unknown;
+        };
+        ChatInputAnswer: {
+            action: string;
+            content?: {
+                [key: string]: unknown;
+            };
+        };
         ClaimPRRequest: {
             allowTakeover?: null | boolean;
             pr: string;
@@ -4005,6 +4066,35 @@ export interface components {
             lastActivityAt: string;
             state: string;
         };
+        DomainCapabilityEscalation: {
+            artifactVersion?: string;
+            /** Format: int64 */
+            attemptGeneration: number;
+            attemptId: string;
+            attemptSessionRefId: string;
+            checkId?: string;
+            /** Format: int64 */
+            contractRevisionNumber: number;
+            controllerGeneration?: string;
+            denialSource: string;
+            digest: string;
+            executorKind: string;
+            grantFingerprint: string;
+            operationId: string;
+            outcomeId: string;
+            planRevisionId: string;
+            policyDigest: string;
+            questionGeneration: string;
+            requestFingerprint: string;
+            requestedCapability: string;
+            runtimeLaunchId?: string;
+            /** Format: int64 */
+            sessionGeneration: number;
+            sessionId: string;
+            version: string;
+            withinContractCeiling: boolean;
+            workUnitId: string;
+        };
         DomainReviewerConfig: {
             harness: string;
         };
@@ -4238,6 +4328,52 @@ export interface components {
         MuteDeviceRequest: {
             /** @description True to stop sending push notifications to this device. */
             muted: boolean;
+        };
+        NeedsYouAnswerRequest: {
+            decision?: components["schemas"]["ChatDecisionAnswer"];
+            generation: string;
+            input?: components["schemas"]["ChatInputAnswer"];
+            requestKey: string;
+        };
+        NeedsYouOption: {
+            id: string;
+            label?: string;
+        };
+        NeedsYouQuestion: {
+            attemptId: string;
+            capabilityEscalation?: components["schemas"]["DomainCapabilityEscalation"];
+            commandId?: string;
+            conversationId: string;
+            /** Format: date-time */
+            createdAt: string;
+            generation: string;
+            id: string;
+            inputMode?: string;
+            inputSchema?: {
+                [key: string]: unknown;
+            };
+            kind: string;
+            options?: components["schemas"]["NeedsYouOption"][];
+            outcomeId: string;
+            planRevisionId: string;
+            reason: string;
+            recommendation?: string;
+            requestId: string;
+            sessionId: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            url?: string;
+            workUnitId: string;
+        };
+        NeedsYouQuestionEnvelope: {
+            question: components["schemas"]["NeedsYouQuestion"];
+        };
+        NeedsYouQuestionsEnvelope: {
+            questions: components["schemas"]["NeedsYouQuestion"][];
+        };
+        NeedsYouReconcileRequest: {
+            generation: string;
         };
         NotificationEnvelope: {
             notification: components["schemas"]["NotificationResponse"];
@@ -9120,6 +9256,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutcomeProofEnvelope"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getOutcomeNeedsYou: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Outcome identifier, e.g. out-<uuid>. */
+                outcomeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NeedsYouQuestionsEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    answerOutcomeNeedsYou: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Outcome identifier, e.g. out-<uuid>. */
+                outcomeId: string;
+                /** @description Durable Needs-You question identifier. */
+                questionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NeedsYouAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NeedsYouQuestionEnvelope"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    reconcileOutcomeNeedsYou: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Outcome identifier, e.g. out-<uuid>. */
+                outcomeId: string;
+                /** @description Durable Needs-You question identifier. */
+                questionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NeedsYouReconcileRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NeedsYouQuestionEnvelope"];
                 };
             };
             /** @description Bad Request */
