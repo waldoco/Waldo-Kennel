@@ -40,6 +40,43 @@ WHEN OLD.status<>NEW.status AND NOT (
 BEGIN SELECT RAISE(ABORT,'illegal attempt status transition'); END;
 CREATE TRIGGER attempts_immutable_delete BEFORE DELETE ON attempts BEGIN SELECT RAISE(ABORT,'attempts are append-only'); END;
 
+
+-- Attempt CDC is restored immediately after Goose by cdc_restore.go. That
+-- dependency-aware writer registry recreates both triggers on the rebuilt
+-- attempts table while continuing to defer them on burned profiles missing
+-- outcomes/responsibility_spaces.
+
+
+-- Install the launch packet relation here when the compatibility repair has
+-- not run yet, so its awaiting-authority guard exists on every profile.
+CREATE TABLE IF NOT EXISTS workspace_bound_launch_packets (
+ attempt_id TEXT PRIMARY KEY REFERENCES attempts(id), spec_digest TEXT NOT NULL REFERENCES approved_executable_specs(digest),
+ session_id TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, packet_json TEXT NOT NULL CHECK(json_valid(packet_json)), created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ CHECK(json_extract(packet_json,'$.attemptId')=attempt_id), CHECK(json_extract(packet_json,'$.specDigest')=spec_digest), CHECK(json_extract(packet_json,'$.sessionId')=session_id), CHECK(json_extract(packet_json,'$.digest')=digest));
+
+-- Defense in depth: a custody-free reservation cannot acquire any execution
+-- lineage even through a raw SQL path or a writer that forgot its status check.
+-- +goose StatementBegin
+CREATE TRIGGER attempt_sessions_require_admitted_attempt BEFORE INSERT ON attempt_sessions
+WHEN (SELECT status FROM attempts WHERE id=NEW.attempt_id)='awaiting_authority'
+BEGIN SELECT RAISE(ABORT,'awaiting-authority attempt cannot bind a session'); END;
+-- +goose StatementEnd
+-- +goose StatementBegin
+CREATE TRIGGER attempt_fences_require_admitted_attempt BEFORE INSERT ON attempt_fences
+WHEN (SELECT status FROM attempts WHERE id=NEW.attempt_id)='awaiting_authority'
+BEGIN SELECT RAISE(ABORT,'awaiting-authority attempt cannot acquire a fence'); END;
+-- +goose StatementEnd
+-- +goose StatementBegin
+CREATE TRIGGER workspace_launch_packets_require_admitted_attempt BEFORE INSERT ON workspace_bound_launch_packets
+WHEN (SELECT status FROM attempts WHERE id=NEW.attempt_id)='awaiting_authority'
+BEGIN SELECT RAISE(ABORT,'awaiting-authority attempt cannot acquire launch facts'); END;
+-- +goose StatementEnd
+-- +goose StatementBegin
+CREATE TRIGGER attempt_receipts_require_executed_attempt BEFORE INSERT ON attempt_receipts
+WHEN (SELECT status FROM attempts WHERE id=NEW.attempt_id)='awaiting_authority'
+BEGIN SELECT RAISE(ABORT,'awaiting-authority attempt cannot acquire workspace receipt facts'); END;
+-- +goose StatementEnd
+
 CREATE TABLE attempt_start_reservations (
  id TEXT PRIMARY KEY,
  attempt_id TEXT NOT NULL UNIQUE REFERENCES attempts(id) ON DELETE RESTRICT,
