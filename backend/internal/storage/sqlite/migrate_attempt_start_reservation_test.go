@@ -50,6 +50,9 @@ func TestAttemptStartReservationMigrationUpAndTransitionGuards(t *testing.T) {
 	if rows.Next() {
 		t.Fatal("foreign_key_check reported violation")
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("foreign_key_check iteration: %v", err)
+	}
 	seedContractProject(t, db)
 	spaceID := seedWorkSpace(t, db)
 	if _, err = db.Exec(`INSERT INTO outcomes(id,space_id,title,current_revision_number) VALUES('guard-out',?,'guard',1)`, spaceID); err != nil {
