@@ -193,7 +193,7 @@ func TestPairingIntentOwnerRouteRejectsLANHostAndUnknownFields(t *testing.T) {
 }
 
 func ownerProofBody(class string) string {
-	return `{"missionId":"mission","contentDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","target":{"version":"v1","class":"` + class + `","questionId":"question-1","questionGeneration":"question-generation-2"},"class":"` + class + `"}`
+	return `{"missionId":"mission","contentDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","target":{"version":"v2","class":"` + class + `","questionId":"question-1","questionGeneration":"question-generation-2"},"class":"` + class + `"}`
 }
 
 func TestOwnerProofMintRequiresOwnerAndBindsAuthenticatedAppRun(t *testing.T) {
