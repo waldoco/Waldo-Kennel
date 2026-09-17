@@ -1,5 +1,8 @@
 # Work Experience — screen and interaction specification
 
+> **Superseded for vNext (2026-09-15):** Historical Work UX specification; its session topology is superseded. Use [persistent mission runtime](../../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 - **Status:** Canonical Work UX companion specification
 - **Original date:** 2026-08-25
 - **Consolidated:** 2026-09-04

@@ -23,6 +23,14 @@ func (s *Service) RoutingSnapshot(ctx context.Context, projectID domain.ProjectI
 		installed[info.ID] = info
 	}
 
+	generationRaw, err := json.Marshal(struct {
+		Supported any
+		Installed any
+	}{inventory.Supported, inventory.Installed})
+	if err != nil {
+		return ports.RoutingInventorySnapshot{}, fmt.Errorf("encode routing generation: %w", err)
+	}
+	generationID := string(domain.DigestSHA256(generationRaw))
 	candidates := make([]domain.RoutingCandidate, 0, len(inventory.Supported))
 	for _, supported := range inventory.Supported {
 		harness := domain.AgentHarness(supported.ID)
@@ -31,14 +39,15 @@ func (s *Service) RoutingSnapshot(ctx context.Context, projectID domain.ProjectI
 		}
 		local, isInstalled := installed[supported.ID]
 		candidate := domain.RoutingCandidate{
-			ID:                  supported.ID,
-			Provider:            supported.ID,
-			ModelSelection:      domain.ExecutionBindingModelProviderDefault,
-			WorkerEligible:      supported.Roles.Worker,
-			CoordinatorEligible: supported.Roles.Coordinator,
-			Readiness:           domain.CapabilityUnsupported,
-			Capabilities:        map[string]domain.CapabilitySupport{},
-			Models:              map[string]domain.CapabilitySupport{},
+			ID:                       supported.ID,
+			Provider:                 supported.ID,
+			ModelSelection:           domain.ExecutionBindingModelProviderDefault,
+			WorkerEligible:           supported.Roles.Worker,
+			CoordinatorEligible:      supported.Roles.Coordinator,
+			Readiness:                domain.CapabilityUnsupported,
+			Capabilities:             map[string]domain.CapabilitySupport{},
+			Models:                   map[string]domain.CapabilitySupport{},
+			ExecutionTokenAccounting: domain.CapabilityUnknown,
 		}
 		if supported.Roles.Worker {
 			candidate.Capabilities[domain.CapabilityWorktreeRead] = domain.CapabilitySupported
@@ -77,8 +86,9 @@ func (s *Service) RoutingSnapshot(ctx context.Context, projectID domain.ProjectI
 		return ports.RoutingInventorySnapshot{}, fmt.Errorf("encode routing inventory: %w", err)
 	}
 	return ports.RoutingInventorySnapshot{
-		SnapshotID: string(domain.DigestSHA256(encoded)),
-		Candidates: candidates,
+		GenerationID: generationID,
+		SnapshotID:   string(domain.DigestSHA256(encoded)),
+		Candidates:   candidates,
 	}, nil
 }
 

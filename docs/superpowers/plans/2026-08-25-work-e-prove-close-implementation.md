@@ -1,5 +1,8 @@
 # Work E Prove and Close Implementation Plan
 
+> **Classification for vNext (2026-09-15):** historical implementation plan, not current order. Use [persistent mission runtime](../../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md).
+
+
 > Issue: #35. Branch: `codex/issue-35-prove-close`. Dated base: `origin/beta` at `869c42639aef7a850b5d3ff758a629a7d777137e`.
 
 ## Boundary

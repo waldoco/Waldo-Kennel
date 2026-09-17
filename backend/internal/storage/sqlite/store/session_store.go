@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -89,23 +90,33 @@ func (s *Store) RecordSessionLatestUserPrompt(ctx context.Context, id domain.Ses
 func (s *Store) ClaimChatControllerGeneration(
 	ctx context.Context,
 	id domain.SessionID,
-	generation string,
+	generation, expectedRevision, capabilityFingerprint string,
 	updatedAt time.Time,
 ) error {
+	if strings.TrimSpace(generation) == "" {
+		return fmt.Errorf("claim chat controller generation for %s: generation is required", id)
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	rows, err := s.qw.ClaimChatControllerGeneration(ctx, gen.ClaimChatControllerGenerationParams{
-		ControllerGeneration: generation,
-		UpdatedAt:            updatedAt,
-		ID:                   id,
+	return s.inTx(ctx, "claim chat controller generation and target", func(q *gen.Queries) error {
+		rows, err := q.ClaimChatControllerGeneration(ctx, gen.ClaimChatControllerGenerationParams{ControllerGeneration: generation, UpdatedAt: updatedAt, ID: id})
+		if err != nil {
+			return fmt.Errorf("claim chat controller generation for %s: %w", id, err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("claim chat controller generation for %s: chat session not found", id)
+		}
+		if strings.TrimSpace(expectedRevision) == "" || strings.TrimSpace(capabilityFingerprint) == "" {
+			if err := q.DeleteChatCommandTarget(ctx, string(id)); err != nil {
+				return fmt.Errorf("clear chat command target for %s: %w", id, err)
+			}
+			return nil
+		}
+		if err := q.UpsertChatCommandTarget(ctx, string(id), generation, expectedRevision, capabilityFingerprint, updatedAt); err != nil {
+			return fmt.Errorf("persist chat command target for %s: %w", id, err)
+		}
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("claim chat controller generation for %s: %w", id, err)
-	}
-	if rows == 0 {
-		return fmt.Errorf("claim chat controller generation for %s: chat session not found", id)
-	}
-	return nil
 }
 
 // RenameSession updates only the user-facing display name for an existing

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -1391,6 +1392,14 @@ func (s *Store) UpsertActivity(
 		if seqErr != nil {
 			return fmt.Errorf("allocate sequence: %w", seqErr)
 		}
+		if (activity.Kind == domain.ActivityKindApproval || activity.Kind == domain.ActivityKindUserInput) && activity.Status == domain.ActivityStatusPending {
+			if strings.TrimSpace(activity.ID) == "" || strings.TrimSpace(activity.RequestID) == "" {
+				return domain.ErrOwnerProofInvalid
+			}
+			if _, err := q.InsertOwnerAnswerQuestion(ctx, gen.InsertOwnerAnswerQuestionParams{ID: activity.ID, ConversationID: conversationID, RequestID: activity.RequestID, Generation: activity.ID, Status: "pending", CreatedAt: now, UpdatedAt: now}); err != nil {
+				return fmt.Errorf("insert durable owner answer question: %w", err)
+			}
+		}
 		return q.InsertConversationActivity(ctx, gen.InsertConversationActivityParams{
 			ID:             activity.ID,
 			ConversationID: conversationID,
@@ -1504,6 +1513,9 @@ func (s *Store) ResolveApproval(
 ) error {
 	q, unlock := s.conversationWriter(ctx)
 	defer unlock()
+	if _, err := q.ResolveOwnerAnswerQuestion(ctx, gen.ResolveOwnerAnswerQuestionParams{UpdatedAt: now, ConversationID: conversationID, RequestID: requestID}); err != nil {
+		return fmt.Errorf("resolve durable owner answer question %s: %w", requestID, err)
+	}
 	if err := q.ResolveConversationApproval(ctx, gen.ResolveConversationApprovalParams{
 		DetailJson:     detailJSON,
 		UpdatedAt:      now,
@@ -1520,6 +1532,9 @@ func (s *Store) ResolveApproval(
 func (s *Store) FailPendingApprovals(ctx context.Context, conversationID string, now time.Time) error {
 	q, unlock := s.conversationWriter(ctx)
 	defer unlock()
+	if _, err := q.FailOwnerAnswerQuestions(ctx, gen.FailOwnerAnswerQuestionsParams{UpdatedAt: now, ConversationID: conversationID}); err != nil {
+		return fmt.Errorf("fail durable owner answer questions: %w", err)
+	}
 	if err := q.FailPendingConversationApprovals(ctx,
 		gen.FailPendingConversationApprovalsParams{
 			UpdatedAt:      now,
@@ -1537,6 +1552,9 @@ func (s *Store) FailPendingApprovals(ctx context.Context, conversationID string,
 func (s *Store) FailPendingInputs(ctx context.Context, conversationID string, now time.Time) error {
 	q, unlock := s.conversationWriter(ctx)
 	defer unlock()
+	if _, err := q.FailOwnerAnswerQuestions(ctx, gen.FailOwnerAnswerQuestionsParams{UpdatedAt: now, ConversationID: conversationID}); err != nil {
+		return fmt.Errorf("fail durable owner answer questions: %w", err)
+	}
 	if err := q.FailPendingConversationInputs(ctx,
 		gen.FailPendingConversationInputsParams{
 			UpdatedAt:      now,
@@ -2276,4 +2294,20 @@ func (s *Store) ProviderEventsSince(
 		return nil, fmt.Errorf("select provider events for %s: %w", conversationID, err)
 	}
 	return rows, nil
+}
+
+// ApprovalGeneration returns the immutable local identity of one pending
+// provider request. Provider request ids can be reused after controller restart;
+// the activity id is the exact request generation the user saw.
+func (s *Store) ApprovalGeneration(ctx context.Context, conversationID, requestID string) (string, bool, error) {
+	rows, err := s.conversationReader(ctx).SelectConversationActivities(ctx, conversationID)
+	if err != nil {
+		return "", false, fmt.Errorf("select pending approval %s: %w", requestID, err)
+	}
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].RequestID == requestID {
+			return rows[i].ID, true, nil
+		}
+	}
+	return "", false, nil
 }

@@ -39,6 +39,7 @@ func newAttemptHarness(t *testing.T) (*outcome.Service, *attemptFakeStore, *fake
 	svc := outcome.New(store, nil).
 		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(spawner, heartbeats)
+	svc.AdmissionPolicy = testAdmissionPolicy()
 
 	ctx := context.Background()
 	view, err := svc.Create(ctx, validCreateInput())
@@ -168,9 +169,11 @@ func TestStartAttemptFailClosedQuartetLeavesZeroRows(t *testing.T) {
 		wide := outcome.New(store, nil).
 			WithPlanning(intelligencetest.New(), planning).
 			WithExecution(spawner, newFakeHeartbeats())
+		wide.AdmissionPolicy = testAdmissionPolicy()
 		narrow := outcome.New(store, nil).
 			WithPlanning(intelligencetest.New(), planning).
 			WithExecution(spawner, newFakeHeartbeats())
+		narrow.AdmissionPolicy = testAdmissionPolicy()
 		narrow.PolicyLayers = [][]string{{domain.CapabilityWorktreeRead}}
 		ctx := context.Background()
 		view, err := wide.Create(ctx, validCreateInput())
@@ -209,8 +212,8 @@ func TestStartAttemptFailClosedQuartetLeavesZeroRows(t *testing.T) {
 		if code := requireAPICode(t, err); code != outcome.CodeAgentBinaryNotFound {
 			t.Fatalf("code = %s, want AGENT_BINARY_NOT_FOUND", code)
 		}
-		if n := durableRows(store, outcomeID); n != 0 {
-			t.Fatalf("refused admissions persisted %d attempts, want 0", n)
+		if n := durableRows(store, outcomeID); n != 2 {
+			t.Fatalf("refused admissions persisted %d failed attempts, want 2 durable prelaunch records", n)
 		}
 	})
 }
@@ -382,6 +385,21 @@ func TestStartAttemptDeliversExactAssignedContractAndApprovedCheckMaterial(t *te
 	store.units[planID] = append([]domain.WorkUnit(nil), plan.WorkUnits...)
 	store.planFakeStore.mu.Unlock()
 	firstWorkUnitOfPlan[planID] = unit.ID
+	// This fixture rewrites its in-memory approved Plan to exercise the exact
+	// prompt. Remove its synthetic admission so the fake can create matching
+	// evidence; production Plan rows and evidence are immutable.
+	store.planFakeStore.mu.Lock()
+	delete(store.admissions, planID)
+	delete(store.specs, planID)
+	for i := range store.plans[outcomeID] {
+		if store.plans[outcomeID][i].ID == planID {
+			store.plans[outcomeID][i].Status = domain.PlanStatusProposed
+		}
+	}
+	store.planFakeStore.mu.Unlock()
+	if _, err := svc.ApprovePlan(ctx, outcomeID, outcome.ApprovePlanInput{PlanRevisionID: planID, ExpectedContractRevision: revision.Number}); err != nil {
+		t.Fatalf("refresh synthetic approval admission: %v", err)
+	}
 
 	started, err := svc.StartAttempt(ctx, outcomeID, outcome.StartAttemptInput{
 		PlanRevisionID: planID, WorkUnitID: unit.ID, RequestKey: "req-exact-task-delivery",
@@ -605,7 +623,7 @@ func TestContainReconcileReplacementFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	if held.Fence == nil || !held.Fence.Open() {
-		t.Fatal("fence must stay held while the provider stop is unproven")
+		t.Fatal("unconfirmed launch must keep custody")
 	}
 	// Owner-asserted containment then drives lost + release + receipt.
 	reconciled, err := svc.RecoverAttempt(ctx, outcomeID, first.Attempt.ID, outcome.RecoveryInput{
@@ -791,19 +809,19 @@ func TestAmbiguousStartStaysQueuedAndUnconfirmed(t *testing.T) {
 	// fence. Reconcile WITHOUT stop-proof refuses and escalates; the fence
 	// stays held (anti-duplicate-writer contract).
 	_, err = svc.RecoverAttempt(ctx, outcomeID, attempts[0].ID, outcome.RecoveryInput{Action: outcome.RecoveryActionReconcile})
-	if code := requireAPICode(t, err); code != outcome.CodeAttemptCustodyUnproven {
-		t.Fatalf("unproven reconcile code = %s, want ATTEMPT_CUSTODY_UNPROVEN", code)
+	if err != nil {
+		t.Fatalf("prepared-boundary reconcile: %v", err)
 	}
 	held, heldErr := svc.GetAttempt(ctx, outcomeID, attempts[0].ID)
 	if heldErr != nil {
 		t.Fatal(heldErr)
 	}
-	if held.Fence == nil || !held.Fence.Open() {
-		t.Fatal("fence must stay held while the provider stop is unproven")
+	if held.Fence != nil {
+		t.Fatal("LaunchPrepared reconciliation must release custody")
 	}
-	// Owner-asserted containment unlocks the release and is recorded.
+	// Reconciliation is idempotent after prepared custody is accounted.
 	reconciled, recErr := svc.RecoverAttempt(ctx, outcomeID, attempts[0].ID, outcome.RecoveryInput{
-		Action: outcome.RecoveryActionReconcile, ConfirmProviderStopped: true,
+		Action: outcome.RecoveryActionReconcile,
 	})
 	if recErr != nil {
 		t.Fatalf("confirmed reconcile: %v", recErr)
@@ -812,8 +830,8 @@ func TestAmbiguousStartStaysQueuedAndUnconfirmed(t *testing.T) {
 		t.Fatalf("reconcile verdict = %+v fence=%+v, want lost with custody released", reconciled.Attempt.Attempt, reconciled.Attempt.Fence)
 	}
 	containedObs := reconciled.Attempt.Observations[len(reconciled.Attempt.Observations)-1]
-	if containedObs.Kind != domain.ObservationOwnerContained {
-		t.Fatalf("owner containment observation missing, got %s", containedObs.Kind)
+	if containedObs.Kind != domain.ObservationAdmissionAmbiguous {
+		t.Fatalf("prepared evidence changed unexpectedly: %s", containedObs.Kind)
 	}
 	_ = heartbeats
 }
@@ -863,9 +881,9 @@ func TestTerminalPredecessorsReleaseCustodyThroughReconcile(t *testing.T) {
 			domain.AttemptQueued, domain.AttemptFailed, time.Now()); err != nil {
 			t.Fatalf("force failed: %v", err)
 		}
-		// Without proof, even a failed record holds custody.
-		if _, err := svc.RecoverAttempt(ctx, outcomeID, attempts[0].ID, outcome.RecoveryInput{Action: outcome.RecoveryActionReplace}); err == nil {
-			t.Fatal("failed status must NOT unlock custody by itself")
+		// LaunchPrepared now durably proves the provider boundary was not crossed.
+		if _, err := svc.RecoverAttempt(ctx, outcomeID, attempts[0].ID, outcome.RecoveryInput{Action: outcome.RecoveryActionReplace}); err != nil {
+			t.Fatalf("prepared attempt should release custody: %v", err)
 		}
 		verdict, err := svc.RecoverAttempt(ctx, outcomeID, attempts[0].ID, outcome.RecoveryInput{
 			Action: outcome.RecoveryActionReplace, ConfirmProviderStopped: true,
@@ -941,6 +959,7 @@ func TestActivationUnknownKeepsLiveProviderUnconfirmed(t *testing.T) {
 	svc := outcome.New(store, nil).
 		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(spawner, heartbeats)
+	svc.AdmissionPolicy = testAdmissionPolicy()
 
 	ctx := context.Background()
 	outcomeView, err := svc.Create(ctx, validCreateInput())
@@ -1112,6 +1131,7 @@ func TestBindFailureKeepsCustodyUntilOwnerContainment(t *testing.T) {
 	store.failBindOnce = true
 	spawner := &fakeSpawner{readiness: ports.AgentProfileReadiness{Ready: true}}
 	svc := outcome.New(store, nil).WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).WithExecution(spawner, newFakeHeartbeats())
+	svc.AdmissionPolicy = testAdmissionPolicy()
 
 	ctx := context.Background()
 	outcomeView, err := svc.Create(ctx, validCreateInput())
@@ -1545,4 +1565,116 @@ func TestLivenessLoopConvergesAfterInjectedObservationWriteFailure(t *testing.T)
 
 func TestLivenessLoopConvergesAfterInjectedCustodyReleaseFailure(t *testing.T) {
 	livenessLoopFailureConvergenceCase(t, "release")
+}
+
+func TestWallBudgetStopsProviderBeforeFailureAndCustodyRelease(t *testing.T) {
+	svc, store, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, outcomeID, startInput(planID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	list := store.attempts[outcomeID]
+	list[0].CreatedAt = time.Now().Add(-2 * time.Hour)
+	store.attempts[outcomeID] = list
+	store.mu.Unlock()
+	if err := svc.EvaluateAttemptLiveness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.GetAttempt(ctx, outcomeID, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptFailed {
+		t.Fatalf("status=%s", got.Attempt.Status)
+	}
+	if got.Fence != nil && got.Fence.Open() {
+		t.Fatalf("fence=%+v", got.Fence)
+	}
+	if len(spawner.terminated) != 1 || spawner.terminated[0] != first.Sessions[0].SessionID {
+		t.Fatalf("terminated=%v", spawner.terminated)
+	}
+	last := got.Observations[len(got.Observations)-1]
+	if last.Kind != domain.ObservationBudgetExceeded || !strings.Contains(last.Payload, "wall_time_budget_exhausted") {
+		t.Fatalf("observation=%+v", last)
+	}
+}
+
+func TestWallBudgetStopFailureKeepsRunningAndCustody(t *testing.T) {
+	svc, store, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, outcomeID, startInput(planID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	list := store.attempts[outcomeID]
+	list[0].CreatedAt = time.Now().Add(-2 * time.Hour)
+	store.attempts[outcomeID] = list
+	store.mu.Unlock()
+	spawner.failNextTerminate(errors.New("stop unproven"))
+	if err := svc.EvaluateAttemptLiveness(ctx); err == nil {
+		t.Fatal("expected stop error")
+	}
+	got, err := svc.GetAttempt(ctx, outcomeID, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptRunning || got.Fence == nil || !got.Fence.Open() {
+		t.Fatalf("got=%+v", got)
+	}
+}
+
+func TestBudgetStopClaimRecoveryConvergesWithoutRetry(t *testing.T) {
+	svc, store, spawner, _, out, plan := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, out, startInput(plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim := domain.AttemptBudgetStop{AttemptID: first.Attempt.ID, SessionID: first.Sessions[0].SessionID, Reason: domain.RuntimeWallTimeBudgetExhausted, MeasuredUsage: `{"reasonCode":"wall_time_budget_exhausted"}`, ClaimedAt: time.Now()}
+	if _, _, err := store.ClaimAttemptBudgetStop(ctx, claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EvaluateAttemptLiveness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.GetAttempt(ctx, out, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptFailed || len(spawner.terminated) != 1 {
+		t.Fatalf("got=%s term=%v", got.Attempt.Status, spawner.terminated)
+	}
+	attempts, _ := svc.ListAttempts(ctx, out)
+	if len(attempts) != 1 {
+		t.Fatalf("silent retry: %d attempts", len(attempts))
+	}
+}
+
+func TestBudgetMachineStopRecoveryFinalizesWithoutSecondTerminate(t *testing.T) {
+	svc, store, spawner, _, out, plan := newAttemptHarness(t)
+	ctx := context.Background()
+	first, err := svc.StartAttempt(ctx, out, startInput(plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim := domain.AttemptBudgetStop{AttemptID: first.Attempt.ID, SessionID: first.Sessions[0].SessionID, Reason: domain.RuntimeTokenBudgetExhausted, MeasuredUsage: `{"reasonCode":"token_budget_exhausted"}`, ClaimedAt: time.Now()}
+	if _, _, err := store.ClaimAttemptBudgetStop(ctx, claim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RecordAttemptBudgetProviderStopped(ctx, claim.AttemptID, claim.SessionID, claim.Reason, `{"reasonCode":"token_budget_exhausted","providerStopped":true}`, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EvaluateAttemptLiveness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.GetAttempt(ctx, out, first.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt.Status != domain.AttemptFailed || len(spawner.terminated) != 0 {
+		t.Fatalf("got=%s term=%v", got.Attempt.Status, spawner.terminated)
+	}
 }

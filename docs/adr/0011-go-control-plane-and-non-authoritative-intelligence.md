@@ -1,5 +1,8 @@
 # ADR 0011 — Go control plane and non-authoritative intelligence adapters
 
+> **Supersession note (2026-09-15):** deterministic daemon authority remains accepted. [ADR 0017](0017-persistent-mission-runtime-and-bounded-supervision.md) defines the coupled, typed Mission Supervisor intelligence layer and bounded automatic steering.
+
+
 - **Status:** Accepted
 - **Date:** 2026-09-08
 - **Decision owners:** Waldo Kennel product/kernel

@@ -259,14 +259,15 @@ func (a attemptSpawner) Spawn(ctx context.Context, req ports.AttemptSpawnRequest
 		return ports.AttemptSpawnResult{}, err
 	}
 	sess, _, _, err := a.sessions.SpawnExactAttempt(ctx, ports.SpawnConfig{
-		ProjectID:        req.ProjectID,
-		Kind:             domain.KindWorker,
-		Harness:          binding.Provider,
-		ExecutionPolicy:  req.ExecutionPolicy,
-		Prompt:           req.Prompt,
-		DisplayName:      req.DisplayName,
-		AttemptInputs:    req.Inputs,
-		AttemptDocuments: req.Documents,
+		ProjectID:            req.ProjectID,
+		Kind:                 domain.KindWorker,
+		Harness:              binding.Provider,
+		ExecutionPolicy:      req.ExecutionPolicy,
+		Prompt:               req.Prompt,
+		DisplayName:          req.DisplayName,
+		AttemptInputs:        req.Inputs,
+		AttemptDocuments:     req.Documents,
+		BeforeProviderLaunch: req.BeforeProviderLaunch,
 	}, binding)
 	if err != nil {
 		return ports.AttemptSpawnResult{}, err

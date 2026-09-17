@@ -425,3 +425,16 @@ func TestOutcomeStore_PlanNumbersSerializePerOutcome(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkUnitIntentRoundTrips(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	plan, outcomeID := seedApprovedPlan(t, s, "intent-roundtrip")
+	got, found, err := s.GetPlanRevision(ctx, outcomeID, plan.ID)
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	if got.WorkUnits[0].Intent != domain.WorkUnitIntentModifyAndExecute {
+		t.Fatalf("intent=%q", got.WorkUnits[0].Intent)
+	}
+}

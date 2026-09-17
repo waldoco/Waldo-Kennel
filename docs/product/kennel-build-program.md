@@ -1,5 +1,8 @@
 # Kennel builds Kennel — kernel implementation program
 
+> **Classification (2026-09-15):** Historical build program; its execution order is superseded by the persistent-session execution map. Use the [canonical documentation map](../README.md).
+
+
 This program orders implementation of the v1 kernel. The public
 [`ROADMAP.md`](../../ROADMAP.md) places that kernel work inside launch and
 post-launch product milestones. The roadmap does not change the ontology or

@@ -1,5 +1,8 @@
 # Interactive planning UX contract
 
+> **Superseded for vNext (2026-09-15):** Historical planning UX contract; fresh Contract/planning thread topology follows ADR 0017. Use [persistent mission runtime](../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 The simplest useful shape is one inline step inside Mission Control:
 
 ```text

@@ -1,5 +1,8 @@
 # Kernel runtime and provider reference index
 
+> **Classification for vNext (2026-09-15):** runtime evidence reference, not product authority. Use [persistent mission runtime](../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../roadmap/persistent-session-execution-map.md).
+
+
 - **Status:** Active engineering reference; not product ontology authority
 - **Date:** 2026-09-04
 - **Purpose:** give implementation agents high-signal primary/reference sources for provider control, workspace orchestration, runtime observability, and context patterns without re-running broad product research

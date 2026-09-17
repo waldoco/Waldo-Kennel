@@ -306,6 +306,7 @@ func TestOutcomeRoutesFunctionalThroughRealStore(t *testing.T) {
 	}
 
 	svc := outcomevc.New(storeHandle, nil).WithPlanning(intelligencetest.New(), controllerRouting{})
+	svc.AdmissionPolicy = controllerAdmissionPolicy(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := httptest.NewServer(httpd.NewRouterWithControl(config.Config{}, log, nil, httpd.APIDeps{
 		Outcomes: svc,
@@ -380,6 +381,7 @@ func TestOutcomePlanRoutesFunctionalThroughRealStore(t *testing.T) {
 		t.Fatalf("seed project: %v", err)
 	}
 	svc := outcomevc.New(storeHandle, nil).WithPlanning(intelligencetest.New(), controllerRouting{})
+	svc.AdmissionPolicy = controllerAdmissionPolicy(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := httptest.NewServer(httpd.NewRouterWithControl(config.Config{}, log, nil, httpd.APIDeps{
 		Outcomes: svc,

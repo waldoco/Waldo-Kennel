@@ -1,5 +1,8 @@
 # Pre-execution UX + technical-debt audit
 
+> **Classification (2026-09-15):** Historical UX/debt audit; reuse findings remain references, while runtime topology follows ADR 0017. Use the [canonical documentation map](../README.md).
+
+
 - **Date:** 2026-09-08
 - **Status:** Required companion to the Outcome Control Plane MVP implementation plan
 - **Original branch:** `feat/wt3-routing-outcome-first`, merged as PR99. Implement from latest beta.

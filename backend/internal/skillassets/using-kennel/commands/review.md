@@ -1,5 +1,8 @@
 # kennel review
 
+> Compatibility command reference. This command does not grant scheduling or Outcome authority; the daemon validates all governed actions.
+
+
 Manage AO code reviews of a worker's PR.
 
 ## Syntax

@@ -32,3 +32,9 @@ frontend/resources/acp-runtime/
 *.log
 .DS_Store
 /.env
+
+# Playwright's own generated report output (test/macos-outcome-journey and any
+# future root-level Playwright config produce this next to their config, not
+# just under frontend/, which frontend/.gitignore alone does not cover).
+test-results/
+playwright-report/

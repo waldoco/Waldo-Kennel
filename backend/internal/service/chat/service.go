@@ -129,6 +129,7 @@ type StartConfig struct {
 	Model                 string
 	Permissions           ports.PermissionMode
 	ExecutionPolicy       *domain.AttemptExecutionPolicy
+	NativeSandboxProfile  *ports.ChatNativeSandboxProfile
 	SystemPrompt          string
 	AdditionalDirectories []string
 	MCPServers            []ports.ChatMCPServerConfig
@@ -274,6 +275,7 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 			Permissions:            cfg.Permissions,
 			Model:                  cfg.Model,
 			ExecutionPolicy:        cfg.ExecutionPolicy,
+			NativeSandboxProfile:   cfg.NativeSandboxProfile,
 			SystemPrompt:           cfg.SystemPrompt,
 			AdditionalDirectories:  cfg.AdditionalDirectories,
 			MCPServers:             cfg.MCPServers,
@@ -287,6 +289,7 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 			Model:                 cfg.Model,
 			Permissions:           cfg.Permissions,
 			ExecutionPolicy:       cfg.ExecutionPolicy,
+			NativeSandboxProfile:  cfg.NativeSandboxProfile,
 			SystemPrompt:          cfg.SystemPrompt,
 			AdditionalDirectories: cfg.AdditionalDirectories,
 			MCPServers:            cfg.MCPServers,
@@ -322,7 +325,16 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	// older controller's projection transaction compares its generation with this
 	// session row and becomes a no-op after this point.
 	generation := s.newID()
-	if err := s.store.ClaimChatControllerGeneration(ctx, cfg.SessionID, generation, s.now()); err != nil {
+	expectedRevision, capabilityFingerprint := "", ""
+	if cfg.ExecutionPolicy != nil {
+		if err := cfg.ExecutionPolicy.Validate(); err != nil {
+			_ = conv.Close()
+			return nil, fmt.Errorf("governed chat policy: %w", err)
+		}
+		expectedRevision = cfg.ExecutionPolicy.PlanRevisionID.String()
+		capabilityFingerprint = chatCapabilityFingerprint(conv.Capabilities())
+	}
+	if err := s.store.ClaimChatControllerGeneration(ctx, cfg.SessionID, generation, expectedRevision, capabilityFingerprint, s.now()); err != nil {
 		_ = conv.Close()
 		return nil, fmt.Errorf("claim chat controller: %w", err)
 	}
@@ -364,6 +376,10 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	// replaced can be told apart from the current one's.
 	controller := newController(
 		cfg.SessionID, conversation, generation, conv, s.store, s.activity, s.log, s.newID, s.now)
+	if err := controller.configureGovernedTurns(ctx, cfg.ExecutionPolicy); err != nil {
+		_ = conv.Close()
+		return nil, err
+	}
 	if cfg.ProviderConversationID != "" {
 		// The provider's native thread is the continuity authority across TUI and
 		// Chat. Import it before the live projector starts so the first notification
@@ -484,6 +500,19 @@ func (s *Service) Resolve(
 	return controller.Resolve(ctx, requestID, decision)
 }
 
+// ResolveWithKey answers through the same governed singleton claim while binding
+// the public caller's retry key into the immutable request fingerprint.
+func (s *Service) ResolveWithKey(ctx context.Context, id domain.SessionID, requestID, requestKey string, decision ports.ChatDecision) error {
+	if _, err := s.requireChatSession(ctx, id); err != nil {
+		return err
+	}
+	controller, err := s.Controller(id)
+	if err != nil {
+		return err
+	}
+	return controller.ResolveWithKey(ctx, requestID, requestKey, decision)
+}
+
 // ResolveInput answers a structured user-input request. It remains a separate
 // command from approval resolution because the response carries typed form data
 // (or URL consent), not a provider-offered permission id.
@@ -503,6 +532,18 @@ func (s *Service) ResolveInput(
 	return controller.ResolveInput(ctx, requestID, response)
 }
 
+// ResolveInputWithKey is the keyed public facade for typed answers.
+func (s *Service) ResolveInputWithKey(ctx context.Context, id domain.SessionID, requestID, requestKey string, response ports.ChatInputResponse) error {
+	if _, err := s.requireChatSession(ctx, id); err != nil {
+		return err
+	}
+	controller, err := s.Controller(id)
+	if err != nil {
+		return err
+	}
+	return controller.ResolveInputWithKey(ctx, requestID, requestKey, response)
+}
+
 // Interrupt cancels a session's in-flight turn.
 func (s *Service) Interrupt(ctx context.Context, id domain.SessionID) error {
 	if _, err := s.requireChatSession(ctx, id); err != nil {
@@ -512,7 +553,30 @@ func (s *Service) Interrupt(ctx context.Context, id domain.SessionID) error {
 	if err != nil {
 		return err
 	}
-	return controller.Interrupt(ctx)
+	err = controller.Interrupt(ctx)
+	if !errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+		return err
+	}
+
+	// Codex can acknowledge Stop before its shell exits. The driver has killed
+	// that owned process tree; reattach the same native thread in a fresh process
+	// before reporting Stop complete so the session stays usable.
+	select {
+	case <-controller.stopped:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	s.mu.RLock()
+	cfg, ok := s.startConfigs[id]
+	s.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("restart after non-quiescent interrupt: no saved controller config")
+	}
+	cfg.ProviderConversationID = controller.ProviderConversationID()
+	if _, restartErr := s.Start(ctx, cfg); restartErr != nil {
+		return fmt.Errorf("restart after non-quiescent interrupt: %w", restartErr)
+	}
+	return nil
 }
 
 // ArmChatHandoff closes source intake and queue dispatch at
@@ -646,6 +710,87 @@ type Snapshot struct {
 	// controller is live, because an unstarted session's abilities are not yet known
 	// and guessing them is how a control appears and then vanishes.
 	Capabilities ports.ChatCapabilities
+	// GovernedTurnBlocks and GovernedControlBlocks are every claim in this session
+	// still blocking dispatch (BlocksConflictingDispatch), across both the turn
+	// table and the steer/answer/interrupt control table -- the same session-wide
+	// truth Controller.governedBlockedExcept already enforces, which a turn's own
+	// delivery state alone cannot show.
+	GovernedTurnBlocks    []GovernedTurnBlock
+	GovernedControlBlocks []GovernedControlBlock
+}
+
+// GovernedTurnBlock is one unsettled turn-dispatch claim still blocking
+// conflicting dispatch in this session.
+type GovernedTurnBlock struct {
+	TurnID                string
+	State                 domain.GovernedCommandState
+	Quiescence            domain.GovernedCommandQuiescence
+	QuiescenceEvidenceRef string
+	UpdatedAt             time.Time
+}
+
+// GovernedControlBlock is one unsettled steer/answer/interrupt control claim
+// still blocking conflicting dispatch. Exactly one of ProviderTurnID
+// (steer/interrupt) and RequestInstanceID (answer) is ever non-empty, per
+// domain.GovernedControlCommand.Validate.
+type GovernedControlBlock struct {
+	ID                    string
+	Class                 domain.GovernedControlClass
+	State                 domain.GovernedCommandState
+	Quiescence            domain.GovernedCommandQuiescence
+	QuiescenceEvidenceRef string
+	ProviderTurnID        string
+	RequestInstanceID     string
+	UpdatedAt             time.Time
+}
+
+// governedBlocks reads every unsettled governed claim across both tables and
+// keeps only this session's, mirroring the membership rule
+// Controller.governedBlockedExcept already enforces. Errors are propagated
+// rather than degraded to an empty list: silently returning "nothing is
+// blocking" would be the exact false negative this projection exists to rule
+// out. Both list reads are unfiltered full-table scans; that matches the cost
+// governedBlockedExcept already pays on every Send, and a session-scoped
+// query would require a store signature change this pass may not make.
+func (s *Service) governedBlocks(ctx context.Context, id domain.SessionID) ([]GovernedTurnBlock, []GovernedControlBlock, error) {
+	unsettled, err := s.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list unsettled governed commands: %w", err)
+	}
+	var turns []GovernedTurnBlock
+	for _, command := range unsettled {
+		if command.SessionID != id || !command.State.BlocksConflictingDispatch() {
+			continue
+		}
+		turns = append(turns, GovernedTurnBlock{
+			TurnID:                command.ID,
+			State:                 command.State,
+			Quiescence:            command.Quiescence,
+			QuiescenceEvidenceRef: command.QuiescenceEvidenceRef,
+			UpdatedAt:             command.UpdatedAt,
+		})
+	}
+	controls, err := s.store.ListUnsettledGovernedControlCommands(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list unsettled governed control commands: %w", err)
+	}
+	var blocks []GovernedControlBlock
+	for _, command := range controls {
+		if command.SessionID != id || !command.State.BlocksConflictingDispatch() {
+			continue
+		}
+		blocks = append(blocks, GovernedControlBlock{
+			ID:                    command.ID,
+			Class:                 command.Class,
+			State:                 command.State,
+			Quiescence:            command.Quiescence,
+			QuiescenceEvidenceRef: command.QuiescenceEvidenceRef,
+			ProviderTurnID:        command.ProviderTurnID,
+			RequestInstanceID:     command.RequestInstanceID,
+			UpdatedAt:             command.UpdatedAt,
+		})
+	}
+	return turns, blocks, nil
 }
 
 // SnapshotReader is the durable read the service serves snapshots from. Kept
@@ -714,6 +859,11 @@ func (s *Service) Snapshot(ctx context.Context, id domain.SessionID) (Snapshot, 
 		caps = controller.Capabilities()
 	}
 
+	turnBlocks, controlBlocks, err := s.governedBlocks(ctx, id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
 	return Snapshot{
 		Conversation:               rows.Conversation,
 		SessionID:                  id,
@@ -728,6 +878,8 @@ func (s *Service) Snapshot(ctx context.Context, id domain.SessionID) (Snapshot, 
 		Capabilities:               caps,
 		Usage:                      rows.Conversation.Usage,
 		RateLimits:                 rows.Conversation.RateLimits,
+		GovernedTurnBlocks:         turnBlocks,
+		GovernedControlBlocks:      controlBlocks,
 	}, nil
 }
 
@@ -765,6 +917,10 @@ func (s *Service) SnapshotPage(ctx context.Context, id domain.SessionID, beforeS
 		state = controller.State()
 		caps = controller.Capabilities()
 	}
+	turnBlocks, controlBlocks, err := s.governedBlocks(ctx, id)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	return Snapshot{
 		Conversation:               rows.Conversation,
 		SessionID:                  id,
@@ -781,6 +937,8 @@ func (s *Service) SnapshotPage(ctx context.Context, id domain.SessionID, beforeS
 		Capabilities:               caps,
 		Usage:                      rows.Conversation.Usage,
 		RateLimits:                 rows.Conversation.RateLimits,
+		GovernedTurnBlocks:         turnBlocks,
+		GovernedControlBlocks:      controlBlocks,
 	}, nil
 }
 
@@ -932,6 +1090,7 @@ type StartRequest struct {
 	Model                 string
 	Permissions           ports.PermissionMode
 	ExecutionPolicy       *domain.AttemptExecutionPolicy
+	NativeSandboxProfile  *ports.ChatNativeSandboxProfile
 	SystemPrompt          string
 	AdditionalDirectories []string
 	MCPServers            []ports.ChatMCPServerConfig

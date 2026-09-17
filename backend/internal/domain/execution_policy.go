@@ -18,12 +18,14 @@ type AttemptExecutionPolicy struct {
 	OutcomeID              OutcomeID         `json:"outcomeId"`
 	PlanRevisionID         PlanRevisionID    `json:"planRevisionId"`
 	WorkUnitID             WorkUnitID        `json:"workUnitId"`
+	Intent                 WorkUnitIntent    `json:"intent"`
 	ContractRevisionNumber int64             `json:"contractRevisionNumber"`
 	RunBriefCoreDigest     string            `json:"runBriefCoreDigest"`
 	WorkspaceRoot          string            `json:"workspaceRoot,omitempty"`
 	RequiredCapabilities   []string          `json:"requiredCapabilities"`
 	Grants                 []CapabilityGrant `json:"grants"`
 	ApprovedChecks         []ApprovedCheck   `json:"approvedChecks,omitempty"`
+	ExecutionBudget        ExecutionBudget   `json:"executionBudget"`
 }
 
 // BindWorkspaceRoot freezes the exact leased workspace into a policy after
@@ -81,17 +83,26 @@ func BuildAttemptExecutionPolicy(
 	grantByName := make(map[string]CapabilityGrant, len(plan.Grants))
 	for _, grant := range plan.Grants {
 		name := strings.TrimSpace(grant.Name)
-		if name != "" {
-			grant.Name = name
-			grant.Scope = strings.TrimSpace(grant.Scope)
-			grantByName[name] = grant
+		if name == "" {
+			continue
 		}
+		if _, duplicate := grantByName[name]; duplicate {
+			return AttemptExecutionPolicy{}, fmt.Errorf("plan repeats capability grant %q", name)
+		}
+		grant.Name = name
+		grant.Scope = strings.TrimSpace(grant.Scope)
+		grantByName[name] = grant
 	}
 	required := append([]string(nil), unit.RequiredCapabilities...)
+	seenRequired := make(map[string]struct{}, len(required))
 	for i := range required {
 		required[i] = strings.TrimSpace(required[i])
+		if _, duplicate := seenRequired[required[i]]; duplicate {
+			return AttemptExecutionPolicy{}, fmt.Errorf("work unit %s repeats required capability %q", unit.ID, required[i])
+		}
+		seenRequired[required[i]] = struct{}{}
 	}
-	required = uniqueSortedStrings(required)
+	sort.Strings(required)
 	if len(required) == 0 {
 		return AttemptExecutionPolicy{}, fmt.Errorf("work unit %s requires at least one capability", unit.ID)
 	}
@@ -117,11 +128,13 @@ func BuildAttemptExecutionPolicy(
 		OutcomeID:              outcomeID,
 		PlanRevisionID:         plan.ID,
 		WorkUnitID:             unit.ID,
+		Intent:                 unit.Intent,
 		ContractRevisionNumber: plan.ContractRevisionNumber,
 		RunBriefCoreDigest:     strings.TrimSpace(runBriefCoreDigest),
 		RequiredCapabilities:   required,
 		Grants:                 grants,
 		ApprovedChecks:         checks,
+		ExecutionBudget:        unit.ExecutionBudget,
 	}
 	if err := policy.Validate(); err != nil {
 		return AttemptExecutionPolicy{}, err
@@ -133,6 +146,14 @@ func BuildAttemptExecutionPolicy(
 func (p AttemptExecutionPolicy) Validate() error {
 	if p.OutcomeID.IsZero() || p.PlanRevisionID.IsZero() || p.WorkUnitID.IsZero() {
 		return fmt.Errorf("execution policy attribution is incomplete")
+	}
+	if p.Intent != "" && !p.Intent.Valid() {
+		return fmt.Errorf("execution policy requires a known work unit intent")
+	}
+	if p.ExecutionBudget.PolicyID != "" {
+		if err := p.ExecutionBudget.Validate(); err != nil {
+			return fmt.Errorf("execution policy budget: %w", err)
+		}
 	}
 	if p.ContractRevisionNumber < 1 {
 		return fmt.Errorf("execution policy contract revision must be positive")
@@ -175,9 +196,6 @@ func (p AttemptExecutionPolicy) Validate() error {
 		}
 		seenChecks[check.ID] = struct{}{}
 		lastCheckID = check.ID.String()
-	}
-	if len(p.ApprovedChecks) > 0 && !p.Has(CapabilityWorktreeExec) {
-		return fmt.Errorf("execution policy approved checks require %s", CapabilityWorktreeExec)
 	}
 	return nil
 }

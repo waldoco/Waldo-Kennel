@@ -20,11 +20,13 @@ import (
 // loopback port, publish the running.json handshake, serve until the context
 // is cancelled, then shut down gracefully and clean up the handshake file.
 type Server struct {
-	cfg               config.Config
-	log               *slog.Logger
-	http              *http.Server
-	listen            net.Listener
-	supervisorAddress string
+	cfg                   config.Config
+	log                   *slog.Logger
+	http                  *http.Server
+	listen                net.Listener
+	supervisorAddress     string
+	harnessPairingAddress string
+	harnessCommandAddress string
 
 	shutdownRequested chan struct{}
 	shutdownOnce      sync.Once
@@ -67,7 +69,11 @@ func NewWithDeps(cfg config.Config, log *slog.Logger, termMgr *terminal.Manager,
 	}
 	srv.http = &http.Server{
 		Handler: NewRouterWithControl(cfg, log, termMgr, deps, ControlDeps{
-			RequestShutdown: srv.requestShutdown,
+			RequestShutdown:      srv.requestShutdown,
+			OwnerAuthority:       deps.OwnerAuthority,
+			ReplacementDecisions: deps.ReplacementDecisions,
+			PairingCoordinator:   deps.PairingCoordinator,
+			OwnerProofKernel:     deps.OwnerProofKernel,
 		}),
 		// ReadHeaderTimeout guards against slow-loris even on loopback;
 		// per-request body/handler timeouts are applied per-surface.
@@ -89,6 +95,12 @@ func (s *Server) Handler() http.Handler { return s.http.Handler }
 // writes running.json. The address is a locator, not an authentication secret.
 func (s *Server) SetSupervisorAddress(address string) { s.supervisorAddress = address }
 
+// SetHarnessAddresses records daemon-owned protected local endpoint locators
+// before Run atomically publishes them in running.json.
+func (s *Server) SetHarnessAddresses(pairing, command string) {
+	s.harnessPairingAddress, s.harnessCommandAddress = pairing, command
+}
+
 // Run serves until ctx is cancelled (SIGINT/SIGTERM via signal.NotifyContext),
 // then performs a graceful shutdown bounded by cfg.ShutdownTimeout. It writes
 // running.json before serving and removes it on the way out. Run blocks until
@@ -102,6 +114,8 @@ func (s *Server) Run(ctx context.Context) error {
 		AppRunID:              s.cfg.AppRunID,
 		BrowserRuntimeAddress: os.Getenv("KENNEL_BROWSER_RUNTIME_ADDRESS"),
 		SupervisorAddress:     s.supervisorAddress,
+		HarnessPairingAddress: s.harnessPairingAddress,
+		HarnessCommandAddress: s.harnessCommandAddress,
 	}
 	if err := runfile.Write(s.cfg.RunFilePath, info); err != nil {
 		_ = s.listen.Close()

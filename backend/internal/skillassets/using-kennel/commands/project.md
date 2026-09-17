@@ -1,5 +1,8 @@
 # kennel project
 
+> Compatibility command reference. This command does not grant scheduling or Outcome authority; the daemon validates all governed actions.
+
+
 Manage projects: register repos, inspect, configure per-project settings, and remove.
 
 ## Syntax

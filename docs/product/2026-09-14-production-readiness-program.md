@@ -1,5 +1,8 @@
 # Kennel production-readiness program
 
+> **Superseded for vNext (2026-09-15):** Historical production-readiness program; not current order or authority. Use [persistent mission runtime](../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 - **Status:** Active program
 - **Date:** 2026-09-14
 - **Baseline:** `beta` at `629a9bd` (post-PR #178)

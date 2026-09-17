@@ -1,5 +1,8 @@
 # Work Control Plane — canonical flow and daemon contract
 
+> **Superseded for vNext (2026-09-15):** Historical control-plane specification; its session/planner topology is superseded. Use [persistent mission runtime](../../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 - **Status:** Canonical Work control-plane companion specification
 - **Original date:** 2026-08-25
 - **Consolidated:** 2026-09-04

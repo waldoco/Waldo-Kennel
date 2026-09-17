@@ -1,5 +1,8 @@
 # kennel send
 
+> Compatibility command reference. This command does not grant scheduling or Outcome authority; the daemon validates all governed actions.
+
+
 Send a message to a running agent session. Use this to correct or direct a live agent mid-stream without killing and respawning it.
 
 ## Syntax

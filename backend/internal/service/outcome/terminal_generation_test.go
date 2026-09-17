@@ -31,6 +31,7 @@ func newClassificationHarness(t *testing.T) *classificationHarness {
 	svc := outcome.New(store, func() time.Time { return time.Unix(1_000, 0).UTC() }).
 		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(spawner, newFakeHeartbeats())
+	svc.AdmissionPolicy = testAdmissionPolicy()
 
 	ctx := context.Background()
 	view, err := svc.Create(ctx, validCreateInput())

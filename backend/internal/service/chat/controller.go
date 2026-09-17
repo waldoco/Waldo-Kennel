@@ -16,10 +16,14 @@ package chat
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +34,8 @@ import (
 // Store is the durable conversation surface the controller needs. Implemented by
 // the SQLite store.
 type Store interface {
+	ports.GovernedCommandStore
+	ports.GovernedControlCommandStore
 	CreateConversation(ctx context.Context, id string, scope domain.ConversationScope, project domain.ProjectID, session domain.SessionID, now time.Time) (domain.ConversationRecord, error)
 	// RecordChatProtocolProvenance appends one protocol-negotiation episode
 	// for the session (migration 0136, ADR 0016). Append-only: a later
@@ -37,7 +43,7 @@ type Store interface {
 	// reviewed against.
 	RecordChatProtocolProvenance(ctx context.Context, rec domain.ChatProtocolProvenance) error
 	ConversationForSession(ctx context.Context, session domain.SessionID) (domain.ConversationRecord, error)
-	ClaimChatControllerGeneration(ctx context.Context, session domain.SessionID, generation string, now time.Time) error
+	ClaimChatControllerGeneration(ctx context.Context, session domain.SessionID, generation, expectedRevision, capabilityFingerprint string, now time.Time) error
 	ConversationBranch(ctx context.Context, conversationID, branchID string) (domain.ConversationBranch, error)
 	ConversationEditAnchor(ctx context.Context, conversationID, replacedTurnID string) (domain.ConversationEditAnchor, error)
 	CreateAndActivateConversationBranch(ctx context.Context, sessionID domain.SessionID, branch domain.ConversationBranch, generation string, now time.Time) error
@@ -98,6 +104,7 @@ type Store interface {
 
 	UpsertActivity(ctx context.Context, conversationID, providerTurnID string, activity domain.ConversationActivity, now time.Time) error
 	MarkCompacted(ctx context.Context, conversationID string, at time.Time) error
+	ApprovalGeneration(ctx context.Context, conversationID, requestID string) (string, bool, error)
 	ResolveApproval(ctx context.Context, conversationID, requestID, detailJSON string, now time.Time) error
 	FailPendingApprovals(ctx context.Context, conversationID string, now time.Time) error
 	FailPendingInputs(ctx context.Context, conversationID string, now time.Time) error
@@ -153,9 +160,18 @@ type Controller struct {
 	newID    IDFactory
 	now      Clock
 
-	// sendMu serializes command dispatch so only one operation mutates the
-	// provider conversation at a time.
-	sendMu sync.Mutex
+	// governance is present only for an admitted Attempt. Ordinary chat keeps
+	// the legacy delivery path and its existing compatibility semantics.
+	governance *governedTurnConfig
+
+	// sendMu serializes turn dispatch and queue/cutoff transitions.
+	// governedControlMu separately serializes durable control claim-to-receipt
+	// transitions. Store claims still linearize duplicate callers, but without
+	// this lock two callers can both read `claimed`; the loser then reports a
+	// false delivery_unknown when its claimed->dispatching CAS loses after the
+	// winner has already recorded a terminal receipt.
+	sendMu            sync.Mutex
+	governedControlMu sync.Mutex
 
 	mu sync.Mutex
 	// activeTurn maps a provider turn id to Kennel's turn id for the turn currently
@@ -205,6 +221,20 @@ type Controller struct {
 	once     sync.Once
 	closeErr error
 }
+
+// governedTurnConfig freezes the Attempt facts every command claim and state
+// transition must match. It is derived once at controller start.
+type governedTurnConfig struct {
+	expectedRevision      string
+	capabilityFingerprint string
+	replayStrategy        domain.GovernedCommandReplayStrategy
+	blocked               bool
+}
+
+var (
+	ErrGovernedDeliveryUnknown = errors.New("governed chat turn delivery is unknown")
+	ErrGovernedRejected        = errors.New("governed chat turn was rejected")
+)
 
 // ErrNoActiveTurn reports an interrupt with nothing to cancel.
 var ErrNoActiveTurn = errors.New("no active turn")
@@ -286,6 +316,9 @@ func (c *Controller) importNativeHistory(
 	if err != nil {
 		return fmt.Errorf("read native conversation history: %w", err)
 	}
+	if err := c.reconcileGovernedHistory(ctx, events); err != nil {
+		return err
+	}
 	events = reconcileNativeHistory(
 		events, existingTurns, existingMessages, existingActivities,
 	)
@@ -295,6 +328,108 @@ func (c *Controller) importNativeHistory(
 		}
 		if _, _, err := c.projectEvent(ctx, event); err != nil {
 			return fmt.Errorf("import native history event %s: %w", event.Kind, err)
+		}
+	}
+	// History projection settles durable turns before live consumption starts,
+	// but intentionally does not run afterProject: that hook reports live
+	// activity and drains on every primary completion. Reconciliation is the one
+	// startup boundary that must release accepted queued work after its blocker
+	// is conclusively settled. Serialize it with Send so one caller claims the
+	// queue and startup cannot report ready while that claim is in flight.
+	if c.governance != nil && !c.governance.blocked {
+		c.sendMu.Lock()
+		c.drainLocked(ctx)
+		c.sendMu.Unlock()
+	}
+	return nil
+}
+
+func (c *Controller) reconcileGovernedHistory(ctx context.Context, events []ports.ChatEvent) error {
+	if c.governance == nil {
+		return nil
+	}
+	unsettled, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("list governed commands for history reconciliation: %w", err)
+	}
+	providerTurnByClient := make(map[string]string)
+	providerTurnState := make(map[string]domain.TurnState)
+	for _, event := range events {
+		if event.Kind == ports.ChatEventTurnCompleted && event.ProviderTurnID != "" {
+			providerTurnState[event.ProviderTurnID] = event.TurnState
+		}
+
+		if event.Kind == ports.ChatEventUserMessageCompleted && event.ClientMessageID != "" && event.ProviderTurnID != "" {
+			providerTurnByClient[event.ClientMessageID] = event.ProviderTurnID
+		}
+	}
+	for i := range unsettled {
+		command := &unsettled[i]
+		if command.SessionID != c.sessionID || command.Correlation.ProviderConversationID != c.conv.ProviderConversationID() {
+			continue
+		}
+		if command.ExpectedRevision != c.governance.expectedRevision || command.CapabilityFingerprint != c.governance.capabilityFingerprint {
+			continue
+		}
+		providerTurnID := providerTurnByClient[command.Correlation.ClientMessageID]
+		if providerTurnID == "" {
+			if command.State == domain.GovernedCommandDispatching {
+				if err := c.advanceGovernedTurn(ctx, command, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown, ""); err != nil {
+					return fmt.Errorf("retain governed dispatch ambiguity: %w", err)
+				}
+			}
+			continue
+		}
+		if err := c.store.BindTurnToProvider(ctx, command.ID, providerTurnID, c.now()); err != nil {
+			return fmt.Errorf("bind governed turn from history: %w", err)
+		}
+		switch command.State {
+		case domain.GovernedCommandDispatching:
+			if err := c.advanceGovernedTurn(ctx, command, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged, providerTurnID); err != nil {
+				return fmt.Errorf("acknowledge governed dispatch from history: %w", err)
+			}
+		case domain.GovernedCommandDeliveryUnknown:
+			command.State = domain.GovernedCommandReconciled
+			command.Correlation.ProviderTurnID = providerTurnID
+			command.ReconciliationOutcome = domain.GovernedCommandReconciledAcknowledged
+			command.UpdatedAt = c.now()
+			advanced, err := c.store.AdvanceGovernedCommand(ctx, *command, domain.GovernedCommandDeliveryUnknown,
+				command.ControllerGeneration, command.ExpectedRevision, command.CapabilityFingerprint)
+			if err != nil || !advanced {
+				if err == nil {
+					err = errors.New("governed reconciliation transition fence lost")
+				}
+				return fmt.Errorf("reconcile governed dispatch from history: %w", err)
+			}
+		}
+		if state := providerTurnState[providerTurnID]; state.Terminal() {
+			if err := c.store.SettleTurn(ctx, c.conversation.ID, providerTurnID, state, "", c.now()); err != nil {
+				return fmt.Errorf("settle governed turn from native history: %w", err)
+			}
+		}
+	}
+	remaining, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("refresh governed commands after history reconciliation: %w", err)
+	}
+	c.governance.blocked = false
+	for _, command := range remaining {
+		if command.SessionID == c.sessionID &&
+			(command.State == domain.GovernedCommandDispatching || command.State == domain.GovernedCommandDeliveryUnknown) {
+			c.governance.blocked = true
+			break
+		}
+	}
+	if !c.governance.blocked {
+		controls, listErr := c.store.ListUnsettledGovernedControlCommands(ctx)
+		if listErr != nil {
+			return fmt.Errorf("refresh governed controls after history reconciliation: %w", listErr)
+		}
+		for _, command := range controls {
+			if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
+				c.governance.blocked = true
+				break
+			}
 		}
 	}
 	return nil
@@ -605,6 +740,165 @@ func (c *Controller) Capabilities() ports.ChatCapabilities {
 	return c.conv.Capabilities()
 }
 
+func (c *Controller) configureGovernedTurns(ctx context.Context, policy *domain.AttemptExecutionPolicy) error {
+	if policy == nil {
+		return nil
+	}
+	if err := policy.Validate(); err != nil {
+		return fmt.Errorf("governed chat policy: %w", err)
+	}
+	replay := domain.GovernedCommandReplayUnavailable
+	if _, ok := c.conv.(ports.ChatHistoryReader); ok {
+		replay = domain.GovernedCommandReplayStableHistory
+	}
+	governance := &governedTurnConfig{
+		expectedRevision: policy.PlanRevisionID.String(), capabilityFingerprint: chatCapabilityFingerprint(c.conv.Capabilities()),
+		replayStrategy: replay,
+	}
+	unsettled, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("list unsettled governed chat commands: %w", err)
+	}
+	for _, command := range unsettled {
+		if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
+			governance.blocked = true
+			break
+		}
+	}
+	controls, err := c.store.ListUnsettledGovernedControlCommands(ctx)
+	if err != nil {
+		return fmt.Errorf("list unsettled governed control commands: %w", err)
+	}
+	for _, command := range controls {
+		if command.SessionID == c.sessionID && command.State.BlocksConflictingDispatch() {
+			governance.blocked = true
+			break
+		}
+	}
+	c.governance = governance
+	return nil
+}
+
+func (c *Controller) adoptGovernedControlClaim(ctx context.Context, persisted domain.GovernedControlCommand, created bool, now time.Time) (domain.GovernedControlCommand, error) {
+	if created || persisted.State != domain.GovernedCommandClaimed || persisted.ControllerGeneration == c.generation {
+		return persisted, nil
+	}
+	adopted, err := c.store.AdoptClaimedGovernedControlCommandGeneration(ctx, persisted, c.generation, now)
+	if err != nil {
+		return domain.GovernedControlCommand{}, err
+	}
+	if adopted {
+		persisted.ControllerGeneration = c.generation
+		persisted.UpdatedAt = now
+		return persisted, nil
+	}
+	latest, ok, err := c.store.GetGovernedControlCommand(ctx, persisted.ID)
+	if err != nil {
+		return domain.GovernedControlCommand{}, err
+	}
+	if !ok {
+		return domain.GovernedControlCommand{}, fmt.Errorf("governed control command %s vanished during adoption", persisted.ID)
+	}
+	return latest, nil
+}
+
+func chatCapabilityFingerprint(capabilities ports.ChatCapabilities) string {
+	enabled := make([]string, 0, len(capabilities))
+	for capability, available := range capabilities {
+		if available {
+			enabled = append(enabled, string(capability))
+		}
+	}
+	sort.Strings(enabled)
+	payload, _ := json.Marshal(enabled)
+	sum := sha256.Sum256(payload)
+	return "chat-v1:" + hex.EncodeToString(sum[:])
+}
+
+func (c *Controller) claimGovernedTurn(ctx context.Context, commandID string, msg ports.ChatUserMessage, deliveryContent string, now time.Time) (domain.GovernedCommandRecord, error) {
+	if c.governance == nil {
+		return domain.GovernedCommandRecord{}, nil
+	}
+	if strings.TrimSpace(msg.ClientMessageID) == "" {
+		return domain.GovernedCommandRecord{}, fmt.Errorf("governed chat turn requires client message id")
+	}
+	rec := domain.GovernedCommandRecord{GovernedCommandContract: domain.GovernedCommandContract{
+		ID: commandID, IdempotencyKey: msg.ClientMessageID,
+		RequestFingerprint: domain.ComputeGovernedTurnRequestFingerprint(c.sessionID, msg.ClientMessageID, msg.Text, deliveryContent),
+		Class:              domain.GovernedCommandTurn, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision,
+		CapabilityFingerprint: c.governance.capabilityFingerprint,
+		Correlation:           domain.GovernedCommandCorrelation{ProviderConversationID: c.conv.ProviderConversationID(), ClientMessageID: msg.ClientMessageID},
+		ReplayStrategy:        c.governance.replayStrategy, Quiescence: domain.GovernedCommandQuiescenceNotApplicable,
+	}, CreatedAt: now, UpdatedAt: now}
+	persisted, created, err := c.store.CreateGovernedCommandClaim(ctx, rec)
+	if err != nil {
+		return domain.GovernedCommandRecord{}, err
+	}
+	if !created && persisted.State == domain.GovernedCommandClaimed && persisted.ControllerGeneration != c.generation {
+		adopted, adoptErr := c.store.AdoptClaimedGovernedCommandGeneration(ctx, persisted, c.generation, now)
+		if adoptErr != nil {
+			return domain.GovernedCommandRecord{}, adoptErr
+		}
+		if !adopted {
+			latest, ok, getErr := c.store.GetGovernedCommand(ctx, persisted.ID)
+			if getErr != nil {
+				return domain.GovernedCommandRecord{}, getErr
+			}
+			if !ok {
+				return domain.GovernedCommandRecord{}, fmt.Errorf("governed command %s vanished during adoption", persisted.ID)
+			}
+			return latest, nil
+		}
+		persisted.ControllerGeneration = c.generation
+		persisted.UpdatedAt = now
+	}
+	return persisted, nil
+}
+
+func (c *Controller) advanceGovernedTurn(ctx context.Context, rec *domain.GovernedCommandRecord, expected, next domain.GovernedCommandState, providerTurnID string) error {
+	if rec == nil {
+		return nil
+	}
+	rec.State = next
+	rec.Correlation.ProviderTurnID = providerTurnID
+	rec.UpdatedAt = c.now()
+	advanced, err := c.store.AdvanceGovernedCommand(ctx, *rec, expected,
+		rec.ControllerGeneration, rec.ExpectedRevision, rec.CapabilityFingerprint)
+	if err != nil {
+		return err
+	}
+	if !advanced {
+		return fmt.Errorf("governed command %s lost its %s transition fence", rec.ID, expected)
+	}
+	return nil
+}
+
+func (c *Controller) governedBlockedExcept(ctx context.Context, commandID string) (bool, error) {
+	if c.governance == nil {
+		return false, nil
+	}
+	unsettled, err := c.store.ListUnsettledGovernedCommands(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, command := range unsettled {
+		if command.SessionID == c.sessionID && command.ID != commandID && command.State.BlocksConflictingDispatch() {
+			return true, nil
+		}
+	}
+	controls, err := c.store.ListUnsettledGovernedControlCommands(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, command := range controls {
+		if command.SessionID == c.sessionID && command.ID != commandID && command.State.BlocksConflictingDispatch() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Send records a message and dispatches it, or queues it if the agent is busy.
 //
 // The durable record is written first: if the provider call then fails, the user
@@ -628,6 +922,9 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 
 	now := c.now()
 	turnID := c.newID()
+	if c.governance != nil && strings.TrimSpace(msg.ClientMessageID) == "" {
+		msg.ClientMessageID = turnID
+	}
 	deliveryContent := ""
 	if len(msg.Content) > 0 {
 		encoded, err := json.Marshal(msg.Content)
@@ -635,6 +932,16 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 			return domain.ConversationTurn{}, fmt.Errorf("encode chat delivery content: %w", err)
 		}
 		deliveryContent = string(encoded)
+	}
+
+	var governed *domain.GovernedCommandRecord
+	if c.governance != nil {
+		claim, err := c.claimGovernedTurn(ctx, turnID, msg, deliveryContent, now)
+		if err != nil {
+			return domain.ConversationTurn{}, fmt.Errorf("claim governed turn: %w", err)
+		}
+		governed = &claim
+		turnID = claim.ID
 	}
 	record := domain.ConversationMessage{
 		ID:                  c.newID(),
@@ -649,15 +956,25 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 	if err != nil {
 		return domain.ConversationTurn{}, fmt.Errorf("record user message: %w", err)
 	}
-	if !created {
-		// Already delivered under this client message id. Returning the empty turn
-		// signals "nothing new happened" without claiming a second dispatch.
+	if !created && (governed == nil || governed.State != domain.GovernedCommandClaimed) {
+		// Legacy retries and already-crossed governed claims never dispatch again.
 		c.log.Debug("duplicate chat send ignored",
 			"session", c.sessionID, "clientMessageId", msg.ClientMessageID)
 		return domain.ConversationTurn{}, nil
 	}
 
-	if c.busy() {
+	blockedByOther := false
+	if governed != nil {
+		var err error
+		blockedByOther, err = c.governedBlockedExcept(ctx, governed.ID)
+		if err != nil {
+			return domain.ConversationTurn{}, fmt.Errorf("check governed dispatch blockers: %w", err)
+		}
+	}
+	c.mu.Lock()
+	providerBusy := c.pendingTurnID != ""
+	c.mu.Unlock()
+	if providerBusy || blockedByOther {
 		// AppendUserMessage wrote it as queued, which is exactly where it belongs
 		// until the running turn ends. drain picks it up from there.
 		return domain.ConversationTurn{
@@ -669,7 +986,7 @@ func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domai
 		}, nil
 	}
 
-	return c.dispatch(ctx, turnID, msg, now)
+	return c.dispatch(ctx, turnID, msg, now, governed)
 }
 
 // Settings reports the provider choices for the next turn.
@@ -749,6 +1066,7 @@ func (c *Controller) dispatch(
 	turnID string,
 	msg ports.ChatUserMessage,
 	requestedAt time.Time,
+	governed *domain.GovernedCommandRecord,
 ) (domain.ConversationTurn, error) {
 	// Every dispatch carries the conversation's choices, including one Kennel makes on
 	// the user's behalf: a queued message draining, or a relay from `kennel send`. A
@@ -759,13 +1077,67 @@ func (c *Controller) dispatch(
 	c.mu.Lock()
 	c.dispatchingTurnID = turnID
 	c.mu.Unlock()
-	ref, err := c.conv.SendTurn(ctx, msg)
+	var (
+		ref ports.ChatTurnRef
+		err error
+	)
+	if governed != nil {
+		if governed.State != domain.GovernedCommandClaimed {
+			return domain.ConversationTurn{}, fmt.Errorf("governed command %s blocks dispatch in state %s", governed.ID, governed.State)
+		}
+		if governed.ControllerGeneration != c.generation {
+			return domain.ConversationTurn{}, fmt.Errorf("governed command %s belongs to prior controller generation", governed.ID)
+		}
+		if err = c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching, ""); err == nil {
+			dispatcher, ok := c.conv.(ports.ChatTurnDispatcher)
+			if !ok {
+				err = errors.New("governed chat provider has no truthful dispatch receipt")
+				_ = c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandRejected, "")
+			} else {
+				var dispatch ports.ChatTurnDispatch
+				dispatch, err = dispatcher.DispatchTurn(ctx, msg)
+				if validateErr := dispatch.Validate(); validateErr != nil {
+					// A malformed adapter receipt cannot support success or rejection.
+					err = errors.Join(err, validateErr)
+					dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+				}
+				switch dispatch.Acceptance {
+				case ports.ChatTurnAcknowledged:
+					ref = dispatch.Ref
+					providerWarning := err
+					err = c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged, ref.ProviderTurnID)
+					if err != nil {
+						err = errors.Join(ErrGovernedDeliveryUnknown, providerWarning, err)
+					} else if providerWarning != nil {
+						c.log.Warn("provider acknowledged governed turn with local evidence warning", "turn", turnID, "error", providerWarning)
+					}
+				case ports.ChatTurnRejected, ports.ChatTurnNotSent:
+					err = errors.Join(ErrGovernedRejected, err, c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandRejected, ""))
+				case ports.ChatTurnDeliveryUnknown:
+					err = errors.Join(ErrGovernedDeliveryUnknown, err, c.advanceGovernedTurn(ctx, governed, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown, ""))
+				}
+			}
+		}
+	} else {
+		ref, err = c.conv.SendTurn(ctx, msg)
+	}
 	if err != nil {
 		c.mu.Lock()
 		if c.dispatchingTurnID == turnID {
 			c.dispatchingTurnID = ""
 		}
 		c.mu.Unlock()
+		if errors.Is(err, ErrGovernedDeliveryUnknown) {
+			c.mu.Lock()
+			if c.governance != nil {
+				c.governance.blocked = true
+			}
+			c.mu.Unlock()
+			return domain.ConversationTurn{
+				ID: turnID, ConversationID: c.conversation.ID, HandledBySessionID: c.sessionID,
+				State: domain.TurnStateQueued, RequestedAt: requestedAt,
+			}, fmt.Errorf("send turn: %w", err)
+		}
 		// The provider may or may not have accepted it. Settle the turn as failed
 		// rather than retrying: a duplicate turn would run the work twice. Settling
 		// by Kennel's own turn id is required here — an undispatched turn has no
@@ -895,12 +1267,38 @@ func (c *Controller) drainLocked(ctx context.Context) {
 			return
 		}
 	}
+	var governed *domain.GovernedCommandRecord
+	if c.governance != nil {
+		claim, found, claimErr := c.store.GetGovernedCommand(ctx, queued.TurnID)
+		if claimErr != nil || !found {
+			if claimErr == nil {
+				claimErr = errors.New("governed queued turn has no durable command claim")
+			}
+			c.log.Error("failed to read governed queued turn", "session", c.sessionID, "turn", queued.TurnID, "error", claimErr)
+			return
+		}
+		if claim.State == domain.GovernedCommandClaimed && claim.ControllerGeneration != c.generation {
+			adopted, adoptErr := c.store.AdoptClaimedGovernedCommandGeneration(ctx, claim, c.generation, c.now())
+			if adoptErr != nil {
+				c.log.Error("failed to adopt queued governed turn", "session", c.sessionID, "turn", queued.TurnID, "error", adoptErr)
+				return
+			}
+			if !adopted {
+				// Another caller changed the durable boundary. Leave it for that
+				// owner rather than guessing whether provider contact happened.
+				return
+			}
+			claim.ControllerGeneration = c.generation
+			claim.UpdatedAt = c.now()
+		}
+		governed = &claim
+	}
 	if _, err := c.dispatch(ctx, queued.TurnID, ports.ChatUserMessage{
 		Text:            queued.Text,
 		Content:         content,
 		Origin:          queued.Origin,
 		ClientMessageID: queued.ClientMessageID,
-	}, c.now()); err != nil {
+	}, c.now(), governed); err != nil {
 		// dispatch already settled this turn as failed. Stopping here rather than
 		// walking the rest of the queue: whatever broke the send is likely to break
 		// the next one too, and failing them all on one bad provider state would
@@ -1070,44 +1468,184 @@ func (c *Controller) AbortHandoff() {
 	}
 }
 
-// Resolve answers a pending approval. The provider is told first: if it rejects
-// the decision, Kennel must not have already recorded the approval as answered.
+// Resolve answers a pending approval. The provider reply is written first: Kennel
+// must not record the approval as answered before the adapter proves its strongest
+// observable write or SDK-handoff boundary.
 func (c *Controller) Resolve(ctx context.Context, requestID string, decision ports.ChatDecision) error {
-	if err := c.conv.ResolveRequest(ctx, requestID, decision); err != nil {
-		return fmt.Errorf("resolve request %s: %w", requestID, err)
+	return c.ResolveWithKey(ctx, requestID, "", decision)
+}
+
+func (c *Controller) ResolveWithKey(ctx context.Context, requestID, requestKey string, decision ports.ChatDecision) error {
+	if c.governance == nil {
+		if err := c.conv.ResolveRequest(ctx, requestID, decision); err != nil {
+			return fmt.Errorf("resolve request %s: %w", requestID, err)
+		}
+		detail, _ := json.Marshal(map[string]string{"decision": decision.ID})
+		if err := c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
+			return fmt.Errorf("record approval %s: %w", requestID, err)
+		}
+		return nil
 	}
-	detail, _ := json.Marshal(map[string]string{"decision": decision.ID})
-	if err := c.store.ResolveApproval(
-		ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
-		return fmt.Errorf("record approval %s: %w", requestID, err)
+	c.governedControlMu.Lock()
+	defer c.governedControlMu.Unlock()
+	generation, found, err := c.store.ApprovalGeneration(ctx, c.conversation.ID, requestID)
+	if err != nil {
+		return fmt.Errorf("find approval %s: %w", requestID, err)
 	}
-	return nil
+	if !found {
+		return fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
+	}
+	payload, _ := json.Marshal(decision)
+	now := c.now()
+	key := "answer:" + generation
+	fingerprintKey := requestKey
+	if strings.TrimSpace(fingerprintKey) == "" {
+		fingerprintKey = key
+	}
+	claim := domain.GovernedControlCommand{
+		ID: c.newID(), IdempotencyKey: key,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlAnswer, fingerprintKey, generation, string(payload)),
+		Class:              domain.GovernedControlAnswer, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision, CapabilityFingerprint: c.governance.capabilityFingerprint,
+		ProviderConversationID: c.conv.ProviderConversationID(), RequestInstanceID: generation,
+		Quiescence: domain.GovernedCommandQuiescenceNotApplicable, CreatedAt: now, UpdatedAt: now,
+	}
+	persisted, created, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return fmt.Errorf("claim governed answer: %w", err)
+	}
+	persisted, err = c.adoptGovernedControlClaim(ctx, persisted, created, now)
+	if err != nil {
+		return fmt.Errorf("adopt governed answer: %w", err)
+	}
+	switch persisted.State {
+	case domain.GovernedCommandAcknowledged:
+		return nil
+	case domain.GovernedCommandRejected:
+		return ErrProviderRefused
+	case domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown:
+		return ErrSteerDeliveryUnknown
+	}
+	if err := c.advanceGovernedControl(ctx, &persisted, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching); err != nil {
+		return err
+	}
+	dispatcher, ok := c.conv.(ports.ChatAnswerDispatcher)
+	if !ok {
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return fmt.Errorf("%w: governed answer receipt", ports.ErrChatUnsupported)
+	}
+	dispatch, dispatchErr := dispatcher.DispatchAnswer(ctx, requestID, generation, decision)
+	if validateErr := dispatch.Validate(); validateErr != nil {
+		dispatchErr = errors.Join(dispatchErr, validateErr)
+		dispatch.WriteOutcome = ports.ChatAnswerWriteUnknown
+	}
+	switch dispatch.WriteOutcome {
+	case ports.ChatAnswerFrameWriteComplete, ports.ChatAnswerSDKHandoffComplete:
+		detail, _ := json.Marshal(map[string]string{"decision": decision.ID})
+		if err := c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
+			_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		if err := c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged); err != nil {
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		return nil
+	case ports.ChatAnswerWriteNotStarted:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return errors.Join(ErrProviderRefused, dispatchErr)
+	default:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+		return errors.Join(ErrSteerDeliveryUnknown, dispatchErr)
+	}
 }
 
 // ResolveInput answers a structured form/URL request through the optional driver
 // capability. The provider is told first for the same consent reason as an
 // approval: Kennel must not record an answer that the live provider rejected.
-func (c *Controller) ResolveInput(
-	ctx context.Context,
-	requestID string,
-	response ports.ChatInputResponse,
-) error {
-	responder, ok := c.conv.(ports.ChatInputResponder)
+func (c *Controller) ResolveInput(ctx context.Context, requestID string, response ports.ChatInputResponse) error {
+	return c.ResolveInputWithKey(ctx, requestID, "", response)
+}
+
+func (c *Controller) ResolveInputWithKey(ctx context.Context, requestID, requestKey string, response ports.ChatInputResponse) error {
+	if c.governance == nil {
+		responder, ok := c.conv.(ports.ChatInputResponder)
+		if !ok {
+			return fmt.Errorf("%w: structured input", ports.ErrChatUnsupported)
+		}
+		if err := responder.ResolveInput(ctx, requestID, response); err != nil {
+			return fmt.Errorf("resolve input %s: %w", requestID, err)
+		}
+		detail, _ := json.Marshal(map[string]any{"action": response.Action, "content": response.Content})
+		return c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now())
+	}
+	c.governedControlMu.Lock()
+	defer c.governedControlMu.Unlock()
+	generation, found, err := c.store.ApprovalGeneration(ctx, c.conversation.ID, requestID)
+	if err != nil {
+		return fmt.Errorf("find input %s: %w", requestID, err)
+	}
+	if !found {
+		return fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
+	}
+	payload, _ := json.Marshal(response)
+	now := c.now()
+	key := "answer:" + generation
+	fingerprintKey := requestKey
+	if strings.TrimSpace(fingerprintKey) == "" {
+		fingerprintKey = key
+	}
+	claim := domain.GovernedControlCommand{ID: c.newID(), IdempotencyKey: key,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlAnswer, fingerprintKey, generation, string(payload)),
+		Class:              domain.GovernedControlAnswer, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision, CapabilityFingerprint: c.governance.capabilityFingerprint,
+		ProviderConversationID: c.conv.ProviderConversationID(), RequestInstanceID: generation, Quiescence: domain.GovernedCommandQuiescenceNotApplicable, CreatedAt: now, UpdatedAt: now}
+	persisted, created, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return fmt.Errorf("claim governed input answer: %w", err)
+	}
+	persisted, err = c.adoptGovernedControlClaim(ctx, persisted, created, now)
+	if err != nil {
+		return err
+	}
+	switch persisted.State {
+	case domain.GovernedCommandAcknowledged:
+		return nil
+	case domain.GovernedCommandRejected:
+		return ErrProviderRefused
+	case domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown:
+		return ErrSteerDeliveryUnknown
+	}
+	if err := c.advanceGovernedControl(ctx, &persisted, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching); err != nil {
+		return err
+	}
+	dispatcher, ok := c.conv.(ports.ChatInputDispatcher)
 	if !ok {
-		return fmt.Errorf("%w: structured input", ports.ErrChatUnsupported)
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return fmt.Errorf("%w: governed typed-input receipt", ports.ErrChatUnsupported)
 	}
-	if err := responder.ResolveInput(ctx, requestID, response); err != nil {
-		return fmt.Errorf("resolve input %s: %w", requestID, err)
+	dispatch, dispatchErr := dispatcher.DispatchInput(ctx, requestID, generation, response)
+	if validateErr := dispatch.Validate(); validateErr != nil {
+		dispatchErr = errors.Join(dispatchErr, validateErr)
+		dispatch.WriteOutcome = ports.ChatAnswerWriteUnknown
 	}
-	detail, _ := json.Marshal(map[string]any{
-		"action":  response.Action,
-		"content": response.Content,
-	})
-	if err := c.store.ResolveApproval(
-		ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
-		return fmt.Errorf("record input %s: %w", requestID, err)
+	switch dispatch.WriteOutcome {
+	case ports.ChatAnswerFrameWriteComplete, ports.ChatAnswerSDKHandoffComplete:
+		detail, _ := json.Marshal(map[string]any{"action": response.Action, "content": response.Content})
+		if err := c.store.ResolveApproval(ctx, c.conversation.ID, requestID, string(detail), c.now()); err != nil {
+			_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		if err := c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged); err != nil {
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		return nil
+	case ports.ChatAnswerWriteNotStarted:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return errors.Join(ErrProviderRefused, dispatchErr)
+	default:
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+		return errors.Join(ErrSteerDeliveryUnknown, dispatchErr)
 	}
-	return nil
 }
 
 // ErrCompactionUnsupported reports a driver whose provider cannot summarize
@@ -1256,7 +1794,53 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 		return nil
 	}
 
+	if c.governance != nil {
+		if err := c.dispatchGovernedInterrupt(ctx, turn); err != nil {
+			if errors.Is(err, ports.ErrChatInterruptRestartRequired) || errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
+				// Provider acceptance means Stop happened even when local process-tree
+				// containment failed. Preserve the cutoff and block every later effect.
+				c.mu.Lock()
+				if c.governance != nil {
+					c.governance.blocked = true
+				}
+				c.mu.Unlock()
+				return err
+			}
+			if errors.Is(err, ports.ErrChatNoActiveTurn) {
+				c.sendMu.Lock()
+				defer c.sendMu.Unlock()
+				c.mu.Lock()
+				stillPending := c.pendingTurnID == turn
+				c.mu.Unlock()
+				if !stillPending {
+					return nil
+				}
+				providerTurnIDs, listErr := c.store.ListVisibleRunningTurnProviderIDs(ctx, c.conversation.ID)
+				if listErr != nil {
+					return fmt.Errorf("check running turns after provider refusal: %w", listErr)
+				}
+				return c.reconcileDurableTurnsLocked(ctx, turn, providerTurnIDs, cutoff)
+			} else {
+				c.mu.Lock()
+				c.cancelQueuedAt = time.Time{}
+				c.mu.Unlock()
+				return fmt.Errorf("interrupt turn %s: %w", turn, err)
+			}
+		} else {
+			return nil
+		}
+	}
 	if err := c.conv.Interrupt(ctx, turn); err != nil {
+		if errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
+			// Provider accepted Stop, but effects may still be running. Never clear
+			// the cutoff or release queued work into the uncontained tree.
+			return err
+		}
+		if errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+			// The driver already killed the non-quiescent provider tree. Preserve the
+			// Stop cutoff: queued pre-Stop work must not be released by recovery.
+			return err
+		}
 		if errors.Is(err, ports.ErrChatNoActiveTurn) {
 			// Serialize durable settlement, memory cleanup, and queue promotion so
 			// a message arriving after Stop cannot slip between those steps.
@@ -1286,6 +1870,62 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 		return fmt.Errorf("interrupt turn %s: %w", turn, err)
 	}
 	return nil
+}
+
+func (c *Controller) dispatchGovernedInterrupt(ctx context.Context, turn string) error {
+	c.governedControlMu.Lock()
+	defer c.governedControlMu.Unlock()
+	now := c.now()
+	key := "interrupt:" + turn
+	claim := domain.GovernedControlCommand{
+		ID: c.newID(), IdempotencyKey: key,
+		RequestFingerprint: domain.ComputeGovernedControlFingerprint(c.sessionID, domain.GovernedControlInterrupt, key, turn, "{}"),
+		Class:              domain.GovernedControlInterrupt, State: domain.GovernedCommandClaimed, SessionID: c.sessionID,
+		ControllerGeneration: c.generation, ExpectedRevision: c.governance.expectedRevision,
+		CapabilityFingerprint: c.governance.capabilityFingerprint, ProviderConversationID: c.conv.ProviderConversationID(),
+		ProviderTurnID: turn, Quiescence: domain.GovernedCommandQuiescencePending, CreatedAt: now, UpdatedAt: now,
+	}
+	persisted, created, err := c.store.CreateGovernedControlCommandClaim(ctx, claim)
+	if err != nil {
+		return err
+	}
+	persisted, err = c.adoptGovernedControlClaim(ctx, persisted, created, now)
+	if err != nil {
+		return err
+	}
+	switch persisted.State {
+	case domain.GovernedCommandAcknowledged, domain.GovernedCommandReconciled:
+		return nil
+	case domain.GovernedCommandRejected:
+		return ports.ErrChatNoActiveTurn
+	case domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown:
+		return ErrSteerDeliveryUnknown
+	}
+	if persisted.ControllerGeneration != c.generation {
+		return ErrSteerDeliveryUnknown
+	}
+	if err := c.advanceGovernedControl(ctx, &persisted, domain.GovernedCommandClaimed, domain.GovernedCommandDispatching); err != nil {
+		return err
+	}
+	dispatcher, ok := c.conv.(ports.ChatInterruptDispatcher)
+	if !ok {
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return fmt.Errorf("%w: governed interrupt receipt", ports.ErrChatUnsupported)
+	}
+	dispatch, dispatchErr := dispatcher.DispatchInterrupt(ctx, turn)
+	if dispatch.Acceptance == ports.ChatTurnAcknowledged && dispatch.Quiescence == domain.GovernedCommandQuiescenceCodexTree && dispatch.QuiescenceEvidenceRef != "" {
+		persisted.Quiescence, persisted.QuiescenceEvidenceRef = dispatch.Quiescence, dispatch.QuiescenceEvidenceRef
+		if err := c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandAcknowledged); err != nil {
+			return errors.Join(ErrSteerDeliveryUnknown, err)
+		}
+		return dispatchErr
+	}
+	if dispatch.Acceptance == ports.ChatTurnRejected || dispatch.Acceptance == ports.ChatTurnNotSent {
+		_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandRejected)
+		return dispatchErr
+	}
+	_ = c.advanceGovernedControl(context.WithoutCancel(ctx), &persisted, domain.GovernedCommandDispatching, domain.GovernedCommandDeliveryUnknown)
+	return errors.Join(ErrSteerDeliveryUnknown, dispatchErr)
 }
 
 // reconcileDurableTurnsLocked settles work the controller can no longer cancel

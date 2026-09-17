@@ -2811,6 +2811,170 @@ paths:
         subject revision
       tags:
       - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you:
+    get:
+      operationId: getOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionsEnvelope'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Read current typed owner questions for the Outcome's active Attempt
+        and WorkUnits
+      tags:
+      - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you/{questionId}/answers:
+    post:
+      operationId: answerOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      - description: Durable Needs-You question identifier.
+        in: path
+        name: questionId
+        required: true
+        schema:
+          description: Durable Needs-You question identifier.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NeedsYouAnswerRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Answer one exact Needs-You generation through the governed command
+        lifecycle
+      tags:
+      - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you/{questionId}/reconcile:
+    post:
+      operationId: reconcileOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      - description: Durable Needs-You question identifier.
+        in: path
+        name: questionId
+        required: true
+        schema:
+          description: Durable Needs-You question identifier.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NeedsYouReconcileRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Settle delivery_unknown only when later provider evidence closed the
+        question
+      tags:
+      - outcomes
   /api/v1/outcomes/{outcomeId}/plan:
     get:
       operationId: getLatestOutcomePlan
@@ -9467,6 +9631,24 @@ components:
       - name
       - scope
       type: object
+    ChatDecisionAnswer:
+      properties:
+        id:
+          type: string
+        raw: {}
+      required:
+      - id
+      type: object
+    ChatInputAnswer:
+      properties:
+        action:
+          type: string
+        content:
+          additionalProperties: {}
+          type: object
+      required:
+      - action
+      type: object
     ClaimPRRequest:
       properties:
         allowTakeover:
@@ -9898,6 +10080,74 @@ components:
       - name
       - contentDigest
       - sizeBytes
+      type: object
+    ControllersGovernedControlBlockResponse:
+      properties:
+        id:
+          type: string
+        kind:
+          enum:
+          - steer
+          - answer
+          - interrupt
+          type: string
+        providerTurnId:
+          type: string
+        quiescence:
+          enum:
+          - not_applicable
+          - pending
+          - codex_process_tree_verified
+          type: string
+        quiescenceEvidenceRef:
+          type: string
+        requestInstanceId:
+          type: string
+        since:
+          type: string
+        state:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
+      required:
+      - kind
+      - id
+      - state
+      - quiescence
+      - since
+      type: object
+    ControllersGovernedTurnBlockResponse:
+      properties:
+        kind:
+          enum:
+          - turn
+          type: string
+        quiescence:
+          enum:
+          - not_applicable
+          - pending
+          - codex_process_tree_verified
+          type: string
+        quiescenceEvidenceRef:
+          type: string
+        since:
+          type: string
+        state:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
+        turnId:
+          type: string
+      required:
+      - kind
+      - turnId
+      - state
+      - quiescence
+      - since
       type: object
     ControllersIntakeAnalysisRequestEnvelope:
       properties:
@@ -11389,6 +11639,14 @@ components:
           type: string
         conversationId:
           type: string
+        governedControlBlocks:
+          items:
+            $ref: '#/components/schemas/ControllersGovernedControlBlockResponse'
+          type: array
+        governedTurnBlocks:
+          items:
+            $ref: '#/components/schemas/ControllersGovernedTurnBlockResponse'
+          type: array
         harness:
           type: string
         hasMoreBefore:
@@ -11485,6 +11743,16 @@ components:
           - string
         diff:
           $ref: '#/components/schemas/ConversationTurnDiffResponse'
+        dispatchBlockedSince:
+          type:
+          - "null"
+          - string
+        dispatchBlockedState:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
         errorMessage:
           type: string
         id:
@@ -11973,6 +12241,81 @@ components:
       required:
       - state
       - lastActivityAt
+      type: object
+    DomainCapabilityEscalation:
+      properties:
+        artifactVersion:
+          type: string
+        attemptGeneration:
+          format: int64
+          type: integer
+        attemptId:
+          type: string
+        attemptSessionRefId:
+          type: string
+        checkId:
+          type: string
+        contractRevisionNumber:
+          format: int64
+          type: integer
+        controllerGeneration:
+          type: string
+        denialSource:
+          type: string
+        digest:
+          type: string
+        executorKind:
+          type: string
+        grantFingerprint:
+          type: string
+        operationId:
+          type: string
+        outcomeId:
+          type: string
+        planRevisionId:
+          type: string
+        policyDigest:
+          type: string
+        questionGeneration:
+          type: string
+        requestFingerprint:
+          type: string
+        requestedCapability:
+          type: string
+        runtimeLaunchId:
+          type: string
+        sessionGeneration:
+          format: int64
+          type: integer
+        sessionId:
+          type: string
+        version:
+          type: string
+        withinContractCeiling:
+          type: boolean
+        workUnitId:
+          type: string
+      required:
+      - version
+      - outcomeId
+      - contractRevisionNumber
+      - planRevisionId
+      - workUnitId
+      - attemptId
+      - attemptGeneration
+      - sessionId
+      - sessionGeneration
+      - executorKind
+      - attemptSessionRefId
+      - policyDigest
+      - requestedCapability
+      - denialSource
+      - grantFingerprint
+      - operationId
+      - requestFingerprint
+      - questionGeneration
+      - withinContractCeiling
+      - digest
       type: object
     DomainReviewerConfig:
       properties:
@@ -12601,6 +12944,117 @@ components:
           type: boolean
       required:
       - muted
+      type: object
+    NeedsYouAnswerRequest:
+      properties:
+        decision:
+          $ref: '#/components/schemas/ChatDecisionAnswer'
+        generation:
+          type: string
+        input:
+          $ref: '#/components/schemas/ChatInputAnswer'
+        requestKey:
+          type: string
+      required:
+      - requestKey
+      - generation
+      type: object
+    NeedsYouOption:
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      type: object
+    NeedsYouQuestion:
+      properties:
+        attemptId:
+          type: string
+        capabilityEscalation:
+          $ref: '#/components/schemas/DomainCapabilityEscalation'
+        commandId:
+          type: string
+        conversationId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        generation:
+          type: string
+        id:
+          type: string
+        inputMode:
+          type: string
+        inputSchema:
+          additionalProperties: {}
+          type: object
+        kind:
+          type: string
+        options:
+          items:
+            $ref: '#/components/schemas/NeedsYouOption'
+          type: array
+        outcomeId:
+          type: string
+        planRevisionId:
+          type: string
+        reason:
+          type: string
+        recommendation:
+          type: string
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        url:
+          type: string
+        workUnitId:
+          type: string
+      required:
+      - id
+      - outcomeId
+      - planRevisionId
+      - workUnitId
+      - attemptId
+      - sessionId
+      - conversationId
+      - requestId
+      - generation
+      - kind
+      - reason
+      - status
+      - createdAt
+      - updatedAt
+      type: object
+    NeedsYouQuestionEnvelope:
+      properties:
+        question:
+          $ref: '#/components/schemas/NeedsYouQuestion'
+      required:
+      - question
+      type: object
+    NeedsYouQuestionsEnvelope:
+      properties:
+        questions:
+          items:
+            $ref: '#/components/schemas/NeedsYouQuestion'
+          type: array
+      required:
+      - questions
+      type: object
+    NeedsYouReconcileRequest:
+      properties:
+        generation:
+          type: string
+      required:
+      - generation
       type: object
     NotificationEnvelope:
       properties:

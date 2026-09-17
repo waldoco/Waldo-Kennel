@@ -40,7 +40,7 @@ func conversationFixture(t *testing.T) (*sqlite.Store, domain.SessionID, string)
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
-	if err := s.ClaimChatControllerGeneration(ctx, session.ID, "gen-1", histClock); err != nil {
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, "gen-1", "", "", histClock); err != nil {
 		t.Fatalf("claim controller generation: %v", err)
 	}
 	return s, session.ID, conversation.ID

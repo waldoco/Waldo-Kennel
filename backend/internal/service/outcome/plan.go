@@ -11,6 +11,7 @@ import (
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/apierr"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 )
 
 // PlanView is the service projection of a plan revision.
@@ -111,7 +112,7 @@ func (s *Service) proposePlan(ctx context.Context, outcomeID domain.OutcomeID, e
 	if err != nil {
 		return PlanView{}, err
 	}
-	units, routingDecisions, err := s.compileAndRoutePlan(ctx, projectID, revision, draft, aliases, routingPreference)
+	units, routingDecisions, proposalSnapshot, err := s.compileAndRoutePlan(ctx, projectID, revision, draft, aliases, routingPreference)
 	if err != nil {
 		return PlanView{}, err
 	}
@@ -140,6 +141,20 @@ func (s *Service) proposePlan(ctx context.Context, outcomeID domain.OutcomeID, e
 	validation.Number = 1
 	if err := validation.ValidateAgainstContract(revision); err != nil {
 		return PlanView{}, apierr.Invalid("PLAN_DRAFT_CRITERIA_INVALID", err.Error(), nil)
+	}
+	proposalStage, err := s.EvaluateAdmissionStage(ctx, ports.AdmissionStageInput{Stage: ports.AdmissionStageProposal, ProjectID: projectID, Outcome: &outcomeRecord, Contract: &revision, Plan: &validation, RoutingSnapshot: &proposalSnapshot})
+	if err != nil {
+		return PlanView{}, err
+	}
+	if !proposalStage.Eligible {
+		if s.admission == nil {
+			return PlanView{}, apierr.Internal("ADMISSION_STORE_UNWIRED", "Admission persistence is unavailable in this environment")
+		}
+		proposalStage.Verdict.PlanRevisionID = nil
+		if err := s.admission.AppendAdmissionEvaluation(ctx, proposalStage.Verdict); err != nil {
+			return PlanView{}, fmt.Errorf("persist rejected proposal admission: %w", err)
+		}
+		return PlanView{}, apierr.New(apierr.KindConflict, "PLAN_PROPOSAL_NOT_ADMITTED", "This proposal cannot be routed under the verified capabilities", map[string]any{"reasons": proposalStage.Verdict.Reasons})
 	}
 	saved, err := s.store.AppendPlanRevision(ctx, outcomeID, proposal)
 	if err != nil {
@@ -184,9 +199,9 @@ func (s *Service) compileAndRoutePlan(
 	draft domain.PlanDraftProposal,
 	aliases map[string]domain.CriterionID,
 	preference *domain.RoutingPreference,
-) ([]domain.WorkUnit, []domain.WorkUnitRoutingDecision, error) {
+) ([]domain.WorkUnit, []domain.WorkUnitRoutingDecision, ports.RoutingInventorySnapshot, error) {
 	if err := draft.Validate(); err != nil {
-		return nil, nil, apierr.Invalid("PLAN_DRAFT_INVALID", err.Error(), nil)
+		return nil, nil, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_INVALID", err.Error(), nil)
 	}
 
 	ids := make(map[string]domain.WorkUnitID, len(draft.WorkUnits))
@@ -202,7 +217,7 @@ func (s *Service) compileAndRoutePlan(
 		for _, alias := range draftUnit.CriteriaCovered {
 			criterionID, ok := aliases[strings.TrimSpace(alias)]
 			if !ok {
-				return nil, nil, apierr.Invalid("PLAN_DRAFT_CRITERION_UNKNOWN", "Plan intelligence referenced an unknown Contract criterion alias", map[string]any{"alias": alias})
+				return nil, nil, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_CRITERION_UNKNOWN", "Plan intelligence referenced an unknown Contract criterion alias", map[string]any{"alias": alias})
 			}
 			criteria = append(criteria, criterionID)
 		}
@@ -220,21 +235,22 @@ func (s *Service) compileAndRoutePlan(
 		for _, dependency := range draftUnit.DependsOn {
 			dependencyID, ok := ids[strings.TrimSpace(dependency)]
 			if !ok {
-				return nil, nil, apierr.Invalid("PLAN_DRAFT_DEPENDENCY_UNKNOWN", "Plan intelligence referenced an unknown WorkUnit dependency", map[string]any{"dependency": dependency})
+				return nil, nil, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_DEPENDENCY_UNKNOWN", "Plan intelligence referenced an unknown WorkUnit dependency", map[string]any{"dependency": dependency})
 			}
 			dependencies = append(dependencies, dependencyID)
 		}
 		requiredCapabilities, err := draftUnit.Intent.RequiredCapabilities()
 		if err != nil {
-			return nil, nil, apierr.Invalid("PLAN_DRAFT_INTENT_INVALID", err.Error(), map[string]any{"workUnitKey": draftUnit.Key})
+			return nil, nil, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_INTENT_INVALID", err.Error(), map[string]any{"workUnitKey": draftUnit.Key})
 		}
 		approvedChecks, err := compileApprovedChecks(unitID, draftUnit.CheckCommands, aliases, criteria)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, ports.RoutingInventorySnapshot{}, err
 		}
 		unit := domain.WorkUnit{
 			ID:                      unitID,
 			Kind:                    domain.WorkUnitDirect,
+			Intent:                  draftUnit.Intent,
 			Title:                   strings.TrimSpace(draftUnit.Title),
 			ContractRevisionNumber:  revision.Number,
 			OutputSummary:           strings.TrimSpace(draftUnit.OutputSummary),
@@ -246,21 +262,24 @@ func (s *Service) compileAndRoutePlan(
 			RequiredCapabilities:    requiredCapabilities,
 			Checks:                  approvedChecks,
 		}
+		if s.AdmissionPolicy != nil && s.AdmissionPolicy.Validate() == nil {
+			unit.ExecutionBudget = s.AdmissionPolicy.Default
+		}
 		if err := validateWorkUnitChecksAreExecutable(unit); err != nil {
-			return nil, nil, err
+			return nil, nil, ports.RoutingInventorySnapshot{}, err
 		}
 		if err := validateWorkUnitWithinContractCeiling(revision, unit); err != nil {
-			return nil, nil, err
+			return nil, nil, ports.RoutingInventorySnapshot{}, err
 		}
 		units = append(units, unit)
 	}
 
+	snapshot, err := s.routing.RoutingSnapshot(ctx, projectID, preference)
+	if err != nil {
+		return nil, nil, ports.RoutingInventorySnapshot{}, err
+	}
 	decisions := make([]domain.WorkUnitRoutingDecision, 0, len(units))
 	for i := range units {
-		snapshot, err := s.routing.RoutingSnapshot(ctx, projectID, preference)
-		if err != nil {
-			return nil, nil, err
-		}
 		decision := domain.RouteExecution(domain.RoutingRequirements{
 			Role:             domain.RoutingRoleWorker,
 			HardCapabilities: append([]string(nil), units[i].RequiredCapabilities...),
@@ -268,16 +287,16 @@ func (s *Service) compileAndRoutePlan(
 		}, snapshot.Candidates, snapshot.SnapshotID)
 		binding, ok := decision.RecommendedBinding()
 		if !ok {
-			return nil, nil, apierr.New(apierr.KindConflict, "PLAN_NO_VALID_ROUTE",
+			return nil, nil, ports.RoutingInventorySnapshot{}, apierr.New(apierr.KindConflict, "PLAN_NO_VALID_ROUTE",
 				"No installed and ready worker can satisfy this WorkUnit's approved requirements",
 				map[string]any{"workUnitId": string(units[i].ID), "evaluations": decision.Evaluations})
 		}
 		if err := units[i].BindExecution(binding); err != nil {
-			return nil, nil, err
+			return nil, nil, ports.RoutingInventorySnapshot{}, err
 		}
 		decisions = append(decisions, domain.WorkUnitRoutingDecision{WorkUnitID: units[i].ID, Decision: decision})
 	}
-	return units, decisions, nil
+	return units, decisions, snapshot, nil
 }
 
 // defaultApprovedCheckTimeoutSeconds is the bound applied when a proposal
@@ -477,7 +496,37 @@ func (s *Service) ApprovePlan(ctx context.Context, outcomeID domain.OutcomeID, i
 	if err := s.authorizeCapabilities(revision, plan.Grants, plan.WorkUnits); err != nil {
 		return AuthorizedPlanView{}, err
 	}
-	approved, found, err := s.store.ApprovePlanRevision(ctx, outcomeID, plan.ID)
+	if s.admission == nil {
+		return AuthorizedPlanView{}, apierr.Internal("ADMISSION_STORE_UNWIRED", "Admission persistence is unavailable in this environment")
+	}
+	projectID, found, err := s.store.GetOutcomeProjectID(ctx, outcomeID)
+	if err != nil {
+		return AuthorizedPlanView{}, err
+	}
+	if !found {
+		return AuthorizedPlanView{}, apierr.NotFound("PROJECT_NOT_FOUND", "Register that Project before approving this Plan")
+	}
+	if plan.Status == domain.PlanStatusApproved {
+		persisted, found, loadErr := s.admission.GetAdmittedVerdict(ctx, plan.ID)
+		if loadErr != nil {
+			return AuthorizedPlanView{}, loadErr
+		}
+		if !found || persisted.OutcomeID != outcomeID || persisted.PlanRevisionID == nil || *persisted.PlanRevisionID != plan.ID || persisted.ContractRevisionNumber == nil || *persisted.ContractRevisionNumber != revision.Number {
+			return AuthorizedPlanView{}, apierr.Conflict("PLAN_APPROVAL_REPLAY_MISMATCH", "Approved Plan admission evidence does not match its immutable Contract and Plan identity", nil)
+		}
+		return AuthorizedPlanView{Outcome: outcomeRecord, Plan: plan}, nil
+	}
+	staged, err := s.EvaluateAdmissionStage(ctx, ports.AdmissionStageInput{Stage: ports.AdmissionStageApproval, ProjectID: projectID, Outcome: &outcomeRecord, Contract: &revision, Plan: &plan})
+	if err != nil {
+		return AuthorizedPlanView{}, err
+	}
+	if !staged.Eligible {
+		if err := s.admission.AppendAdmissionEvaluation(ctx, staged.Verdict); err != nil {
+			return AuthorizedPlanView{}, fmt.Errorf("persist rejected approval admission: %w", err)
+		}
+		return AuthorizedPlanView{}, apierr.New(apierr.KindConflict, "PLAN_NOT_ADMITTED", "This Plan cannot be executed with the current verified capabilities", map[string]any{"reasons": staged.Verdict.Reasons})
+	}
+	approved, found, err := s.admission.ApprovePlanWithAdmission(ctx, outcomeID, plan.ID, staged.Verdict)
 	if err != nil {
 		return AuthorizedPlanView{}, err
 	}

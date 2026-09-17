@@ -180,6 +180,110 @@ describe("useConversation snapshot mapping", () => {
 	});
 });
 
+// A renamed or dropped wire field here fails silently in the app: the daemon
+// still answers 200 and nothing throws, it just stops showing a real block.
+// These pin the exact wire shape toSnapshot() depends on.
+describe("useConversation governed dispatch block mapping", () => {
+	it("maps a turn's own dispatch-blocked state and the session-wide turn/control lists", async () => {
+		getMock.mockResolvedValue({
+			data: {
+				...WIRE,
+				turns: [
+					{
+						...WIRE.turns[0],
+						dispatchBlockedSince: "2026-09-16T12:00:00Z",
+						dispatchBlockedState: "dispatching",
+					},
+				],
+				governedTurnBlocks: [
+					{
+						kind: "turn",
+						turnId: "turn-1",
+						state: "dispatching",
+						quiescence: "not_applicable",
+						since: "2026-09-16T12:00:00Z",
+					},
+				],
+				governedControlBlocks: [
+					{
+						kind: "interrupt",
+						id: "control-1",
+						state: "delivery_unknown",
+						quiescence: "pending",
+						providerTurnId: "provider-turn-1",
+						since: "2026-09-16T12:00:01Z",
+					},
+					{
+						kind: "answer",
+						id: "control-2",
+						state: "claimed",
+						quiescence: "not_applicable",
+						requestInstanceId: "request-instance-1",
+						since: "2026-09-16T12:00:02Z",
+					},
+				],
+			},
+			error: undefined,
+		});
+
+		const { result } = renderHook(() => useConversation("ao-1"), { wrapper });
+		await waitFor(() => expect(result.current.snapshot).toBeDefined());
+		const snapshot = result.current.snapshot!;
+
+		expect(snapshot.turns[0]).toMatchObject({
+			dispatchBlockedSince: "2026-09-16T12:00:00Z",
+			dispatchBlockedState: "dispatching",
+		});
+		expect(snapshot.governedTurnBlocks).toEqual([
+			{
+				kind: "turn",
+				turnId: "turn-1",
+				state: "dispatching",
+				quiescence: "not_applicable",
+				quiescenceEvidenceRef: undefined,
+				since: "2026-09-16T12:00:00Z",
+			},
+		]);
+		expect(snapshot.governedControlBlocks).toEqual([
+			{
+				kind: "interrupt",
+				id: "control-1",
+				state: "delivery_unknown",
+				quiescence: "pending",
+				quiescenceEvidenceRef: undefined,
+				providerTurnId: "provider-turn-1",
+				requestInstanceId: undefined,
+				since: "2026-09-16T12:00:01Z",
+			},
+			{
+				kind: "answer",
+				id: "control-2",
+				state: "claimed",
+				quiescence: "not_applicable",
+				quiescenceEvidenceRef: undefined,
+				providerTurnId: undefined,
+				requestInstanceId: "request-instance-1",
+				since: "2026-09-16T12:00:02Z",
+			},
+		]);
+	});
+
+	// Absent must stay absent, the same as every other optional daemon field: a
+	// turn with no claim of its own is not proof the session is unblocked.
+	it("leaves the dispatch-block fields undefined when the daemon reports none", async () => {
+		getMock.mockResolvedValue({ data: WIRE, error: undefined });
+
+		const { result } = renderHook(() => useConversation("ao-1"), { wrapper });
+		await waitFor(() => expect(result.current.snapshot).toBeDefined());
+		const snapshot = result.current.snapshot!;
+
+		expect(snapshot.turns[0]!.dispatchBlockedSince).toBeUndefined();
+		expect(snapshot.turns[0]!.dispatchBlockedState).toBeUndefined();
+		expect(snapshot.governedTurnBlocks).toBeUndefined();
+		expect(snapshot.governedControlBlocks).toBeUndefined();
+	});
+});
+
 describe("conversation branching commands", () => {
 	it("edits through the dedicated endpoint without rolling back", async () => {
 		postMock.mockResolvedValue({ data: {}, error: undefined });
