@@ -797,7 +797,7 @@ func TestGovernedSteerStaleGenerationCannotReachProvider(t *testing.T) {
 		TransportRequestID: 2, TransportSHA256: "steer-sha", TransportBytes: 17, TransportSequence: 2,
 	}}
 	h, _ := governedSteerHarness(t, conv, nil)
-	if err := h.st.ClaimChatControllerGeneration(context.Background(), testSession, "replacement-generation", time.Now().UTC()); err != nil {
+	if err := h.st.ClaimChatControllerGeneration(context.Background(), testSession, "replacement-generation", "", "", time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.ctrl.Steer(context.Background(), ports.ChatUserMessage{Text: "stale guidance", ClientMessageID: "stale-steer"}); err == nil {

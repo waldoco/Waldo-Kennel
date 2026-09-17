@@ -255,6 +255,14 @@ type ChangeLog struct {
 	CreatedAt time.Time
 }
 
+type ChatCommandTarget struct {
+	SessionID             string
+	ControllerGeneration  string
+	ExpectedRevision      string
+	CapabilityFingerprint string
+	UpdatedAt             time.Time
+}
+
 type ChatProtocolProvenance struct {
 	SessionID            string
 	Seq                  int64

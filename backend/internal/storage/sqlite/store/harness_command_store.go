@@ -121,12 +121,12 @@ func (s *Store) ValidateAuthoritiesAndCreateCommandClaim(ctx context.Context, in
 func validateCommandTarget(ctx context.Context, q *gen.Queries, target domain.OwnerProofTarget) error {
 	switch target.Class {
 	case domain.OwnerCommandTurn:
-		s, err := q.GetCommandSessionTarget(ctx, domain.SessionID(target.SessionID))
+		s, err := q.GetCommandSessionTarget(ctx, target.SessionID)
 		if err != nil || s.ControllerGeneration != target.ControllerGeneration || s.ExpectedRevision != target.ExpectedRevision {
 			return domain.ErrHarnessCommandAuthentication
 		}
 	case domain.OwnerCommandSteer, domain.OwnerCommandInterrupt:
-		s, err := q.GetCommandSessionTarget(ctx, domain.SessionID(target.SessionID))
+		s, err := q.GetCommandSessionTarget(ctx, target.SessionID)
 		if err != nil || s.ControllerGeneration != target.ControllerGeneration || (target.Class == domain.OwnerCommandSteer && s.ExpectedRevision != target.ExpectedRevision) {
 			return domain.ErrHarnessCommandAuthentication
 		}

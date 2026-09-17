@@ -176,19 +176,25 @@ func (q *Queries) GetCommandOwnerProof(ctx context.Context, id string) (OwnerPro
 }
 
 const getCommandSessionTarget = `-- name: GetCommandSessionTarget :one
-SELECT s.id,s.controller_generation,CAST(COALESCE((SELECT a.plan_revision_id FROM attempt_sessions ar JOIN attempts a ON a.id=ar.attempt_id WHERE ar.session_id=s.id ORDER BY ar.bound_at DESC,ar.seq DESC LIMIT 1),'') AS TEXT) AS expected_revision FROM sessions s WHERE s.id=?
+SELECT session_id AS id,controller_generation,expected_revision,capability_fingerprint FROM chat_command_targets WHERE session_id=?
 `
 
 type GetCommandSessionTargetRow struct {
-	ID                   domain.SessionID
-	ControllerGeneration string
-	ExpectedRevision     string
+	ID                    string
+	ControllerGeneration  string
+	ExpectedRevision      string
+	CapabilityFingerprint string
 }
 
-func (q *Queries) GetCommandSessionTarget(ctx context.Context, id domain.SessionID) (GetCommandSessionTargetRow, error) {
-	row := q.db.QueryRowContext(ctx, getCommandSessionTarget, id)
+func (q *Queries) GetCommandSessionTarget(ctx context.Context, sessionID string) (GetCommandSessionTargetRow, error) {
+	row := q.db.QueryRowContext(ctx, getCommandSessionTarget, sessionID)
 	var i GetCommandSessionTargetRow
-	err := row.Scan(&i.ID, &i.ControllerGeneration, &i.ExpectedRevision)
+	err := row.Scan(
+		&i.ID,
+		&i.ControllerGeneration,
+		&i.ExpectedRevision,
+		&i.CapabilityFingerprint,
+	)
 	return i, err
 }
 

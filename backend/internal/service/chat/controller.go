@@ -43,7 +43,7 @@ type Store interface {
 	// reviewed against.
 	RecordChatProtocolProvenance(ctx context.Context, rec domain.ChatProtocolProvenance) error
 	ConversationForSession(ctx context.Context, session domain.SessionID) (domain.ConversationRecord, error)
-	ClaimChatControllerGeneration(ctx context.Context, session domain.SessionID, generation string, now time.Time) error
+	ClaimChatControllerGeneration(ctx context.Context, session domain.SessionID, generation, expectedRevision, capabilityFingerprint string, now time.Time) error
 	ConversationBranch(ctx context.Context, conversationID, branchID string) (domain.ConversationBranch, error)
 	ConversationEditAnchor(ctx context.Context, conversationID, replacedTurnID string) (domain.ConversationEditAnchor, error)
 	CreateAndActivateConversationBranch(ctx context.Context, sessionID domain.SessionID, branch domain.ConversationBranch, generation string, now time.Time) error

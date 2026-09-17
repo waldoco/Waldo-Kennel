@@ -161,7 +161,7 @@ func TestGovernedCommandTransitionsFenceStaleWritersAndRetainUnknownForRecovery(
 	}
 	at := time.Now().UTC().Truncate(time.Second)
 	claim := governedCommandClaim(session.ID, "command-transition", "transition-key", "transition-fingerprint", at)
-	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, "", "", at); err != nil {
 		t.Fatal(err)
 	}
 	if _, created, err := s.CreateGovernedCommandClaim(ctx, claim); err != nil || !created {
@@ -235,7 +235,7 @@ func TestGovernedCommandTransitionRejectsOldStateAndClaimTime(t *testing.T) {
 	}
 	at := time.Now().UTC().Truncate(time.Second)
 	claim := governedCommandClaim(session.ID, "command-race-transition", "race-transition-key", "race-transition-fingerprint", at)
-	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, "", "", at); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.CreateGovernedCommandClaim(ctx, claim); err != nil {

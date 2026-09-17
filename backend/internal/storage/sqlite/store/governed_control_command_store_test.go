@@ -107,7 +107,7 @@ func TestGovernedControlTransitionFencesAndRetainsUnknown(t *testing.T) {
 	}
 	at := time.Now().UTC().Truncate(time.Second)
 	claim := controlClaim(session.ID, "control-1", "key-1", "fp-1", at)
-	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, "", "", at); err != nil {
 		t.Fatal(err)
 	}
 	if _, made, err := s.CreateGovernedControlCommandClaim(ctx, claim); err != nil || !made {
@@ -151,13 +151,13 @@ func TestGovernedControlClaimAdoptionIsPreDispatchAndGenerationFenced(t *testing
 	}
 	at := time.Now().UTC().Truncate(time.Second)
 	claim := controlClaim(session.ID, "control-adopt-1", "key-adopt", "fp-adopt", at)
-	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, at); err != nil {
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, claim.ControllerGeneration, "", "", at); err != nil {
 		t.Fatal(err)
 	}
 	if _, made, err := s.CreateGovernedControlCommandClaim(ctx, claim); err != nil || !made {
 		t.Fatalf("create made=%v err=%v", made, err)
 	}
-	if err := s.ClaimChatControllerGeneration(ctx, session.ID, "gen-2", at.Add(time.Second)); err != nil {
+	if err := s.ClaimChatControllerGeneration(ctx, session.ID, "gen-2", "", "", at.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.AdoptClaimedGovernedControlCommandGeneration(ctx, claim, "stale-gen", at.Add(2*time.Second)); err != nil || ok {

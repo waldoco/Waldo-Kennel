@@ -325,7 +325,16 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	// older controller's projection transaction compares its generation with this
 	// session row and becomes a no-op after this point.
 	generation := s.newID()
-	if err := s.store.ClaimChatControllerGeneration(ctx, cfg.SessionID, generation, s.now()); err != nil {
+	expectedRevision, capabilityFingerprint := "", ""
+	if cfg.ExecutionPolicy != nil {
+		if err := cfg.ExecutionPolicy.Validate(); err != nil {
+			_ = conv.Close()
+			return nil, fmt.Errorf("governed chat policy: %w", err)
+		}
+		expectedRevision = cfg.ExecutionPolicy.PlanRevisionID.String()
+		capabilityFingerprint = chatCapabilityFingerprint(conv.Capabilities())
+	}
+	if err := s.store.ClaimChatControllerGeneration(ctx, cfg.SessionID, generation, expectedRevision, capabilityFingerprint, s.now()); err != nil {
 		_ = conv.Close()
 		return nil, fmt.Errorf("claim chat controller: %w", err)
 	}

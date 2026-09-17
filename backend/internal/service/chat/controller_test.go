@@ -340,7 +340,7 @@ func TestResumeImportsNativeHistoryBeforeTheChatControllerStarts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
-	if err := st.ClaimChatControllerGeneration(context.Background(), testSession, "old-generation", now); err != nil {
+	if err := st.ClaimChatControllerGeneration(context.Background(), testSession, "old-generation", "", "", now); err != nil {
 		t.Fatalf("ClaimChatControllerGeneration: %v", err)
 	}
 	created, err := st.AppendUserMessage(context.Background(), existing.ID, testSession, "old-generation",
@@ -721,7 +721,7 @@ func (h *harness) awaitSnapshot(t *testing.T, pred func(store.ConversationSnapsh
 func TestStaleControllerEventsDoNotReachTheTimeline(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	if err := h.st.ClaimChatControllerGeneration(ctx, testSession, "replacement-generation", h.now()); err != nil {
+	if err := h.st.ClaimChatControllerGeneration(ctx, testSession, "replacement-generation", "", "", h.now()); err != nil {
 		t.Fatalf("replace controller generation: %v", err)
 	}
 
@@ -4737,7 +4737,7 @@ func TestGovernedAnswerStaleGenerationCannotReachProvider(t *testing.T) {
 	}
 	conv.emit(ports.ChatEvent{Kind: ports.ChatEventApprovalRequested, RequestID: "stale-answer", ProviderItemID: "stale-answer", Summary: "allow?", Decisions: []ports.ChatDecisionOption{{ID: "accept"}}})
 	awaitStoreSnapshot(t, st, ctrl.ConversationID(), func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
-	if err := st.ClaimChatControllerGeneration(context.Background(), testSession, "replacement-generation", time.Now().UTC()); err != nil {
+	if err := st.ClaimChatControllerGeneration(context.Background(), testSession, "replacement-generation", "", "", time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if err := ctrl.Resolve(context.Background(), "stale-answer", ports.ChatDecision{ID: "accept"}); err == nil {
@@ -4771,7 +4771,7 @@ func TestGovernedInterruptStaleGenerationCannotReachProviderOrClaimQuiescence(t 
 	}
 	conv.markActive("provider-turn-1")
 	conv.emit(ports.ChatEvent{Kind: ports.ChatEventTurnStarted, ProviderTurnID: "provider-turn-1"})
-	if err := st.ClaimChatControllerGeneration(context.Background(), testSession, "replacement-generation", time.Now().UTC()); err != nil {
+	if err := st.ClaimChatControllerGeneration(context.Background(), testSession, "replacement-generation", "", "", time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if err := ctrl.Interrupt(context.Background()); err == nil {

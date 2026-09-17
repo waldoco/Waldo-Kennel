@@ -14,7 +14,9 @@ The approved S3.4 proof's `targetId + int64 targetGeneration` could not represen
 
 Unused fields, material classes and unfrozen cancel targets are rejected. Existing short-lived pending proofs are invalidated at upgrade rather than guessed into the new tuple. The authenticated owner mint route accepts the typed target and stores only its digest.
 
-## Durable answers
+## Durable transaction-readable targets
+
+Migration 0148 also adds `chat_command_targets`, an independently named current-policy row binding session ID, controller generation, expected plan revision, and the capability fingerprint used by governed dispatch. `ClaimChatControllerGeneration` updates the session generation and this target row atomically under the same SQLite writer; ungovened controllers clear any prior governed target in that transaction. The Chat service validates the execution policy and derives the capability fingerprint before making the generation/policy current. Ingress re-reads this row, not immutable attempt/session lineage. Deterministic claim-first and mutation-first races cover controller generation and expected revision.
 
 Provider approval and structured-input requests now create an independently named `owner_answer_questions` row in the same projection transaction as their timeline activity. Resolution and controller-failure cleanup update the target row through the same store writer. Answer ingress re-reads the pending row and exact generation inside the claim transaction.
 
@@ -24,7 +26,7 @@ Provider approval and structured-input requests now create an independently name
 
 Exact retries converge by connection generation plus adapter request key and request fingerprint. Changed semantics conflict. Material classes remain unavailable.
 
-Deterministic barriers prove rotation, revocation and question-target mutation cannot interleave past the in-transaction reads. Mutation-first races reject the claim. Claim-first races commit the exact connection snapshot before the mutation proceeds. Payload mismatch and stale question leave the proof unconsumed. Restart/retry reads the persisted canonical payload and deterministic destination.
+Deterministic barriers prove rotation, revocation, controller-generation, expected-revision, provider-turn, and question-target mutation cannot interleave past the in-transaction reads. Mutation-first races reject the claim. Claim-first races commit the exact connection snapshot before the mutation proceeds. Payload mismatch and stale question leave the proof unconsumed. Restart/retry reads the persisted canonical payload and deterministic destination.
 
 ## Separate transport
 

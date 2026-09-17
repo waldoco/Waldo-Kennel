@@ -36,7 +36,7 @@ func TestOwnerProofMigrationUpgradeAndRollback(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("legacy proof count after upgrade = %d, want 0", n)
 	}
-	for _, table := range []string{"owner_answer_questions", "command_authority_claims", "harness_command_outbox"} {
+	for _, table := range []string{"chat_command_targets", "owner_answer_questions", "command_authority_claims", "harness_command_outbox"} {
 		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("upgraded table %s count = %d, err = %v", table, n, err)
 		}
@@ -50,7 +50,7 @@ func TestOwnerProofMigrationUpgradeAndRollback(t *testing.T) {
 	if got := tableColumns(t, db, "owner_proofs"); !containsAll(got, "target_id", "target_generation") {
 		t.Fatalf("rolled-back owner_proofs columns = %v", got)
 	}
-	for _, table := range []string{"owner_answer_questions", "command_authority_claims", "harness_command_outbox"} {
+	for _, table := range []string{"chat_command_targets", "owner_answer_questions", "command_authority_claims", "harness_command_outbox"} {
 		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n); err != nil || n != 0 {
 			t.Fatalf("rolled-back table %s count = %d, err = %v", table, n, err)
 		}

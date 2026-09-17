@@ -17,7 +17,7 @@ SELECT * FROM harness_connections WHERE id=?;
 -- name: GetCommandOwnerProof :one
 SELECT * FROM owner_proofs WHERE id=?;
 -- name: GetCommandSessionTarget :one
-SELECT s.id,s.controller_generation,CAST(COALESCE((SELECT a.plan_revision_id FROM attempt_sessions ar JOIN attempts a ON a.id=ar.attempt_id WHERE ar.session_id=s.id ORDER BY ar.bound_at DESC,ar.seq DESC LIMIT 1),'') AS TEXT) AS expected_revision FROM sessions s WHERE s.id=?;
+SELECT session_id AS id,controller_generation,expected_revision,capability_fingerprint FROM chat_command_targets WHERE session_id=?;
 -- name: GetCommandActiveTurnTarget :one
 SELECT provider_turn_id,state FROM conversation_turns WHERE handled_by_session_id=? AND provider_turn_id=? ORDER BY requested_at DESC LIMIT 1;
 -- name: GetCommandAnswerQuestionTarget :one
