@@ -118,6 +118,7 @@ export function MissionPrimitivesGallery() {
 			<GallerySection title="BoundedComposer — value/submit, disabled vs. pending, disclosure slots">
 				<div className="grid gap-3 md:grid-cols-3">
 					<BoundedComposer
+						inputLabel="Ask the Supervisor"
 						onChange={setComposerValue}
 						onSubmit={() => undefined}
 						placeholder="Ask the Supervisor…"
@@ -126,8 +127,8 @@ export function MissionPrimitivesGallery() {
 						submitLabel="Send"
 						value={composerValue}
 					/>
-					<BoundedComposer disabled onChange={() => undefined} onSubmit={() => undefined} submitLabel="Send" value="" />
-					<BoundedComposer onChange={() => undefined} onSubmit={() => undefined} pending submitLabel="Send" value="Sent already" />
+					<BoundedComposer disabled inputLabel="Composer input (disabled)" onChange={() => undefined} onSubmit={() => undefined} submitLabel="Send" value="" />
+					<BoundedComposer inputLabel="Composer input (pending)" onChange={() => undefined} onSubmit={() => undefined} pending submitLabel="Send" value="Sent already" />
 				</div>
 			</GallerySection>
 

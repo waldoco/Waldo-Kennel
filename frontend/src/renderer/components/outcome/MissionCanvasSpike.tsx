@@ -20,6 +20,8 @@ import {
 } from "../../lib/mission-canvas-fixture";
 import { selectMissionCanvasRenderer, type MissionCanvasConfig } from "../../lib/mission-canvas-config";
 import { cn } from "../../lib/utils";
+import { resolveTheme } from "../../lib/theme";
+import { useUiStore } from "../../stores/ui-store";
 
 /**
  * F0 spike: evaluates @xyflow/react against the direct-Outcome execution
@@ -221,9 +223,16 @@ function MissionCanvasFlow({
 		[onSelectNode],
 	);
 
+	// React Flow's own chrome (Controls, attribution) ships a light default
+	// surface; bind it to the resolved app theme so the controls stay visible
+	// in dark mode without breaking light.
+	const themePreference = useUiStore((state) => state.themePreference);
+	const colorMode = resolveTheme(themePreference);
+
 	return (
 		<div data-testid="mission-canvas-flow" style={{ height: 480, width: "100%" }}>
 			<ReactFlow
+				colorMode={colorMode}
 				edges={flowEdges}
 				elementsSelectable={false}
 				fitView
@@ -235,7 +244,6 @@ function MissionCanvasFlow({
 				nodeTypes={NODE_TYPES}
 				onInit={handleInit}
 				onNodeClick={handleNodeClick}
-				proOptions={{ hideAttribution: true }}
 			>
 				<Background gap={24} />
 				<Controls showInteractive={false} />
