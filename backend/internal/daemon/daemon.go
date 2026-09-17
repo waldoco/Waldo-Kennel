@@ -16,7 +16,9 @@ import (
 
 	"github.com/google/uuid"
 
+	codexagent "github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/codex"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/modelcatalog"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/chatdriver/codexappserver"
 	chatdriverregistry "github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/chatdriver/registry"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/runtime/runtimeselect"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/artifactstore"
@@ -559,7 +561,7 @@ func Run() error {
 	}
 	connectionKernel := harnessconnection.New(store)
 	pairingCoordinator := harnesspairing.New(store, connectionKernel)
-	harnessAuthoritySvc := harnessauthority.New(store, pairingCoordinator, connectionKernel)
+	harnessAuthoritySvc := harnessauthority.New(store, pairingCoordinator, connectionKernel).WithProjectScope(store)
 	srv, err := httpd.NewWithDeps(cfg, log, termMgr, httpd.APIDeps{
 		Projects:            projectSvc,
 		Agents:              agentSvc,
@@ -606,6 +608,8 @@ func Run() error {
 		OwnerProofKernel:         ownerproof.New(store),
 		HarnessAuthority:         harnessAuthoritySvc,
 		HarnessAuthorityCommands: harnessAuthoritySvc,
+		HarnessDiscovery:         codexagent.New(),
+		HarnessProtocol:          codexappserver.New(codexagent.New(), log),
 	})
 	if err != nil {
 		stop()

@@ -17,11 +17,18 @@ type Service struct {
 	store       ports.HarnessAuthorityStore
 	pairing     *harnesspairing.Coordinator
 	connections *harnessconnection.Kernel
+	projects    ports.HarnessPairingProjectScope
 	now         func() time.Time
 }
 
 func New(store ports.HarnessAuthorityStore, pairing *harnesspairing.Coordinator, connections *harnessconnection.Kernel) *Service {
 	return &Service{store: store, pairing: pairing, connections: connections, now: time.Now}
+}
+
+// WithProjectScope binds proposals to the Project's canonical Work space.
+func (s *Service) WithProjectScope(projects ports.HarnessPairingProjectScope) *Service {
+	s.projects = projects
+	return s
 }
 
 // Projection reads delegate to the authority store so the HTTP controller and
@@ -65,6 +72,18 @@ func (s *Service) CreateIntent(ctx context.Context, r CreateIntentRequest) (doma
 	if s == nil || s.store == nil {
 		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
 	}
+	if s.projects == nil {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	project, found, err := s.projects.GetProject(ctx, string(r.ProjectID))
+	if err != nil || !found || project.ArchivedAt.IsZero() == false || domain.ProjectID(project.ID) != r.ProjectID {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	space, err := s.projects.EnsureWorkResponsibilitySpace(ctx, r.ProjectID)
+	if err != nil || space.ProjectID != r.ProjectID || space.Kind != domain.ResponsibilitySpaceWorkProject {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	r.MissionID = string(space.ID)
 	if r.ID == "" {
 		r.ID = domain.PairingChallengeID("pair-intent-" + uuid.NewString())
 	}
@@ -123,4 +142,52 @@ func receipt(action, typ, id string, digest domain.SHA256Digest, g int64, key, o
 	}
 	r := domain.HarnessAuthorityReceipt{ID: "harness-receipt-" + uuid.NewString(), Action: action, TargetType: typ, TargetID: id, TargetDigest: digest, ExpectedGeneration: g, RequestKey: strings.TrimSpace(key), RequestFingerprint: domain.DigestSHA256(b), OwnerPrincipal: strings.TrimSpace(owner), ConfirmationRef: strings.TrimSpace(confirmation), CreatedAt: now}
 	return r, r.Validate()
+}
+
+type CodexProposalRequest struct {
+	ProjectID            domain.ProjectID
+	AppRunID, RequestKey string
+	RequestFingerprint   string
+}
+
+// CreateCodexProposal discovers the exact local Codex tuple and opens a
+// non-authoritative, project-scoped owner proposal. It does not activate a
+// challenge or issue a connection bearer.
+func (s *Service) CreateCodexProposal(ctx context.Context, discover ports.HarnessDiscovery, protocol ports.ProtocolProvenanceProbe, r CodexProposalRequest) (domain.HarnessPairingIntent, bool, error) {
+	if discover == nil || protocol == nil || strings.TrimSpace(r.AppRunID) == "" {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	installation, err := discover.Discover(ctx, protocol)
+	if err != nil || installation.Harness != "codex" || !installation.ExecutableDigest.Valid() || !domain.SHA256Digest(installation.Protocol.ProtocolDigest).Valid() {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	// Resolve the scope before selecting pair vs rotate. CreateIntent repeats
+	// this check so a Project archived during discovery fails closed.
+	if s.projects == nil {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	project, found, err := s.projects.GetProject(ctx, string(r.ProjectID))
+	if err != nil || !found || !project.ArchivedAt.IsZero() {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	space, err := s.projects.EnsureWorkResponsibilitySpace(ctx, r.ProjectID)
+	if err != nil {
+		return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+	}
+	kind, connectionID, generation := domain.HarnessPairingKindPair, domain.HarnessConnectionID("harness-connection-"+uuid.NewString()), int64(1)
+	connections, err := s.store.ListHarnessConnections(ctx, string(space.ID), 20)
+	if err != nil {
+		return domain.HarnessPairingIntent{}, false, err
+	}
+	for _, connection := range connections {
+		if connection.HarnessIdentity == "codex" && connection.RevokedAt == nil {
+			kind, connectionID, generation = domain.HarnessPairingKindRotate, connection.ID, connection.Generation+1
+			if connection.InstallationID != "codex-"+installation.ExecutableDigest.String() || connection.AdapterDigest != installation.ExecutableDigest || connection.ProtocolFingerprint != domain.SHA256Digest(installation.Protocol.ProtocolDigest) {
+				return domain.HarnessPairingIntent{}, false, domain.ErrHarnessPairingIntentInvalid
+			}
+			break
+		}
+	}
+	now := s.now().UTC()
+	return s.CreateIntent(ctx, CreateIntentRequest{ProjectID: r.ProjectID, Kind: kind, ConnectionID: connectionID, InstallationID: "codex-" + installation.ExecutableDigest.String(), AdapterDigest: installation.ExecutableDigest, HarnessIdentity: "codex", ProviderVersion: installation.Version, ProtocolFingerprint: domain.SHA256Digest(installation.Protocol.ProtocolDigest), AppRunID: r.AppRunID, CapabilityClasses: []domain.HarnessCapabilityClass{domain.HarnessCapabilityTurn, domain.HarnessCapabilitySteer, domain.HarnessCapabilityAnswer, domain.HarnessCapabilityInterrupt}, ExpectedGeneration: generation, ConnectionExpiresAt: now.Add(24 * time.Hour), ExpiresAt: now.Add(2 * time.Minute), RequestKey: r.RequestKey, RequestFingerprint: r.RequestFingerprint})
 }

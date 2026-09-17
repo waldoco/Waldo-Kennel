@@ -18,6 +18,14 @@ type HarnessAuthorityStore interface {
 	CountHarnessCommandConsequences(context.Context, domain.HarnessConnectionID, int64) (int64, error)
 }
 
+// HarnessPairingProjectScope resolves a renderer-selected Project to its one
+// durable Work ResponsibilitySpace. Implementations must fail closed for an
+// absent Project and converge concurrent first use to the same opaque ID.
+type HarnessPairingProjectScope interface {
+	GetProject(context.Context, string) (domain.ProjectRecord, bool, error)
+	EnsureWorkResponsibilitySpace(context.Context, domain.ProjectID) (domain.ResponsibilitySpace, error)
+}
+
 type HarnessPairingActivator interface {
 	ActivateHarnessPairingIntent(context.Context, domain.PairingChallengeID, domain.SHA256Digest, time.Time, func(domain.HarnessPairingIntent) (domain.HarnessPairingChallenge, domain.PairingChallengeSecret, error)) (domain.HarnessPairingIntent, domain.HarnessPairingChallenge, domain.PairingChallengeSecret, error)
 }

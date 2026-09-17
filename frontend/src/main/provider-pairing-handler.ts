@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -135,15 +135,28 @@ export function createCodexPairingStateHandler(d: Deps) {
     if (!intent) return { state: "unpaired" };
     if (intent.status === "requested")
       return { state: "awaiting_confirmation" };
-    if (intent.status === "approved" && intent.proofState !== "proved")
+    if (
+      (intent.status === "approved" ||
+        intent.status === "activating" ||
+        intent.status === "challenge_active") &&
+      intent.proofState !== "succeeded"
+    )
       return { state: "pairing" };
-    if (intent.status === "failed" || intent.status === "expired")
+    if (
+      intent.status === "activation_failed" ||
+      intent.status === "denied" ||
+      intent.status === "superseded" ||
+      intent.status === "expired" ||
+      intent.proofState === "failed" ||
+      intent.proofState === "expired" ||
+      intent.proofState === "superseded"
+    )
       return {
         state: "error",
         message:
           "Pairing did not complete. Your previous connection was not changed.",
       };
-    if (intent.connectionId && intent.proofState === "proved")
+    if (intent.connectionId && intent.proofState === "succeeded")
       return {
         state: "connected",
         connectionId: intent.connectionId,
@@ -152,12 +165,143 @@ export function createCodexPairingStateHandler(d: Deps) {
     return { state: "unpaired" };
   };
 }
-export function unsupportedCodexPairing(): CodexPairingState {
+
+type PairingIntent = {
+  id: string;
+  digest: string;
+  kind: "pair" | "rotate";
+  connectionId: string;
+  installationId: string;
+  adapterDigest: string;
+  harnessIdentity: string;
+  providerVersion: string;
+  protocolFingerprint: string;
+  missionId: string;
+  capabilityClasses: string[];
+  expectedGeneration: number;
+};
+type PairingDeps = Deps & {
+  getWindow: () => import("electron").BaseWindow | null;
+  showConfirmation: (
+    window: import("electron").BaseWindow,
+    intent: PairingIntent,
+  ) => Promise<{ response: number }>;
+  ownerCommandToken: string;
+  appRunId: string;
+  getPairingAddress: () => string | null;
+  exchange: (
+    address: string,
+    frame: object,
+  ) => Promise<Record<string, unknown>>;
+};
+function ownerHeaders(d: PairingDeps) {
   return {
-    state: "action_needed",
-    reason: "pairing_activation_unavailable",
-    repair: "update_kennel",
-    message: "Codex pairing activation is not available in this build.",
+    "Content-Type": "application/json",
+    Authorization: `KennelOwner ${d.ownerCommandToken}`,
   };
 }
-export const newProviderRequestKey = () => randomUUID();
+async function ownerPost(
+  d: PairingDeps,
+  daemon: Daemon,
+  path: string,
+  body: object,
+) {
+  const response = await d.fetch(
+    `http://127.0.0.1:${daemon.port}/internal/owner-commands/${path}`,
+    { method: "POST", headers: ownerHeaders(d), body: JSON.stringify(body) },
+  );
+  if (!response.ok)
+    throw Error(`Codex pairing command rejected (${response.status})`);
+  return response.json() as Promise<Record<string, unknown>>;
+}
+export function createCodexPairingHandler(d: PairingDeps) {
+  return async (e: Event, input: unknown): Promise<CodexPairingState> => {
+    primary(d, e);
+    const id = projectId(input);
+    const requestKey =
+      typeof input === "object" &&
+      input !== null &&
+      typeof (input as { requestKey?: unknown }).requestKey === "string"
+        ? (input as { requestKey: string }).requestKey
+        : "";
+    if (!id || !requestKey) throw Error("Codex pairing proposal is invalid");
+    const daemon = d.getDaemonConnection(),
+      window = d.getWindow();
+    if (!daemon || !window || window.isDestroyed())
+      throw Error("Kennel is not ready to pair Codex");
+    const proposal = await ownerPost(d, daemon, "codex-pairing-proposals", {
+      projectId: id,
+      requestKey,
+    });
+    const intent = (proposal.data as { intent?: PairingIntent } | undefined)
+      ?.intent;
+    if (!intent || intent.harnessIdentity !== "codex")
+      throw Error("Codex pairing proposal response is invalid");
+    if ((await d.showConfirmation(window, intent)).response !== 0) {
+      await ownerPost(
+        d,
+        daemon,
+        `harness-pairing-intents/${encodeURIComponent(intent.id)}/deny`,
+        { digest: intent.digest, requestKey: `${requestKey}:deny` },
+      );
+      return { state: "unpaired" };
+    }
+    if (
+      d.getShellWebContents() !== e.sender ||
+      e.sender.isDestroyed() ||
+      e.senderFrame !== e.sender.mainFrame ||
+      d.getWindow() !== window ||
+      window.isDestroyed()
+    )
+      throw Error("Kennel window changed while approval was open");
+    await ownerPost(
+      d,
+      daemon,
+      `harness-pairing-intents/${encodeURIComponent(intent.id)}/approve`,
+      { digest: intent.digest, requestKey: `${requestKey}:approve` },
+    );
+    const address = d.getPairingAddress();
+    if (!address) throw Error("Codex pairing transport is unavailable");
+    const issued = await d.exchange(address, {
+      type: "request_challenge",
+      intent_id: intent.id,
+      intent_digest: intent.digest,
+    });
+    if (
+      issued.ok !== true ||
+      typeof issued.challenge_id !== "string" ||
+      typeof issued.secret !== "string"
+    )
+      throw Error("Codex pairing challenge failed");
+    const proved = await d.exchange(address, {
+      type: "prove",
+      challenge_id: issued.challenge_id,
+      secret: issued.secret,
+      connection_id: intent.connectionId,
+      installation_id: intent.installationId,
+      adapter_digest: intent.adapterDigest,
+      harness_identity: intent.harnessIdentity,
+      provider_version: intent.providerVersion,
+      protocol_fingerprint: intent.protocolFingerprint,
+      mission_id: intent.missionId,
+      app_run_id: d.appRunId,
+      capability_classes: intent.capabilityClasses,
+      expected_generation: intent.expectedGeneration,
+    });
+    if (
+      proved.ok !== true ||
+      typeof proved.bearer !== "string" ||
+      !proved.bearer
+    )
+      throw Error(
+        "Codex pairing proof failed. Your previous connection was not changed.",
+      );
+    // The transport bearer stays in main custody. Product command ingress can
+    // consume it in this process; it is never returned over IPC.
+    return {
+      state: "connected",
+      connectionId: intent.connectionId,
+      generation: intent.expectedGeneration,
+    };
+  };
+}
