@@ -73,6 +73,13 @@ var (
 // would skip right past.
 func buildDaemon(t *testing.T) string {
 	t.Helper()
+	if bin := os.Getenv("KENNEL_E2E_DAEMON_BIN"); bin != "" {
+		resolved, err := exec.LookPath(bin)
+		if err != nil {
+			t.Fatalf("prebuilt daemon %q: %v", bin, err)
+		}
+		return resolved
+	}
 	buildOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "kennel-e2e-bin-")
 		if err != nil {
