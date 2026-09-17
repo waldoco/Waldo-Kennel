@@ -150,6 +150,7 @@ var shippedMigrations = map[int64]string{
 	144: "0144_governed_control_claim_adoption.sql",
 	145: "0145_harness_connections.sql",
 	146: "0146_harness_pairing_challenges.sql",
+	147: "0147_owner_proofs.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they

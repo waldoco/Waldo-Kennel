@@ -11,6 +11,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownerproof"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -31,7 +32,7 @@ type replacementDecisionFingerprint struct {
 	replacementDecisionRequest
 }
 
-func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store ports.AttemptReplacementDecisionStore, pairing *harnesspairing.Coordinator) {
+func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store ports.AttemptReplacementDecisionStore, pairing *harnesspairing.Coordinator, proofs *ownerproof.Kernel) {
 	if authority == nil {
 		return
 	}
@@ -91,6 +92,7 @@ func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store p
 		})
 	}
 	mountPairingIntentOwnerCommand(r, authority, pairing)
+	mountOwnerProofCommand(r, authority, proofs)
 }
 
 type pairingIntentRequest struct {
@@ -134,5 +136,48 @@ func mountPairingIntentOwnerCommand(r chi.Router, authority *ownercommand.Author
 			return
 		}
 		envelope.WriteJSON(w, http.StatusCreated, map[string]any{"data": map[string]any{"intentId": issued.Challenge.ID, "secret": string(issued.Secret), "expiresAt": issued.Challenge.ExpiresAt}})
+	})
+}
+
+type ownerProofRequest struct {
+	MissionID        string                   `json:"missionId"`
+	ContentDigest    domain.SHA256Digest      `json:"contentDigest"`
+	TargetID         string                   `json:"targetId"`
+	TargetGeneration int64                    `json:"targetGeneration"`
+	Class            domain.OwnerCommandClass `json:"class"`
+}
+
+func mountOwnerProofCommand(r chi.Router, authority *ownercommand.Authority, kernel *ownerproof.Kernel) {
+	if kernel == nil {
+		return
+	}
+	r.Post("/internal/owner-commands/owner-proofs", func(w http.ResponseWriter, req *http.Request) {
+		if !localControlRequest(req) {
+			notFoundJSON(w, req)
+			return
+		}
+		authentication, ok := authority.Authenticate(req.Header.Get("Authorization"))
+		if !ok {
+			envelope.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "OWNER_COMMAND_UNAUTHORIZED", "message": "Trusted local-owner command authentication failed"}})
+			return
+		}
+		var in ownerProofRequest
+		dec := json.NewDecoder(http.MaxBytesReader(w, req.Body, 16<<10))
+		dec.DisallowUnknownFields()
+		if dec.Decode(&in) != nil || dec.Decode(&struct{}{}) != io.EOF || !in.Class.Valid() || in.Class.Material() {
+			envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_PROOF_INVALID", "message": "Routine owner proof body is invalid"}})
+			return
+		}
+		now := time.Now().UTC()
+		minted, err := kernel.Mint(req.Context(), ownerproof.MintRequest{
+			ID: domain.OwnerProofID("owner-proof-" + uuid.NewString()), AppRunID: authentication.AppRunID,
+			MissionID: in.MissionID, ContentDigest: in.ContentDigest, TargetID: in.TargetID,
+			TargetGeneration: in.TargetGeneration, Class: in.Class, ExpiresAt: now.Add(2 * time.Minute), Now: now,
+		})
+		if err != nil || minted.Bearer == "" {
+			envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_PROOF_INVALID", "message": "Routine owner proof could not be minted"}})
+			return
+		}
+		envelope.WriteJSON(w, http.StatusCreated, map[string]any{"data": map[string]any{"proofId": minted.Proof.ID, "bearer": minted.Bearer, "expiresAt": minted.Proof.ExpiresAt}})
 	})
 }
