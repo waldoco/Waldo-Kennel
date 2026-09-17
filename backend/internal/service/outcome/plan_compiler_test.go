@@ -135,10 +135,14 @@ type routingInventoryFake struct {
 	candidates    []domain.RoutingCandidate
 	generationIDs []string
 	snapshotIDs   []string
+	err           error
 }
 
 func (r *routingInventoryFake) RoutingSnapshot(_ context.Context, _ domain.ProjectID, preference *domain.RoutingPreference) (ports.RoutingInventorySnapshot, error) {
 	r.calls++
+	if r.err != nil {
+		return ports.RoutingInventorySnapshot{}, r.err
+	}
 	if preference != nil {
 		preferenceCopy := *preference
 		r.preference = &preferenceCopy
@@ -435,5 +439,88 @@ func TestEvaluateAdmissionRejectsDifferentInventoryGenerations(t *testing.T) {
 	}
 	if result.Eligible || result.Verdict.Reasons[0] != domain.AdmissionCapabilitySnapshotChanged {
 		t.Fatalf("%+v", result)
+	}
+}
+
+// A missing or invalid admission policy is a plan-wide operator error: at the
+// staged service boundary (approval and Attempt start alike) it must surface
+// as its typed reason before any routing inventory is read, never masked by a
+// routing read failure.
+func TestEvaluateAdmissionPolicyFailureBeatsRoutingReadFailureAtStagedBoundary(t *testing.T) {
+	for _, stage := range []ports.AdmissionStage{ports.AdmissionStageApproval, ports.AdmissionStageStart} {
+		t.Run(string(stage)+"-nil-policy", func(t *testing.T) {
+			router := &routingInventoryFake{candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+			svc, _, outcomeID, _ := newPlanningTestService(t, router)
+			view, _ := svc.Get(context.Background(), outcomeID)
+			plan, err := svc.ProposePlan(context.Background(), outcomeID, view.Current.Number)
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc.AdmissionPolicy = nil
+			router.err = fmt.Errorf("routing inventory read failed")
+			calls := router.calls
+			result, err := svc.EvaluateAdmissionStage(context.Background(), ports.AdmissionStageInput{Stage: stage, ProjectID: "mer", Outcome: &view.Outcome, Contract: &view.Current, Plan: &plan.Plan})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Eligible || len(result.Verdict.Reasons) != 1 || result.Verdict.Reasons[0] != domain.AdmissionPolicyMissing {
+				t.Fatalf("%+v", result)
+			}
+			if router.calls != calls {
+				t.Fatalf("routing inventory read despite policy failure: %d -> %d", calls, router.calls)
+			}
+		})
+		t.Run(string(stage)+"-invalid-policy", func(t *testing.T) {
+			router := &routingInventoryFake{candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+			svc, _, outcomeID, _ := newPlanningTestService(t, router)
+			view, _ := svc.Get(context.Background(), outcomeID)
+			plan, err := svc.ProposePlan(context.Background(), outcomeID, view.Current.Number)
+			if err != nil {
+				t.Fatal(err)
+			}
+			policy := testAdmissionPolicy()
+			policy.Digest = "corrupted"
+			svc.AdmissionPolicy = policy
+			router.err = fmt.Errorf("routing inventory read failed")
+			result, err := svc.EvaluateAdmissionStage(context.Background(), ports.AdmissionStageInput{Stage: stage, ProjectID: "mer", Outcome: &view.Outcome, Contract: &view.Current, Plan: &plan.Plan})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Eligible || len(result.Verdict.Reasons) != 1 || result.Verdict.Reasons[0] != domain.AdmissionPolicyInvalid {
+				t.Fatalf("%+v", result)
+			}
+		})
+	}
+}
+
+// The same precedence holds against a routing generation split: the policy
+// reason wins and no snapshot is read.
+func TestEvaluateAdmissionPolicyFailureBeatsGenerationSplitAtStagedBoundary(t *testing.T) {
+	router := &routingInventoryFake{generationIDs: []string{"g1", "g2"}, snapshotIDs: []string{"same", "same"}, candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessClaudeCode, "sonnet-test"), executionCandidate(domain.HarnessCodex, "gpt-test")}}
+	svc, _, outcomeID, _ := newPlanningTestService(t, router)
+	view, _ := svc.Get(context.Background(), outcomeID)
+	plan, err := svc.ProposePlan(context.Background(), outcomeID, view.Current.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Plan.WorkUnits[1].Provider = domain.HarnessCodex
+	plan.Plan.WorkUnits[1].ModelSelection = domain.ExecutionBindingModelExplicit
+	plan.Plan.WorkUnits[1].Model = "gpt-test"
+	plan.Plan.RoutingDecisions[1].Decision.RecommendedProvider = string(domain.HarnessCodex)
+	plan.Plan.RoutingDecisions[1].Decision.RecommendedModelSelection = domain.ExecutionBindingModelExplicit
+	plan.Plan.RoutingDecisions[1].Decision.RecommendedModel = "gpt-test"
+	policy := testAdmissionPolicy()
+	policy.Digest = "corrupted"
+	svc.AdmissionPolicy = policy
+	calls := router.calls
+	result, err := svc.EvaluateAdmissionStage(context.Background(), ports.AdmissionStageInput{Stage: ports.AdmissionStageApproval, ProjectID: "mer", Outcome: &view.Outcome, Contract: &view.Current, Plan: &plan.Plan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Eligible || len(result.Verdict.Reasons) != 1 || result.Verdict.Reasons[0] != domain.AdmissionPolicyInvalid {
+		t.Fatalf("%+v", result)
+	}
+	if router.calls != calls {
+		t.Fatalf("routing inventory read despite policy failure: %d -> %d", calls, router.calls)
 	}
 }

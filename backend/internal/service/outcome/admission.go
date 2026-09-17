@@ -211,6 +211,12 @@ func (s *Service) evaluatePlanAdmission(ctx context.Context, outcome domain.Outc
 	if len(plan.WorkUnits) == 0 {
 		return admissionEvaluator{now: s.clock, policy: s.AdmissionPolicy}.evaluate(admissionInput{outcome: outcome, contract: contract, plan: &plan}), nil
 	}
+	// The plan-wide policy gate runs before any routing inventory is read: a
+	// missing or invalid operator policy must surface as its typed reason,
+	// never be masked by a routing read failure or a generation split.
+	if s.AdmissionPolicy == nil || s.AdmissionPolicy.Validate() != nil {
+		return admissionEvaluator{now: s.clock, policy: s.AdmissionPolicy}.evaluate(admissionInput{outcome: outcome, contract: contract, plan: &plan}), nil
+	}
 	snapshots := make(map[domain.WorkUnitID]ports.RoutingInventorySnapshot, len(plan.WorkUnits))
 	byPreference := make(map[string][]domain.WorkUnitID)
 	preferences := make(map[string]*domain.RoutingPreference)
