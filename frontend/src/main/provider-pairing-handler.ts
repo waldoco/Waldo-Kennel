@@ -98,6 +98,23 @@ export function createCodexDiscoveryHandler(d: Deps) {
     };
   };
 }
+const connectionBearers = new Map<
+  string,
+  { generation: number; bearer: string }
+>();
+export function readCodexConnectionBearer(
+  connectionId: string,
+  generation: number,
+): string | null {
+  const current = connectionBearers.get(connectionId);
+  return current?.generation === generation ? current.bearer : null;
+}
+export function clearCodexConnectionBearer(connectionId: string): void {
+  connectionBearers.delete(connectionId);
+}
+export function resetCodexConnectionBearersForTest(): void {
+  connectionBearers.clear();
+}
 export function createCodexPairingStateHandler(d: Deps) {
   return async (e: Event, input: unknown): Promise<CodexPairingState> => {
     primary(d, e);
@@ -133,11 +150,35 @@ export function createCodexPairingStateHandler(d: Deps) {
     };
     const intent = body.data?.intents?.[0];
     if (!intent) return { state: "unpaired" };
+    if (intent.connectionId) {
+      const connectionResponse = await d.fetch(
+        `http://127.0.0.1:${daemon.port}/api/v1/harness-connections/${encodeURIComponent(intent.connectionId)}`,
+      );
+      if (connectionResponse.ok) {
+        const connectionBody = (await connectionResponse.json()) as {
+          data?: { connection?: { generation?: number; state?: string } };
+        };
+        const connection = connectionBody.data?.connection;
+        if (
+          connection &&
+          (connection.state !== "connected" ||
+            connection.generation !== intent.expectedGeneration)
+        )
+          clearCodexConnectionBearer(intent.connectionId);
+      }
+    }
     if (intent.status === "requested")
       return { state: "awaiting_confirmation" };
+    if (intent.status === "approved")
+      return {
+        state: "action_needed",
+        reason: "pairing_activation_incomplete",
+        repair: "retry_pairing",
+        message:
+          "Pairing was approved but did not complete. Retry to keep the previous connection unchanged.",
+      };
     if (
-      (intent.status === "approved" ||
-        intent.status === "activating" ||
+      (intent.status === "activating" ||
         intent.status === "challenge_active") &&
       intent.proofState !== "succeeded"
     )
@@ -156,12 +197,21 @@ export function createCodexPairingStateHandler(d: Deps) {
         message:
           "Pairing did not complete. Your previous connection was not changed.",
       };
-    if (intent.connectionId && intent.proofState === "succeeded")
+    if (intent.connectionId && intent.proofState === "succeeded") {
+      const generation = intent.expectedGeneration ?? 0;
+      if (!readCodexConnectionBearer(intent.connectionId, generation))
+        return {
+          state: "action_needed",
+          reason: "connection_bearer_unavailable",
+          repair: "reconnect_adapter",
+          message: "Reconnect Codex for this app session.",
+        };
       return {
         state: "connected",
         connectionId: intent.connectionId,
-        generation: intent.expectedGeneration,
+        generation,
       };
+    }
     return { state: "unpaired" };
   };
 }
@@ -213,17 +263,6 @@ async function ownerPost(
   if (!response.ok)
     throw Error(`Codex pairing command rejected (${response.status})`);
   return response.json() as Promise<Record<string, unknown>>;
-}
-const connectionBearers = new Map<
-  string,
-  { generation: number; bearer: string }
->();
-export function readCodexConnectionBearer(
-  connectionId: string,
-  generation: number,
-): string | null {
-  const current = connectionBearers.get(connectionId);
-  return current?.generation === generation ? current.bearer : null;
 }
 export function createCodexPairingHandler(d: PairingDeps) {
   return async (e: Event, input: unknown): Promise<CodexPairingState> => {

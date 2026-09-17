@@ -18,7 +18,8 @@ UPDATE harness_pairing_challenges SET result_code=sqlc.arg(result_code), updated
 WHERE id=sqlc.arg(id) AND result_code IS NULL;
 
 -- name: InsertHarnessPairingIntent :execrows
-INSERT INTO harness_pairing_intents(id,project_id,kind,connection_id,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,expected_generation,connection_expires_at,expires_at,digest,status,proposal_request_key,proposal_request_fingerprint,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+INSERT INTO harness_pairing_intents(id,project_id,kind,connection_id,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,expected_generation,connection_expires_at,expires_at,digest,status,proposal_request_key,proposal_request_fingerprint,created_at,updated_at)
+SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=? AND archived_at IS NULL);
 -- name: GetHarnessPairingIntentByProposalRequest :one
 SELECT * FROM harness_pairing_intents WHERE app_run_id=? AND proposal_request_key=?;
 -- name: SupersedeLiveHarnessPairingIntents :execrows

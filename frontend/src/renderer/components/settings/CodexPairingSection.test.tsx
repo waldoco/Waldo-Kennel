@@ -27,11 +27,10 @@ describe("Codex project pairing", () => {
     await screen.findByText(/Codex 1.2.3/);
     fireEvent.click(screen.getByRole("button", { name: "Pair Codex" }));
     await waitFor(() =>
-      expect(pairCodex).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: "project-1",
-        }),
-      ),
+      expect(pairCodex).toHaveBeenCalledWith({
+        projectId: "project-1",
+        requestKey: expect.any(String),
+      }),
     );
     await screen.findByText(/Connected/);
   });

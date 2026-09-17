@@ -68,7 +68,6 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
     try {
       const next = await bridge.pairCodex({
         projectId,
-        installationId: discovery.installationId,
         requestKey: crypto.randomUUID(),
       });
       setPairing(next);

@@ -272,3 +272,23 @@ func TestHarnessConnectionCrossAppRunRotationArchivesOldGeneration(t *testing.T)
 		t.Fatal(err)
 	}
 }
+
+func TestCreateHarnessPairingIntentRejectsArchivedProjectAtInsert(t *testing.T) {
+	s := sqlitetest.MustOpen(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := s.UpsertProject(ctx, domain.ProjectRecord{ID: "project-1", Path: t.TempDir(), RegisteredAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.ArchiveProject(ctx, "project-1", now); err != nil || !ok {
+		t.Fatalf("archive=(%v,%v)", ok, err)
+	}
+	v := domain.HarnessPairingIntent{ID: "intent-archived", ProjectID: "project-1", Kind: domain.HarnessPairingKindPair, ConnectionID: "hc", InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "rsp", AppRunID: "run", CapabilityClasses: []domain.HarnessCapabilityClass{domain.HarnessCapabilityTurn}, ExpectedGeneration: 1, ConnectionExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(time.Minute), Status: domain.HarnessPairingIntentRequested, ProposalRequestKey: "key", ProposalRequestFingerprint: domain.DigestSHA256([]byte("request")), CreatedAt: now, UpdatedAt: now}
+	v.Digest, _ = v.ComputedDigest()
+	if _, created, err := s.CreateHarnessPairingIntent(ctx, v); err == nil || created {
+		t.Fatalf("archived insert accepted created=%v err=%v", created, err)
+	}
+	if _, found, err := s.GetHarnessPairingIntent(ctx, v.ID); err != nil || found {
+		t.Fatalf("persisted=%v err=%v", found, err)
+	}
+}
