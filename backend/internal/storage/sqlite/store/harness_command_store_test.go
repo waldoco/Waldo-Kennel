@@ -380,3 +380,60 @@ func TestHarnessCommandOutboxRecoveryReopensPersistedPayloadAndDestination(t *te
 		t.Fatalf("recovered=%+v claim=%+v", pending[0], claim)
 	}
 }
+
+func TestHarnessCommandConcurrentExactDuplicatesHaveOneProofConsumerAndClaim(t *testing.T) {
+	f := newCommandFixture(t)
+	const workers = 12
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	created := make(chan bool, workers)
+	errs := make(chan error, workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			claim, made, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request)
+			if err == nil && claim.ID == "" {
+				err = errors.New("empty converged claim")
+			}
+			created <- made
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(created)
+	close(errs)
+	winners := 0
+	for made := range created {
+		if made {
+			winners++
+		}
+	}
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("created winners=%d, want 1", winners)
+	}
+	proof, found, err := f.store.GetOwnerProof(context.Background(), f.request.OwnerProofID)
+	if err != nil || !found || proof.ConsumedAt == nil {
+		t.Fatalf("proof=%+v found=%v err=%v", proof, found, err)
+	}
+}
+
+func TestHarnessCommandCanceledBeforeClaimWritesRollsBackAndCanRetry(t *testing.T) {
+	f := newCommandFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	ctx = store.WithCommandClaimHook(ctx, func() { cancel() })
+	if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(ctx, f.request); err == nil {
+		t.Fatal("canceled pre-write transaction unexpectedly committed")
+	}
+	proof, found, err := f.store.GetOwnerProof(context.Background(), f.request.OwnerProofID)
+	if err != nil || !found || proof.ConsumedAt != nil {
+		t.Fatalf("proof after rollback=%+v found=%v err=%v", proof, found, err)
+	}
+	if _, created, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); err != nil || !created {
+		t.Fatalf("retry created=%v err=%v", created, err)
+	}
+}
