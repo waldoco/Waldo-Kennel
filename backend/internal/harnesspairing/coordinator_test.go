@@ -27,7 +27,7 @@ func testTuple() IssueChallengeRequest {
 
 func proveFromIssue(req IssueChallengeRequest, issued IssuedChallenge) ProveRequest {
 	return ProveRequest{
-		ChallengeID: issued.Challenge.ID, Secret: issued.Secret,
+		ChallengeID: issued.Challenge.ID, Secret: issued.Secret, ConnectionID: req.ConnectionID,
 		InstallationID: req.InstallationID, HarnessIdentity: req.HarnessIdentity, ProviderVersion: req.ProviderVersion,
 		MissionID: req.MissionID, AppRunID: req.AppRunID, AdapterDigest: req.AdapterDigest, ProtocolFingerprint: req.ProtocolFingerprint,
 		CapabilityClasses: req.CapabilityClasses, ExpectedGeneration: req.ExpectedGeneration, Now: req.Now,
@@ -139,17 +139,20 @@ func TestProve_UndeclaredCapabilityClassFailsBeforeKernel(t *testing.T) {
 // still succeeds — proving failures are rejected, not silently consumed.
 func TestProve_AdversarialTupleMatrix(t *testing.T) {
 	mutations := map[string]func(*ProveRequest){
-		"wrong_secret":       func(p *ProveRequest) { p.Secret = "wrong-secret-value-thats-plainly-incorrect" },
-		"wrong_installation": func(p *ProveRequest) { p.InstallationID = "attacker-installation" },
-		"wrong_adapter":      func(p *ProveRequest) { p.AdapterDigest = domain.DigestSHA256([]byte("attacker-adapter")) },
-		"wrong_harness":      func(p *ProveRequest) { p.HarnessIdentity = "attacker-harness" },
-		"wrong_provider":     func(p *ProveRequest) { p.ProviderVersion = "9.9.9" },
-		"wrong_protocol":     func(p *ProveRequest) { p.ProtocolFingerprint = domain.DigestSHA256([]byte("attacker-protocol")) },
-		"wrong_mission":      func(p *ProveRequest) { p.MissionID = "attacker-mission" },
-		"wrong_app_run":      func(p *ProveRequest) { p.AppRunID = "attacker-run" },
-		"wrong_class":        func(p *ProveRequest) { p.CapabilityClasses = []domain.HarnessCapabilityClass{domain.HarnessCapabilityAccept} },
-		"wrong_generation":   func(p *ProveRequest) { p.ExpectedGeneration = p.ExpectedGeneration + 1 },
-		"unknown_challenge":  func(p *ProveRequest) { p.ChallengeID = "does-not-exist" },
+		"wrong_connection_id": func(p *ProveRequest) { p.ConnectionID = "attacker-connection" },
+		"wrong_secret":        func(p *ProveRequest) { p.Secret = "wrong-secret-value-thats-plainly-incorrect" },
+		"wrong_installation":  func(p *ProveRequest) { p.InstallationID = "attacker-installation" },
+		"wrong_adapter":       func(p *ProveRequest) { p.AdapterDigest = domain.DigestSHA256([]byte("attacker-adapter")) },
+		"wrong_harness":       func(p *ProveRequest) { p.HarnessIdentity = "attacker-harness" },
+		"wrong_provider":      func(p *ProveRequest) { p.ProviderVersion = "9.9.9" },
+		"wrong_protocol":      func(p *ProveRequest) { p.ProtocolFingerprint = domain.DigestSHA256([]byte("attacker-protocol")) },
+		"wrong_mission":       func(p *ProveRequest) { p.MissionID = "attacker-mission" },
+		"wrong_app_run":       func(p *ProveRequest) { p.AppRunID = "attacker-run" },
+		"wrong_class": func(p *ProveRequest) {
+			p.CapabilityClasses = []domain.HarnessCapabilityClass{domain.HarnessCapabilityAccept}
+		},
+		"wrong_generation":  func(p *ProveRequest) { p.ExpectedGeneration = p.ExpectedGeneration + 1 },
+		"unknown_challenge": func(p *ProveRequest) { p.ChallengeID = "does-not-exist" },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -247,6 +250,82 @@ func TestIssue_SupersedesPriorPendingChallengeForSameConnection(t *testing.T) {
 	}
 }
 
+func TestIssue_ConcurrentLeavesOnePendingWinner(t *testing.T) {
+	c, _ := newFixture(t)
+	req := testTuple()
+	const n = 8
+	var wg sync.WaitGroup
+	issued := make([]IssuedChallenge, n)
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			local := *c
+			local.random = deterministicReader(string(rune('a' + i)))
+			issued[i], errs[i] = local.Issue(context.Background(), req)
+		}(i)
+	}
+	wg.Wait()
+	pending := 0
+	for i := range issued {
+		if errs[i] != nil {
+			t.Fatalf("issue %d: %v", i, errs[i])
+		}
+		stored, found, err := c.store.GetHarnessPairingChallenge(context.Background(), issued[i].Challenge.ID)
+		if err != nil || !found {
+			t.Fatalf("read %d found=%v err=%v", i, found, err)
+		}
+		if stored.Status == domain.HarnessPairingPending {
+			pending++
+		}
+	}
+	if pending != 1 {
+		t.Fatalf("pending=%d want 1", pending)
+	}
+}
+
+func TestProve_ConsumedReplayCannotPoisonWinnerResult(t *testing.T) {
+	c, kernel := newFixture(t)
+	req := testTuple()
+	issued, err := c.Issue(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prove := proveFromIssue(req, issued)
+	consumed := make(chan struct{})
+	release := make(chan struct{})
+	c.afterConsume = func() { close(consumed); <-release }
+	type outcome struct {
+		result ProveResult
+		code   domain.HarnessPairingResultCode
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() { r, code, err := c.Prove(context.Background(), prove); done <- outcome{r, code, err} }()
+	<-consumed
+	if _, code, err := c.Prove(context.Background(), prove); !errors.Is(err, domain.ErrHarnessPairingFailed) || code != domain.HarnessPairingResultReplayed {
+		t.Fatalf("replay code=%s err=%v", code, err)
+	}
+	mid, found, err := c.store.GetHarnessPairingChallenge(context.Background(), issued.Challenge.ID)
+	if err != nil || !found || mid.ResultCode != nil {
+		t.Fatalf("mid found=%v code=%v err=%v", found, mid.ResultCode, err)
+	}
+	close(release)
+	winner := <-done
+	if winner.err != nil || winner.code != domain.HarnessPairingResultSucceeded || winner.result.Issued.Bearer == "" {
+		t.Fatalf("winner=%+v", winner)
+	}
+	stored, found, err := c.store.GetHarnessPairingChallenge(context.Background(), issued.Challenge.ID)
+	if err != nil || !found || stored.ResultCode == nil || *stored.ResultCode != domain.HarnessPairingResultSucceeded {
+		t.Fatalf("stored found=%v code=%v err=%v", found, stored.ResultCode, err)
+	}
+	binding := harnessconnection.Binding{ConnectionID: req.ConnectionID, InstallationID: req.InstallationID, AdapterDigest: req.AdapterDigest, HarnessIdentity: req.HarnessIdentity, ProviderVersion: req.ProviderVersion, ProtocolFingerprint: req.ProtocolFingerprint, MissionID: req.MissionID, AppRunID: req.AppRunID, Generation: 1, Class: domain.HarnessCapabilityTurn}
+	if _, err := kernel.Authenticate(context.Background(), winner.result.Issued.Bearer, binding, req.Now); err != nil {
+		t.Fatalf("bearer: %v", err)
+	}
+}
+
 // TestProve_ConcurrentExactRetryHasOneWinner exercises acceptance criterion 7:
 // two concurrent proofs of the same challenge must have exactly one winner.
 func TestProve_ConcurrentExactRetryHasOneWinner(t *testing.T) {
@@ -285,80 +364,53 @@ func TestProve_ConcurrentExactRetryHasOneWinner(t *testing.T) {
 	if successes != 1 || bearerCount != 1 {
 		t.Fatalf("successes=%d bearerCount=%d, want exactly 1 of each", successes, bearerCount)
 	}
+	stored, found, err := c.store.GetHarnessPairingChallenge(context.Background(), issued.Challenge.ID)
+	if err != nil || !found || stored.ResultCode == nil || *stored.ResultCode != domain.HarnessPairingResultSucceeded {
+		t.Fatalf("durable result after bearer issue: found=%v code=%v err=%v", found, stored.ResultCode, err)
+	}
 }
 
-// TestProve_ConcurrentRotationsHaveOneCurrentGeneration exercises acceptance
-// criterion 7's rotation half: two independently-issued rotate challenges
-// targeting the same current generation race at the kernel's own CAS; only
-// one may win, and the loser's bearer must never authenticate.
-func TestProve_ConcurrentRotationsHaveOneCurrentGeneration(t *testing.T) {
+// TestRotateIntentReplacementSerializesBeforeKernel freezes the owner-intent
+// semantic: opening a newer rotate intent supersedes the older one before proof.
+func TestRotateIntentReplacementSerializesBeforeKernel(t *testing.T) {
 	c, kernel := newFixture(t)
 	pairReq := testTuple()
 	paired, err := c.Issue(context.Background(), pairReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := c.Prove(context.Background(), proveFromIssue(pairReq, paired)); err != nil {
+	original, code, err := c.Prove(context.Background(), proveFromIssue(pairReq, paired))
+	if err != nil || code != domain.HarnessPairingResultSucceeded {
 		t.Fatal(err)
 	}
-
 	rotateReq := pairReq
 	rotateReq.Kind = domain.HarnessPairingKindRotate
 	rotateReq.ExpectedGeneration = 1
 	rotateReq.Now = pairReq.Now.Add(time.Minute)
-
-	// Issue two rotate challenges directly against the store so Issue's own
-	// auto-supersede-on-issue does not eliminate the race we want to test.
 	first, err := c.Issue(context.Background(), rotateReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := issueSiblingChallenge(t, c, rotateReq, "rotate-sibling")
-
-	var wg sync.WaitGroup
-	results := make([]ProveResult, 2)
-	codes := make([]domain.HarnessPairingResultCode, 2)
-	proves := []ProveRequest{proveFromIssue(rotateReq, first), proveFromIssue(rotateReq, second)}
-	for i := range proves {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			results[i], codes[i], _ = c.Prove(context.Background(), proves[i])
-		}(i)
-	}
-	wg.Wait()
-
-	winners := 0
-	var winningBearer string
-	for i := range results {
-		if codes[i] == domain.HarnessPairingResultSucceeded {
-			winners++
-			winningBearer = results[i].Issued.Bearer
-		}
-	}
-	if winners != 1 {
-		t.Fatalf("winners = %d, want exactly 1", winners)
-	}
-	if _, err := kernel.Authenticate(context.Background(), winningBearer, harnessconnection.Binding{
-		ConnectionID: pairReq.ConnectionID, InstallationID: pairReq.InstallationID, AdapterDigest: pairReq.AdapterDigest,
-		HarnessIdentity: pairReq.HarnessIdentity, ProviderVersion: pairReq.ProviderVersion, ProtocolFingerprint: pairReq.ProtocolFingerprint,
-		MissionID: pairReq.MissionID, AppRunID: pairReq.AppRunID, Generation: 2, Class: domain.HarnessCapabilityTurn,
-	}, rotateReq.Now); err != nil {
-		t.Fatalf("winning bearer must authenticate at generation 2: %v", err)
-	}
-}
-
-// issueSiblingChallenge bypasses Coordinator.Issue's supersede-on-issue so a
-// second, independently-provable challenge can coexist for the same
-// connection — used only to construct the concurrent-rotation race.
-func issueSiblingChallenge(t *testing.T, c *Coordinator, req IssueChallengeRequest, seed string) IssuedChallenge {
-	t.Helper()
-	c2 := NewWithRandom(c.store, c.kernel, deterministicReader(seed))
-	issued, err := issueWithoutSupersede(context.Background(), c2, req)
+	second, err := c.Issue(context.Background(), rotateReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return issued
+	if _, code, err := c.Prove(context.Background(), proveFromIssue(rotateReq, first)); !errors.Is(err, domain.ErrHarnessPairingFailed) || code != domain.HarnessPairingResultSuperseded {
+		t.Fatalf("first code=%s err=%v", code, err)
+	}
+	rotated, code, err := c.Prove(context.Background(), proveFromIssue(rotateReq, second))
+	if err != nil || code != domain.HarnessPairingResultSucceeded {
+		t.Fatalf("second code=%s err=%v", code, err)
+	}
+	binding := harnessconnection.Binding{ConnectionID: pairReq.ConnectionID, InstallationID: pairReq.InstallationID, AdapterDigest: pairReq.AdapterDigest, HarnessIdentity: pairReq.HarnessIdentity, ProviderVersion: pairReq.ProviderVersion, ProtocolFingerprint: pairReq.ProtocolFingerprint, MissionID: pairReq.MissionID, AppRunID: pairReq.AppRunID, Class: domain.HarnessCapabilityTurn}
+	binding.Generation = 1
+	if _, err := kernel.Authenticate(context.Background(), original.Issued.Bearer, binding, rotateReq.Now); err == nil {
+		t.Fatal("prior bearer survived rotation")
+	}
+	binding.Generation = 2
+	if _, err := kernel.Authenticate(context.Background(), rotated.Issued.Bearer, binding, rotateReq.Now); err != nil {
+		t.Fatalf("new bearer: %v", err)
+	}
 }
 
 func deterministicReader(seed string) io.Reader {
@@ -367,42 +419,6 @@ func deterministicReader(seed string) io.Reader {
 		h = append(h, seed...)
 	}
 	return bytes.NewReader(h[:64])
-}
-
-// issueWithoutSupersede duplicates the minimal happy-path insert Issue
-// performs, skipping the supersede-pending step, purely so tests can
-// construct two live sibling challenges for the same connection to exercise
-// the kernel's own concurrency CAS rather than the coordinator's supersede
-// behavior (already covered by TestIssue_SupersedesPriorPendingChallenge...).
-func issueWithoutSupersede(ctx context.Context, c *Coordinator, req IssueChallengeRequest) (IssuedChallenge, error) {
-	classes, err := domain.NormalizeHarnessCapabilities(req.CapabilityClasses)
-	if err != nil {
-		return IssuedChallenge{}, err
-	}
-	id, err := randomToken(c.random, challengeIDBytes)
-	if err != nil {
-		return IssuedChallenge{}, err
-	}
-	secret, verifier, err := randomSecretAndVerifier(c.random)
-	if err != nil {
-		return IssuedChallenge{}, err
-	}
-	rec := domain.HarnessPairingChallenge{
-		ID: domain.PairingChallengeID(id), Kind: req.Kind, ConnectionID: req.ConnectionID,
-		InstallationID: req.InstallationID, AdapterDigest: req.AdapterDigest, HarnessIdentity: req.HarnessIdentity,
-		ProviderVersion: req.ProviderVersion, ProtocolFingerprint: req.ProtocolFingerprint, MissionID: req.MissionID,
-		AppRunID: req.AppRunID, CapabilityClasses: classes, ExpectedGeneration: req.ExpectedGeneration,
-		ProofVerifier: verifier, Status: domain.HarnessPairingPending, ConnectionExpiresAt: req.ConnectionExpiresAt.UTC(),
-		ExpiresAt: req.Now.Add(req.TTL).UTC(), CreatedAt: req.Now.UTC(), UpdatedAt: req.Now.UTC(),
-	}
-	stored, created, err := c.store.CreateHarnessPairingChallenge(ctx, rec)
-	if err != nil {
-		return IssuedChallenge{}, err
-	}
-	if !created {
-		return IssuedChallenge{}, domain.ErrHarnessPairingConflict
-	}
-	return IssuedChallenge{Challenge: redacted(stored), Secret: domain.PairingChallengeSecret(secret)}, nil
 }
 
 // TestProve_CrashAfterConsumeBeforeKernelRequiresNewChallenge simulates the

@@ -87,7 +87,7 @@ func TestBoundedNativeMacOSTransportProof(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	srv, err := NewServer(ln, ServerConfig{
-		Coordinator: coord, ChallengeTTL: time.Minute, ConnectionTTL: 24 * time.Hour, Logger: logger,
+		Coordinator: coord, IntentStore: store, ChallengeTTL: time.Minute, ConnectionTTL: 24 * time.Hour, Logger: logger,
 	})
 	if err != nil {
 		t.Fatalf("new server: %v", err)
@@ -108,7 +108,13 @@ func TestBoundedNativeMacOSTransportProof(t *testing.T) {
 		CapabilityClasses: []string{"turn"}, ExpectedGeneration: 1,
 	}
 
+	ownerIssued, err := coord.Issue(context.Background(), harnesspairing.IssueChallengeRequest{Kind: domain.HarnessPairingKindPair, ConnectionID: domain.HarnessConnectionID(tuple.ConnectionID), InstallationID: tuple.InstallationID, AdapterDigest: domain.SHA256Digest(tuple.AdapterDigest), HarnessIdentity: tuple.HarnessIdentity, ProviderVersion: tuple.ProviderVersion, ProtocolFingerprint: domain.SHA256Digest(tuple.ProtocolFingerprint), MissionID: tuple.MissionID, AppRunID: tuple.AppRunID, CapabilityClasses: toCapabilityClasses(tuple.CapabilityClasses), ExpectedGeneration: tuple.ExpectedGeneration, ConnectionExpiresAt: time.Now().UTC().Add(24 * time.Hour), TTL: time.Minute, Now: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tuple.IntentID = string(ownerIssued.Challenge.ID)
 	issued, err := client.RequestChallenge(tuple)
+	issued.Secret = string(ownerIssued.Secret)
 	if err != nil {
 		t.Fatalf("request challenge: %v", err)
 	}
@@ -117,7 +123,7 @@ func TestBoundedNativeMacOSTransportProof(t *testing.T) {
 
 	proveTuple := func(secret string) ProveRequest {
 		return ProveRequest{
-			ChallengeID: issued.ChallengeID, Secret: secret, InstallationID: tuple.InstallationID,
+			ChallengeID: issued.ChallengeID, Secret: secret, ConnectionID: tuple.ConnectionID, InstallationID: tuple.InstallationID,
 			AdapterDigest: tuple.AdapterDigest, HarnessIdentity: tuple.HarnessIdentity, ProviderVersion: tuple.ProviderVersion,
 			ProtocolFingerprint: tuple.ProtocolFingerprint, MissionID: tuple.MissionID, AppRunID: tuple.AppRunID,
 			CapabilityClasses: tuple.CapabilityClasses, ExpectedGeneration: tuple.ExpectedGeneration,

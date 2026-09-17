@@ -30,7 +30,9 @@ func jsonMarshalLine(v any) ([]byte, error) {
 	return append(b, '\n'), nil
 }
 
-func jsonUnmarshalLine(line []byte, v any) error { return json.Unmarshal(bytes.TrimRight(line, "\n"), v) }
+func jsonUnmarshalLine(line []byte, v any) error {
+	return json.Unmarshal(bytes.TrimRight(line, "\n"), v)
+}
 
 func newTestServer(t *testing.T, verifier ports.LocalPeerVerifier) (*Server, string, *harnessconnection.Kernel) {
 	t.Helper()
@@ -47,7 +49,7 @@ func newTestServer(t *testing.T, verifier ports.LocalPeerVerifier) (*Server, str
 
 	fixedNow := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
 	srv, err := NewServer(ln, ServerConfig{
-		Coordinator: coordinator, PeerVerifier: verifier, Now: func() time.Time { return fixedNow },
+		Coordinator: coordinator, IntentStore: store, PeerVerifier: verifier, Now: func() time.Time { return fixedNow },
 		ChallengeTTL: time.Minute, ConnectionTTL: time.Hour,
 	})
 	if err != nil {
@@ -69,11 +71,17 @@ func testChallengeRequest() ChallengeRequest {
 }
 
 func TestServer_EndToEndPairThenAuthenticate(t *testing.T) {
-	_, sockPath, kernel := newTestServer(t, allowPeerVerifier{})
+	srv, sockPath, kernel := newTestServer(t, allowPeerVerifier{})
 	client := NewClient(sockPath)
 
 	reqTuple := testChallengeRequest()
+	ownerIssued, err := issueOwnerIntent(t, srv, reqTuple)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqTuple.IntentID = string(ownerIssued.Challenge.ID)
 	issued, err := client.RequestChallenge(reqTuple)
+	issued.Secret = string(ownerIssued.Secret)
 	if err != nil {
 		t.Fatalf("request challenge: %v", err)
 	}
@@ -82,7 +90,7 @@ func TestServer_EndToEndPairThenAuthenticate(t *testing.T) {
 	}
 
 	bearer, err := client.Prove(ProveRequest{
-		ChallengeID: issued.ChallengeID, Secret: issued.Secret, InstallationID: reqTuple.InstallationID,
+		ChallengeID: issued.ChallengeID, Secret: issued.Secret, ConnectionID: reqTuple.ConnectionID, InstallationID: reqTuple.InstallationID,
 		AdapterDigest: reqTuple.AdapterDigest, HarnessIdentity: reqTuple.HarnessIdentity, ProviderVersion: reqTuple.ProviderVersion,
 		ProtocolFingerprint: reqTuple.ProtocolFingerprint, MissionID: reqTuple.MissionID, AppRunID: reqTuple.AppRunID,
 		CapabilityClasses: reqTuple.CapabilityClasses, ExpectedGeneration: reqTuple.ExpectedGeneration,
@@ -106,15 +114,21 @@ func TestServer_EndToEndPairThenAuthenticate(t *testing.T) {
 }
 
 func TestServer_ReplayFromADifferentConnectionFails(t *testing.T) {
-	_, sockPath, _ := newTestServer(t, allowPeerVerifier{})
+	srv, sockPath, _ := newTestServer(t, allowPeerVerifier{})
 	client := NewClient(sockPath)
 	reqTuple := testChallengeRequest()
+	ownerIssued, err := issueOwnerIntent(t, srv, reqTuple)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqTuple.IntentID = string(ownerIssued.Challenge.ID)
 	issued, err := client.RequestChallenge(reqTuple)
+	issued.Secret = string(ownerIssued.Secret)
 	if err != nil {
 		t.Fatal(err)
 	}
 	prove := ProveRequest{
-		ChallengeID: issued.ChallengeID, Secret: issued.Secret, InstallationID: reqTuple.InstallationID,
+		ChallengeID: issued.ChallengeID, Secret: issued.Secret, ConnectionID: reqTuple.ConnectionID, InstallationID: reqTuple.InstallationID,
 		AdapterDigest: reqTuple.AdapterDigest, HarnessIdentity: reqTuple.HarnessIdentity, ProviderVersion: reqTuple.ProviderVersion,
 		ProtocolFingerprint: reqTuple.ProtocolFingerprint, MissionID: reqTuple.MissionID, AppRunID: reqTuple.AppRunID,
 		CapabilityClasses: reqTuple.CapabilityClasses, ExpectedGeneration: reqTuple.ExpectedGeneration,
@@ -131,10 +145,16 @@ func TestServer_ReplayFromADifferentConnectionFails(t *testing.T) {
 }
 
 func TestServer_StolenChallengeWithoutSecretFails(t *testing.T) {
-	_, sockPath, _ := newTestServer(t, allowPeerVerifier{})
+	srv, sockPath, _ := newTestServer(t, allowPeerVerifier{})
 	client := NewClient(sockPath)
 	reqTuple := testChallengeRequest()
+	ownerIssued, err := issueOwnerIntent(t, srv, reqTuple)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqTuple.IntentID = string(ownerIssued.Challenge.ID)
 	issued, err := client.RequestChallenge(reqTuple)
+	issued.Secret = string(ownerIssued.Secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,17 +182,22 @@ func TestServer_EveryFailureReasonProducesIdenticalWireBytes(t *testing.T) {
 	coordinator := harnesspairing.New(store, kernel)
 	fixedNow := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
 	srv := &Server{
-		coordinator: coordinator, peerVerifier: allowPeerVerifier{}, now: func() time.Time { return fixedNow },
+		coordinator: coordinator, intents: store, peerVerifier: allowPeerVerifier{}, now: func() time.Time { return fixedNow },
 		challengeTTL: time.Minute, connectionTTL: time.Hour, logger: nopLogger(),
 	}
 
 	reqTuple := testChallengeRequest()
 	issue := func() ChallengeIssued {
+		ownerIssued, err := issueOwnerIntent(t, srv, reqTuple)
+		if err != nil {
+			t.Fatal(err)
+		}
 		client, serverConn := pipeClientServer(t, srv)
 		defer client.Close()
 		defer serverConn.Close()
-		id, secret := requestChallengeOverConn(t, client, reqTuple)
-		return ChallengeIssued{ChallengeID: id, Secret: secret}
+		reqTuple.IntentID = string(ownerIssued.Challenge.ID)
+		id, _ := requestChallengeOverConn(t, client, reqTuple)
+		return ChallengeIssued{ChallengeID: id, Secret: string(ownerIssued.Secret)}
 	}
 
 	fresh := issue()
@@ -270,7 +295,7 @@ func mustJSONLine(t *testing.T, v any) []byte {
 func proveLine(t *testing.T, challengeID, secret string, tuple ChallengeRequest) []byte {
 	t.Helper()
 	return mustJSONLine(t, wireProve{
-		Type: wireTypeProve, ChallengeID: challengeID, Secret: secret, InstallationID: tuple.InstallationID,
+		Type: wireTypeProve, ChallengeID: challengeID, Secret: secret, ConnectionID: tuple.ConnectionID, InstallationID: tuple.InstallationID,
 		AdapterDigest: tuple.AdapterDigest, HarnessIdentity: tuple.HarnessIdentity, ProviderVersion: tuple.ProviderVersion,
 		ProtocolFingerprint: tuple.ProtocolFingerprint, MissionID: tuple.MissionID, AppRunID: tuple.AppRunID,
 		CapabilityClasses: tuple.CapabilityClasses, ExpectedGeneration: tuple.ExpectedGeneration,
@@ -280,7 +305,7 @@ func proveLine(t *testing.T, challengeID, secret string, tuple ChallengeRequest)
 func proveLineWithMission(t *testing.T, challengeID, secret string, tuple ChallengeRequest, mission string) []byte {
 	t.Helper()
 	return mustJSONLine(t, wireProve{
-		Type: wireTypeProve, ChallengeID: challengeID, Secret: secret, InstallationID: tuple.InstallationID,
+		Type: wireTypeProve, ChallengeID: challengeID, Secret: secret, ConnectionID: tuple.ConnectionID, InstallationID: tuple.InstallationID,
 		AdapterDigest: tuple.AdapterDigest, HarnessIdentity: tuple.HarnessIdentity, ProviderVersion: tuple.ProviderVersion,
 		ProtocolFingerprint: tuple.ProtocolFingerprint, MissionID: mission, AppRunID: tuple.AppRunID,
 		CapabilityClasses: tuple.CapabilityClasses, ExpectedGeneration: tuple.ExpectedGeneration,
@@ -289,24 +314,20 @@ func proveLineWithMission(t *testing.T, challengeID, secret string, tuple Challe
 
 func requestChallengeOverConn(t *testing.T, conn net.Conn, tuple ChallengeRequest) (string, string) {
 	t.Helper()
-	line := mustJSONLine(t, wireRequestChallenge{
-		Type: wireTypeRequestChallenge, Kind: tuple.Kind, ConnectionID: tuple.ConnectionID, InstallationID: tuple.InstallationID,
-		AdapterDigest: tuple.AdapterDigest, HarnessIdentity: tuple.HarnessIdentity, ProviderVersion: tuple.ProviderVersion,
-		ProtocolFingerprint: tuple.ProtocolFingerprint, MissionID: tuple.MissionID, AppRunID: tuple.AppRunID,
-		CapabilityClasses: tuple.CapabilityClasses, ExpectedGeneration: tuple.ExpectedGeneration,
-	})
+	line := mustJSONLine(t, wireRequestChallenge{Type: wireTypeRequestChallenge, IntentID: tuple.IntentID})
 	if _, err := conn.Write(line); err != nil {
 		t.Fatal(err)
 	}
-	resp := readLine(t, conn)
-	var parsed wireChallengeIssued
-	if err := jsonUnmarshalLine(resp, &parsed); err != nil {
-		t.Fatalf("decode challenge response %q: %v", resp, err)
+	var resp wireChallengeIssued
+	if err := jsonUnmarshalLine(readLine(t, conn), &resp); err != nil {
+		t.Fatal(err)
 	}
-	if !parsed.OK {
-		t.Fatalf("challenge issuance failed: %q", resp)
-	}
-	return parsed.ChallengeID, parsed.Secret
+	return resp.ChallengeID, resp.Secret
+}
+func issueOwnerIntent(t *testing.T, srv *Server, tuple ChallengeRequest) (harnesspairing.IssuedChallenge, error) {
+	t.Helper()
+	now := srv.now().UTC()
+	return srv.coordinator.Issue(context.Background(), harnesspairing.IssueChallengeRequest{Kind: domain.HarnessPairingKind(tuple.Kind), ConnectionID: domain.HarnessConnectionID(tuple.ConnectionID), InstallationID: tuple.InstallationID, AdapterDigest: domain.SHA256Digest(tuple.AdapterDigest), HarnessIdentity: tuple.HarnessIdentity, ProviderVersion: tuple.ProviderVersion, ProtocolFingerprint: domain.SHA256Digest(tuple.ProtocolFingerprint), MissionID: tuple.MissionID, AppRunID: tuple.AppRunID, CapabilityClasses: toCapabilityClasses(tuple.CapabilityClasses), ExpectedGeneration: tuple.ExpectedGeneration, ConnectionExpiresAt: now.Add(srv.connectionTTL), TTL: srv.challengeTTL, Now: now})
 }
 
 func proveOverConn(t *testing.T, conn net.Conn, challengeID, secret string, tuple ChallengeRequest) string {
@@ -349,5 +370,17 @@ func TestListen_CreatesPrivateSocketAndDirectory(t *testing.T) {
 	}
 	if _, err := os.Lstat(sockPath); !os.IsNotExist(err) {
 		t.Fatal("expected the socket file to be removed on Close")
+	}
+}
+
+func TestRequestChallengeWireCarriesOnlyIntentID(t *testing.T) {
+	line, err := json.Marshal(wireRequestChallenge{Type: wireTypeRequestChallenge, IntentID: "pc-owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range [][]byte{[]byte("connection_id"), []byte("capability_classes"), []byte("mission_id"), []byte("adapter_digest")} {
+		if bytes.Contains(line, forbidden) {
+			t.Fatalf("wire leaked tuple field %q: %s", forbidden, line)
+		}
 	}
 }

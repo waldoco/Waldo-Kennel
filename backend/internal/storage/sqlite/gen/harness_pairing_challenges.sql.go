@@ -2,15 +2,6 @@
 // versions:
 //   sqlc v1.31.1
 // source: harness_pairing_challenges.sql
-//
-// NOTE: the sqlc binary could not be built in the environment that produced
-// this file (its pg_query_go C dependency fails to compile against this
-// machine's macOS SDK). This file was hand-written to exactly mirror the
-// conventions sqlc emits elsewhere in this package (see
-// harness_connections.sql.go) from the query file at
-// internal/storage/sqlite/queries/harness_pairing_challenges.sql. Regenerate
-// with the real sqlc binary and diff against this file when it becomes
-// available.
 
 package gen
 

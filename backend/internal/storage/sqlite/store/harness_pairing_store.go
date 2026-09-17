@@ -14,33 +14,29 @@ import (
 
 var _ ports.HarnessPairingChallengeStore = (*Store)(nil)
 
-func (s *Store) SupersedePendingHarnessPairingChallenges(ctx context.Context, connectionID domain.HarnessConnectionID, now time.Time) (int64, error) {
-	if now.IsZero() {
-		return 0, domain.ErrHarnessPairingInvalid
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	n, err := s.qw.SupersedePendingHarnessPairingChallenges(ctx, gen.SupersedePendingHarnessPairingChallengesParams{UpdatedAt: now.UTC(), ConnectionID: string(connectionID)})
-	if err != nil {
-		return 0, fmt.Errorf("supersede pending harness pairing challenges: %w", err)
-	}
-	return n, nil
-}
-
-func (s *Store) CreateHarnessPairingChallenge(ctx context.Context, rec domain.HarnessPairingChallenge) (domain.HarnessPairingChallenge, bool, error) {
+func (s *Store) ReplacePendingHarnessPairingChallenge(ctx context.Context, rec domain.HarnessPairingChallenge) (domain.HarnessPairingChallenge, error) {
 	if err := rec.Validate(); err != nil {
-		return domain.HarnessPairingChallenge{}, false, err
+		return domain.HarnessPairingChallenge{}, err
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	n, err := s.qw.InsertHarnessPairingChallenge(ctx, harnessPairingChallengeInsert(rec))
+	err := s.inTx(ctx, "replace pending harness pairing challenge", func(q *gen.Queries) error {
+		if _, err := q.SupersedePendingHarnessPairingChallenges(ctx, gen.SupersedePendingHarnessPairingChallengesParams{UpdatedAt: rec.UpdatedAt.UTC(), ConnectionID: string(rec.ConnectionID)}); err != nil {
+			return err
+		}
+		n, err := q.InsertHarnessPairingChallenge(ctx, harnessPairingChallengeInsert(rec))
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return domain.ErrHarnessPairingConflict
+		}
+		return nil
+	})
 	if err != nil {
-		return domain.HarnessPairingChallenge{}, false, fmt.Errorf("create harness pairing challenge: %w", err)
+		return domain.HarnessPairingChallenge{}, err
 	}
-	if n == 0 {
-		return domain.HarnessPairingChallenge{}, false, domain.ErrHarnessPairingConflict
-	}
-	return rec, true, nil
+	return rec, nil
 }
 
 func (s *Store) GetHarnessPairingChallenge(ctx context.Context, id domain.PairingChallengeID) (domain.HarnessPairingChallenge, bool, error) {

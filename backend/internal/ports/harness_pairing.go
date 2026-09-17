@@ -16,8 +16,9 @@ type HarnessPairingChallengeStore interface {
 	// SupersedePendingHarnessPairingChallenges marks every still-pending
 	// challenge for connectionID as superseded, so issuing a fresh challenge
 	// invalidates any prior one for the same connection.
-	SupersedePendingHarnessPairingChallenges(ctx context.Context, connectionID domain.HarnessConnectionID, now time.Time) (int64, error)
-	CreateHarnessPairingChallenge(ctx context.Context, challenge domain.HarnessPairingChallenge) (domain.HarnessPairingChallenge, bool, error)
+	// ReplacePendingHarnessPairingChallenge atomically supersedes prior pending
+	// intents for the connection and inserts this owner-created intent.
+	ReplacePendingHarnessPairingChallenge(ctx context.Context, challenge domain.HarnessPairingChallenge) (domain.HarnessPairingChallenge, error)
 	GetHarnessPairingChallenge(ctx context.Context, id domain.PairingChallengeID) (domain.HarnessPairingChallenge, bool, error)
 	// ConsumeHarnessPairingChallenge is the single atomic point of no return:
 	// it transitions pending -> consumed only when unexpired, and reports

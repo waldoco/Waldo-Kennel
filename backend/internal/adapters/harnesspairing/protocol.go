@@ -7,27 +7,15 @@
 // proof byte was wrong.
 package harnesspairing
 
-// wireRequestChallenge asks the daemon to mint a fresh challenge for the
-// exact tuple the caller claims. The daemon independently decides whether to
-// honor this (a decision explicitly out of this slice's scope); the adapter
-// selects none of the resulting identity, capability, generation, or expiry.
+// wireRequestChallenge references one live pairing intent created first through
+// the trusted internal path. No authority tuple field is accepted on this route.
 type wireRequestChallenge struct {
-	Type                string   `json:"type"`
-	Kind                string   `json:"kind"`
-	ConnectionID        string   `json:"connection_id"`
-	InstallationID      string   `json:"installation_id"`
-	AdapterDigest       string   `json:"adapter_digest"`
-	HarnessIdentity     string   `json:"harness_identity"`
-	ProviderVersion     string   `json:"provider_version"`
-	ProtocolFingerprint string   `json:"protocol_fingerprint"`
-	MissionID           string   `json:"mission_id"`
-	AppRunID            string   `json:"app_run_id"`
-	CapabilityClasses   []string `json:"capability_classes"`
-	ExpectedGeneration  int64    `json:"expected_generation"`
+	Type     string `json:"type"`
+	IntentID string `json:"intent_id"`
 }
 
-// wireChallengeIssued carries the one-time secret back to the caller that
-// asked for it, over this connection only. It is never repeated afterward.
+// wireChallengeIssued confirms the live intent ID. The secret is delivered only
+// by the trusted intent-opening path and never by this adapter-facing route.
 type wireChallengeIssued struct {
 	OK          bool   `json:"ok"`
 	ChallengeID string `json:"challenge_id,omitempty"`
@@ -39,6 +27,7 @@ type wireProve struct {
 	Type                string   `json:"type"`
 	ChallengeID         string   `json:"challenge_id"`
 	Secret              string   `json:"secret"`
+	ConnectionID        string   `json:"connection_id"`
 	InstallationID      string   `json:"installation_id"`
 	AdapterDigest       string   `json:"adapter_digest"`
 	HarnessIdentity     string   `json:"harness_identity"`

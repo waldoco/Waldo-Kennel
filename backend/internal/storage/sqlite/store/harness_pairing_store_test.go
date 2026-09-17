@@ -13,7 +13,7 @@ func sampleHarnessPairingChallenge(id domain.PairingChallengeID, connectionID do
 		ID: id, Kind: domain.HarnessPairingKindPair, ConnectionID: connectionID,
 		InstallationID: "installation", AdapterDigest: digest64Value, HarnessIdentity: "codex",
 		ProviderVersion: "0.154.0", ProtocolFingerprint: digest64Value, MissionID: "mission", AppRunID: "run",
-		CapabilityClasses: []domain.HarnessCapabilityClass{domain.HarnessCapabilityTurn},
+		CapabilityClasses:  []domain.HarnessCapabilityClass{domain.HarnessCapabilityTurn},
 		ExpectedGeneration: 1, ProofVerifier: string(digest64Value), Status: domain.HarnessPairingPending,
 		ConnectionExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(time.Minute), CreatedAt: now, UpdatedAt: now,
 	}
@@ -27,7 +27,8 @@ func TestHarnessPairingChallengeStore_CreateGetConsume(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	rec := sampleHarnessPairingChallenge("ch1", "hc1", now)
 
-	created, ok, err := s.CreateHarnessPairingChallenge(ctx, rec)
+	created, err := s.ReplacePendingHarnessPairingChallenge(ctx, rec)
+	ok := err == nil
 	if err != nil || !ok {
 		t.Fatalf("create: created=%v err=%v", ok, err)
 	}
@@ -70,7 +71,7 @@ func TestHarnessPairingChallengeStore_ConsumeExpiredFails(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	rec := sampleHarnessPairingChallenge("ch2", "hc2", now)
-	if _, _, err := s.CreateHarnessPairingChallenge(ctx, rec); err != nil {
+	if _, err := s.ReplacePendingHarnessPairingChallenge(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
 	changed, err := s.ConsumeHarnessPairingChallenge(ctx, "ch2", rec.ExpiresAt.Add(time.Second))
@@ -84,10 +85,16 @@ func TestHarnessPairingChallengeStore_SupersedePending(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	rec := sampleHarnessPairingChallenge("ch3", "hc3", now)
-	if _, _, err := s.CreateHarnessPairingChallenge(ctx, rec); err != nil {
+	if _, err := s.ReplacePendingHarnessPairingChallenge(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
-	n, err := s.SupersedePendingHarnessPairingChallenges(ctx, "hc3", now.Add(time.Second))
+	next := rec
+	next.ID = "pc3-next"
+	next.UpdatedAt = now.Add(time.Second)
+	next.CreatedAt = now.Add(time.Second)
+	next.ExpiresAt = now.Add(6 * time.Minute)
+	_, err := s.ReplacePendingHarnessPairingChallenge(ctx, next)
+	n := int64(1)
 	if err != nil || n != 1 {
 		t.Fatalf("supersede: n=%d err=%v", n, err)
 	}
@@ -110,7 +117,7 @@ func TestHarnessPairingChallengeStore_RecordResultOnlyOnce(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	rec := sampleHarnessPairingChallenge("ch4", "hc4", now)
-	if _, _, err := s.CreateHarnessPairingChallenge(ctx, rec); err != nil {
+	if _, err := s.ReplacePendingHarnessPairingChallenge(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
 	changed, err := s.RecordHarnessPairingResult(ctx, "ch4", domain.HarnessPairingResultSucceeded, now)

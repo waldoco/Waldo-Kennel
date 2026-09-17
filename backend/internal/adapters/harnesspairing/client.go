@@ -14,11 +14,8 @@ import (
 // produced the rejection is never exposed to this transport.
 var ErrPairingFailed = errors.New("harnesspairing: pairing request failed")
 
-// Client is the thin adapter-side transport client. It selects none of the
-// resulting identity, capability, generation, or expiry facts; it only
-// carries values the caller already knows about itself (its own installation,
-// build digest, harness identity, and so on) to the daemon over the
-// protected socket, and later echoes the secret it received back for proof.
+// Client is the thin adapter-side transport client. RequestChallenge carries
+// only an owner-opened intent ID. Prove echoes the already-bound tuple and secret.
 type Client struct {
 	socketPath string
 	timeout    time.Duration
@@ -29,17 +26,10 @@ func NewClient(socketPath string) *Client {
 }
 
 type ChallengeRequest struct {
-	Kind                string
-	ConnectionID        string
-	InstallationID      string
-	AdapterDigest       string
-	HarnessIdentity     string
-	ProviderVersion     string
-	ProtocolFingerprint string
-	MissionID           string
-	AppRunID            string
-	CapabilityClasses   []string
-	ExpectedGeneration  int64
+	IntentID                                                                                                                      string
+	Kind, ConnectionID, InstallationID, AdapterDigest, HarnessIdentity, ProviderVersion, ProtocolFingerprint, MissionID, AppRunID string
+	CapabilityClasses                                                                                                             []string
+	ExpectedGeneration                                                                                                            int64
 }
 
 // ChallengeIssued carries the one-time secret. Callers must not log it,
@@ -51,12 +41,7 @@ type ChallengeIssued struct {
 }
 
 func (c *Client) RequestChallenge(req ChallengeRequest) (ChallengeIssued, error) {
-	wire := wireRequestChallenge{
-		Type: wireTypeRequestChallenge, Kind: req.Kind, ConnectionID: req.ConnectionID, InstallationID: req.InstallationID,
-		AdapterDigest: req.AdapterDigest, HarnessIdentity: req.HarnessIdentity, ProviderVersion: req.ProviderVersion,
-		ProtocolFingerprint: req.ProtocolFingerprint, MissionID: req.MissionID, AppRunID: req.AppRunID,
-		CapabilityClasses: req.CapabilityClasses, ExpectedGeneration: req.ExpectedGeneration,
-	}
+	wire := wireRequestChallenge{Type: wireTypeRequestChallenge, IntentID: req.IntentID}
 	var resp wireChallengeIssued
 	if err := c.roundTrip(wire, &resp); err != nil {
 		return ChallengeIssued{}, err
@@ -64,12 +49,13 @@ func (c *Client) RequestChallenge(req ChallengeRequest) (ChallengeIssued, error)
 	if !resp.OK {
 		return ChallengeIssued{}, ErrPairingFailed
 	}
-	return ChallengeIssued{ChallengeID: resp.ChallengeID, Secret: resp.Secret}, nil
+	return ChallengeIssued{ChallengeID: resp.ChallengeID}, nil
 }
 
 type ProveRequest struct {
 	ChallengeID         string
 	Secret              string
+	ConnectionID        string
 	InstallationID      string
 	AdapterDigest       string
 	HarnessIdentity     string
@@ -86,7 +72,7 @@ type ProveRequest struct {
 // ErrPairingFailed with no further distinction available to this caller.
 func (c *Client) Prove(req ProveRequest) (string, error) {
 	wire := wireProve{
-		Type: wireTypeProve, ChallengeID: req.ChallengeID, Secret: req.Secret, InstallationID: req.InstallationID,
+		Type: wireTypeProve, ChallengeID: req.ChallengeID, Secret: req.Secret, ConnectionID: req.ConnectionID, InstallationID: req.InstallationID,
 		AdapterDigest: req.AdapterDigest, HarnessIdentity: req.HarnessIdentity, ProviderVersion: req.ProviderVersion,
 		ProtocolFingerprint: req.ProtocolFingerprint, MissionID: req.MissionID, AppRunID: req.AppRunID,
 		CapabilityClasses: req.CapabilityClasses, ExpectedGeneration: req.ExpectedGeneration,

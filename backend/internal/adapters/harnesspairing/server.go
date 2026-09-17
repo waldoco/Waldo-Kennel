@@ -34,6 +34,8 @@ type ServerConfig struct {
 	// connection generation on a successful proof.
 	ConnectionTTL time.Duration
 	Logger        *slog.Logger
+	// IntentStore reads intents created through the trusted owner/internal path.
+	IntentStore ports.HarnessPairingChallengeStore
 }
 
 // Server is the thin protected local transport for the pairing/rotation
@@ -48,6 +50,7 @@ type Server struct {
 	now           func() time.Time
 	challengeTTL  time.Duration
 	connectionTTL time.Duration
+	intents       ports.HarnessPairingChallengeStore
 	logger        *slog.Logger
 }
 
@@ -57,6 +60,9 @@ func NewServer(listener net.Listener, cfg ServerConfig) (*Server, error) {
 	}
 	if cfg.Coordinator == nil {
 		return nil, fmt.Errorf("harnesspairing: coordinator is required")
+	}
+	if cfg.IntentStore == nil {
+		return nil, fmt.Errorf("harnesspairing: owner-opened intent store is required")
 	}
 	verifier := cfg.PeerVerifier
 	if verifier == nil {
@@ -79,7 +85,7 @@ func NewServer(listener net.Listener, cfg ServerConfig) (*Server, error) {
 		logger = slog.Default()
 	}
 	return &Server{
-		listener: listener, coordinator: cfg.Coordinator, peerVerifier: verifier,
+		listener: listener, coordinator: cfg.Coordinator, intents: cfg.IntentStore, peerVerifier: verifier,
 		now: now, challengeTTL: challengeTTL, connectionTTL: connectionTTL, logger: logger,
 	}, nil
 }
@@ -156,32 +162,19 @@ func (s *Server) writeFailure(conn net.Conn) {
 
 func (s *Server) handleRequestChallenge(conn net.Conn, line []byte) {
 	var req wireRequestChallenge
-	if err := json.Unmarshal(line, &req); err != nil {
+	if json.Unmarshal(line, &req) != nil || s.intents == nil {
 		s.writeFailure(conn)
 		return
 	}
+	intent, found, err := s.intents.GetHarnessPairingChallenge(context.Background(), domain.PairingChallengeID(req.IntentID))
 	now := s.now().UTC()
-	issued, err := s.coordinator.Issue(context.Background(), harnesspairing.IssueChallengeRequest{
-		Kind:                domain.HarnessPairingKind(req.Kind),
-		ConnectionID:        domain.HarnessConnectionID(req.ConnectionID),
-		InstallationID:      req.InstallationID,
-		AdapterDigest:       domain.SHA256Digest(req.AdapterDigest),
-		HarnessIdentity:     req.HarnessIdentity,
-		ProviderVersion:     req.ProviderVersion,
-		ProtocolFingerprint: domain.SHA256Digest(req.ProtocolFingerprint),
-		MissionID:           req.MissionID,
-		AppRunID:            req.AppRunID,
-		CapabilityClasses:   toCapabilityClasses(req.CapabilityClasses),
-		ExpectedGeneration:  req.ExpectedGeneration,
-		ConnectionExpiresAt: now.Add(s.connectionTTL),
-		TTL:                 s.challengeTTL,
-		Now:                 now,
-	})
-	if err != nil {
+	if err != nil || !found || intent.Status != domain.HarnessPairingPending || !now.Before(intent.ExpiresAt) {
 		s.writeFailure(conn)
 		return
 	}
-	s.writeJSON(conn, wireChallengeIssued{OK: true, ChallengeID: string(issued.Challenge.ID), Secret: string(issued.Secret)})
+	// The raw secret was delivered by the trusted intent-opening path, never minted
+	// from adapter-supplied tuple data. This route confirms only that it is live.
+	s.writeJSON(conn, wireChallengeIssued{OK: true, ChallengeID: string(intent.ID)})
 }
 
 func (s *Server) handleProve(conn net.Conn, line []byte) {
@@ -193,6 +186,7 @@ func (s *Server) handleProve(conn net.Conn, line []byte) {
 	result, _, err := s.coordinator.Prove(context.Background(), harnesspairing.ProveRequest{
 		ChallengeID:         domain.PairingChallengeID(req.ChallengeID),
 		Secret:              domain.PairingChallengeSecret(req.Secret),
+		ConnectionID:        domain.HarnessConnectionID(req.ConnectionID),
 		InstallationID:      req.InstallationID,
 		HarnessIdentity:     req.HarnessIdentity,
 		ProviderVersion:     req.ProviderVersion,

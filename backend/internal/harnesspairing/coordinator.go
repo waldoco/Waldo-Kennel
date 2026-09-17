@@ -31,9 +31,10 @@ const (
 // permitted to call into the frozen S3.1 kernel on a proved challenge's
 // behalf; it duplicates none of the kernel's own tuple/capability checks.
 type Coordinator struct {
-	store  ports.HarnessPairingChallengeStore
-	kernel *harnessconnection.Kernel
-	random io.Reader
+	store        ports.HarnessPairingChallengeStore
+	kernel       *harnessconnection.Kernel
+	random       io.Reader
+	afterConsume func()
 }
 
 func New(store ports.HarnessPairingChallengeStore, kernel *harnessconnection.Kernel) *Coordinator {
@@ -104,36 +105,16 @@ func (c *Coordinator) Issue(ctx context.Context, req IssueChallengeRequest) (Iss
 		return IssuedChallenge{}, err
 	}
 
-	if _, err := c.store.SupersedePendingHarnessPairingChallenges(ctx, req.ConnectionID, req.Now.UTC()); err != nil {
-		return IssuedChallenge{}, err
-	}
-
 	rec := domain.HarnessPairingChallenge{
-		ID:                  domain.PairingChallengeID(id),
-		Kind:                req.Kind,
-		ConnectionID:        req.ConnectionID,
-		InstallationID:      strings.TrimSpace(req.InstallationID),
-		AdapterDigest:       req.AdapterDigest,
-		HarnessIdentity:     strings.TrimSpace(req.HarnessIdentity),
-		ProviderVersion:     strings.TrimSpace(req.ProviderVersion),
-		ProtocolFingerprint: req.ProtocolFingerprint,
-		MissionID:           strings.TrimSpace(req.MissionID),
-		AppRunID:            strings.TrimSpace(req.AppRunID),
-		CapabilityClasses:   classes,
-		ExpectedGeneration:  req.ExpectedGeneration,
-		ProofVerifier:       verifier,
-		Status:              domain.HarnessPairingPending,
-		ConnectionExpiresAt: req.ConnectionExpiresAt.UTC(),
-		ExpiresAt:           req.Now.Add(req.TTL).UTC(),
-		CreatedAt:           req.Now.UTC(),
-		UpdatedAt:           req.Now.UTC(),
+		ID: domain.PairingChallengeID(id), Kind: req.Kind, ConnectionID: req.ConnectionID,
+		InstallationID: strings.TrimSpace(req.InstallationID), AdapterDigest: req.AdapterDigest, HarnessIdentity: strings.TrimSpace(req.HarnessIdentity),
+		ProviderVersion: strings.TrimSpace(req.ProviderVersion), ProtocolFingerprint: req.ProtocolFingerprint, MissionID: strings.TrimSpace(req.MissionID), AppRunID: strings.TrimSpace(req.AppRunID),
+		CapabilityClasses: classes, ExpectedGeneration: req.ExpectedGeneration, ProofVerifier: verifier, Status: domain.HarnessPairingPending,
+		ConnectionExpiresAt: req.ConnectionExpiresAt.UTC(), ExpiresAt: req.Now.Add(req.TTL).UTC(), CreatedAt: req.Now.UTC(), UpdatedAt: req.Now.UTC(),
 	}
-	stored, created, err := c.store.CreateHarnessPairingChallenge(ctx, rec)
+	stored, err := c.store.ReplacePendingHarnessPairingChallenge(ctx, rec)
 	if err != nil {
 		return IssuedChallenge{}, err
-	}
-	if !created {
-		return IssuedChallenge{}, domain.ErrHarnessPairingConflict
 	}
 	return IssuedChallenge{Challenge: redacted(stored), Secret: domain.PairingChallengeSecret(secret)}, nil
 }
@@ -143,14 +124,15 @@ func (c *Coordinator) Issue(ctx context.Context, req IssueChallengeRequest) (Iss
 // stored binding; a mismatch on any single field is indistinguishable from a
 // wrong secret to the caller.
 type ProveRequest struct {
-	ChallengeID                                     domain.PairingChallengeID
+	ChallengeID                                      domain.PairingChallengeID
 	Secret                                           domain.PairingChallengeSecret
+	ConnectionID                                     domain.HarnessConnectionID
 	InstallationID, HarnessIdentity, ProviderVersion string
 	MissionID, AppRunID                              string
 	AdapterDigest, ProtocolFingerprint               domain.SHA256Digest
 	CapabilityClasses                                []domain.HarnessCapabilityClass
-	ExpectedGeneration                                int64
-	Now                                               time.Time
+	ExpectedGeneration                               int64
+	Now                                              time.Time
 }
 
 type ProveResult struct {
@@ -183,11 +165,9 @@ func (c *Coordinator) Prove(ctx context.Context, req ProveRequest) (ProveResult,
 
 	if valid != 1 || !notExpired || !isPending {
 		code := classifyFailure(rec, notExpired, classErr)
-		if !isPending {
-			// The row is already terminal (replayed/superseded): recording
-			// is corroborating evidence, harmless if already set.
-			c.recordResultBestEffort(ctx, rec.ID, code, req.Now)
-		}
+		// Non-winners never write canonical terminal evidence. A consumed row may
+		// still have its winner inside the kernel; superseded/replay attempts are
+		// observations, not this intent's outcome.
 		// A rejected attempt against a still-pending challenge (wrong
 		// tuple/secret/class, or expiry not yet swept) is NOT this
 		// challenge's terminal outcome: the legitimate holder may still
@@ -205,8 +185,12 @@ func (c *Coordinator) Prove(ctx context.Context, req ProveRequest) (ProveResult,
 		return ProveResult{}, domain.HarnessPairingResultInternalError, err
 	}
 	if !consumed {
-		c.recordResultBestEffort(ctx, rec.ID, domain.HarnessPairingResultReplayed, req.Now)
+		// A CAS loser cannot write terminal evidence: the winner may still be
+		// inside the kernel and must own the durable result.
 		return ProveResult{}, domain.HarnessPairingResultReplayed, domain.ErrHarnessPairingFailed
+	}
+	if c.afterConsume != nil {
+		c.afterConsume()
 	}
 
 	issued, err := c.issueOrRotate(ctx, rec)
@@ -281,6 +265,7 @@ func compareTuple(rec domain.HarnessPairingChallenge, req ProveRequest, classes 
 		valid = 0
 	}
 	valid &= subtle.ConstantTimeCompare(presented[:], stored)
+	valid &= equalString(string(rec.ConnectionID), string(req.ConnectionID))
 	valid &= equalString(rec.InstallationID, req.InstallationID)
 	valid &= equalString(rec.AdapterDigest.String(), req.AdapterDigest.String())
 	valid &= equalString(rec.HarnessIdentity, req.HarnessIdentity)
