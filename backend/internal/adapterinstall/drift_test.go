@@ -45,3 +45,10 @@ func TestClassifyDriftSafetyPrecedence(t *testing.T) {
 		})
 	}
 }
+
+func TestClassifyDriftInSyncHasNoRepair(t *testing.T) {
+	got := ClassifyDrift(driftFixture())
+	if got.Classification != domain.AdapterDriftInSync || got.Repair != "" {
+		t.Fatalf("got %+v", got)
+	}
+}

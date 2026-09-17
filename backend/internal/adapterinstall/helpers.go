@@ -125,6 +125,9 @@ func classifyError(e error) domain.HarnessAdapterDrift {
 	return domain.AdapterDriftActivationIncomplete
 }
 func repairFor(d domain.HarnessAdapterDrift) domain.HarnessAdapterInstallRepair {
+	if d == domain.AdapterDriftInSync {
+		return ""
+	}
 	switch d {
 	case domain.AdapterDriftUpgradeAvailable:
 		return domain.AdapterRepairStageUpgrade
