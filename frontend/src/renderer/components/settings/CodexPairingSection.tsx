@@ -36,31 +36,62 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
   const [discovery, setDiscovery] = useState<CodexDiscoveryState | null>(null);
   const [pairing, setPairing] = useState<CodexPairingState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const bridge = window.kennel?.app;
   const refresh = async () => {
     if (!bridge?.discoverCodex || !bridge.getCodexPairing) {
-      setDiscovery({
-        state: "error",
-        message: "Provider pairing is unavailable in this build.",
-      });
-      return;
+      throw new Error("Provider pairing is unavailable in this build.");
     }
     const [found, current] = await Promise.all([
       bridge.discoverCodex({ projectId }),
       bridge.getCodexPairing({ projectId }),
     ]);
-    setDiscovery(found);
-    setPairing(current);
+    return { found, current };
   };
   useEffect(() => {
-    void refresh().catch((error) =>
+    let current = true;
+    setDiscovery(null);
+    setPairing(null);
+    void refresh()
+      .then((next) => {
+        if (!current) return;
+        setDiscovery(next.found);
+        setPairing(next.current);
+      })
+      .catch((error) => {
+        if (!current) return;
+        setDiscovery({
+          state: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Provider discovery failed",
+        });
+        setPairing({
+          state: "error",
+          message: "Pairing state could not be loaded.",
+        });
+      });
+    return () => {
+      current = false;
+    };
+  }, [projectId]);
+  const retryRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const next = await refresh();
+      setDiscovery(next.found);
+      setPairing(next.current);
+    } catch (error) {
       setDiscovery({
         state: "error",
         message:
           error instanceof Error ? error.message : "Provider discovery failed",
-      }),
-    );
-  }, [projectId]);
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const pair = async () => {
     if (!bridge?.pairCodex || discovery?.state !== "installed") return;
     setBusy(true);
@@ -87,6 +118,14 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
     discovery?.state === "installed" &&
     pairing?.state !== "pairing" &&
     pairing?.state !== "awaiting_confirmation";
+  const needsRefresh =
+    discovery?.state === "error" || pairing?.state === "error";
+  const pairLabel =
+    pairing?.state === "connected" || pairing?.repair === "reconnect_adapter"
+      ? "Reconnect"
+      : pairing?.repair === "retry_pairing"
+        ? "Retry pairing"
+        : "Pair Codex";
   return (
     <SettingsSection title="Codex provider" grouped>
       <div
@@ -99,13 +138,26 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
             {message(discovery, pairing)}
           </p>
         </div>
-        <Button
-          type="button"
-          disabled={!canPair || busy}
-          onClick={() => void pair()}
-        >
-          {pairing?.state === "connected" ? "Reconnect" : "Pair Codex"}
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {needsRefresh ? (
+            <Button
+              type="button"
+              disabled={refreshing}
+              onClick={() => void retryRefresh()}
+              variant="ghost"
+            >
+              Refresh status
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            aria-busy={busy}
+            disabled={!canPair || busy || refreshing}
+            onClick={() => void pair()}
+          >
+            {pairLabel}
+          </Button>
+        </div>
       </div>
     </SettingsSection>
   );
