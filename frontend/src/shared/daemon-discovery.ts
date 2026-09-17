@@ -12,7 +12,7 @@
 // Minimal join: "/" works for fs access on every platform Node supports,
 // including Windows paths that already contain backslashes (e.g. %APPDATA%).
 function joinPath(...segments: string[]): string {
-  return segments.map((segment) => segment.replace(/[/\\]+$/, "")).join("/");
+	return segments.map((segment) => segment.replace(/[/\\]+$/, "")).join("/");
 }
 
 /**
@@ -22,18 +22,18 @@ function joinPath(...segments: string[]): string {
  * port, or null when the line is not the announcement.
  */
 export function parseDaemonListenPort(line: string): number | null {
-  if (!line.includes('msg="daemon listening"')) return null;
-  const addr = /(?:^|\s)addr=("?)([^"\s]+)\1/.exec(line)?.[2];
-  if (!addr) return null;
-  return portFromAddr(addr);
+	if (!line.includes('msg="daemon listening"')) return null;
+	const addr = /(?:^|\s)addr=("?)([^"\s]+)\1/.exec(line)?.[2];
+	if (!addr) return null;
+	return portFromAddr(addr);
 }
 
 // Take the segment after the last ":" so IPv6 literals like [::1]:3001 parse too.
 function portFromAddr(addr: string): number | null {
-  const separator = addr.lastIndexOf(":");
-  if (separator === -1) return null;
-  const port = Number(addr.slice(separator + 1));
-  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+	const separator = addr.lastIndexOf(":");
+	if (separator === -1) return null;
+	const port = Number(addr.slice(separator + 1));
+	return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
 }
 
 /**
@@ -41,110 +41,81 @@ function portFromAddr(addr: string): number | null {
  * chunk consumer that line-buffers (chunks can split a line anywhere) and
  * invokes onPort exactly once, for the first announcement seen.
  */
-export function createListenPortScanner(
-  onPort: (port: number) => void,
-): (chunk: string) => void {
-  let pending = "";
-  let done = false;
-  return (chunk) => {
-    if (done) return;
-    pending += chunk;
-    const lines = pending.split("\n");
-    pending = lines.pop() ?? "";
-    for (const line of lines) {
-      const port = parseDaemonListenPort(line);
-      if (port !== null) {
-        done = true;
-        onPort(port);
-        return;
-      }
-    }
-  };
+export function createListenPortScanner(onPort: (port: number) => void): (chunk: string) => void {
+	let pending = "";
+	let done = false;
+	return (chunk) => {
+		if (done) return;
+		pending += chunk;
+		const lines = pending.split("\n");
+		pending = lines.pop() ?? "";
+		for (const line of lines) {
+			const port = parseDaemonListenPort(line);
+			if (port !== null) {
+				done = true;
+				onPort(port);
+				return;
+			}
+		}
+	};
 }
 
 /** Parsed running.json handshake — see backend/internal/runfile.Info. */
 export type RunFileInfo = {
-  pid: number;
-  port: number;
-  /** startedAt in epoch ms; 0 when missing/unparseable. */
-  startedAtMs: number;
-  /**
-   * Daemon ownership tag — read from running.json so the attach-path link
-   * decision uses the daemon's durable record, not the current process env.
-   * "app" = desktop-spawned (re-link on attach); "persistent" = spawned under
-   * KENNEL_KEEP_DAEMON (stays alive across app quit, never re-linked);
-   * undefined/empty = headless `kennel start` daemon.
-   */
-  owner?: string;
-  /** Desktop launch that supplied this daemon's private browser token. */
-  appRunId?: string;
-  browserRuntimeAddress?: string;
-  supervisorAddress?: string;
-  /** Protected local harness locators. They are not authentication secrets. */
-  harnessPairingAddress?: string;
-  harnessCommandAddress?: string;
+	pid: number;
+	port: number;
+	/** startedAt in epoch ms; 0 when missing/unparseable. */
+	startedAtMs: number;
+	/**
+	 * Daemon ownership tag — read from running.json so the attach-path link
+	 * decision uses the daemon's durable record, not the current process env.
+	 * "app" = desktop-spawned (re-link on attach); "persistent" = spawned under
+	 * KENNEL_KEEP_DAEMON (stays alive across app quit, never re-linked);
+	 * undefined/empty = headless `kennel start` daemon.
+	 */
+	owner?: string;
+	/** Desktop launch that supplied this daemon's private browser token. */
+	appRunId?: string;
+	browserRuntimeAddress?: string;
+	supervisorAddress?: string;
+	/** Protected local harness locators. They are not authentication secrets. */
+	harnessPairingAddress?: string;
+	harnessCommandAddress?: string;
 };
 
 /** Parse running.json contents. Returns null for malformed JSON or an invalid port. */
 export function parseRunFile(contents: string): RunFileInfo | null {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(contents);
-  } catch {
-    return null;
-  }
-  if (typeof raw !== "object" || raw === null) return null;
-  const {
-    pid,
-    port,
-    startedAt,
-    owner,
-    appRunId,
-    browserRuntimeAddress,
-    supervisorAddress,
-    harnessPairingAddress,
-    harnessCommandAddress,
-  } = raw as {
-    pid?: unknown;
-    port?: unknown;
-    startedAt?: unknown;
-    owner?: unknown;
-    appRunId?: unknown;
-    browserRuntimeAddress?: unknown;
-    supervisorAddress?: unknown;
-    harnessPairingAddress?: unknown;
-    harnessCommandAddress?: unknown;
-  };
-  if (
-    typeof port !== "number" ||
-    !Number.isInteger(port) ||
-    port < 1 ||
-    port > 65535
-  )
-    return null;
-  const startedAtMs =
-    typeof startedAt === "string" ? Date.parse(startedAt) : NaN;
-  return {
-    pid: typeof pid === "number" && Number.isInteger(pid) ? pid : 0,
-    port,
-    startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
-    owner: typeof owner === "string" ? owner : undefined,
-    appRunId: typeof appRunId === "string" ? appRunId : undefined,
-    browserRuntimeAddress:
-      typeof browserRuntimeAddress === "string"
-        ? browserRuntimeAddress
-        : undefined,
-    supervisorAddress:
-      typeof supervisorAddress === "string" ? supervisorAddress : undefined,
-    harnessPairingAddress:
-      typeof harnessPairingAddress === "string"
-        ? harnessPairingAddress
-        : undefined,
-    harnessCommandAddress:
-      typeof harnessCommandAddress === "string"
-        ? harnessCommandAddress
-        : undefined,
-  };
+	let raw: unknown;
+	try {
+		raw = JSON.parse(contents);
+	} catch {
+		return null;
+	}
+	if (typeof raw !== "object" || raw === null) return null;
+	const { pid, port, startedAt, owner, appRunId, browserRuntimeAddress, supervisorAddress, harnessPairingAddress, harnessCommandAddress } = raw as {
+		pid?: unknown;
+		port?: unknown;
+		startedAt?: unknown;
+		owner?: unknown;
+		appRunId?: unknown;
+		browserRuntimeAddress?: unknown;
+		supervisorAddress?: unknown;
+		harnessPairingAddress?: unknown;
+		harnessCommandAddress?: unknown;
+	};
+	if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+	const startedAtMs = typeof startedAt === "string" ? Date.parse(startedAt) : NaN;
+	return {
+		pid: typeof pid === "number" && Number.isInteger(pid) ? pid : 0,
+		port,
+		startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
+		owner: typeof owner === "string" ? owner : undefined,
+		appRunId: typeof appRunId === "string" ? appRunId : undefined,
+		browserRuntimeAddress: typeof browserRuntimeAddress === "string" ? browserRuntimeAddress : undefined,
+		supervisorAddress: typeof supervisorAddress === "string" ? supervisorAddress : undefined,
+		harnessPairingAddress: typeof harnessPairingAddress === "string" ? harnessPairingAddress : undefined,
+		harnessCommandAddress: typeof harnessCommandAddress === "string" ? harnessCommandAddress : undefined,
+	};
 }
 
 /**
@@ -154,11 +125,11 @@ export function parseRunFile(contents: string): RunFileInfo | null {
  * cannot be resolved.
  */
 export function defaultRunFilePath(
-  platform: NodeJS.Platform,
-  _env: Record<string, string | undefined>,
-  homeDir: string,
+	platform: NodeJS.Platform,
+	_env: Record<string, string | undefined>,
+	homeDir: string,
 ): string | null {
-  void platform;
-  if (!homeDir) return null;
-  return joinPath(homeDir, ".kennel", "running.json");
+	void platform;
+	if (!homeDir) return null;
+	return joinPath(homeDir, ".kennel", "running.json");
 }
