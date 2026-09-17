@@ -82,19 +82,10 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 	if schedule.Plan.OutcomeID != record.ID || schedule.Plan.ContractRevisionNumber != record.CurrentRevisionNumber {
 		return MissionProjection{}, fmt.Errorf("mission projection lineage does not bind the current Outcome")
 	}
-	projectID, ok, err := s.store.GetOutcomeProjectID(ctx, outcomeID)
-	if err != nil {
+	if _, ok, err := s.store.GetOutcomeProjectID(ctx, outcomeID); err != nil {
 		return MissionProjection{}, err
-	}
-	if !ok {
-		return MissionProjection{}, fmt.Errorf("mission projection Outcome has no Project lineage")
-	}
-	space, err := s.store.EnsureWorkResponsibilitySpace(ctx, projectID)
-	if err != nil {
-		return MissionProjection{}, err
-	}
-	if space.ID != record.SpaceID {
-		return MissionProjection{}, fmt.Errorf("mission projection responsibility space does not match Project lineage")
+	} else if !ok {
+		return MissionProjection{}, fmt.Errorf("mission projection responsibility space has no Project lineage")
 	}
 	attention := map[domain.WorkUnitID]domain.NeedsYouQuestion{}
 	if s.needsYou != nil {
