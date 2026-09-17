@@ -112,6 +112,8 @@ func (s *Store) SaveAttemptReceipt(ctx context.Context, receipt domain.AttemptRe
 			FileMode:          nullInt64(file.FileMode),
 			IsBinary:          boolToInt(file.IsBinary),
 			UnsupportedReason: file.UnsupportedReason,
+			Additions:         nullInt64(file.Additions),
+			Deletions:         nullInt64(file.Deletions),
 		}); err != nil {
 			return fmt.Errorf("save artifact file %s for %s: %w", file.RelativePath, receipt.AttemptID, err)
 		}
@@ -330,6 +332,8 @@ func attemptReceiptFromRow(row gen.AttemptReceipt, files []gen.AttemptArtifactFi
 			FileMode:          int64Ptr(file.FileMode),
 			IsBinary:          file.IsBinary == 1,
 			UnsupportedReason: file.UnsupportedReason,
+			Additions:         int64Ptr(file.Additions),
+			Deletions:         int64Ptr(file.Deletions),
 		})
 	}
 	return receipt

@@ -4283,6 +4283,7 @@ type MissionProjectionResponse struct {
 	Version                 int                   `json:"version"`
 	OutcomeID               string                `json:"outcomeId"`
 	MissionID               string                `json:"missionId"`
+	MissionLabel            string                `json:"missionLabel,omitempty"`
 	ContractRevisionNumber  int64                 `json:"contractRevisionNumber"`
 	PlanRevisionID          string                `json:"planRevisionId"`
 	PlanRevisionNumber      int64                 `json:"planRevisionNumber"`
@@ -4297,24 +4298,46 @@ type MissionProjectionResponse struct {
 	NoRunnableReason        string                `json:"noRunnableReason,omitempty"`
 }
 type MissionNodeResponse struct {
-	WorkUnitID           string                    `json:"workUnitId"`
-	PlanRevisionID       string                    `json:"planRevisionId"`
-	Title                string                    `json:"title"`
-	Role                 string                    `json:"role"`
-	Inputs               []WorkUnitInputResponse   `json:"inputs"`
-	DependsOn            []string                  `json:"dependsOn"`
-	ScheduleState        string                    `json:"scheduleState"`
-	BlockingDependencies []string                  `json:"blockingDependencies"`
-	BlockedReason        string                    `json:"blockedReason,omitempty"`
-	BlockedDetail        string                    `json:"blockedDetail,omitempty"`
-	CriterionIDs         []string                  `json:"criterionIds"`
-	CriterionReady       map[string]bool           `json:"criterionReady"`
-	CurrentAttempt       *MissionAttemptResponse   `json:"currentAttempt,omitempty"`
-	Attention            *MissionAttentionResponse `json:"attention,omitempty"`
-	NextAction           string                    `json:"nextAction,omitempty"`
-	Responsibility       string                    `json:"responsibility" enum:"agent,owner,unconfirmed"`
-	UpdatedAt            time.Time                 `json:"updatedAt"`
-	Generation           int64                     `json:"generation"`
+	WorkUnitID           string                           `json:"workUnitId"`
+	PlanRevisionID       string                           `json:"planRevisionId"`
+	Title                string                           `json:"title"`
+	Role                 string                           `json:"role"`
+	Inputs               []WorkUnitInputResponse          `json:"inputs"`
+	DependsOn            []string                         `json:"dependsOn"`
+	ScheduleState        string                           `json:"scheduleState"`
+	BlockingDependencies []string                         `json:"blockingDependencies"`
+	BlockedReason        string                           `json:"blockedReason,omitempty"`
+	BlockedDetail        string                           `json:"blockedDetail,omitempty"`
+	CriterionIDs         []string                         `json:"criterionIds"`
+	CriterionReady       map[string]bool                  `json:"criterionReady"`
+	CurrentAttempt       *MissionAttemptResponse          `json:"currentAttempt,omitempty"`
+	ExecutionBinding     *MissionExecutionBindingResponse `json:"executionBinding,omitempty"`
+	ChangeSummary        *MissionChangeSummaryResponse    `json:"changeSummary,omitempty"`
+	Links                []MissionLinkResponse            `json:"links"`
+	Attention            *MissionAttentionResponse        `json:"attention,omitempty"`
+	NextAction           string                           `json:"nextAction,omitempty"`
+	Responsibility       string                           `json:"responsibility" enum:"agent,owner,unconfirmed"`
+	UpdatedAt            time.Time                        `json:"updatedAt"`
+	Generation           int64                            `json:"generation"`
+}
+type MissionExecutionBindingResponse struct {
+	Provider       string `json:"provider"`
+	ModelSelection string `json:"modelSelection" enum:"provider_default,explicit"`
+	Model          string `json:"model,omitempty"`
+}
+type MissionChangeSummaryResponse struct {
+	Additions        int64  `json:"additions"`
+	Deletions        int64  `json:"deletions"`
+	FilesChanged     int64  `json:"filesChanged"`
+	SourceAttemptID  string `json:"sourceAttemptId"`
+	ArtifactVersion  string `json:"artifactVersion"`
+	MeasurementState string `json:"measurementState" enum:"measured"`
+}
+type MissionLinkResponse struct {
+	Kind  string `json:"kind" enum:"document_context,retained_result,evidence"`
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	State string `json:"state" enum:"available,unavailable"`
 }
 type MissionAttemptResponse struct {
 	ID        string                  `json:"attemptId"`
@@ -4348,13 +4371,22 @@ type MissionEnvelope struct {
 }
 
 func missionResponse(view outcomevc.MissionProjection) MissionProjectionResponse {
-	out := MissionProjectionResponse{Version: view.Version, OutcomeID: string(view.OutcomeID), MissionID: string(view.MissionID), ContractRevisionNumber: view.ContractRevisionNumber, PlanRevisionID: string(view.PlanRevisionID), PlanRevisionNumber: view.PlanRevisionNumber, TopologyFingerprint: view.TopologyFingerprint, TopologyGeneration: view.TopologyGeneration, Generation: view.Generation, UpdatedAt: view.UpdatedAt, NextRunnableWorkUnitID: string(view.NextRunnableID), CustodyHeldByWorkUnitID: string(view.CustodyHeldBy), NoRunnableReason: view.NoRunnableReason}
+	out := MissionProjectionResponse{Version: view.Version, OutcomeID: string(view.OutcomeID), MissionID: string(view.MissionID), MissionLabel: view.MissionLabel, ContractRevisionNumber: view.ContractRevisionNumber, PlanRevisionID: string(view.PlanRevisionID), PlanRevisionNumber: view.PlanRevisionNumber, TopologyFingerprint: view.TopologyFingerprint, TopologyGeneration: view.TopologyGeneration, Generation: view.Generation, UpdatedAt: view.UpdatedAt, NextRunnableWorkUnitID: string(view.NextRunnableID), CustodyHeldByWorkUnitID: string(view.CustodyHeldBy), NoRunnableReason: view.NoRunnableReason}
 	out.Nodes = make([]MissionNodeResponse, 0, len(view.Nodes))
 	out.Edges = make([]MissionEdgeResponse, 0, len(view.Edges))
 	for _, n := range view.Nodes {
-		r := MissionNodeResponse{WorkUnitID: n.WorkUnitID, PlanRevisionID: n.PlanRevisionID, Title: n.Title, Role: n.Role, Inputs: workUnitInputResponses(n.Inputs), DependsOn: stringWorkUnitIDs(n.DependsOn), ScheduleState: n.ScheduleState, BlockingDependencies: stringWorkUnitIDs(n.BlockingDependencies), BlockedReason: n.BlockedReason, BlockedDetail: n.BlockedDetail, CriterionIDs: stringCriterionIDs(n.CriterionIDs), CriterionReady: map[string]bool{}, NextAction: n.NextAction, Responsibility: n.Responsibility, UpdatedAt: n.UpdatedAt, Generation: n.Generation}
+		r := MissionNodeResponse{WorkUnitID: n.WorkUnitID, PlanRevisionID: n.PlanRevisionID, Title: n.Title, Role: n.Role, Inputs: workUnitInputResponses(n.Inputs), Links: make([]MissionLinkResponse, 0, len(n.Links)), DependsOn: stringWorkUnitIDs(n.DependsOn), ScheduleState: n.ScheduleState, BlockingDependencies: stringWorkUnitIDs(n.BlockingDependencies), BlockedReason: n.BlockedReason, BlockedDetail: n.BlockedDetail, CriterionIDs: stringCriterionIDs(n.CriterionIDs), CriterionReady: map[string]bool{}, NextAction: n.NextAction, Responsibility: n.Responsibility, UpdatedAt: n.UpdatedAt, Generation: n.Generation}
 		for k, v := range n.CriterionReady {
 			r.CriterionReady[string(k)] = v
+		}
+		if n.ExecutionBinding != nil {
+			r.ExecutionBinding = &MissionExecutionBindingResponse{Provider: n.ExecutionBinding.Provider, ModelSelection: n.ExecutionBinding.ModelSelection, Model: n.ExecutionBinding.Model}
+		}
+		if n.ChangeSummary != nil {
+			r.ChangeSummary = &MissionChangeSummaryResponse{Additions: n.ChangeSummary.Additions, Deletions: n.ChangeSummary.Deletions, FilesChanged: n.ChangeSummary.FilesChanged, SourceAttemptID: n.ChangeSummary.SourceAttemptID, ArtifactVersion: n.ChangeSummary.ArtifactVersion, MeasurementState: n.ChangeSummary.MeasurementState}
+		}
+		for _, link := range n.Links {
+			r.Links = append(r.Links, MissionLinkResponse{Kind: link.Kind, ID: link.ID, Label: link.Label, State: link.State})
 		}
 		if n.CurrentAttempt != nil {
 			a := n.CurrentAttempt

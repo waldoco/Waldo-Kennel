@@ -104,6 +104,10 @@ type ArtifactFile struct {
 	SizeBytes     *int64
 	FileMode      *int64
 	IsBinary      bool
+	// Additions and Deletions are retained only when Kennel measured text-line
+	// changes against the Attempt's frozen base. Nil means unmeasured, never zero.
+	Additions *int64
+	Deletions *int64
 	// UnsupportedReason records a path that could not be represented, so an
 	// unsupported case stays visible per file instead of collapsing the whole
 	// receipt.
@@ -136,6 +140,15 @@ func (f ArtifactFile) Validate() error {
 	}
 	if f.ChangeKind != ArtifactDeleted && strings.TrimSpace(f.ContentDigest) == "" && f.UnsupportedReason == "" {
 		return fmt.Errorf("artifact file %q is missing content identity", f.RelativePath)
+	}
+	if (f.Additions == nil) != (f.Deletions == nil) {
+		return fmt.Errorf("artifact file %q change measurement is incomplete", f.RelativePath)
+	}
+	if f.Additions != nil && (*f.Additions < 0 || *f.Deletions < 0) {
+		return fmt.Errorf("artifact file %q change measurement is negative", f.RelativePath)
+	}
+	if f.IsBinary && f.Additions != nil {
+		return fmt.Errorf("binary artifact file %q cannot carry text-line measurements", f.RelativePath)
 	}
 	return nil
 }

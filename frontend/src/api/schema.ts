@@ -3537,6 +3537,18 @@ export interface components {
             questionId?: string;
             summary: string;
         };
+        ControllersMissionChangeSummaryResponse: {
+            /** Format: int64 */
+            additions: number;
+            artifactVersion: string;
+            /** Format: int64 */
+            deletions: number;
+            /** Format: int64 */
+            filesChanged: number;
+            /** @enum {string} */
+            measurementState: "measured";
+            sourceAttemptId: string;
+        };
         ControllersMissionEdgeResponse: {
             from: string;
             to: string;
@@ -3544,20 +3556,37 @@ export interface components {
         ControllersMissionEnvelope: {
             mission: components["schemas"]["ControllersMissionProjectionResponse"];
         };
+        ControllersMissionExecutionBindingResponse: {
+            model?: string;
+            /** @enum {string} */
+            modelSelection: "provider_default" | "explicit";
+            provider: string;
+        };
+        ControllersMissionLinkResponse: {
+            id: string;
+            /** @enum {string} */
+            kind: "document_context" | "retained_result" | "evidence";
+            label: string;
+            /** @enum {string} */
+            state: "available" | "unavailable";
+        };
         ControllersMissionNodeResponse: {
             attention?: components["schemas"]["ControllersMissionAttentionResponse"];
             blockedDetail?: string;
             blockedReason?: string;
             blockingDependencies: string[];
+            changeSummary?: components["schemas"]["ControllersMissionChangeSummaryResponse"];
             criterionIds: string[];
             criterionReady: {
                 [key: string]: boolean;
             } | null;
             currentAttempt?: components["schemas"]["ControllersMissionAttemptResponse"];
             dependsOn: string[];
+            executionBinding?: components["schemas"]["ControllersMissionExecutionBindingResponse"];
             /** Format: int64 */
             generation: number;
             inputs: components["schemas"]["ControllersWorkUnitInputResponse"][];
+            links: components["schemas"]["ControllersMissionLinkResponse"][];
             nextAction?: string;
             planRevisionId: string;
             /** @enum {string} */
@@ -3577,6 +3606,7 @@ export interface components {
             /** Format: int64 */
             generation: number;
             missionId: string;
+            missionLabel?: string;
             nextRunnableWorkUnitId?: string;
             noRunnableReason?: string;
             nodes: components["schemas"]["ControllersMissionNodeResponse"][];

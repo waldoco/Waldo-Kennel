@@ -132,6 +132,8 @@ type AttemptArtifactFile struct {
 	FileMode          sql.NullInt64
 	IsBinary          int64
 	UnsupportedReason string
+	Additions         sql.NullInt64
+	Deletions         sql.NullInt64
 }
 
 type AttemptCheckRun struct {
@@ -1603,6 +1605,8 @@ type WorkUnit struct {
 	EvidenceChecks          string
 	VerificationRequirement string
 	StopConditions          string
+	Position                sql.NullInt64
+	Role                    sql.NullString
 }
 
 type WorkUnitCheck struct {
@@ -1623,6 +1627,13 @@ type WorkUnitCriterionBinding struct {
 type WorkUnitDependency struct {
 	WorkUnitID          string
 	DependsOnWorkUnitID string
+}
+
+type WorkUnitInput struct {
+	WorkUnitID     string
+	FromWorkUnitID string
+	Required       string
+	Position       int64
 }
 
 type WorkUnitProviderBinding struct {

@@ -10781,6 +10781,33 @@ components:
       - summary
       - generation
       type: object
+    ControllersMissionChangeSummaryResponse:
+      properties:
+        additions:
+          format: int64
+          type: integer
+        artifactVersion:
+          type: string
+        deletions:
+          format: int64
+          type: integer
+        filesChanged:
+          format: int64
+          type: integer
+        measurementState:
+          enum:
+          - measured
+          type: string
+        sourceAttemptId:
+          type: string
+      required:
+      - additions
+      - deletions
+      - filesChanged
+      - sourceAttemptId
+      - artifactVersion
+      - measurementState
+      type: object
     ControllersMissionEdgeResponse:
       properties:
         from:
@@ -10798,6 +10825,44 @@ components:
       required:
       - mission
       type: object
+    ControllersMissionExecutionBindingResponse:
+      properties:
+        model:
+          type: string
+        modelSelection:
+          enum:
+          - provider_default
+          - explicit
+          type: string
+        provider:
+          type: string
+      required:
+      - provider
+      - modelSelection
+      type: object
+    ControllersMissionLinkResponse:
+      properties:
+        id:
+          type: string
+        kind:
+          enum:
+          - document_context
+          - retained_result
+          - evidence
+          type: string
+        label:
+          type: string
+        state:
+          enum:
+          - available
+          - unavailable
+          type: string
+      required:
+      - kind
+      - id
+      - label
+      - state
+      type: object
     ControllersMissionNodeResponse:
       properties:
         attention:
@@ -10810,6 +10875,8 @@ components:
           items:
             type: string
           type: array
+        changeSummary:
+          $ref: '#/components/schemas/ControllersMissionChangeSummaryResponse'
         criterionIds:
           items:
             type: string
@@ -10826,12 +10893,18 @@ components:
           items:
             type: string
           type: array
+        executionBinding:
+          $ref: '#/components/schemas/ControllersMissionExecutionBindingResponse'
         generation:
           format: int64
           type: integer
         inputs:
           items:
             $ref: '#/components/schemas/ControllersWorkUnitInputResponse'
+          type: array
+        links:
+          items:
+            $ref: '#/components/schemas/ControllersMissionLinkResponse'
           type: array
         nextAction:
           type: string
@@ -10865,6 +10938,7 @@ components:
       - blockingDependencies
       - criterionIds
       - criterionReady
+      - links
       - responsibility
       - updatedAt
       - generation
@@ -10884,6 +10958,8 @@ components:
           format: int64
           type: integer
         missionId:
+          type: string
+        missionLabel:
           type: string
         nextRunnableWorkUnitId:
           type: string

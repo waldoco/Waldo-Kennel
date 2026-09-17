@@ -40,8 +40,8 @@ DELETE FROM attempt_artifact_files WHERE attempt_id = ?;
 -- name: InsertAttemptArtifactFile :exec
 INSERT INTO attempt_artifact_files (
     id, attempt_id, relative_path, change_kind,
-    content_digest, size_bytes, file_mode, is_binary, unsupported_reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    content_digest, size_bytes, file_mode, is_binary, unsupported_reason, additions, deletions
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListAttemptArtifactFiles :many
 SELECT * FROM attempt_artifact_files WHERE attempt_id = ? ORDER BY relative_path;

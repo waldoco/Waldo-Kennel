@@ -136,3 +136,70 @@ func TestMissionRetryableAndApprovalAttentionAreActionable(t *testing.T) {
 		t.Fatalf("attention=%+v", view.Nodes[0].Attention)
 	}
 }
+
+func TestMissionProjectionExecutionBindingIsOnlyCanonicalApprovedSemantics(t *testing.T) {
+	plan := schedulerPlanFixture()
+	plan.WorkUnits[0].Provider = domain.HarnessCodex
+	plan.WorkUnits[0].ModelSelection = domain.ExecutionBindingModelExplicit
+	plan.WorkUnits[0].Model = "gpt-test"
+	plan.WorkUnits[1].Provider = domain.HarnessClaudeCode
+	plan.WorkUnits[1].ModelSelection = domain.ExecutionBindingModelHistoricalUnbound
+	schedule := ScheduleView{Plan: plan, WorkUnits: []WorkUnitScheduleView{
+		{WorkUnit: plan.WorkUnits[0], State: WorkUnitScheduleRunnable},
+		{WorkUnit: plan.WorkUnits[1], State: WorkUnitScheduleBlocked},
+	}}
+	view, err := composeMissionProjection(domain.Outcome{ID: plan.OutcomeID, SpaceID: "rsp", CurrentRevisionNumber: 1}, schedule, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := view.Nodes[0].ExecutionBinding; got == nil || got.Provider != "codex" || got.ModelSelection != "explicit" || got.Model != "gpt-test" {
+		t.Fatalf("binding=%+v", got)
+	}
+	if view.Nodes[1].ExecutionBinding != nil {
+		t.Fatalf("historical unbound execution projected as planned authority: %+v", view.Nodes[1].ExecutionBinding)
+	}
+	if view.Nodes[0].Links == nil || len(view.Nodes[0].Links) != 0 {
+		t.Fatalf("safe links must be an empty array, got %#v", view.Nodes[0].Links)
+	}
+}
+
+func TestMissionGenerationIncludesDisplayEnrichmentsButTopologyDoesNot(t *testing.T) {
+	plan := schedulerPlanFixture()
+	schedule := ScheduleView{Plan: plan, WorkUnits: []WorkUnitScheduleView{{WorkUnit: plan.WorkUnits[0], State: WorkUnitScheduleRunnable}}}
+	view, err := composeMissionProjection(domain.Outcome{ID: plan.OutcomeID, SpaceID: "rsp", CurrentRevisionNumber: 1}, schedule, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseTopology, baseGeneration := view.TopologyFingerprint, missionProjectionGeneration(view)
+	view.MissionLabel = "Friendly project"
+	view.Nodes[0].Links = append(view.Nodes[0].Links, MissionLink{Kind: "retained_result", ID: "att-1", Label: "Retained result", State: "available"})
+	if got := missionProjectionGeneration(view); got == baseGeneration {
+		t.Fatal("display enrichment retained projection generation")
+	}
+	if view.TopologyFingerprint != baseTopology {
+		t.Fatal("display enrichment changed topology")
+	}
+}
+
+func TestMeasuredMissionChangesRequiresFrozenCompleteFullyMeasuredReceipt(t *testing.T) {
+	zero, two, frozen := int64(0), int64(2), time.Unix(200, 0).UTC()
+	base := domain.AttemptReceipt{AttemptID: "att", ArtifactVersion: "artifact", RetentionState: domain.RetentionRetained, FrozenAt: &frozen, Files: []domain.ArtifactFile{{Additions: &two, Deletions: &zero}}}
+	if got := measuredMissionChanges(base); got == nil || got.Additions != 2 || got.FilesChanged != 1 || got.SourceAttemptID != "att" || got.ArtifactVersion != "artifact" {
+		t.Fatalf("summary=%+v", got)
+	}
+	unfrozen := base
+	unfrozen.FrozenAt = nil
+	if measuredMissionChanges(unfrozen) != nil {
+		t.Fatal("unfrozen receipt projected measurements")
+	}
+	partial := base
+	partial.RetentionState = domain.RetentionIncomplete
+	if measuredMissionChanges(partial) != nil {
+		t.Fatal("partial receipt projected measurements")
+	}
+	ambiguous := base
+	ambiguous.Files[0].Deletions = nil
+	if measuredMissionChanges(ambiguous) != nil {
+		t.Fatal("partly measured receipt projected summary")
+	}
+}

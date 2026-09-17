@@ -70,8 +70,8 @@ func (q *Queries) GetAttemptReceipt(ctx context.Context, attemptID string) (Atte
 const insertAttemptArtifactFile = `-- name: InsertAttemptArtifactFile :exec
 INSERT INTO attempt_artifact_files (
     id, attempt_id, relative_path, change_kind,
-    content_digest, size_bytes, file_mode, is_binary, unsupported_reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    content_digest, size_bytes, file_mode, is_binary, unsupported_reason, additions, deletions
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertAttemptArtifactFileParams struct {
@@ -84,6 +84,8 @@ type InsertAttemptArtifactFileParams struct {
 	FileMode          sql.NullInt64
 	IsBinary          int64
 	UnsupportedReason string
+	Additions         sql.NullInt64
+	Deletions         sql.NullInt64
 }
 
 func (q *Queries) InsertAttemptArtifactFile(ctx context.Context, arg InsertAttemptArtifactFileParams) error {
@@ -97,12 +99,14 @@ func (q *Queries) InsertAttemptArtifactFile(ctx context.Context, arg InsertAttem
 		arg.FileMode,
 		arg.IsBinary,
 		arg.UnsupportedReason,
+		arg.Additions,
+		arg.Deletions,
 	)
 	return err
 }
 
 const listAttemptArtifactFiles = `-- name: ListAttemptArtifactFiles :many
-SELECT id, attempt_id, relative_path, change_kind, content_digest, size_bytes, file_mode, is_binary, unsupported_reason FROM attempt_artifact_files WHERE attempt_id = ? ORDER BY relative_path
+SELECT id, attempt_id, relative_path, change_kind, content_digest, size_bytes, file_mode, is_binary, unsupported_reason, additions, deletions FROM attempt_artifact_files WHERE attempt_id = ? ORDER BY relative_path
 `
 
 func (q *Queries) ListAttemptArtifactFiles(ctx context.Context, attemptID string) ([]AttemptArtifactFile, error) {
@@ -124,6 +128,8 @@ func (q *Queries) ListAttemptArtifactFiles(ctx context.Context, attemptID string
 			&i.FileMode,
 			&i.IsBinary,
 			&i.UnsupportedReason,
+			&i.Additions,
+			&i.Deletions,
 		); err != nil {
 			return nil, err
 		}

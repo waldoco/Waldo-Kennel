@@ -2017,8 +2017,7 @@ func (q *Queries) ListWorkUnitChecksForWorkUnit(ctx context.Context, workUnitID 
 }
 
 const listWorkUnitsForPlan = `-- name: ListWorkUnitsForPlan :many
-SELECT id, plan_revision_id, kind, title, contract_revision_number, output_summary, evidence_checks, verification_requirement, stop_conditions
-FROM work_units WHERE plan_revision_id = ?
+SELECT id, plan_revision_id, kind, title, contract_revision_number, output_summary, evidence_checks, verification_requirement, stop_conditions, position, role FROM work_units WHERE plan_revision_id = ?
 `
 
 func (q *Queries) ListWorkUnitsForPlan(ctx context.Context, planRevisionID domain.PlanRevisionID) ([]WorkUnit, error) {
@@ -2040,6 +2039,8 @@ func (q *Queries) ListWorkUnitsForPlan(ctx context.Context, planRevisionID domai
 			&i.EvidenceChecks,
 			&i.VerificationRequirement,
 			&i.StopConditions,
+			&i.Position,
+			&i.Role,
 		); err != nil {
 			return nil, err
 		}

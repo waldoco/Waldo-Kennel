@@ -733,3 +733,26 @@ func TestAttemptExecutionUsageChangedPayloadReplayAndTerminalAreRejected(t *test
 		t.Fatal("terminal sample accepted")
 	}
 }
+
+func TestOutcomeProjectLabelJoinUsesCanonicalProjectMetadata(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	plan, outcomeID := seedApprovedPlan(t, s, "mission-label")
+	_ = plan
+	project, ok, err := s.GetProject(ctx, "mission-label")
+	if err != nil || !ok {
+		t.Fatalf("get project: ok=%v err=%v", ok, err)
+	}
+	project.DisplayName = "Mission Label"
+	if err := s.UpsertProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	projectID, ok, err := s.GetOutcomeProjectID(ctx, outcomeID)
+	if err != nil || !ok || projectID != "mission-label" {
+		t.Fatalf("join=%q ok=%v err=%v", projectID, ok, err)
+	}
+	joined, ok, err := s.GetProject(ctx, string(projectID))
+	if err != nil || !ok || joined.DisplayName != "Mission Label" {
+		t.Fatalf("project=%+v ok=%v err=%v", joined, ok, err)
+	}
+}

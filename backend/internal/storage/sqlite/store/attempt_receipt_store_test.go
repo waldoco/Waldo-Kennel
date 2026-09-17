@@ -49,6 +49,8 @@ func TestAttemptReceiptRoundTripsProducingLineageAndManifest(t *testing.T) {
 	}
 
 	want := receiptFixture(attempt.ID, outcomeID, plan, at)
+	add, del := int64(7), int64(2)
+	want.Files[0].Additions, want.Files[0].Deletions = &add, &del
 	if err := s.SaveAttemptReceipt(ctx, want); err != nil {
 		t.Fatalf("save receipt: %v", err)
 	}
@@ -68,6 +70,15 @@ func TestAttemptReceiptRoundTripsProducingLineageAndManifest(t *testing.T) {
 	}
 	if len(got.Files) != 2 {
 		t.Fatalf("files = %d, want both", len(got.Files))
+	}
+	var measured *domain.ArtifactFile
+	for i := range got.Files {
+		if got.Files[i].RelativePath == "internal/parser/parse.go" {
+			measured = &got.Files[i]
+		}
+	}
+	if measured == nil || measured.Additions == nil || *measured.Additions != 7 || measured.Deletions == nil || *measured.Deletions != 2 {
+		t.Fatalf("measured changes lost: %+v", measured)
 	}
 	// A deletion is retained as output: a successor that re-creates a file the
 	// predecessor removed has not received its work.

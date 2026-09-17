@@ -101,8 +101,7 @@ INSERT INTO work_units (id, plan_revision_id, kind, title, contract_revision_num
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListWorkUnitsForPlan :many
-SELECT id, plan_revision_id, kind, title, contract_revision_number, output_summary, evidence_checks, verification_requirement, stop_conditions
-FROM work_units WHERE plan_revision_id = ?;
+SELECT * FROM work_units WHERE plan_revision_id = ?;
 
 -- Approved deterministic checks are frozen Plan authority; there is
 -- deliberately no update or delete query.

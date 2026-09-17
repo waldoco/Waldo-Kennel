@@ -80,6 +80,9 @@ func TestStoreRetainGitIncludesCommittedAndWorkingTreeOutput(t *testing.T) {
 	seen := map[string]bool{}
 	for _, file := range result.Receipt.Files {
 		seen[file.RelativePath] = true
+		if file.Additions == nil || file.Deletions == nil {
+			t.Fatalf("git change %s was not measured: %+v", file.RelativePath, file)
+		}
 		if file.ChangeKind == domain.ArtifactDeleted {
 			continue
 		}

@@ -240,6 +240,7 @@ func retentionSeverity(state domain.RetentionState) int {
 func (s *Store) collect(ctx context.Context, root string, in Input) ([]domain.ArtifactFile, *captureState, error) {
 	c := &captureState{state: domain.RetentionRetained, bytes: map[string][]byte{}}
 	paths := map[string]domain.ArtifactChangeKind{}
+	measurements := map[string][2]int64{}
 	if in.WorkspaceKind == domain.WorkspaceGitWorktree {
 		if strings.TrimSpace(in.BaseRevision) == "" {
 			return nil, c, errors.New("git retention requires the frozen base revision")
@@ -264,6 +265,11 @@ func (s *Store) collect(ctx context.Context, root string, in Input) ([]domain.Ar
 			return nil, c, fmt.Errorf("read working-tree output: %w", err)
 		}
 		parsePorcelain(status, paths)
+		numstat, err := gitOutput(ctx, root, "diff", "--numstat", "-z", in.BaseRevision)
+		if err != nil {
+			return nil, c, fmt.Errorf("measure retained output: %w", err)
+		}
+		parseNumstat(numstat, measurements)
 		c.dirty = len(paths) > 0
 	} else {
 		if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
@@ -303,6 +309,10 @@ func (s *Store) collect(ctx context.Context, root string, in Input) ([]domain.Ar
 		}
 		kind := paths[name]
 		f := domain.ArtifactFile{ID: "artifact-" + uuid.NewString(), AttemptID: in.AttemptID, RelativePath: name, ChangeKind: kind}
+		if counts, ok := measurements[name]; ok {
+			additions, deletions := counts[0], counts[1]
+			f.Additions, f.Deletions = &additions, &deletions
+		}
 		if _, err := confinedPath(root, name); err != nil {
 			return nil, c, fmt.Errorf("workspace path %q: %w", name, err)
 		}
@@ -357,6 +367,13 @@ func (s *Store) collect(ctx context.Context, root string, in Input) ([]domain.Ar
 		f.SizeBytes = &sz
 		f.FileMode = &mode
 		f.IsBinary = bytes.IndexByte(content, 0) >= 0
+		if f.Additions == nil && kind == domain.ArtifactUntracked && !f.IsBinary {
+			additions, deletions := int64(bytes.Count(content, []byte{'\n'})), int64(0)
+			if len(content) > 0 && content[len(content)-1] != '\n' {
+				additions++
+			}
+			f.Additions, f.Deletions = &additions, &deletions
+		}
 		c.bytes[name] = content
 		c.total += sz
 		files = append(files, f)
@@ -468,6 +485,26 @@ func parseNameStatus(data string, paths map[string]domain.ArtifactChangeKind) {
 				i++
 				paths[name] = domain.ArtifactModified
 			}
+		}
+	}
+}
+
+func parseNumstat(data string, out map[string][2]int64) {
+	parts := bytes.Split([]byte(data), []byte{0})
+	for _, part := range parts {
+		fields := bytes.SplitN(part, []byte{'\t'}, 3)
+		if len(fields) != 3 {
+			continue
+		}
+		var additions, deletions int64
+		if _, err := fmt.Sscan(string(fields[0]), &additions); err != nil {
+			continue
+		}
+		if _, err := fmt.Sscan(string(fields[1]), &deletions); err != nil {
+			continue
+		}
+		if name := string(fields[2]); name != "" {
+			out[name] = [2]int64{additions, deletions}
 		}
 	}
 }
