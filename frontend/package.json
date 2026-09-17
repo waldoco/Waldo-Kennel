@@ -65,12 +65,12 @@
 		"vitest": "^4.1.8"
 	},
 	"dependencies": {
-		"@pin4sf/kennel-product-ui": "file:../packages/product-ui",
 		"@dnd-kit/core": "^6.3.1",
 		"@dnd-kit/sortable": "^10.0.0",
 		"@dnd-kit/utilities": "^3.2.2",
 		"@fontsource-variable/geist": "^5.3.0",
 		"@fontsource-variable/geist-mono": "^5.3.0",
+		"@pin4sf/kennel-product-ui": "file:../packages/product-ui",
 		"@radix-ui/react-accordion": "^1.2.13",
 		"@radix-ui/react-dialog": "^1.1.16",
 		"@radix-ui/react-slot": "^1.3.3",
@@ -87,6 +87,7 @@
 		"@xterm/addon-web-links": "^0.11.0",
 		"@xterm/addon-webgl": "^0.19.0",
 		"@xterm/xterm": "^5.5.0",
+		"@xyflow/react": "12.11.6",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",
