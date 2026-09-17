@@ -3,8 +3,10 @@
 # SECURITY BOUNDARY: a prompt to Codex is code execution as the runner service
 # account on the owner's Mac. Dispatch and repository write access are currently
 # owner-only. The owner explicitly granted this Codex channel on 2026-09-18.
-# A verifier and boundary wrapper loaded from the exact protected workflow commit
-# run outside the candidate checkout. The wrapper itself does not request commit
+# Owner-only writer/dispatch policy operationally protects the commit containing
+# the selected workflow. A verifier and boundary wrapper loaded from that exact
+# workflow commit run outside the candidate checkout. The wrapper itself does not
+# request commit
 # or push; Codex retains the service account's ambient git/network/HOME authority.
 name: owner Codex delegation on self-hosted Mac
 run-name: "Codex delegate @ ${{ inputs.commit_sha }}"
@@ -44,7 +46,7 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64, codex]
     timeout-minutes: 125
     steps:
-      - name: Check out protected trust anchor
+      - name: Check out selected workflow trust anchor
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.workflow_sha }}
@@ -70,6 +72,19 @@ jobs:
           persist-credentials: false
           path: candidate
 
+      - name: Initialize failure-only upload artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          root="$(mktemp -d "$RUNNER_TEMP/waldo-kennel-codex-delegate.failure.XXXXXX")"
+          mkdir -m 700 "$root/work-product"
+          : > "$root/output.log"
+          : > "$root/work-product/git-status.txt"
+          : > "$root/work-product/git-diff.patch"
+          printf 'Kennel Codex delegation\ncodex_status=not-established\ncapture_status=failed\nproof=failed: trusted wrapper did not publish a validated capture\n' > "$root/diagnostic.log"
+          printf 'CODEX_DELEGATE_UPLOAD_ROOT=%s\n' "$root" >> "$GITHUB_ENV"
+
       - name: Verify runner-service Codex login
         shell: bash
         run: |
@@ -85,11 +100,6 @@ jobs:
           CODEX_DELEGATE_RESUME_FROM: ${{ inputs.resume_from }}
           CODEX_DELEGATE_TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
         run: ./trusted/scripts/ci/codex-delegate.sh "$GITHUB_WORKSPACE/candidate"
-
-      - name: Validate completed capture for upload
-        if: always()
-        shell: bash
-        run: ./trusted/scripts/ci/codex-delegate-finalize.sh
 
       - name: Upload full Codex output
         if: always()

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Trusted headless Codex wrapper. Executed only from the exact protected workflow
-# commit, never from the candidate tree.
+# Trusted headless Codex wrapper. Loaded from the commit containing the selected
+# workflow, operationally protected by owner-only writer/dispatch policy, never
+# from the candidate tree.
 set -euo pipefail
 umask 077
 
@@ -147,7 +148,7 @@ finish() {
 
 	rm -rf "$staging" "$capture_home"; rm -f "$capture_index" "$status_tmp" "$diff_tmp" "$output_tmp" "$diagnostic_tmp" "$marker_tmp"
 	if [[ "$capture_status" -eq 0 && -f "$final_root/completion.marker" && ! -L "$final_root/completion.marker" ]]; then
-		printf 'CODEX_DELEGATE_FINAL_ROOT=%s\n' "$final_root" >> "$GITHUB_ENV"
+		printf 'CODEX_DELEGATE_UPLOAD_ROOT=%s\n' "$final_root" >> "$GITHUB_ENV"
 		cat "$final_root/diagnostic.log"
 	else
 		final_status=1
@@ -163,7 +164,7 @@ import os, re, signal, subprocess, sys
 mins=int(sys.argv[1]); output,codex,prompt,resume,cwd=sys.argv[2:7]
 if resume and not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",resume): sys.exit(2)
 env=os.environ.copy()
-for key in ("GITHUB_ENV","GITHUB_OUTPUT","GITHUB_PATH","GITHUB_STEP_SUMMARY","CODEX_DELEGATE_PROMPT","CODEX_DELEGATE_RESUME_FROM","CODEX_DELEGATE_TIMEOUT_MINUTES","CODEX_DELEGATE_FINAL_ROOT"): env.pop(key,None)
+for key in ("GITHUB_ENV","GITHUB_OUTPUT","GITHUB_PATH","GITHUB_STEP_SUMMARY","CODEX_DELEGATE_PROMPT","CODEX_DELEGATE_RESUME_FROM","CODEX_DELEGATE_TIMEOUT_MINUTES","CODEX_DELEGATE_UPLOAD_ROOT"): env.pop(key,None)
 argv=[codex,"exec"]+(["resume",resume] if resume else [])+["--",prompt]
 with open(output,"ab",buffering=0) as stream:
  p=subprocess.Popen(argv,cwd=cwd,env=env,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
