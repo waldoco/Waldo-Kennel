@@ -2,13 +2,17 @@ package governedtools
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 type escalationFake struct {
 	policyDigest string
 	created      []domain.CapabilityEscalation
+	consumeWins  bool
 }
 
 func (f *escalationFake) LatestAttemptSessionRefForSession(context.Context, string) (domain.AttemptSessionRef, bool, error) {
@@ -31,7 +35,9 @@ func (f *escalationFake) ApplyCapabilityEscalationAnswer(context.Context, domain
 	return domain.CapabilityEscalationReceipt{}, false, nil
 }
 func (f *escalationFake) ConsumeCapabilityGrantOnce(context.Context, domain.CapabilityEscalation, string) (domain.CapabilityEscalationReceipt, bool, error) {
-	return domain.CapabilityEscalationReceipt{}, false, nil
+	won := f.consumeWins
+	f.consumeWins = false
+	return domain.CapabilityEscalationReceipt{}, won, nil
 }
 func TestGovernedToolEscalationBindsDurableExecutorLineage(t *testing.T) {
 	p := testPolicy(false, false)
@@ -59,10 +65,36 @@ func TestGovernedToolEscalationRejectsSuppliedPolicyMismatch(t *testing.T) {
 		t.Fatal("mismatched stored policy accepted")
 	}
 }
-func TestTemporaryGrantClearedAfterExactCall(t *testing.T) {
-	s := Server{grantOnceCapability: domain.CapabilityWorktreeWrite}
-	s.grantOnceCapability = ""
+func TestTemporaryGrantClearedAfterExactHandleCall(t *testing.T) {
+	root := t.TempDir()
+	policy, err := testPolicy(false, false).BindWorkspaceRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := policy.Digest()
+	f := &escalationFake{policyDigest: digest, consumeWins: true}
+	s := Server{Policy: policy, WorkspaceRoot: root, SessionID: "sess-1", Escalations: f}
+	opened, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Close()
+	s.root = opened
+	params, _ := json.Marshal(map[string]interface{}{"name": "write_text_file", "arguments": map[string]interface{}{"path": "x", "content": "once"}})
+	if _, err := s.handle(request{Method: "tools/call", Params: params}); err != nil {
+		t.Fatal(err)
+	}
 	if s.grantOnceCapability != "" {
-		t.Fatal("temporary grant leaked past call")
+		t.Fatal("temporary grant leaked past handle")
+	}
+	if b, err := os.ReadFile(filepath.Join(root, "x")); err != nil || string(b) != "once" {
+		t.Fatalf("first call=%q err=%v", b, err)
+	}
+	params, _ = json.Marshal(map[string]interface{}{"name": "write_text_file", "arguments": map[string]interface{}{"path": "y", "content": "twice"}})
+	if _, err := s.handle(request{Method: "tools/call", Params: params}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "y")); !os.IsNotExist(err) {
+		t.Fatalf("second call escaped one-use fence: %v", err)
 	}
 }

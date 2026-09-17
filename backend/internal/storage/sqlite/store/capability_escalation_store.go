@@ -137,6 +137,35 @@ func (s *Store) ApplyCapabilityEscalationAnswer(ctx context.Context, outcome dom
 		if row.OutcomeID != string(outcome) || row.QuestionID != questionID || row.QuestionGeneration != generation || row.SupersededAt.Valid {
 			return fmt.Errorf("capability escalation question is stale")
 		}
+		var consequence domain.CapabilityEscalationConsequence
+		switch option {
+		case domain.CapabilityEscalationGrantOnce:
+			if row.ExecutorKind != "governed_tool" {
+				return fmt.Errorf("grant once is unavailable for post-run checks")
+			}
+			if row.WithinContractCeiling == 0 {
+				return fmt.Errorf("grant once exceeds contract ceiling")
+			}
+			consequence = domain.CapabilityConsequenceGrantOnce
+		case domain.CapabilityEscalationWidenContract:
+			consequence = domain.CapabilityConsequenceRevisionRequested
+		case domain.CapabilityEscalationDeny:
+			consequence = domain.CapabilityConsequenceDenied
+		default:
+			return fmt.Errorf("invalid capability escalation answer")
+		}
+		if old, er := q.GetCapabilityEscalationReceipt(ctx, gen.GetCapabilityEscalationReceiptParams{QuestionID: questionID, QuestionGeneration: generation}); er == nil {
+			out = receiptFromRow(old)
+			if out.AnswerRequestKey != requestKey {
+				return fmt.Errorf("capability escalation answer request key conflicts")
+			}
+			if out.Consequence != consequence {
+				return fmt.Errorf("capability escalation already answered differently")
+			}
+			return nil
+		} else if !errors.Is(er, sql.ErrNoRows) {
+			return er
+		}
 		at, err := q.GetAttempt(ctx, gen.GetAttemptParams{ID: domain.AttemptID(row.AttemptID), OutcomeID: outcome})
 		if err != nil {
 			return err
@@ -170,35 +199,6 @@ func (s *Store) ApplyCapabilityEscalationAnswer(ctx context.Context, outcome dom
 		question, err := q.GetOwnerAnswerQuestion(ctx, questionID)
 		if err != nil {
 			return err
-		}
-		var consequence domain.CapabilityEscalationConsequence
-		switch option {
-		case domain.CapabilityEscalationGrantOnce:
-			if row.ExecutorKind != "governed_tool" {
-				return fmt.Errorf("grant once is unavailable for post-run checks")
-			}
-			if row.WithinContractCeiling == 0 {
-				return fmt.Errorf("grant once exceeds contract ceiling")
-			}
-			consequence = domain.CapabilityConsequenceGrantOnce
-		case domain.CapabilityEscalationWidenContract:
-			consequence = domain.CapabilityConsequenceRevisionRequested
-		case domain.CapabilityEscalationDeny:
-			consequence = domain.CapabilityConsequenceDenied
-		default:
-			return fmt.Errorf("invalid capability escalation answer")
-		}
-		if old, er := q.GetCapabilityEscalationReceipt(ctx, gen.GetCapabilityEscalationReceiptParams{QuestionID: questionID, QuestionGeneration: generation}); er == nil {
-			out = receiptFromRow(old)
-			if out.AnswerRequestKey != requestKey {
-				return fmt.Errorf("capability escalation answer request key conflicts")
-			}
-			if out.Consequence != consequence {
-				return fmt.Errorf("capability escalation already answered differently")
-			}
-			return nil
-		} else if !errors.Is(er, sql.ErrNoRows) {
-			return er
 		}
 		if question.Status != "pending" {
 			return fmt.Errorf("capability escalation question is not pending")
