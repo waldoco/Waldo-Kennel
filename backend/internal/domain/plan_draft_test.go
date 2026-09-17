@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -301,5 +304,36 @@ func TestApprovedLegacyExecutionCompatibilityIsExplicit(t *testing.T) {
 	p.WorkUnits[0].CriterionIDs = []CriterionID{"c"}
 	if err := p.ValidateForExecution(rev); err != nil {
 		t.Fatalf("approved legacy execution rejected: %v", err)
+	}
+}
+
+func TestLegacyRunBriefDigestOmitsPostMigrationOrchestrationFields(t *testing.T) {
+	p := validPlanRevision()
+	u := p.WorkUnits[0]
+	u.Role = WorkUnitRoleLegacy
+	u.Inputs = nil
+	rev := ContractRevision{ID: "cr", OutcomeID: p.OutcomeID, Number: 1, Goal: "g", SuccessCriteria: []string{"c"}, Criteria: []ContractCriterion{{ID: "c", ContractRevisionID: "cr", Position: 1, Text: "c"}}, Review: "r"}
+	u.CriterionIDs = []CriterionID{"c"}
+	got, err := ComputePlanRunBriefCoreDigest(rev, []WorkUnit{u}, p.Grants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exact digest produced by the pre-orchestration schema shape.
+	legacy := struct {
+		ContractRevisionNumber int64                    `json:"contractRevisionNumber"`
+		Goal                   string                   `json:"goal"`
+		SuccessCriteria        []string                 `json:"successCriteria"`
+		Review                 string                   `json:"review"`
+		Constraints            []string                 `json:"constraints"`
+		NonGoals               []string                 `json:"nonGoals"`
+		Clarification          string                   `json:"clarification"`
+		WorkUnits              []legacyRunBriefWorkUnit `json:"workUnits"`
+		Grants                 []string                 `json:"grants"`
+	}{rev.Number, rev.Goal, sortedTrimmed(rev.SuccessCriteria), rev.Review, sortedTrimmed(rev.Constraints), sortedTrimmed(rev.NonGoals), rev.Clarification, []legacyRunBriefWorkUnit{{ID: u.ID.String(), Title: u.Title, Intent: u.Intent, Provider: string(u.Provider), ModelSelection: string(u.ModelSelection), Model: u.Model, Output: u.OutputSummary, EvidenceChecks: sortedTrimmed(u.EvidenceChecks), VerificationRequirement: u.VerificationRequirement, StopConditions: sortedTrimmed(u.StopConditions), CriterionIDs: []string{"c"}, RequiredCapabilities: sortedTrimmed(u.RequiredCapabilities), Checks: runBriefChecks(u.Checks)}}, []string{"worktree.exec@worktree/*", "worktree.read@worktree/*", "worktree.write@worktree/*"}}
+	encoded, _ := json.Marshal(legacy)
+	sum := sha256.Sum256(encoded)
+	want := hex.EncodeToString(sum[:])
+	if got != want {
+		t.Fatalf("legacy digest=%s want pre-0155 %s", got, want)
 	}
 }

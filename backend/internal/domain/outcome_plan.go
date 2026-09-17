@@ -688,6 +688,23 @@ type runBriefWorkUnitInput struct {
 	Position       int64  `json:"position"`
 }
 
+type legacyRunBriefWorkUnit struct {
+	ID                      string         `json:"id"`
+	Title                   string         `json:"title"`
+	Intent                  WorkUnitIntent `json:"intent,omitempty"`
+	Provider                string         `json:"provider,omitempty"`
+	ModelSelection          string         `json:"modelSelection,omitempty"`
+	Model                   string         `json:"model,omitempty"`
+	Output                  string         `json:"output"`
+	EvidenceChecks          []string       `json:"evidenceChecks"`
+	VerificationRequirement string         `json:"verificationRequirement"`
+	StopConditions          []string       `json:"stopConditions"`
+	DependsOn               []string       `json:"dependsOn,omitempty"`
+	CriterionIDs            []string       `json:"criterionIds,omitempty"`
+	RequiredCapabilities    []string       `json:"requiredCapabilities,omitempty"`
+	Checks                  []string       `json:"approvedChecks,omitempty"`
+}
+
 type runBriefWorkUnit struct {
 	ID                      string                  `json:"id"`
 	Title                   string                  `json:"title"`
@@ -708,15 +725,15 @@ type runBriefWorkUnit struct {
 }
 
 type runBriefCore struct {
-	ContractRevisionNumber int64              `json:"contractRevisionNumber"`
-	Goal                   string             `json:"goal"`
-	SuccessCriteria        []string           `json:"successCriteria"`
-	Review                 string             `json:"review"`
-	Constraints            []string           `json:"constraints"`
-	NonGoals               []string           `json:"nonGoals"`
-	Clarification          string             `json:"clarification"`
-	WorkUnits              []runBriefWorkUnit `json:"workUnits"`
-	Grants                 []string           `json:"grants"`
+	ContractRevisionNumber int64    `json:"contractRevisionNumber"`
+	Goal                   string   `json:"goal"`
+	SuccessCriteria        []string `json:"successCriteria"`
+	Review                 string   `json:"review"`
+	Constraints            []string `json:"constraints"`
+	NonGoals               []string `json:"nonGoals"`
+	Clarification          string   `json:"clarification"`
+	WorkUnits              any      `json:"workUnits"`
+	Grants                 []string `json:"grants"`
 }
 
 // ComputePlanRunBriefCoreDigest freezes the complete approved execution graph,
@@ -734,7 +751,15 @@ func ComputePlanRunBriefCoreDigest(revision ContractRevision, units []WorkUnit, 
 		return "", err
 	}
 
+	legacy := len(ordered) > 0
+	for _, unit := range ordered {
+		if unit.Role != WorkUnitRoleLegacy {
+			legacy = false
+			break
+		}
+	}
 	briefUnits := make([]runBriefWorkUnit, 0, len(ordered))
+	legacyBriefUnits := make([]legacyRunBriefWorkUnit, 0, len(ordered))
 	for _, unit := range ordered {
 		dependencies := make([]string, 0, len(unit.DependsOn))
 		for _, id := range unit.DependsOn {
@@ -757,17 +782,22 @@ func ComputePlanRunBriefCoreDigest(revision ContractRevision, units []WorkUnit, 
 			// what runs.
 			Checks: runBriefChecks(unit.Checks),
 		})
+		legacyBriefUnits = append(legacyBriefUnits, legacyRunBriefWorkUnit{ID: unit.ID.String(), Title: unit.Title, Intent: unit.Intent, Provider: string(unit.Provider), ModelSelection: string(unit.ModelSelection), Model: unit.Model, Output: unit.OutputSummary, EvidenceChecks: sortedTrimmed(unit.EvidenceChecks), VerificationRequirement: unit.VerificationRequirement, StopConditions: sortedTrimmed(unit.StopConditions), DependsOn: dependencies, CriterionIDs: criteria, RequiredCapabilities: sortedTrimmed(unit.RequiredCapabilities), Checks: runBriefChecks(unit.Checks)})
 	}
 	grantNames := make([]string, 0, len(grants))
 	for _, grant := range grants {
 		grantNames = append(grantNames, grant.Name+"@"+grant.Scope)
 	}
 	sort.Strings(grantNames)
+	var encodedUnits any = briefUnits
+	if legacy {
+		encodedUnits = legacyBriefUnits
+	}
 	core := runBriefCore{
 		ContractRevisionNumber: revision.Number, Goal: revision.Goal,
 		SuccessCriteria: sortedTrimmed(revision.SuccessCriteria), Review: revision.Review,
 		Constraints: sortedTrimmed(revision.Constraints), NonGoals: sortedTrimmed(revision.NonGoals),
-		Clarification: revision.Clarification, WorkUnits: briefUnits, Grants: grantNames,
+		Clarification: revision.Clarification, WorkUnits: encodedUnits, Grants: grantNames,
 	}
 	encoded, err := json.Marshal(core)
 	if err != nil {
