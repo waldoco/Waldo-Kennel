@@ -208,10 +208,10 @@ func (p PlanDraftProposal) Validate() error {
 			return fmt.Errorf("plan draft work unit %q output summary is required", key)
 		}
 		if err := validateUniqueNonBlankPlanDraftList("criterion alias", unit.CriteriaCovered); err != nil {
-			return planDraftValidation(PlanDraftRoleIntentConflict, "plan draft work unit %q: %v", key, err)
+			return fmt.Errorf("plan draft work unit %q: %w", key, err)
 		}
 		if err := validateUniqueNonBlankPlanDraftList("evidence idea", unit.EvidenceIdeas); err != nil {
-			return planDraftValidation(PlanDraftRoleIntentConflict, "plan draft work unit %q: %v", key, err)
+			return fmt.Errorf("plan draft work unit %q: %w", key, err)
 		}
 		if len(unit.CheckCommands) > MaxPlanDraftChecksPerWorkUnit {
 			return fmt.Errorf("plan draft work unit %q proposes %d checks; maximum is %d", key, len(unit.CheckCommands), MaxPlanDraftChecksPerWorkUnit)
