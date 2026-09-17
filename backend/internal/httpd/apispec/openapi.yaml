@@ -2811,6 +2811,170 @@ paths:
         subject revision
       tags:
       - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you:
+    get:
+      operationId: getOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionsEnvelope'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Read current typed owner questions for the Outcome's active Attempt
+        and WorkUnits
+      tags:
+      - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you/{questionId}/answers:
+    post:
+      operationId: answerOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      - description: Durable Needs-You question identifier.
+        in: path
+        name: questionId
+        required: true
+        schema:
+          description: Durable Needs-You question identifier.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NeedsYouAnswerRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Answer one exact Needs-You generation through the governed command
+        lifecycle
+      tags:
+      - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you/{questionId}/reconcile:
+    post:
+      operationId: reconcileOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      - description: Durable Needs-You question identifier.
+        in: path
+        name: questionId
+        required: true
+        schema:
+          description: Durable Needs-You question identifier.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NeedsYouReconcileRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Settle delivery_unknown only when later provider evidence closed the
+        question
+      tags:
+      - outcomes
   /api/v1/outcomes/{outcomeId}/plan:
     get:
       operationId: getLatestOutcomePlan
@@ -9467,6 +9631,24 @@ components:
       - name
       - scope
       type: object
+    ChatDecisionAnswer:
+      properties:
+        id:
+          type: string
+        raw: {}
+      required:
+      - id
+      type: object
+    ChatInputAnswer:
+      properties:
+        action:
+          type: string
+        content:
+          additionalProperties: {}
+          type: object
+      required:
+      - action
+      type: object
     ClaimPRRequest:
       properties:
         allowTakeover:
@@ -12687,6 +12869,115 @@ components:
           type: boolean
       required:
       - muted
+      type: object
+    NeedsYouAnswerRequest:
+      properties:
+        decision:
+          $ref: '#/components/schemas/ChatDecisionAnswer'
+        generation:
+          type: string
+        input:
+          $ref: '#/components/schemas/ChatInputAnswer'
+        requestKey:
+          type: string
+      required:
+      - requestKey
+      - generation
+      type: object
+    NeedsYouOption:
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      type: object
+    NeedsYouQuestion:
+      properties:
+        attemptId:
+          type: string
+        commandId:
+          type: string
+        conversationId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        generation:
+          type: string
+        id:
+          type: string
+        inputMode:
+          type: string
+        inputSchema:
+          additionalProperties: {}
+          type: object
+        kind:
+          type: string
+        options:
+          items:
+            $ref: '#/components/schemas/NeedsYouOption'
+          type: array
+        outcomeId:
+          type: string
+        planRevisionId:
+          type: string
+        reason:
+          type: string
+        recommendation:
+          type: string
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        url:
+          type: string
+        workUnitId:
+          type: string
+      required:
+      - id
+      - outcomeId
+      - planRevisionId
+      - workUnitId
+      - attemptId
+      - sessionId
+      - conversationId
+      - requestId
+      - generation
+      - kind
+      - reason
+      - status
+      - createdAt
+      - updatedAt
+      type: object
+    NeedsYouQuestionEnvelope:
+      properties:
+        question:
+          $ref: '#/components/schemas/NeedsYouQuestion'
+      required:
+      - question
+      type: object
+    NeedsYouQuestionsEnvelope:
+      properties:
+        questions:
+          items:
+            $ref: '#/components/schemas/NeedsYouQuestion'
+          type: array
+      required:
+      - questions
+      type: object
+    NeedsYouReconcileRequest:
+      properties:
+        generation:
+          type: string
+      required:
+      - generation
       type: object
     NotificationEnvelope:
       properties:
