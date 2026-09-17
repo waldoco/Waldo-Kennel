@@ -2705,5 +2705,6 @@
 	"mission.inspector.close": "Close",
 	"mission.criteria.position": "Criterion {{position}}",
 	"mission.criteria.ready": "Ready",
-	"mission.criteria.pending": "Pending"
+	"mission.criteria.pending": "Pending",
+	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}"
 }

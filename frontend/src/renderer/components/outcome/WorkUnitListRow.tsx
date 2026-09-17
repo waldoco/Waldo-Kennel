@@ -39,9 +39,14 @@ export type WorkUnitListRowProps = {
 	selected: boolean;
 	onSelect: () => void;
 	onStart?: () => void;
+	/** True while the graph is frozen (disconnected, showing stale data) —
+	 *  the action stays visible but is explicitly disabled, never a click
+	 *  that silently does nothing (eligibility may have changed since the
+	 *  last confirmed truth). */
+	actionDisabled?: boolean;
 };
 
-export function WorkUnitListRow({ node, selected, onSelect, onStart }: WorkUnitListRowProps) {
+export function WorkUnitListRow({ node, selected, onSelect, onStart, actionDisabled = false }: WorkUnitListRowProps) {
 	const { t } = useTranslation();
 	const StatusIcon = STATUS_ICONS[node.status.status];
 	const criteriaLabel =
@@ -99,11 +104,16 @@ export function WorkUnitListRow({ node, selected, onSelect, onStart }: WorkUnitL
 			<span className="text-muted-foreground text-xs">{criteriaLabel}</span>
 			{node.action && (
 				<button
-					className="inline-flex h-[26px] shrink-0 items-center justify-center rounded-md border border-border-strong bg-popover px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-white/10"
+					aria-disabled={actionDisabled || undefined}
+					className={cn(
+						"inline-flex h-[26px] shrink-0 items-center justify-center rounded-md border border-border-strong bg-popover px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-white/10",
+						actionDisabled && "cursor-not-allowed opacity-50 hover:bg-popover",
+					)}
 					data-testid="mission-row-action"
+					disabled={actionDisabled}
 					onClick={(event) => {
 						event.stopPropagation();
-						onStart?.();
+						if (!actionDisabled) onStart?.();
 					}}
 					type="button"
 				>

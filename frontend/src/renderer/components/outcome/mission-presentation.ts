@@ -182,15 +182,35 @@ export interface MissionActionView {
 }
 
 /**
- * `nextAction` is only ever `"start"`, and only on the one node equal to the
- * projection's `nextRunnableWorkUnitId` (invariant C/G: at most one
- * server-selected action graph-wide). A retryable node with no returned
- * action stays non-actionable; this never renders a renderer-invented
- * "Retry" — a returned Start on a retryable node stays labeled Start.
+ * `nextAction` is only ever `"start"`. This alone is NOT trusted to enable a
+ * node's action — invariant C/G require a projection-wide singleton, so this
+ * only labels the action once `missionGraphView` has independently confirmed,
+ * from the projection's own `nextRunnableWorkUnitId`/`custodyHeldByWorkUnitId`,
+ * that this is *the* canonical actionable WorkUnit. A retryable node with no
+ * returned action stays non-actionable; this never renders a
+ * renderer-invented "Retry" — a returned Start on a retryable node stays
+ * labeled Start.
  */
 export function missionActionView(nextAction: string | undefined, t: TFunction): MissionActionView | undefined {
 	if (nextAction !== "start") return undefined;
 	return { kind: "start", label: t("mission.action.start" satisfies MessageKey) };
+}
+
+/**
+ * The one WorkUnit id (if any) this graph may render an action for, derived
+ * solely from the projection's own top-level fields — never from a node's
+ * own claim in isolation. Custody currently held by a *different* WorkUnit
+ * means something is already running under the serial execution fence, so
+ * nothing is actionable regardless of what `nextRunnableWorkUnitId` (or any
+ * node's `nextAction`) says. This is the single choke point invariant C/G
+ * requires: at most one action, graph-wide, ever.
+ */
+function canonicalActionableWorkUnitId(mission: MissionRecord): string | undefined {
+	const nextRunnable = mission.nextRunnableWorkUnitId;
+	if (!nextRunnable) return undefined;
+	const custodyHeldBy = mission.custodyHeldByWorkUnitId;
+	if (custodyHeldBy && custodyHeldBy !== nextRunnable) return undefined;
+	return nextRunnable;
 }
 
 export interface MissionNodeView {
@@ -215,7 +235,7 @@ export interface MissionNodeView {
 	generation: number;
 }
 
-function missionNodeViewWithoutDependencyFlag(node: MissionNodeRecord, t: TFunction): MissionNodeView {
+function missionNodeViewWithoutDependencyFlag(node: MissionNodeRecord, t: TFunction, isCanonicalActionable: boolean): MissionNodeView {
 	return {
 		workUnitId: node.workUnitId,
 		title: node.title,
@@ -227,7 +247,10 @@ function missionNodeViewWithoutDependencyFlag(node: MissionNodeRecord, t: TFunct
 		sessionStatusLabel: node.currentAttempt?.session
 			? missionSessionStatusLabel(node.currentAttempt.session.status, t)
 			: undefined,
-		action: missionActionView(node.nextAction, t),
+		// Never this node's own `nextAction` in isolation — only the one
+		// WorkUnit `missionGraphView` independently confirmed as canonical
+		// gets to turn its (agreeing) `nextAction` into a rendered action.
+		action: isCanonicalActionable ? missionActionView(node.nextAction, t) : undefined,
 		criteria: missionCriteriaView(node),
 		responsibilityLabel: missionResponsibilityLabel(node.responsibility, t),
 		dependencyUnavailable: false,
@@ -257,8 +280,9 @@ export function missionGraphView(mission: MissionRecord, t: TFunction): MissionG
 		dependentCounts.set(edge.from, (dependentCounts.get(edge.from) ?? 0) + 1);
 		dependencyCounts.set(edge.to, (dependencyCounts.get(edge.to) ?? 0) + 1);
 	}
+	const canonicalActionableWorkUnit = canonicalActionableWorkUnitId(mission);
 	const nodes = mission.nodes.map((node) => ({
-		...missionNodeViewWithoutDependencyFlag(node, t),
+		...missionNodeViewWithoutDependencyFlag(node, t, node.workUnitId === canonicalActionableWorkUnit),
 		dependencyUnavailable: node.dependsOn.some((dependsOnId) => !nodeIds.has(dependsOnId)),
 		dependencyCount: dependencyCounts.get(node.workUnitId) ?? 0,
 		dependentCount: dependentCounts.get(node.workUnitId) ?? 0,

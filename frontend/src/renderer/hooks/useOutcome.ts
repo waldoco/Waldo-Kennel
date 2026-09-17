@@ -414,14 +414,23 @@ export function outcomeMissionQueryKey(outcomeId: string | undefined, planId?: s
 	return ["outcome-mission", outcomeId ?? "", planId ?? ""] as const;
 }
 
-/** A preview Mission mirrors the preview Schedule stub: no attempts, no
- *  attention, and only the first WorkUnit runnable — enough to render
- *  topology honestly without inventing runtime facts. */
+/**
+ * Preview mode (browser demo fixtures, no daemon) has no scheduler and no
+ * runtime facts to report — only the static Plan is known. It must never
+ * invent runnability, blockers, or actions from WorkUnit order: every node's
+ * `scheduleState` is the explicit `"unavailable"` sentinel (outside the
+ * closed schedule-state set, so the presentation adapter's own fail-closed
+ * mapping renders it as "State unavailable" — nothing new to teach it),
+ * `criterionReady` is `null` (unresolved, never a fabricated boolean), and no
+ * node ever carries a `nextAction` or `currentAttempt`. Only static topology
+ * genuinely known from the Plan (title, dependsOn, criterionIds, and the
+ * edges they imply) is reflected — the same source the real backend derives
+ * its own edges from.
+ */
 export async function fetchOutcomeMission(outcomeId: string, planId: string): Promise<MissionRecord> {
 	if (usesPreviewWorkspaceData) {
 		const plan = getPreviewPlan(outcomeId);
 		if (!plan || plan.id !== planId) throw { code: PLAN_NOT_FOUND, message: "No preview plan exists yet." };
-		const nextRunnableWorkUnitId = plan.workUnits[0]?.id;
 		const now = new Date().toISOString();
 		return {
 			version: 1,
@@ -434,24 +443,22 @@ export async function fetchOutcomeMission(outcomeId: string, planId: string): Pr
 			topologyGeneration: plan.number,
 			generation: plan.number,
 			updatedAt: now,
-			nodes: plan.workUnits.map((workUnit, index) => ({
+			nodes: plan.workUnits.map((workUnit) => ({
 				workUnitId: workUnit.id,
 				planRevisionId: plan.id,
 				title: workUnit.title,
 				dependsOn: workUnit.dependsOn,
-				scheduleState: index === 0 ? "runnable" : "blocked",
-				blockingDependencies: index === 0 ? [] : [plan.workUnits[index - 1]?.id ?? ""],
+				scheduleState: "unavailable",
+				blockingDependencies: [],
 				criterionIds: workUnit.criterionIds,
-				criterionReady: Object.fromEntries(workUnit.criterionIds.map((id) => [id, false])),
+				criterionReady: null,
 				responsibility: "unconfirmed",
 				updatedAt: now,
-				generation: index,
-				...(workUnit.id === nextRunnableWorkUnitId ? { nextAction: "start" } : {}),
+				generation: 0,
 			})),
 			edges: plan.workUnits.flatMap((workUnit) =>
 				workUnit.dependsOn.map((dependsOnId) => ({ from: dependsOnId, to: workUnit.id })),
 			),
-			...(nextRunnableWorkUnitId ? { nextRunnableWorkUnitId } : {}),
 		};
 	}
 	const { data, error } = await apiClient.GET("/api/v1/outcomes/{outcomeId}/plans/{planId}/mission", {

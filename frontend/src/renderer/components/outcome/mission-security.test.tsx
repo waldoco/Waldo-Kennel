@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MissionRecord } from "../../hooks/useOutcome";
@@ -72,7 +72,7 @@ describe("Mission security canary", () => {
 				planApproved
 			/>,
 		);
-		getByTestId("mission-list-row-wu-1").click();
+		fireEvent.click(getByTestId("mission-list-row-wu-1"));
 		expect(await screen.findByTestId("outcome-inspector")).toBeInTheDocument();
 		expect(container.innerHTML).not.toContain(SECRET_VALUE);
 	});

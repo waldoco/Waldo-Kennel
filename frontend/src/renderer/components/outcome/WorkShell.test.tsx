@@ -36,6 +36,17 @@ vi.mock("../../hooks/useOutcome", () => ({
 	useOutcomeAttempts: attemptsQueryMock,
 }));
 
+// Unmocked, this hook's real query settles asynchronously (there is no
+// trusted API base URL in this test environment) after the test's
+// synchronous assertions already ran, updating WorkShell outside act(...).
+// None of these tests exercise a decomposed Outcome's relationship graph —
+// that gets its own coverage elsewhere — so a fixed "not decomposed, already
+// settled" result is exact, not a stand-in for real behavior.
+vi.mock("../../hooks/useOutcomeComposition", () => ({
+	OUTCOME_SHAPES: { direct: "direct", decomposed: "decomposed" },
+	useOutcomeComposition: () => ({ composition: undefined, isLoading: false }),
+}));
+
 vi.mock("./OutcomeAttemptTerminalPanel", () => ({
 	OutcomeAttemptTerminalPanel: ({ attempt, onClose }: { attempt: { id: string }; onClose: () => void }) => (
 		<div data-testid="mock-attempt-panel">

@@ -216,6 +216,84 @@ describe("missionGraphView", () => {
 	});
 });
 
+describe("missionGraphView action singleton (invariant C/G)", () => {
+	it("enables the action for the node the projection names as next-runnable", () => {
+		const fixture = mission({
+			nodes: [
+				node({ workUnitId: "a", scheduleState: "runnable", nextAction: "start" }),
+				node({ workUnitId: "b", scheduleState: "blocked" }),
+			],
+			edges: [],
+			nextRunnableWorkUnitId: "a",
+		});
+		const view = missionGraphView(fixture, t);
+		expect(view.nodesByWorkUnitId.get("a")?.action).toEqual({ kind: "start", label: "mission.action.start" });
+		expect(view.nodesByWorkUnitId.get("b")?.action).toBeUndefined();
+	});
+
+	it("ignores a duplicate start claim on a second node — only the projection's named next-runnable ever gets the action", () => {
+		const fixture = mission({
+			nodes: [
+				node({ workUnitId: "a", scheduleState: "runnable", nextAction: "start" }),
+				// A malformed/corrupted payload duplicating the claim must never
+				// produce a second actionable node.
+				node({ workUnitId: "b", scheduleState: "runnable", nextAction: "start" }),
+			],
+			edges: [],
+			nextRunnableWorkUnitId: "a",
+		});
+		const view = missionGraphView(fixture, t);
+		expect(view.nodes.filter((n) => n.action).map((n) => n.workUnitId)).toEqual(["a"]);
+	});
+
+	it("renders no action anywhere when nextRunnableWorkUnitId does not match the node that actually claims start", () => {
+		const fixture = mission({
+			nodes: [
+				// This node's own nextAction disagrees with the projection's
+				// nextRunnableWorkUnitId below — the mismatch fails closed to no
+				// action at all, rather than trusting either field alone.
+				node({ workUnitId: "a", scheduleState: "runnable", nextAction: "start" }),
+				node({ workUnitId: "b", scheduleState: "runnable" }),
+			],
+			edges: [],
+			nextRunnableWorkUnitId: "b",
+		});
+		const view = missionGraphView(fixture, t);
+		expect(view.nodes.every((n) => !n.action)).toBe(true);
+	});
+
+	it("renders no action anywhere when custody is held by a different WorkUnit than next-runnable — something else is already running under the serial fence", () => {
+		const fixture = mission({
+			nodes: [node({ workUnitId: "a", scheduleState: "runnable", nextAction: "start" }), node({ workUnitId: "b", scheduleState: "executing" })],
+			edges: [],
+			nextRunnableWorkUnitId: "a",
+			custodyHeldByWorkUnitId: "b",
+		});
+		const view = missionGraphView(fixture, t);
+		expect(view.nodes.every((n) => !n.action)).toBe(true);
+	});
+
+	it("still enables the action when custody is held by the same WorkUnit the projection names as next-runnable", () => {
+		const fixture = mission({
+			nodes: [node({ workUnitId: "a", scheduleState: "retryable", nextAction: "start" })],
+			edges: [],
+			nextRunnableWorkUnitId: "a",
+			custodyHeldByWorkUnitId: "a",
+		});
+		const view = missionGraphView(fixture, t);
+		expect(view.nodesByWorkUnitId.get("a")?.action).toEqual({ kind: "start", label: "mission.action.start" });
+	});
+
+	it("renders no action when the projection names no next-runnable at all", () => {
+		const fixture = mission({
+			nodes: [node({ workUnitId: "a", scheduleState: "runnable", nextAction: "start" })],
+			edges: [],
+		});
+		const view = missionGraphView(fixture, t);
+		expect(view.nodesByWorkUnitId.get("a")?.action).toBeUndefined();
+	});
+});
+
 describe("topology identity", () => {
 	it("treats a state-only change (generation moves, identity fields hold) as the same topology", () => {
 		const a = missionTopologyIdentity(mission({ generation: 1 }));

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -87,7 +87,7 @@ describe("MissionWorkUnitList", () => {
 		const mission = forkJoinMission();
 		const { rerender } = render(<MissionWorkUnitList missionQuery={missionQuery(mission)} planApproved />);
 		const rows = screen.getAllByRole("option");
-		rows[0]?.click();
+		if (rows[0]) fireEvent.click(rows[0]);
 
 		const stateOnlyUpdate: MissionRecord = {
 			...mission,
@@ -124,7 +124,7 @@ describe("MissionWorkUnitList", () => {
 		const refetch = vi.fn();
 		render(<MissionWorkUnitList missionQuery={missionQuery(undefined, { failure: { kind: "retryable", message: "Boom" }, refetch })} planApproved />);
 		expect(screen.getByTestId("mission-list-error")).toHaveTextContent("Boom");
-		screen.getByTestId("mission-list-retry").click();
+		fireEvent.click(screen.getByTestId("mission-list-retry"));
 		expect(refetch).toHaveBeenCalled();
 	});
 
@@ -154,6 +154,60 @@ describe("MissionWorkUnitList", () => {
 		} finally {
 			connectionState.value = "connected";
 		}
+	});
+
+	it("freezes and disables actions on disconnect even though React Query still retains the last successful mission (the normal case, not just a cold cache)", () => {
+		const mission = forkJoinMission({
+			nodes: [
+				node({ workUnitId: "root", nextAction: "start" }),
+				node({ workUnitId: "left", dependsOn: ["root"] }),
+				node({ workUnitId: "right", dependsOn: ["root"] }),
+				node({ workUnitId: "join", dependsOn: ["left", "right"] }),
+			],
+			nextRunnableWorkUnitId: "root",
+		});
+		const onStart = vi.fn();
+		const { rerender } = render(<MissionWorkUnitList missionQuery={missionQuery(mission)} onStart={onStart} planApproved />);
+		// Confirm the action is live and enabled before disconnect.
+		expect(screen.getByTestId("mission-row-action")).toBeEnabled();
+		expect(screen.queryByTestId("mission-list-stale-banner")).not.toBeInTheDocument();
+
+		connectionState.value = "disconnected";
+		try {
+			// React Query retains its last successful data across a transport
+			// disconnect — `missionQuery.mission` is still the same truthy
+			// object here, exactly like production. Freezing must not depend on
+			// the query having gone empty.
+			rerender(<MissionWorkUnitList missionQuery={missionQuery(mission)} onStart={onStart} planApproved />);
+			expect(screen.getByTestId("mission-list-stale-banner")).toBeInTheDocument();
+			const actionButton = screen.getByTestId("mission-row-action");
+			expect(actionButton).toBeDisabled();
+			fireEvent.click(actionButton);
+			expect(onStart).not.toHaveBeenCalled();
+		} finally {
+			connectionState.value = "connected";
+		}
+	});
+
+	it("surfaces a refresh-failed banner (not silence) when a refetch fails over already-shown retained data while still connected", () => {
+		const mission = forkJoinMission();
+		const { rerender } = render(<MissionWorkUnitList missionQuery={missionQuery(mission)} planApproved />);
+		expect(screen.queryByTestId("mission-list-refresh-failed-banner")).not.toBeInTheDocument();
+
+		const refetch = vi.fn();
+		rerender(
+			<MissionWorkUnitList
+				missionQuery={missionQuery(mission, { failure: { kind: "retryable", message: "Network blip" }, refetch })}
+				planApproved
+			/>,
+		);
+		const banner = screen.getByTestId("mission-list-refresh-failed-banner");
+		expect(banner).toHaveTextContent("Network blip");
+		// The retained graph stays visible underneath the banner — a failed
+		// refresh never blanks out the last confirmed truth.
+		expect(screen.getAllByRole("option")).toHaveLength(4);
+		fireEvent.click(screen.getByTestId("mission-list-refresh-failed-retry"));
+		expect(refetch).toHaveBeenCalled();
 	});
 
 	it("counts attention separately across approval, choice, and input", () => {

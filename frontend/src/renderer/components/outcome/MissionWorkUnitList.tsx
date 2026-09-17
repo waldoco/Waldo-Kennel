@@ -57,12 +57,22 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 
 	const mission = missionQuery.mission;
 	if (mission) lastConfirmedRef.current = mission;
+	const confirmedMission = lastConfirmedRef.current;
 
-	// Disconnect freezes the last confirmed graph rather than clearing it —
-	// item 9/invariant H. A transient fetch failure with no prior confirmed
-	// graph still surfaces as the honest error state below.
-	const frozen = connection === "disconnected" && !mission;
-	const displayMission = mission ?? (frozen ? lastConfirmedRef.current : undefined);
+	// Disconnect freezes the last confirmed graph — item 9/invariant H — for
+	// as long as the SSE stream is down, regardless of whether React Query
+	// still happens to hold the same (or any) cached `mission` value: once
+	// disconnected we can no longer trust that further CDC-driven refetches
+	// will reach us, so the display and every eligibility-sensitive action
+	// freeze to the last thing we actually confirmed. A transient failure
+	// with no prior confirmed graph at all still surfaces as the honest
+	// error state below, not a fabricated freeze.
+	const frozen = connection === "disconnected" && Boolean(confirmedMission);
+	const displayMission = confirmedMission;
+	// Connected (or unknown) but the last refresh attempt over already-shown
+	// data failed — a different condition from `frozen`, and never silent:
+	// the retained graph stays visible, but the failure is surfaced too.
+	const refreshFailed = !frozen && Boolean(missionQuery.failure) && Boolean(confirmedMission);
 
 	const graph = useMemo(() => (displayMission ? missionGraphView(displayMission, t) : undefined), [displayMission, t]);
 
@@ -202,6 +212,17 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 				</div>
 			)}
 
+			{refreshFailed && (
+				<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-list-refresh-failed-banner">
+					<p className="text-muted-foreground text-xs">
+						{t("mission.list.refreshFailed.banner" satisfies MessageKey, { message: missionQuery.failure?.message ?? "" })}
+					</p>
+					<Button data-testid="mission-list-refresh-failed-retry" onClick={missionQuery.refetch} size="sm" variant="outline">
+						{t("mission.list.retry" satisfies MessageKey)}
+					</Button>
+				</div>
+			)}
+
 			<MissionAttentionStrip items={attentionCounts} />
 
 			<div className="flex min-h-0 flex-1 gap-3">
@@ -214,6 +235,7 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 				>
 					{graph.nodes.map((node) => (
 						<WorkUnitListRow
+							actionDisabled={frozen}
 							key={node.workUnitId}
 							node={node}
 							onSelect={() => selectRow(node.workUnitId)}
