@@ -58,13 +58,18 @@ export function createCodexDiscoveryHandler(d: Deps) {
     const resolve = d.resolve ?? defaultResolve,
       version = d.version ?? defaultVersion;
     for (const directory of d.path().split(path.delimiter).filter(Boolean)) {
+      let executable: string;
       try {
-        const executable = await resolve(
+        executable = await resolve(
           path.join(
             directory,
             process.platform === "win32" ? "codex.exe" : "codex",
           ),
         );
+      } catch {
+        continue;
+      }
+      try {
         const output = (await version(executable)).trim();
         const match = output.match(
           /(?:codex(?:-cli)?\s+)?(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)/i,
@@ -81,7 +86,10 @@ export function createCodexDiscoveryHandler(d: Deps) {
           source: "path",
         };
       } catch {
-        /* next path entry */
+        return {
+          state: "incompatible",
+          message: "The installed Codex version could not be checked.",
+        };
       }
     }
     return {
