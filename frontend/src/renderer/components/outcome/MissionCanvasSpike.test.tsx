@@ -101,11 +101,18 @@ describe("MissionCanvasSpike — flow renderer (explicit opt-in only)", () => {
 	});
 
 	it("reaches every node by keyboard in dependency order (native tab order = fixture array order)", () => {
-		render(<MissionCanvasSpike config={{ renderer: "flow" }} nodes={FIXTURE} revision={1} />);
-		const nodes = screen.getAllByTestId("mission-canvas-flow-node");
+		const { container } = render(<MissionCanvasSpike config={{ renderer: "flow" }} nodes={FIXTURE} revision={1} />);
+		// Query the live document directly (not getAllByTestId's own traversal)
+		// so this asserts actual DOM/tab order, not just presence.
+		const nodes = Array.from(container.querySelectorAll('[data-testid="mission-canvas-flow-node"]'));
+		expect(nodes).toHaveLength(MISSION_CANVAS_FIXTURE_NODE_COUNT);
 		expect(nodes.every((node) => node.getAttribute("tabindex") === "0")).toBe(true);
 		nodes.forEach((node, index) => {
 			expect(node).toHaveAttribute("aria-label", expect.stringContaining(FIXTURE[index].title));
+			if (index > 0) {
+				// DOCUMENT_POSITION_FOLLOWING (4): each node must come strictly after the previous one in document order.
+				expect(nodes[index - 1].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			}
 		});
 	});
 
