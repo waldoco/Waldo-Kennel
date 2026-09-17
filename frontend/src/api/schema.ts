@@ -3557,10 +3557,12 @@ export interface components {
             dependsOn: string[];
             /** Format: int64 */
             generation: number;
+            inputs: components["schemas"]["ControllersWorkUnitInputResponse"][];
             nextAction?: string;
             planRevisionId: string;
             /** @enum {string} */
             responsibility: "agent" | "owner" | "unconfirmed";
+            role: string;
             scheduleState: string;
             title: string;
             /** Format: date-time */
@@ -3934,6 +3936,12 @@ export interface components {
             maxBytes?: null | number;
             maxFiles?: null | number;
             maxVisited?: null | number;
+        };
+        ControllersWorkUnitInputResponse: {
+            fromWorkUnitId: string;
+            /** Format: int64 */
+            position: number;
+            required: string;
         };
         ConversationAccountPayload: {
             authMode?: string;
@@ -4793,6 +4801,7 @@ export interface components {
             dependsOn: string[];
             evidenceChecks: string[];
             id: string;
+            inputs: components["schemas"]["ControllersWorkUnitInputResponse"][];
             kind: string;
             model?: string;
             modelSelection?: string;
@@ -4801,6 +4810,7 @@ export interface components {
             position: number;
             provider?: string;
             requiredCapabilities: string[];
+            role: string;
             stopConditions: string[];
             title: string;
             verificationRequirement: string;
