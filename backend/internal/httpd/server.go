@@ -75,6 +75,8 @@ func NewWithDeps(cfg config.Config, log *slog.Logger, termMgr *terminal.Manager,
 			PairingCoordinator:   deps.PairingCoordinator,
 			OwnerProofKernel:     deps.OwnerProofKernel,
 			HarnessAuthority:     deps.HarnessAuthorityCommands,
+			HarnessDiscovery:     deps.HarnessDiscovery,
+			HarnessProtocol:      deps.HarnessProtocol,
 		}),
 		// ReadHeaderTimeout guards against slow-loris even on loopback;
 		// per-request body/handler timeouts are applied per-surface.

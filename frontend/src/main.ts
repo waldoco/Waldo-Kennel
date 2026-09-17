@@ -30,7 +30,12 @@ import {
 import { listFeatureBuilds, getActiveFeatureBuild } from "./main/feature-builds";
 import { createAttemptReplacementHandler } from "./main/owner-command-handler";
 import { createHarnessAuthorityHandler } from "./main/harness-authority-handler";
-import { createCodexDiscoveryHandler, createCodexPairingStateHandler, unsupportedCodexPairing } from "./main/provider-pairing-handler";
+import {
+  createCodexDiscoveryHandler,
+  createCodexPairingHandler,
+  createCodexPairingStateHandler,
+} from "./main/provider-pairing-handler";
+import { exchangePairingFrame } from "./main/pairing-socket";
 import { readUpdateSettings, type UpdateSettings, type UpdateStatus } from "./main/update-settings";
 import { readKeybindingOverrides, writeKeybindingOverrides } from "./main/keybinding-settings";
 import {
@@ -1652,13 +1657,49 @@ ipcMain.handle("providerPairing:getCodex", createCodexPairingStateHandler({
 	fetch: globalThis.fetch,
 	path: () => cachedShellEnv?.PATH ?? process.env.PATH ?? "",
 }));
-// Activation remains deliberately closed until the reviewed generation-preserving
-// pairing coordinator is wired into this desktop build.
-ipcMain.handle("providerPairing:pairCodex", (event) => {
-	const shell = getShellWebContents();
-	if (!shell || shell.isDestroyed() || event.sender !== shell || event.senderFrame !== shell.mainFrame) throw Error("Provider pairing must come from the live primary Kennel shell main frame");
-	return unsupportedCodexPairing();
-});
+ipcMain.handle(
+  "providerPairing:pairCodex",
+  createCodexPairingHandler({
+    getWindow: () => mainWindow,
+    getShellWebContents,
+    showConfirmation: (window, intent) =>
+      dialog.showMessageBox(window, {
+        type: "warning",
+        buttons: [
+          intent.kind === "rotate" ? "Reconnect Codex" : "Pair Codex",
+          "Cancel",
+        ],
+        defaultId: 1,
+        cancelId: 1,
+        message:
+          intent.kind === "rotate"
+            ? "Reconnect Codex to this project?"
+            : "Pair Codex to this project?",
+        detail: `Project connection ${intent.connectionId}\nIntent ${intent.digest}\nGeneration ${intent.expectedGeneration}`,
+      }),
+    getDaemonConnection: () =>
+      daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port)
+        ? { port: Number(daemonStatus.port) }
+        : null,
+    getPairingAddress: () => {
+      const file = runFilePath();
+      if (!file) return null;
+      try {
+        return (
+          parseRunFile(readFileSync(file, "utf8"))?.harnessPairingAddress ??
+          null
+        );
+      } catch {
+        return null;
+      }
+    },
+    fetch: globalThis.fetch,
+    path: () => cachedShellEnv?.PATH ?? process.env.PATH ?? "",
+    ownerCommandToken,
+    appRunId,
+    exchange: exchangePairingFrame,
+  }),
+);
 ipcMain.handle("app:getVersion", () => app.getVersion());
 ipcMain.handle("app:openExternal", async (_event, url: string) => {
 	await openAllowedAppExternalURL(url, shell);

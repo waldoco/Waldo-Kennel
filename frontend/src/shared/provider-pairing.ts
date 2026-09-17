@@ -26,6 +26,5 @@ export type CodexPairingState = {
 
 export type CodexPairingProposal = {
   projectId: string;
-  installationId: string;
   requestKey: string;
 };

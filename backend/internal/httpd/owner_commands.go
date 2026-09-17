@@ -34,7 +34,7 @@ type replacementDecisionFingerprint struct {
 	replacementDecisionRequest
 }
 
-func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store ports.AttemptReplacementDecisionStore, pairing *harnesspairing.Coordinator, proofs *ownerproof.Kernel, harnesses *harnessauthority.Service) {
+func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store ports.AttemptReplacementDecisionStore, pairing *harnesspairing.Coordinator, proofs *ownerproof.Kernel, harnesses *harnessauthority.Service, discovery ports.HarnessDiscovery, protocol ports.ProtocolProvenanceProbe) {
 	if authority == nil {
 		return
 	}
@@ -97,7 +97,7 @@ func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store p
 		mountPairingIntentOwnerCommand(r, authority, pairing)
 	}
 	mountOwnerProofCommand(r, authority, proofs)
-	mountHarnessAuthorityCommands(r, authority, harnesses)
+	mountHarnessAuthorityCommands(r, authority, harnesses, discovery, protocol)
 }
 
 type pairingIntentRequest struct {
@@ -204,7 +204,6 @@ type harnessIntentCreateRequest struct {
 	HarnessIdentity     string                          `json:"harnessIdentity"`
 	ProviderVersion     string                          `json:"providerVersion"`
 	ProtocolFingerprint domain.SHA256Digest             `json:"protocolFingerprint"`
-	MissionID           string                          `json:"missionId"`
 	CapabilityClasses   []domain.HarnessCapabilityClass `json:"capabilityClasses"`
 	ExpectedGeneration  int64                           `json:"expectedGeneration"`
 	ConnectionExpiresAt time.Time                       `json:"connectionExpiresAt"`
@@ -221,7 +220,7 @@ type harnessRevokeRequest struct {
 	RequestKey         string              `json:"requestKey"`
 }
 
-func mountHarnessAuthorityCommands(r chi.Router, authority *ownercommand.Authority, svc *harnessauthority.Service) {
+func mountHarnessAuthorityCommands(r chi.Router, authority *ownercommand.Authority, svc *harnessauthority.Service, discovery ports.HarnessDiscovery, protocol ports.ProtocolProvenanceProbe) {
 	if svc == nil {
 		return
 	}
@@ -245,6 +244,34 @@ func mountHarnessAuthorityCommands(r chi.Router, authority *ownercommand.Authori
 		}
 		return true
 	}
+	type codexBootstrapRequest struct {
+		ProjectID  domain.ProjectID `json:"projectId"`
+		RequestKey string           `json:"requestKey"`
+	}
+	r.Post("/internal/owner-commands/codex-pairing-proposals", func(w http.ResponseWriter, req *http.Request) {
+		a, ok := authenticate(w, req)
+		if !ok {
+			return
+		}
+		var in codexBootstrapRequest
+		if !decode(w, req, &in) {
+			return
+		}
+		fingerprint, _ := ownercommand.Fingerprint(struct {
+			AppRunID string
+			Body     codexBootstrapRequest
+		}{a.AppRunID, in})
+		v, created, err := svc.CreateCodexProposal(req.Context(), discovery, protocol, harnessauthority.CodexProposalRequest{ProjectID: in.ProjectID, AppRunID: a.AppRunID, RequestKey: in.RequestKey, RequestFingerprint: fingerprint})
+		if err != nil {
+			envelope.WriteJSON(w, 400, map[string]any{"error": map[string]any{"code": "CODEX_PAIRING_PROPOSAL_INVALID", "message": "Codex pairing proposal could not be created"}})
+			return
+		}
+		status := 200
+		if created {
+			status = 201
+		}
+		envelope.WriteJSON(w, status, map[string]any{"data": map[string]any{"intent": v, "created": created}})
+	})
 	r.Post("/internal/owner-commands/harness-pairing-proposals", func(w http.ResponseWriter, req *http.Request) {
 		a, ok := authenticate(w, req)
 		if !ok {
@@ -258,7 +285,7 @@ func mountHarnessAuthorityCommands(r chi.Router, authority *ownercommand.Authori
 			AppRunID, RequestKey string
 			Body                 harnessIntentCreateRequest
 		}{a.AppRunID, strings.TrimSpace(in.RequestKey), in})
-		v, created, err := svc.CreateIntent(req.Context(), harnessauthority.CreateIntentRequest{ProjectID: in.ProjectID, Kind: in.Kind, ConnectionID: in.ConnectionID, InstallationID: in.InstallationID, AdapterDigest: in.AdapterDigest, HarnessIdentity: in.HarnessIdentity, ProviderVersion: in.ProviderVersion, ProtocolFingerprint: in.ProtocolFingerprint, MissionID: in.MissionID, AppRunID: a.AppRunID, CapabilityClasses: in.CapabilityClasses, ExpectedGeneration: in.ExpectedGeneration, ConnectionExpiresAt: in.ConnectionExpiresAt, ExpiresAt: in.ExpiresAt, RequestKey: in.RequestKey, RequestFingerprint: fingerprint})
+		v, created, err := svc.CreateIntent(req.Context(), harnessauthority.CreateIntentRequest{ProjectID: in.ProjectID, Kind: in.Kind, ConnectionID: in.ConnectionID, InstallationID: in.InstallationID, AdapterDigest: in.AdapterDigest, HarnessIdentity: in.HarnessIdentity, ProviderVersion: in.ProviderVersion, ProtocolFingerprint: in.ProtocolFingerprint, AppRunID: a.AppRunID, CapabilityClasses: in.CapabilityClasses, ExpectedGeneration: in.ExpectedGeneration, ConnectionExpiresAt: in.ConnectionExpiresAt, ExpiresAt: in.ExpiresAt, RequestKey: in.RequestKey, RequestFingerprint: fingerprint})
 		if err != nil {
 			envelope.WriteJSON(w, 400, map[string]any{"error": map[string]any{"code": "PAIRING_INTENT_INVALID", "message": "Pairing intent proposal is invalid"}})
 			return

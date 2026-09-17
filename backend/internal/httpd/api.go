@@ -76,6 +76,8 @@ type APIDeps struct {
 	OwnerProofKernel         *ownerproof.Kernel
 	HarnessAuthority         controllers.HarnessAuthorityReader
 	HarnessAuthorityCommands *harnessauthority.Service
+	HarnessDiscovery         ports.HarnessDiscovery
+	HarnessProtocol          ports.ProtocolProvenanceProbe
 }
 
 // normalizeAPIDeps closes the Presence/DeviceLive duplication trap structurally.

@@ -36,6 +36,8 @@ type ControlDeps struct {
 	PairingCoordinator   *harnesspairing.Coordinator
 	OwnerProofKernel     *ownerproof.Kernel
 	HarnessAuthority     *harnessauthority.Service
+	HarnessDiscovery     ports.HarnessDiscovery
+	HarnessProtocol      ports.ProtocolProvenanceProbe
 }
 
 // NewRouterWithControl builds the root router with the standard middleware
@@ -75,7 +77,7 @@ func NewRouterWithControl(cfg config.Config, log *slog.Logger, termMgr *terminal
 	mountHealth(r, cfg)
 	mountTerminalMux(r, termMgr, log)
 	mountControl(r, control)
-	mountOwnerCommands(r, control.OwnerAuthority, control.ReplacementDecisions, control.PairingCoordinator, control.OwnerProofKernel, control.HarnessAuthority)
+	mountOwnerCommands(r, control.OwnerAuthority, control.ReplacementDecisions, control.PairingCoordinator, control.OwnerProofKernel, control.HarnessAuthority, control.HarnessDiscovery, control.HarnessProtocol)
 	mountTelemetry(r, cfg, deps.Telemetry)
 	mountMobile(r, deps.Mobile)
 	mountMobileDevices(r, &controllers.MobileDevicesController{Registry: deps.DeviceRoster, Presence: deps.DeviceLive})
