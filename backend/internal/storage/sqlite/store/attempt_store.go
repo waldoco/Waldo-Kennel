@@ -266,6 +266,13 @@ func (s *Store) BindAttemptSession(ctx context.Context, ref domain.AttemptSessio
 	}
 	defer func() { _ = tx.Rollback() }()
 	txq := s.qw.WithTx(tx)
+	var status domain.AttemptStatus
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM attempts WHERE id=?`, ref.AttemptID).Scan(&status); err != nil {
+		return domain.AttemptSessionRef{}, fmt.Errorf("read attempt status for session bind: %w", err)
+	}
+	if status == domain.AttemptAwaitingAuthority {
+		return domain.AttemptSessionRef{}, fmt.Errorf("awaiting-authority attempt cannot bind a session")
+	}
 
 	seq, err := latestSessionRefSeq(ctx, txq, ref.AttemptID)
 	if err != nil {

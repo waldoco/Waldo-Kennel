@@ -24,7 +24,9 @@ func (s AttemptStartReservationService) ReserveRefusal(ctx context.Context, r do
 
 // FreshStartEvaluation evaluates the Start stage through the injected canonical
 // evaluator. Callers must supply a newly read RoutingSnapshot; no stored proof
-// is accepted as an implicit default.
+// is accepted as an implicit default. Nonnil alone cannot prove freshness: the
+// integration caller must fetch routing immediately before this call and
+// revalidate snapshot/generation currentness inside the fence transaction.
 func (s AttemptStartReservationService) FreshStartEvaluation(ctx context.Context, in ports.AdmissionStageInput) (ports.AdmissionStageResult, error) {
 	if s.Evaluator == nil {
 		return ports.AdmissionStageResult{}, fmt.Errorf("admission evaluator is required")

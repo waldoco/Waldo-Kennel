@@ -18,7 +18,10 @@ type AttemptStartEscalationAttachment struct {
 }
 
 // AttemptStartReservationTx is the narrow transaction-aware seam lane B must
-// implement against. SQLTx never owns commit or rollback.
+// implement against. SQLTx never owns commit or rollback. Lane B must build its
+// query writer with Queries.WithTx(SQLTx()) and insert every question/escalation
+// row through it. Calling an ordinary service/store method here would re-take
+// writeMu or open another transaction, causing a deadlock or a two-commit gap.
 type AttemptStartReservationTx interface{ SQLTx() *sql.Tx }
 type AttemptStartEscalationCreator interface {
 	CreateInAttemptStartTransaction(context.Context, AttemptStartReservationTx, AttemptStartEscalationAttachment) error
