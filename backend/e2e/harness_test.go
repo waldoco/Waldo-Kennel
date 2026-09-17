@@ -35,6 +35,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 )
 
 const gateEnv = "KENNEL_CHAT_E2E"
@@ -62,15 +64,26 @@ func codexBinary() string {
 /* ---- the daemon under test --------------------------------------------- */
 
 var (
-	buildOnce sync.Once
-	aoBinary  string
-	buildErr  error
+	buildOnce    sync.Once
+	kennelBinary string
+	buildErr     error
 )
+
+// hookCLIName is the executable name HookPATH pins sessions on: the daemon's
+// own base name or an executable sibling. The fixture must satisfy that
+// contract the way packaging does — an executable named kennel — never by
+// weakening HookPATH itself.
+const hookCLIName = "kennel"
 
 // buildDaemon compiles the production command under test once per `go test`
 // process. KENNEL_E2E_DAEMON_OUTPUT may choose the output/cache path, but never
 // supplies the executable: every run remains bound to this checkout's
 // ./cmd/kennel assembly and daemon boot path.
+//
+// The output simulates packaging honestly: sessions get their PATH pinned via
+// HookPATH, which refuses a daemon with no executable `kennel` beside it, so a
+// custom output path gains an executable `kennel` sibling rather than HookPATH
+// learning to tolerate the fixture.
 func buildDaemon(t *testing.T) string {
 	t.Helper()
 	buildOnce.Do(func() {
@@ -81,7 +94,7 @@ func buildDaemon(t *testing.T) string {
 				buildErr = err
 				return
 			}
-			out = filepath.Join(dir, "ao")
+			out = filepath.Join(dir, hookCLIName)
 		} else if !filepath.IsAbs(out) {
 			buildErr = fmt.Errorf("KENNEL_E2E_DAEMON_OUTPUT must be an absolute path")
 			return
@@ -96,12 +109,26 @@ func buildDaemon(t *testing.T) string {
 			buildErr = fmt.Errorf("go build ./cmd/kennel: %w\n%s", err, combined)
 			return
 		}
-		aoBinary = out
+		if filepath.Base(out) != hookCLIName {
+			sibling := filepath.Join(filepath.Dir(out), hookCLIName)
+			if err := os.Link(out, sibling); err != nil {
+				input, readErr := os.ReadFile(out)
+				if readErr != nil {
+					buildErr = fmt.Errorf("link kennel sibling: %w; read for copy: %v", err, readErr)
+					return
+				}
+				if writeErr := os.WriteFile(sibling, input, 0o700); writeErr != nil {
+					buildErr = fmt.Errorf("link kennel sibling: %w; copy: %v", err, writeErr)
+					return
+				}
+			}
+		}
+		kennelBinary = out
 	})
 	if buildErr != nil {
 		t.Fatalf("build daemon: %v", buildErr)
 	}
-	return aoBinary
+	return kennelBinary
 }
 
 type daemon struct {
@@ -121,6 +148,7 @@ type daemon struct {
 func startDaemon(t *testing.T, dataDir string) *daemon {
 	t.Helper()
 	bin := buildDaemon(t)
+	seedTestAdmissionPolicy(t, dataDir)
 	port := freePort(t)
 
 	logPath := filepath.Join(t.TempDir(), fmt.Sprintf("daemon-%d.log", port))
@@ -817,4 +845,100 @@ func harnessWithoutChatDriver(t *testing.T, d *daemon) string {
 	}
 	t.Fatalf("every candidate harness now has a chat driver: %v", settings.ChatHarnesses)
 	return ""
+}
+
+/* ---- launch-cut fixtures ------------------------------------------------ */
+
+// e2eAdmissionPolicy is the named, visibly non-production admission policy the
+// fixtures install. docs/architecture/admission-and-events.md freezes that
+// tests use a test-only policy: an absent policy file fails admission closed,
+// which is correct production behavior and useless in a fixture that must
+// exercise the admitted path. The digest is computed, never invented.
+func e2eAdmissionPolicy(t *testing.T) domain.AdmissionPolicy {
+	t.Helper()
+	policy := domain.AdmissionPolicy{
+		ID:      "e2e-test-only-admission-policy",
+		Version: "e2e-v1",
+		Default: domain.ExecutionBudget{
+			WallTimeLimit:   30 * time.Minute,
+			RetryLimit:      1,
+			TokenAccounting: domain.TokenAccountingUnsupported,
+			Source:          domain.ExecutionBudgetPolicyDefault,
+			PolicyID:        "e2e-test-only-admission-policy",
+			PolicyVersion:   "e2e-v1",
+		},
+		MaxWallTime: time.Hour,
+		MaxRetries:  2,
+	}
+	digest, err := policy.ComputedDigest()
+	if err != nil {
+		t.Fatalf("compute test-only admission policy digest: %v", err)
+	}
+	policy.Digest = digest
+	policy.Default.PolicyDigest = digest
+	if err := policy.Validate(); err != nil {
+		t.Fatalf("test-only admission policy must satisfy the production validator: %v", err)
+	}
+	return policy
+}
+
+// seedTestAdmissionPolicy writes the test-only admission policy into a fresh
+// data dir before the first daemon start, with the exact permissions
+// loadAdmissionPolicy demands (regular file, no group/other access). The file
+// then lives in the data dir, so daemon restarts reuse it untouched — the
+// same file a real owner-installed policy would be.
+func seedTestAdmissionPolicy(t *testing.T, dataDir string) {
+	t.Helper()
+	path := filepath.Join(dataDir, "admission-policy.json")
+	if _, err := os.Lstat(path); err == nil {
+		return
+	}
+	data, err := json.Marshal(e2eAdmissionPolicy(t))
+	if err != nil {
+		t.Fatalf("encode test-only admission policy: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("write test-only admission policy: %v", err)
+	}
+}
+
+// requireReasoningProvider configures and verifies the daemon's reasoning
+// provider for tests that create plans: plan creation intentionally requires
+// reasoning, and the e2e environment selects the provider explicitly instead
+// of inheriting whatever a machine happens to have. The codex path uses the
+// codex app-server sign-in, so no API key is needed. Skips loudly with the
+// exact prerequisite when the provider cannot be made ready.
+func requireReasoningProvider(t *testing.T, d *daemon) {
+	t.Helper()
+	provider := os.Getenv("KENNEL_WALDO_PROVIDER")
+	if provider == "" {
+		provider = "codex"
+	}
+	if provider != "codex" {
+		t.Skipf("reasoning provider %q: this fixture only wires the codex app-server sign-in path (KENNEL_WALDO_PROVIDER=codex)", provider)
+	}
+	bin := codexBinary()
+	if _, err := exec.LookPath(bin); err != nil {
+		t.Skipf("codex binary %q not on PATH (set KENNEL_CODEX_BIN): %v", bin, err)
+	}
+	req := map[string]any{"provider": "codex"}
+	if model := os.Getenv("KENNEL_WALDO_MODEL"); model != "" {
+		req["model"] = model
+	}
+	if effort := os.Getenv("KENNEL_WALDO_EFFORT"); effort != "" {
+		req["effort"] = effort
+	}
+	d.mustCall("PATCH", "/settings/reasoning", http.StatusOK, req, nil)
+	var settings struct {
+		Reasoning struct {
+			Configured bool   `json:"configured"`
+			Ready      bool   `json:"ready"`
+			ErrorCode  string `json:"errorCode"`
+			Error      string `json:"error"`
+		} `json:"reasoning"`
+	}
+	d.mustCall("GET", "/settings", http.StatusOK, nil, &settings)
+	if !settings.Reasoning.Configured || !settings.Reasoning.Ready {
+		t.Skipf("codex reasoning not ready (errorCode=%q error=%q): sign in with `%s` first (codex app-server sign-in; no API key needed)", settings.Reasoning.ErrorCode, settings.Reasoning.Error, bin)
+	}
 }

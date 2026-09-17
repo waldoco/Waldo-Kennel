@@ -393,23 +393,23 @@ func TestChatApprovalRoundTrip(t *testing.T) {
 
 // The agent must be able to reach Kennel's own CLI from inside a chat session. This is
 // what makes chat orchestration possible at all: an orchestrator that cannot run
-// `ao` can only talk, not delegate.
-func TestChatAgentCanRunTheAOCLI(t *testing.T) {
+// `kennel` can only talk, not delegate.
+func TestChatAgentCanRunTheKennelCLI(t *testing.T) {
 	requireE2E(t)
 	d := startDaemon(t, t.TempDir())
-	project := seedProject(t, d, "aopath")
+	project := seedProject(t, d, "kennelpath")
 	session := chatSession(t, d, project, "Reply with exactly: READY")
 
 	send(t, d, session,
 		"Run the shell command `kennel --version` and reply with its exact output, or reply NOT-FOUND if the command does not exist.",
 		"kennel-path")
 
-	snap := d.awaitConversation(session, 3*time.Minute, "the ao probe to finish", func(s snapshot) bool {
+	snap := d.awaitConversation(session, 3*time.Minute, "the kennel probe to finish", func(s snapshot) bool {
 		return terminal(s.Turns[len(s.Turns)-1].State)
 	})
 	answer := snap.assistantText()
 	if contains(answer, "NOT-FOUND") || contains(answer, "command not found") {
-		t.Fatalf("the agent could not run `ao` inside a chat session:\n%s", describe(snap))
+		t.Fatalf("the agent could not run `kennel` inside a chat session:\n%s", describe(snap))
 	}
 }
 

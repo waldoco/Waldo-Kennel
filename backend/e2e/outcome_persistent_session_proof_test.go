@@ -4,12 +4,14 @@ package e2e
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,6 +22,7 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	requireE2E(t)
 	dataDir := t.TempDir()
 	d := startDaemon(t, dataDir)
+	requireReasoningProvider(t, d)
 	project := seedProject(t, d, "outcome-persistent")
 	d.mustCall("PATCH", "/settings/session-interface", http.StatusOK, map[string]any{"defaultSessionMode": "chat"}, nil)
 
@@ -51,6 +54,7 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	if plan.Plan.Status != "proposed" || len(plan.Plan.WorkUnits) != 1 {
 		t.Fatalf("proposal=%+v", plan.Plan)
 	}
+	assertFrozenBudgetMatchesFixture(t, dataDir, plan.Plan.ID)
 
 	// Approval is durable authority, not execution: no Attempt/session may exist.
 	d.mustCall("POST", "/outcomes/"+out+"/plans/"+plan.Plan.ID+"/approval", http.StatusOK, map[string]any{"expectedContractRevision": 1}, nil)
@@ -157,6 +161,29 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	assertSucceededEvidence(t, dataDir, out, start.ID, artifactVersion)
 }
 
+// assertFrozenBudgetMatchesFixture proves the proposal's frozen WorkUnit
+// budget is exactly the test-only fixture policy's default — control-plane
+// provenance, not planner output and not an invented production default.
+func assertFrozenBudgetMatchesFixture(t *testing.T, dataDir, planRevisionID string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "kennel.db")+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var raw string
+	if err := db.QueryRow(`SELECT execution_budget_json FROM work_units WHERE plan_revision_id=?`, planRevisionID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var budget domain.ExecutionBudget
+	if err := json.Unmarshal([]byte(raw), &budget); err != nil {
+		t.Fatalf("frozen budget does not decode: %v", err)
+	}
+	if want := e2eAdmissionPolicy(t).Default; budget != want {
+		t.Fatalf("frozen WorkUnit budget=%+v, want fixture policy default %+v", budget, want)
+	}
+}
+
 func retainedAttemptArtifact(t *testing.T, dataDir, outcomeID, attemptID string) string {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "kennel.db")+"?mode=ro")
@@ -254,6 +281,7 @@ func TestOutcomeLaunchCutRejectsStaleAuthorizationWithoutCustody(t *testing.T) {
 	requireE2E(t)
 	dataDir := t.TempDir()
 	d := startDaemon(t, dataDir)
+	requireReasoningProvider(t, d)
 	project := seedProject(t, d, "outcome-stale")
 	var created struct {
 		Outcome struct {
