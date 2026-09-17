@@ -140,6 +140,7 @@ export function proposePreviewPlan(outcomeId: string, expectedContractRevision: 
 		workUnits: [
 			{
 				id: nextId("work-unit"),
+				position: 1,
 				kind: "direct",
 				title: `Deliver “${outcome.title}”`,
 				contractRevisionNumber: expectedContractRevision,

@@ -7,6 +7,7 @@ import type { components } from "../../../api/schema";
 const units: components["schemas"]["PlanWorkUnitResponse"][] = [
 	{
 		id: "b",
+		position: 2,
 		title: "Publish analysis",
 		dependsOn: ["a"],
 		outputSummary: "Final report",
@@ -21,6 +22,7 @@ const units: components["schemas"]["PlanWorkUnitResponse"][] = [
 	},
 	{
 		id: "a",
+		position: 1,
 		title: "Read source",
 		dependsOn: [],
 		outputSummary: "Source notes",
