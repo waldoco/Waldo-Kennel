@@ -70,22 +70,6 @@ jobs:
           persist-credentials: false
           path: candidate
 
-      - name: Initialize fixed artifact paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/waldo-kennel-codex-delegate/${{ github.run_id }}-${{ github.run_attempt }}"
-          printf 'CODEX_DELEGATE_ROOT=%s\n' "$root" >> "$GITHUB_ENV"
-          mkdir -p "$root/work-product"
-          : > "$root/output.log"
-          cat > "$root/diagnostic.log" <<'EOF'
-          Kennel Codex delegation
-          status=not-started
-          proof=failed: Codex exec and work-product capture were not established
-          EOF
-          : > "$root/work-product/git-status.txt"
-          : > "$root/work-product/git-diff.patch"
-
       - name: Verify runner-service Codex login
         shell: bash
         run: |
@@ -102,14 +86,19 @@ jobs:
           CODEX_DELEGATE_TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
         run: ./trusted/scripts/ci/codex-delegate.sh "$GITHUB_WORKSPACE/candidate"
 
+      - name: Validate completed capture for upload
+        if: always()
+        shell: bash
+        run: ./trusted/scripts/ci/codex-delegate-finalize.sh
+
       - name: Upload full Codex output
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: codex-output-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/waldo-kennel-codex-delegate/${{ github.run_id }}-${{ github.run_attempt }}/output.log
-            ${{ runner.temp }}/waldo-kennel-codex-delegate/${{ github.run_id }}-${{ github.run_attempt }}/diagnostic.log
+            ${{ env.CODEX_DELEGATE_UPLOAD_ROOT }}/output.log
+            ${{ env.CODEX_DELEGATE_UPLOAD_ROOT }}/diagnostic.log
           if-no-files-found: error
           retention-days: 2
 
@@ -118,11 +107,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: codex-work-product-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/waldo-kennel-codex-delegate/${{ github.run_id }}-${{ github.run_attempt }}/work-product
+          path: ${{ env.CODEX_DELEGATE_UPLOAD_ROOT }}/work-product
           if-no-files-found: error
           retention-days: 2
 
       - name: Remove delegation temporary files
         if: always()
         shell: bash
-        run: rm -rf "$CODEX_DELEGATE_ROOT"
+        run: rm -rf "$CODEX_DELEGATE_UPLOAD_ROOT"

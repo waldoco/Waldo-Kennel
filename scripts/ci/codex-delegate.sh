@@ -1,89 +1,101 @@
 #!/usr/bin/env bash
-# Trusted headless Codex wrapper. This file is executed only from the exact
-# protected commit that contains the workflow, never from the candidate tree.
+# Trusted headless Codex wrapper. Executed only from the exact protected workflow
+# commit, never from the candidate tree.
 set -euo pipefail
+umask 077
 
-if [[ $# -ne 1 ]]; then
-	echo "usage: codex-delegate.sh <candidate-workspace>" >&2
-	exit 2
-fi
-: "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
-: "${RUNNER_TEMP:?RUNNER_TEMP is required}"
-: "${CODEX_DELEGATE_PROMPT:?CODEX_DELEGATE_PROMPT is required}"
-: "${CODEX_DELEGATE_TIMEOUT_MINUTES:?CODEX_DELEGATE_TIMEOUT_MINUTES is required}"
-: "${CODEX_DELEGATE_ROOT:?CODEX_DELEGATE_ROOT is required}"
+if [[ $# -ne 1 ]]; then echo "usage: codex-delegate.sh <candidate-workspace>" >&2; exit 2; fi
+: "${GITHUB_WORKSPACE:?}" "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}"
+: "${CODEX_DELEGATE_PROMPT:?}" "${CODEX_DELEGATE_TIMEOUT_MINUTES:?}"
 CODEX_DELEGATE_RESUME_FROM="${CODEX_DELEGATE_RESUME_FROM:-}"
 
-workspace="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1")"
-expected_workspace="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$GITHUB_WORKSPACE/candidate")"
+real() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+temp_real="$(real "$RUNNER_TEMP")"
+workspace="$(real "$1")"
+expected_workspace="$(real "$GITHUB_WORKSPACE/candidate")"
 if [[ "$workspace" != "$expected_workspace" || ! -d "$workspace" || -L "$1" ]]; then
-	echo "candidate workspace is not the canonical candidate checkout" >&2
-	exit 2
+	echo "candidate workspace is not the canonical candidate checkout" >&2; exit 2
 fi
-root="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$CODEX_DELEGATE_ROOT")"
-case "$root" in
-	"$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$RUNNER_TEMP")"/waldo-kennel-codex-delegate/*) ;;
-	*) echo "delegation artifact root is outside RUNNER_TEMP" >&2; exit 2 ;;
-esac
-if [[ ! -d "$root" || -L "$CODEX_DELEGATE_ROOT" || ! -d "$root/work-product" || -L "$root/work-product" ]]; then
-	echo "delegation artifact directories must be real directories" >&2
-	exit 2
-fi
-
-case "$CODEX_DELEGATE_TIMEOUT_MINUTES" in
-	'' | *[!0-9]*) echo "timeout_minutes must be an integer" >&2; exit 2 ;;
-esac
+case "$CODEX_DELEGATE_TIMEOUT_MINUTES" in '' | *[!0-9]*) echo "timeout_minutes must be an integer" >&2; exit 2;; esac
 if ((CODEX_DELEGATE_TIMEOUT_MINUTES < 1 || CODEX_DELEGATE_TIMEOUT_MINUTES > 120)); then
-	echo "timeout_minutes must be between 1 and 120" >&2
-	exit 2
+	echo "timeout_minutes must be between 1 and 120" >&2; exit 2
 fi
 codex="$(command -v codex)"
 git_bin="$(command -v git)"
 trusted_path="$PATH"
 initial_head="$(env PATH="$trusted_path" "$git_bin" -C "$workspace" rev-parse --verify HEAD)"
 
-output="$root/output.log"
-diagnostic="$root/diagnostic.log"
-status_file="$root/work-product/git-status.txt"
-diff_file="$root/work-product/git-diff.patch"
-for file in "$output" "$diagnostic" "$status_file" "$diff_file"; do
-	if [[ -e "$file" && (! -f "$file" || -L "$file") ]]; then
-		echo "artifact path must be a regular non-symlink file: $file" >&2
-		exit 2
-	fi
-done
-: > "$output"
+# Private staging name is random and is not passed to Codex. Codex still has the
+# service account's host authority; this reduces accidental collision, not access.
+staging="$(mktemp -d "$RUNNER_TEMP/.codex-delegate-stage.XXXXXX")"
+case "$(real "$staging")" in "$temp_real"/.codex-delegate-stage.*) ;; *) exit 2;; esac
+raw_output="$staging/output.raw"
+: > "$raw_output"
 
-capture_work_product() {
-	local capture=0 current_head temp_index temp_status temp_diff
-	temp_index="$(mktemp "$root/work-product/.index.XXXXXX")" || return 1
-	temp_status="$(mktemp "$root/work-product/.status.XXXXXX")" || capture=1
-	temp_diff="$(mktemp "$root/work-product/.diff.XXXXXX")" || capture=1
-	if [[ "$capture" -eq 0 ]]; then
-		current_head="$(env PATH="$trusted_path" "$git_bin" -C "$workspace" rev-parse --verify HEAD)" || capture=1
-		if [[ "$current_head" != "$initial_head" ]]; then
-			printf 'HEAD changed: initial=%s current=%s\n' "$initial_head" "$current_head" > "$temp_status"
-			capture=1
-		fi
-	fi
-	if [[ "$capture" -eq 0 ]]; then
-		rm -f "$temp_index"
-		GIT_INDEX_FILE="$temp_index" env PATH="$trusted_path" "$git_bin" -C "$workspace" read-tree "$initial_head" || capture=1
-		GIT_INDEX_FILE="$temp_index" env PATH="$trusted_path" "$git_bin" -C "$workspace" add -N -- . || capture=1
-		env PATH="$trusted_path" "$git_bin" -C "$workspace" status --short --untracked-files=all > "$temp_status" || capture=1
-		GIT_INDEX_FILE="$temp_index" env PATH="$trusted_path" "$git_bin" -C "$workspace" diff --binary --no-ext-diff "$initial_head" -- > "$temp_diff" || capture=1
-	fi
-	if [[ -f "$temp_status" && ! -L "$temp_status" ]]; then mv -f "$temp_status" "$status_file"; else capture=1; fi
-	if [[ -f "$temp_diff" && ! -L "$temp_diff" ]]; then mv -f "$temp_diff" "$diff_file"; else capture=1; fi
-	rm -f "$temp_index" "$temp_status" "$temp_diff"
-	return "$capture"
+safe_new_dir() {
+	local dir="$1" parent
+	parent="$(dirname "$dir")"
+	[[ -d "$parent" && ! -L "$parent" && ! -e "$dir" && ! -L "$dir" ]] || return 1
+	mkdir -m 700 "$dir"
+	[[ -d "$dir" && ! -L "$dir" ]]
+}
+safe_install() {
+	local source="$1" destination="$2" parent
+	parent="$(dirname "$destination")"
+	[[ -f "$source" && ! -L "$source" && -d "$parent" && ! -L "$parent" ]] || return 1
+	[[ ! -e "$destination" && ! -L "$destination" ]] || return 1
+	mv "$source" "$destination"
+	[[ -f "$destination" && ! -L "$destination" ]]
+}
+
+git_clean_env() {
+	env -i \
+		PATH="$trusted_path" HOME="$capture_home" \
+		GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0 \
+		GIT_INDEX_FILE="$capture_index" \
+		"$git_bin" -c core.hooksPath=/dev/null -c core.fsmonitor=false "$@"
 }
 
 finish() {
 	codex_status=$?
 	trap - EXIT
 	capture_status=0
-	capture_work_product || capture_status=$?
+
+	# Re-resolve all roots after Codex exits. Final artifacts are created in a new,
+	# unpredictable directory that was not exposed to the child.
+	temp_real="$(real "$RUNNER_TEMP")" || capture_status=1
+	final_root="$(mktemp -d "$RUNNER_TEMP/waldo-kennel-codex-delegate.capture.XXXXXX")" || capture_status=1
+	if [[ "$capture_status" -eq 0 ]]; then
+		case "$(real "$final_root")" in "$temp_real"/waldo-kennel-codex-delegate.capture.*) ;; *) capture_status=1;; esac
+		[[ -d "$final_root" && ! -L "$final_root" ]] || capture_status=1
+	fi
+	work_product="$final_root/work-product"
+	if [[ "$capture_status" -eq 0 ]]; then safe_new_dir "$work_product" || capture_status=1; fi
+
+	capture_home="$(mktemp -d "$RUNNER_TEMP/.codex-capture-home.XXXXXX")" || capture_status=1
+	capture_index="$(mktemp "$RUNNER_TEMP/.codex-capture-index.XXXXXX")" || capture_status=1
+	status_tmp="$(mktemp "$RUNNER_TEMP/.codex-status.XXXXXX")" || capture_status=1
+	diff_tmp="$(mktemp "$RUNNER_TEMP/.codex-diff.XXXXXX")" || capture_status=1
+	output_tmp="$(mktemp "$RUNNER_TEMP/.codex-output.XXXXXX")" || capture_status=1
+	diagnostic_tmp="$(mktemp "$RUNNER_TEMP/.codex-diagnostic.XXXXXX")" || capture_status=1
+
+	current_head=""
+	if [[ "$capture_status" -eq 0 ]]; then
+		current_head="$(git_clean_env -C "$workspace" rev-parse --verify HEAD)" || capture_status=1
+		if [[ "$current_head" != "$initial_head" ]]; then
+			printf 'HEAD changed: initial=%s current=%s\n' "$initial_head" "$current_head" > "$status_tmp"
+			capture_status=1
+		fi
+	fi
+	if [[ "$capture_status" -eq 0 ]]; then
+		rm -f "$capture_index"
+		git_clean_env -C "$workspace" read-tree "$initial_head" || capture_status=1
+		git_clean_env -C "$workspace" add -N -- . || capture_status=1
+		git_clean_env -C "$workspace" status --short --untracked-files=all > "$status_tmp" || capture_status=1
+		git_clean_env -C "$workspace" --no-pager diff --binary --no-ext-diff --no-textconv "$initial_head" -- > "$diff_tmp" || capture_status=1
+	fi
+	cat "$raw_output" > "$output_tmp" || capture_status=1
+
 	if [[ "$codex_status" -eq 0 && "$capture_status" -eq 0 ]]; then final_status=0; else final_status=1; fi
 	{
 		printf 'Kennel Codex delegation\n'
@@ -97,51 +109,49 @@ finish() {
 		fi
 		printf 'capture_limit=Patch omits ignored files, nested repositories, empty directories, commits, and index-only changes\n'
 		printf 'authority=Wrapper does not request commit or push; Codex retains service-account ambient git, network, HOME, and credential authority\n'
-		printf '\nLast 250 output lines:\n'
-		tail -n 250 "$output"
-	} > "$diagnostic"
-	cat "$diagnostic"
+		printf '\nLast 250 output lines:\n'; tail -n 250 "$raw_output"
+	} > "$diagnostic_tmp" || capture_status=1
+
+	# Revalidate parents immediately before each non-overwriting destination move.
+	if [[ -d "$final_root" && ! -L "$final_root" && -d "$work_product" && ! -L "$work_product" ]]; then
+		safe_install "$output_tmp" "$final_root/output.log" || capture_status=1
+		safe_install "$diagnostic_tmp" "$final_root/diagnostic.log" || capture_status=1
+		safe_install "$status_tmp" "$work_product/git-status.txt" || capture_status=1
+		safe_install "$diff_tmp" "$work_product/git-diff.patch" || capture_status=1
+	else capture_status=1
+	fi
+
+	rm -rf "$staging" "$capture_home"; rm -f "$capture_index" "$status_tmp" "$diff_tmp" "$output_tmp" "$diagnostic_tmp"
+	if [[ "$capture_status" -eq 0 ]]; then
+		printf 'CODEX_DELEGATE_FINAL_ROOT=%s\n' "$final_root" >> "$GITHUB_ENV"
+	else
+		# Preserve any honest diagnostic that was safely installed; the trusted
+		# finalize step will validate it or create a separate failure record.
+		[[ -f "$final_root/diagnostic.log" && ! -L "$final_root/diagnostic.log" ]] && \
+			printf 'CODEX_DELEGATE_FINAL_ROOT=%s\n' "$final_root" >> "$GITHUB_ENV"
+		final_status=1
+	fi
+	[[ -f "$final_root/diagnostic.log" && ! -L "$final_root/diagnostic.log" ]] && cat "$final_root/diagnostic.log"
 	exit "$final_status"
 }
 trap finish EXIT
 
-# Grounded one-shot forms: `codex exec -- <prompt>` and
-# `codex exec resume <UUID> -- <prompt>`. resume_from validation is syntax-only;
-# resuming an unrelated owner session can import its context into uploaded output.
-# Command-file stripping prevents GitHub command-file poisoning. It is not secret
-# containment: HOME, user files, auth, git credentials, and network remain reachable.
-python3 - "$CODEX_DELEGATE_TIMEOUT_MINUTES" "$output" "$codex" "$CODEX_DELEGATE_PROMPT" "$CODEX_DELEGATE_RESUME_FROM" "$workspace" <<'PY'
+# Syntax-only resume validation; an unrelated session can import private context
+# into output. Command-file stripping prevents poisoning, not secret access.
+python3 - "$CODEX_DELEGATE_TIMEOUT_MINUTES" "$raw_output" "$codex" "$CODEX_DELEGATE_PROMPT" "$CODEX_DELEGATE_RESUME_FROM" "$workspace" <<'PY'
 import os, re, signal, subprocess, sys
-
-timeout_minutes = int(sys.argv[1])
-output_path, codex, prompt, resume_from, workspace = sys.argv[2:7]
-if resume_from and not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", resume_from):
-    print("resume_from must be a Codex session UUID", file=sys.stderr)
-    sys.exit(2)
-env = os.environ.copy()
-for key in (
-    "GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STEP_SUMMARY",
-    "CODEX_DELEGATE_PROMPT", "CODEX_DELEGATE_RESUME_FROM",
-    "CODEX_DELEGATE_TIMEOUT_MINUTES", "CODEX_DELEGATE_ROOT",
-):
-    env.pop(key, None)
-argv = [codex, "exec"]
-if resume_from:
-    argv += ["resume", resume_from]
-argv += ["--", prompt]
-with open(output_path, "ab", buffering=0) as stream:
-    proc = subprocess.Popen(argv, cwd=workspace, env=env, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
-    try:
-        code = proc.wait(timeout=timeout_minutes * 60)
-    except subprocess.TimeoutExpired:
-        # Best-effort cleanup of this process group; descendants can escape it.
-        os.killpg(proc.pid, signal.SIGTERM)
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)
-            proc.wait()
-        print(f"Codex delegation timed out after {timeout_minutes} minute(s)", file=sys.stderr)
-        sys.exit(124)
+mins=int(sys.argv[1]); output,codex,prompt,resume,cwd=sys.argv[2:7]
+if resume and not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",resume): sys.exit(2)
+env=os.environ.copy()
+for key in ("GITHUB_ENV","GITHUB_OUTPUT","GITHUB_PATH","GITHUB_STEP_SUMMARY","CODEX_DELEGATE_PROMPT","CODEX_DELEGATE_RESUME_FROM","CODEX_DELEGATE_TIMEOUT_MINUTES","CODEX_DELEGATE_FINAL_ROOT"): env.pop(key,None)
+argv=[codex,"exec"]+(["resume",resume] if resume else [])+["--",prompt]
+with open(output,"ab",buffering=0) as stream:
+ p=subprocess.Popen(argv,cwd=cwd,env=env,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
+ try: code=p.wait(timeout=mins*60)
+ except subprocess.TimeoutExpired:
+  os.killpg(p.pid,signal.SIGTERM)
+  try:p.wait(timeout=10)
+  except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
+  sys.exit(124)
 sys.exit(code)
 PY
