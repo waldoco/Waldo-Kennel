@@ -10,6 +10,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/attachmentstore"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/cdc"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/config"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessauthority"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/apispec"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
@@ -69,10 +70,12 @@ type APIDeps struct {
 	DeviceRoster controllers.DeviceRoster
 	DeviceLive   controllers.LiveSet
 
-	OwnerAuthority       *ownercommand.Authority
-	ReplacementDecisions ports.AttemptReplacementDecisionStore
-	PairingCoordinator   *harnesspairing.Coordinator
-	OwnerProofKernel     *ownerproof.Kernel
+	OwnerAuthority           *ownercommand.Authority
+	ReplacementDecisions     ports.AttemptReplacementDecisionStore
+	PairingCoordinator       *harnesspairing.Coordinator
+	OwnerProofKernel         *ownerproof.Kernel
+	HarnessAuthority         controllers.HarnessAuthorityReader
+	HarnessAuthorityCommands *harnessauthority.Service
 }
 
 // normalizeAPIDeps closes the Presence/DeviceLive duplication trap structurally.
@@ -124,6 +127,7 @@ type API struct {
 	dev           *controllers.DevController
 	browser       *controllers.BrowserController
 	events        *EventsController
+	harnesses     *controllers.HarnessAuthorityController
 }
 
 // NewAPI constructs the API surface from its dependencies. cfg carries the
@@ -162,6 +166,7 @@ func NewAPI(cfg config.Config, deps APIDeps) *API {
 		dev:           &controllers.DevController{Import: deps.DevImport},
 		browser:       &controllers.BrowserController{Svc: deps.Browser},
 		events:        &EventsController{Source: deps.CDC, Live: deps.Events},
+		harnesses:     &controllers.HarnessAuthorityController{Svc: deps.HarnessAuthority},
 	}
 }
 
@@ -195,6 +200,7 @@ func (a *API) Register(root chi.Router) {
 			a.settings.Register(r)
 			a.dev.Register(r)
 			a.browser.Register(r)
+			a.harnesses.Register(r)
 			// Sibling REST controllers plug in here.
 		})
 		// Long-lived streams intentionally bypass the REST timeout middleware.

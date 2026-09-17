@@ -471,6 +471,152 @@ paths:
       summary: Stream CDC events with durable replay
       tags:
       - events
+  /api/v1/harness-connections:
+    get:
+      operationId: listHarnessConnections
+      parameters:
+      - in: query
+        name: missionId
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List harness connections
+      tags:
+      - harness-authority
+  /api/v1/harness-connections/{connectionId}:
+    get:
+      operationId: getHarnessConnection
+      parameters:
+      - in: path
+        name: connectionId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Get harness connection
+      tags:
+      - harness-authority
+  /api/v1/harness-pairing-intents:
+    get:
+      operationId: listHarnessPairingIntents
+      parameters:
+      - in: query
+        name: projectId
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List pairing intents
+      tags:
+      - harness-authority
+  /api/v1/harness-pairing-intents/{intentId}:
+    get:
+      operationId: getHarnessPairingIntent
+      parameters:
+      - in: path
+        name: intentId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Get pairing intent
+      tags:
+      - harness-authority
   /api/v1/intake-analysis-requests/{requestId}/proposal:
     post:
       operationId: submitIntakeAnalysisProposal
@@ -15554,6 +15700,16 @@ components:
       - promptBytes
       - systemPromptBytes
       type: object
+    SpecgenHarnessListResponse:
+      properties:
+        data:
+          additionalProperties: {}
+          type:
+          - object
+          - "null"
+      required:
+      - data
+      type: object
     StageSessionAttachmentsRequest:
       properties:
         attachments:
@@ -16506,6 +16662,8 @@ tags:
   name: push
 - description: Server-sent CDC event stream with durable replay
   name: events
+- description: Renderer-safe harness pairing and connection projections
+  name: harness-authority
 - description: Legacy Kennel project import (availability probe and run)
   name: import
 - description: Developer-only maintenance operations

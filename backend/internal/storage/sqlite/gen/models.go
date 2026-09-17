@@ -589,6 +589,20 @@ type GovernedControlCommand struct {
 	RequestInstanceID      string
 }
 
+type HarnessAuthorityReceipt struct {
+	ID                 string
+	Action             string
+	TargetType         string
+	TargetID           string
+	TargetDigest       string
+	ExpectedGeneration int64
+	RequestKey         string
+	RequestFingerprint string
+	OwnerPrincipal     string
+	ConfirmationRef    string
+	CreatedAt          time.Time
+}
+
 type HarnessCommandOutbox struct {
 	ClaimID          string
 	DestinationType  string
@@ -635,6 +649,35 @@ type HarnessPairingChallenge struct {
 	ResultCode          sql.NullString
 	ConnectionExpiresAt time.Time
 	ExpiresAt           time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type HarnessPairingIntent struct {
+	ID                  string
+	ProjectID           string
+	Kind                string
+	ConnectionID        string
+	InstallationID      string
+	AdapterDigest       string
+	HarnessIdentity     string
+	ProviderVersion     string
+	ProtocolFingerprint string
+	MissionID           string
+	AppRunID            string
+	CapabilityClasses   string
+	ExpectedGeneration  int64
+	ConnectionExpiresAt time.Time
+	ExpiresAt           time.Time
+	Digest              string
+	Status              string
+	ChallengeID         sql.NullString
+	DecisionID          string
+	Decision            string
+	DecisionRequestKey  string
+	OwnerPrincipal      string
+	ConfirmationRef     string
+	DecidedAt           sql.NullTime
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

@@ -2,12 +2,14 @@ package httpd
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessauthority"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
@@ -32,7 +34,7 @@ type replacementDecisionFingerprint struct {
 	replacementDecisionRequest
 }
 
-func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store ports.AttemptReplacementDecisionStore, pairing *harnesspairing.Coordinator, proofs *ownerproof.Kernel) {
+func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store ports.AttemptReplacementDecisionStore, pairing *harnesspairing.Coordinator, proofs *ownerproof.Kernel, harnesses *harnessauthority.Service) {
 	if authority == nil {
 		return
 	}
@@ -91,8 +93,11 @@ func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store p
 			envelope.WriteJSON(w, status, map[string]any{"data": map[string]any{"decision": stored, "created": created}})
 		})
 	}
-	mountPairingIntentOwnerCommand(r, authority, pairing)
+	if harnesses == nil {
+		mountPairingIntentOwnerCommand(r, authority, pairing)
+	}
 	mountOwnerProofCommand(r, authority, proofs)
+	mountHarnessAuthorityCommands(r, authority, harnesses)
 }
 
 type pairingIntentRequest struct {
@@ -188,4 +193,139 @@ func mountOwnerProofCommand(r chi.Router, authority *ownercommand.Authority, ker
 		}
 		envelope.WriteJSON(w, http.StatusCreated, map[string]any{"data": map[string]any{"proofId": minted.Proof.ID, "bearer": minted.Bearer, "expiresAt": minted.Proof.ExpiresAt}})
 	})
+}
+
+type harnessIntentCreateRequest struct {
+	ProjectID           domain.ProjectID                `json:"projectId"`
+	Kind                domain.HarnessPairingKind       `json:"kind"`
+	ConnectionID        domain.HarnessConnectionID      `json:"connectionId"`
+	InstallationID      string                          `json:"installationId"`
+	AdapterDigest       domain.SHA256Digest             `json:"adapterDigest"`
+	HarnessIdentity     string                          `json:"harnessIdentity"`
+	ProviderVersion     string                          `json:"providerVersion"`
+	ProtocolFingerprint domain.SHA256Digest             `json:"protocolFingerprint"`
+	MissionID           string                          `json:"missionId"`
+	CapabilityClasses   []domain.HarnessCapabilityClass `json:"capabilityClasses"`
+	ExpectedGeneration  int64                           `json:"expectedGeneration"`
+	ConnectionExpiresAt time.Time                       `json:"connectionExpiresAt"`
+	ExpiresAt           time.Time                       `json:"expiresAt"`
+}
+type harnessDecisionRequest struct {
+	Digest     domain.SHA256Digest `json:"digest"`
+	RequestKey string              `json:"requestKey"`
+}
+type harnessRevokeRequest struct {
+	Digest             domain.SHA256Digest `json:"digest"`
+	ExpectedGeneration int64               `json:"expectedGeneration"`
+	RequestKey         string              `json:"requestKey"`
+}
+
+func mountHarnessAuthorityCommands(r chi.Router, authority *ownercommand.Authority, svc *harnessauthority.Service) {
+	if svc == nil {
+		return
+	}
+	authenticate := func(w http.ResponseWriter, req *http.Request) (ownercommand.Authentication, bool) {
+		if !localControlRequest(req) {
+			notFoundJSON(w, req)
+			return ownercommand.Authentication{}, false
+		}
+		a, ok := authority.Authenticate(req.Header.Get("Authorization"))
+		if !ok {
+			envelope.WriteJSON(w, 401, map[string]any{"error": map[string]any{"code": "OWNER_COMMAND_UNAUTHORIZED", "message": "Trusted local-owner command authentication failed"}})
+		}
+		return a, ok
+	}
+	decode := func(w http.ResponseWriter, req *http.Request, out any) bool {
+		d := json.NewDecoder(http.MaxBytesReader(w, req.Body, 16<<10))
+		d.DisallowUnknownFields()
+		if d.Decode(out) != nil || d.Decode(&struct{}{}) != io.EOF {
+			envelope.WriteJSON(w, 400, map[string]any{"error": map[string]any{"code": "HARNESS_AUTHORITY_INVALID", "message": "Harness authority command body is invalid"}})
+			return false
+		}
+		return true
+	}
+	r.Post("/internal/owner-commands/harness-pairing-proposals", func(w http.ResponseWriter, req *http.Request) {
+		a, ok := authenticate(w, req)
+		if !ok {
+			return
+		}
+		var in harnessIntentCreateRequest
+		if !decode(w, req, &in) {
+			return
+		}
+		v, created, err := svc.CreateIntent(req.Context(), harnessauthority.CreateIntentRequest{ProjectID: in.ProjectID, Kind: in.Kind, ConnectionID: in.ConnectionID, InstallationID: in.InstallationID, AdapterDigest: in.AdapterDigest, HarnessIdentity: in.HarnessIdentity, ProviderVersion: in.ProviderVersion, ProtocolFingerprint: in.ProtocolFingerprint, MissionID: in.MissionID, AppRunID: a.AppRunID, CapabilityClasses: in.CapabilityClasses, ExpectedGeneration: in.ExpectedGeneration, ConnectionExpiresAt: in.ConnectionExpiresAt, ExpiresAt: in.ExpiresAt})
+		if err != nil {
+			envelope.WriteJSON(w, 400, map[string]any{"error": map[string]any{"code": "PAIRING_INTENT_INVALID", "message": "Pairing intent proposal is invalid"}})
+			return
+		}
+		status := 200
+		if created {
+			status = 201
+		}
+		envelope.WriteJSON(w, status, map[string]any{"data": map[string]any{"intent": v, "created": created}})
+	})
+	decision := func(action string) http.HandlerFunc {
+		return func(w http.ResponseWriter, req *http.Request) {
+			a, ok := authenticate(w, req)
+			if !ok {
+				return
+			}
+			var in harnessDecisionRequest
+			if !decode(w, req, &in) {
+				return
+			}
+			id := domain.PairingChallengeID(chi.URLParam(req, "intentId"))
+			fingerprint, _ := ownercommand.Fingerprint(struct {
+				Action string
+				ID     domain.PairingChallengeID
+				Digest domain.SHA256Digest
+				Key    string
+			}{action, id, in.Digest, in.RequestKey})
+			v, changed, err := svc.DecideIntent(req.Context(), harnessauthority.DecisionRequest{IntentID: id, Digest: in.Digest, Action: action, RequestKey: in.RequestKey, OwnerPrincipal: a.Principal, ConfirmationRef: "native-owner-command:" + fingerprint})
+			if err != nil {
+				writeHarnessAuthorityCommandError(w, err)
+				return
+			}
+			envelope.WriteJSON(w, 200, map[string]any{"data": map[string]any{"intent": v, "changed": changed}})
+		}
+	}
+	r.Post("/internal/owner-commands/harness-pairing-intents/{intentId}/approve", decision("approve"))
+	r.Post("/internal/owner-commands/harness-pairing-intents/{intentId}/deny", decision("deny"))
+	r.Post("/internal/owner-commands/harness-connections/{connectionId}/revoke", func(w http.ResponseWriter, req *http.Request) {
+		a, ok := authenticate(w, req)
+		if !ok {
+			return
+		}
+		var in harnessRevokeRequest
+		if !decode(w, req, &in) {
+			return
+		}
+		id := domain.HarnessConnectionID(chi.URLParam(req, "connectionId"))
+		fingerprint, _ := ownercommand.Fingerprint(struct {
+			Action     string
+			ID         domain.HarnessConnectionID
+			Digest     domain.SHA256Digest
+			Generation int64
+			Key        string
+		}{"revoke", id, in.Digest, in.ExpectedGeneration, in.RequestKey})
+		v, changed, n, err := svc.Revoke(req.Context(), harnessauthority.RevokeRequest{ConnectionID: id, Digest: in.Digest, ExpectedGeneration: in.ExpectedGeneration, RequestKey: in.RequestKey, OwnerPrincipal: a.Principal, ConfirmationRef: "native-owner-command:" + fingerprint})
+		if err != nil {
+			writeHarnessAuthorityCommandError(w, err)
+			return
+		}
+		envelope.WriteJSON(w, 200, map[string]any{"data": map[string]any{"connection": v, "changed": changed, "actionNeededCommands": n}})
+	})
+}
+func writeHarnessAuthorityCommandError(w http.ResponseWriter, err error) {
+	status, code := 500, "HARNESS_AUTHORITY_FAILED"
+	if errors.Is(err, domain.ErrHarnessAuthorityInvalid) {
+		status, code = 400, "HARNESS_AUTHORITY_INVALID"
+	}
+	if errors.Is(err, domain.ErrHarnessAuthorityStale) {
+		status, code = 409, "HARNESS_AUTHORITY_STALE"
+	}
+	if errors.Is(err, domain.ErrHarnessAuthorityConflict) {
+		status, code = 409, "HARNESS_AUTHORITY_CONFLICT"
+	}
+	envelope.WriteJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": "Harness authority command was not applied"}})
 }

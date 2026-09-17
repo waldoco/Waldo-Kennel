@@ -33,6 +33,17 @@ func NewWithRandom(store ports.HarnessConnectionStore, random io.Reader) *Kernel
 	return &Kernel{store: store, random: random}
 }
 
+func (k *Kernel) Get(ctx context.Context, id domain.HarnessConnectionID) (domain.HarnessConnection, bool, error) {
+	if k == nil || k.store == nil {
+		return domain.HarnessConnection{}, false, domain.ErrHarnessConnectionInvalid
+	}
+	rec, found, err := k.store.GetHarnessConnection(ctx, id)
+	if err != nil || !found {
+		return domain.HarnessConnection{}, found, err
+	}
+	return publicConnection(rec), true, nil
+}
+
 type IssueRequest struct {
 	ConnectionID        domain.HarnessConnectionID
 	InstallationID      string

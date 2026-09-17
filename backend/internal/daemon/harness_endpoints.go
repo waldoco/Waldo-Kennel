@@ -56,7 +56,7 @@ func startHarnessEndpoints(ctx context.Context, dataDir string, store interface 
 		return nil, fmt.Errorf("harness pairing listener: %w", err)
 	}
 	endpoints := &harnessEndpointSet{PairingAddress: pairingAddress, pairing: pairingListener, pairingDir: pairingDir, commandDir: commandDir, runDir: runtimeDir}
-	pairingServer, err := adapterpairing.NewServer(pairingListener, adapterpairing.ServerConfig{Coordinator: pairing, IntentStore: store, Logger: log})
+	pairingServer, err := adapterpairing.NewServer(pairingListener, adapterpairing.ServerConfig{Coordinator: pairing, IntentStore: store, IntentActivator: store, Logger: log})
 	if err != nil {
 		endpoints.Close()
 		return nil, err

@@ -101,6 +101,8 @@ const api = {
 			outcomeId: string; predecessorAttemptId: string; planRevisionId: string;
 			workUnitId: string; runIntentGeneration: number; contractRevisionNumber: number; action: "replace"; requestKey: string;
 		}) => ipcRenderer.invoke("ownerCommand:approveAttemptReplacement", input) as Promise<unknown>,
+		approveHarnessAuthority: (input: { action: "approve"|"deny"; intentId: string; digest: string; requestKey: string } | { action: "revoke"; connectionId: string; digest: string; expectedGeneration: number; requestKey: string }) =>
+			ipcRenderer.invoke("ownerCommand:harnessAuthority", input) as Promise<unknown>,
 		// Fired by the main process when the app-level new-session shortcut
 		// (⌘N / Ctrl+Shift+N) is pressed in any web contents.
 		onNewSessionShortcut: (listener: () => void) => {

@@ -29,6 +29,7 @@ import {
 } from "./main/auto-updater";
 import { listFeatureBuilds, getActiveFeatureBuild } from "./main/feature-builds";
 import { createAttemptReplacementHandler } from "./main/owner-command-handler";
+import { createHarnessAuthorityHandler } from "./main/harness-authority-handler";
 import { readUpdateSettings, type UpdateSettings, type UpdateStatus } from "./main/update-settings";
 import { readKeybindingOverrides, writeKeybindingOverrides } from "./main/keybinding-settings";
 import {
@@ -1619,6 +1620,20 @@ ipcMain.handle("ownerCommand:approveAttemptReplacement", createAttemptReplacemen
 		cancelId: 1,
 		message: "Approve a new Attempt to replace the stopped Attempt?",
 		detail: `Outcome ${command.outcomeId}\nStopped Attempt ${command.predecessorAttemptId}\nWork Unit ${command.workUnitId}\nPlan ${command.planRevisionId} · Contract r${command.contractRevisionNumber} · Run ${command.runIntentGeneration}`,
+	}),
+	getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
+	ownerCommandToken,
+	fetch: globalThis.fetch,
+}));
+ipcMain.handle("ownerCommand:harnessAuthority", createHarnessAuthorityHandler({
+	getWindow: () => mainWindow,
+	getShellWebContents,
+	showConfirmation: (window, command) => dialog.showMessageBox(window, {
+		type: "warning",
+		buttons: [command.action === "revoke" ? "Revoke connection" : command.action === "approve" ? "Approve pairing" : "Deny pairing", "Cancel"],
+		defaultId: 1, cancelId: 1,
+		message: command.action === "revoke" ? "Revoke this harness connection?" : `${command.action === "approve" ? "Approve" : "Deny"} this pairing request?`,
+		detail: command.action === "revoke" ? `Connection ${command.connectionId}\nGeneration ${command.expectedGeneration}\nDigest ${command.digest}` : `Pairing request ${command.intentId}\nDigest ${command.digest}`,
 	}),
 	getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
 	ownerCommandToken,

@@ -10,8 +10,9 @@ package harnesspairing
 // wireRequestChallenge references one live pairing intent created first through
 // the trusted internal path. No authority tuple field is accepted on this route.
 type wireRequestChallenge struct {
-	Type     string `json:"type"`
-	IntentID string `json:"intent_id"`
+	Type         string `json:"type"`
+	IntentID     string `json:"intent_id"`
+	IntentDigest string `json:"intent_digest"`
 }
 
 // wireChallengeIssued confirms the live intent ID. The secret is delivered only

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/config"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/daemonmeta"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessauthority"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
@@ -34,6 +35,7 @@ type ControlDeps struct {
 	ReplacementDecisions ports.AttemptReplacementDecisionStore
 	PairingCoordinator   *harnesspairing.Coordinator
 	OwnerProofKernel     *ownerproof.Kernel
+	HarnessAuthority     *harnessauthority.Service
 }
 
 // NewRouterWithControl builds the root router with the standard middleware
@@ -73,7 +75,7 @@ func NewRouterWithControl(cfg config.Config, log *slog.Logger, termMgr *terminal
 	mountHealth(r, cfg)
 	mountTerminalMux(r, termMgr, log)
 	mountControl(r, control)
-	mountOwnerCommands(r, control.OwnerAuthority, control.ReplacementDecisions, control.PairingCoordinator, control.OwnerProofKernel)
+	mountOwnerCommands(r, control.OwnerAuthority, control.ReplacementDecisions, control.PairingCoordinator, control.OwnerProofKernel, control.HarnessAuthority)
 	mountTelemetry(r, cfg, deps.Telemetry)
 	mountMobile(r, deps.Mobile)
 	mountMobileDevices(r, &controllers.MobileDevicesController{Registry: deps.DeviceRoster, Presence: deps.DeviceLive})

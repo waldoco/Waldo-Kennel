@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -34,6 +35,7 @@ type Coordinator struct {
 	store        ports.HarnessPairingChallengeStore
 	kernel       *harnessconnection.Kernel
 	random       io.Reader
+	randomMu     sync.Mutex
 	afterConsume func()
 }
 
@@ -76,6 +78,31 @@ type IssueChallengeRequest struct {
 type IssuedChallenge struct {
 	Challenge domain.HarnessPairingChallenge
 	Secret    domain.PairingChallengeSecret
+}
+
+func (c *Coordinator) Prepare(req IssueChallengeRequest) (domain.HarnessPairingChallenge, domain.PairingChallengeSecret, error) {
+	if c == nil || c.store == nil || c.kernel == nil || c.random == nil || !req.Kind.Valid() || strings.TrimSpace(string(req.ConnectionID)) == "" || req.TTL <= 0 || req.Now.IsZero() || req.ConnectionExpiresAt.IsZero() || req.ExpectedGeneration < 1 || (req.Kind == domain.HarnessPairingKindPair && req.ExpectedGeneration != 1) {
+		return domain.HarnessPairingChallenge{}, "", domain.ErrHarnessPairingInvalid
+	}
+	classes, err := domain.NormalizeHarnessCapabilities(req.CapabilityClasses)
+	if err != nil {
+		return domain.HarnessPairingChallenge{}, "", err
+	}
+	c.randomMu.Lock()
+	defer c.randomMu.Unlock()
+	id, err := randomToken(c.random, challengeIDBytes)
+	if err != nil {
+		return domain.HarnessPairingChallenge{}, "", err
+	}
+	secret, verifier, err := randomSecretAndVerifier(c.random)
+	if err != nil {
+		return domain.HarnessPairingChallenge{}, "", err
+	}
+	rec := domain.HarnessPairingChallenge{ID: domain.PairingChallengeID(id), Kind: req.Kind, ConnectionID: req.ConnectionID, InstallationID: strings.TrimSpace(req.InstallationID), AdapterDigest: req.AdapterDigest, HarnessIdentity: strings.TrimSpace(req.HarnessIdentity), ProviderVersion: strings.TrimSpace(req.ProviderVersion), ProtocolFingerprint: req.ProtocolFingerprint, MissionID: strings.TrimSpace(req.MissionID), AppRunID: strings.TrimSpace(req.AppRunID), CapabilityClasses: classes, ExpectedGeneration: req.ExpectedGeneration, ProofVerifier: verifier, Status: domain.HarnessPairingPending, ConnectionExpiresAt: req.ConnectionExpiresAt.UTC(), ExpiresAt: req.Now.Add(req.TTL).UTC(), CreatedAt: req.Now.UTC(), UpdatedAt: req.Now.UTC()}
+	if err := rec.Validate(); err != nil {
+		return domain.HarnessPairingChallenge{}, "", err
+	}
+	return rec, domain.PairingChallengeSecret(secret), nil
 }
 
 // Issue mints a fresh, single-use challenge and supersedes any prior pending

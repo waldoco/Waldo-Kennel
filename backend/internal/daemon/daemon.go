@@ -26,6 +26,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/daemon/supervisor"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/governedtools"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessauthority"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessconnection"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd"
@@ -558,6 +559,7 @@ func Run() error {
 	}
 	connectionKernel := harnessconnection.New(store)
 	pairingCoordinator := harnesspairing.New(store, connectionKernel)
+	harnessAuthoritySvc := harnessauthority.New(store, pairingCoordinator, connectionKernel)
 	srv, err := httpd.NewWithDeps(cfg, log, termMgr, httpd.APIDeps{
 		Projects:            projectSvc,
 		Agents:              agentSvc,
@@ -595,13 +597,15 @@ func Run() error {
 				return sqlite.OpenReadOnly(ctx, dataDir)
 			},
 		}),
-		Browser:              browserService,
-		PreviewServer:        managedPreview,
-		SessionCapabilities:  browserAuthority,
-		OwnerAuthority:       ownerAuthority,
-		ReplacementDecisions: store,
-		PairingCoordinator:   pairingCoordinator,
-		OwnerProofKernel:     ownerproof.New(store),
+		Browser:                  browserService,
+		PreviewServer:            managedPreview,
+		SessionCapabilities:      browserAuthority,
+		OwnerAuthority:           ownerAuthority,
+		ReplacementDecisions:     store,
+		PairingCoordinator:       pairingCoordinator,
+		OwnerProofKernel:         ownerproof.New(store),
+		HarnessAuthority:         harnessAuthoritySvc,
+		HarnessAuthorityCommands: harnessAuthoritySvc,
 	})
 	if err != nil {
 		stop()

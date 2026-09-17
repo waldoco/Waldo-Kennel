@@ -26,7 +26,7 @@ func NewClient(socketPath string) *Client {
 }
 
 type ChallengeRequest struct {
-	IntentID                                                                                                                      string
+	IntentID, IntentDigest                                                                                                        string
 	Kind, ConnectionID, InstallationID, AdapterDigest, HarnessIdentity, ProviderVersion, ProtocolFingerprint, MissionID, AppRunID string
 	CapabilityClasses                                                                                                             []string
 	ExpectedGeneration                                                                                                            int64
@@ -41,7 +41,7 @@ type ChallengeIssued struct {
 }
 
 func (c *Client) RequestChallenge(req ChallengeRequest) (ChallengeIssued, error) {
-	wire := wireRequestChallenge{Type: wireTypeRequestChallenge, IntentID: req.IntentID}
+	wire := wireRequestChallenge{Type: wireTypeRequestChallenge, IntentID: req.IntentID, IntentDigest: req.IntentDigest}
 	var resp wireChallengeIssued
 	if err := c.roundTrip(wire, &resp); err != nil {
 		return ChallengeIssued{}, err
@@ -49,7 +49,7 @@ func (c *Client) RequestChallenge(req ChallengeRequest) (ChallengeIssued, error)
 	if !resp.OK {
 		return ChallengeIssued{}, ErrPairingFailed
 	}
-	return ChallengeIssued{ChallengeID: resp.ChallengeID}, nil
+	return ChallengeIssued{ChallengeID: resp.ChallengeID, Secret: resp.Secret}, nil
 }
 
 type ProveRequest struct {
