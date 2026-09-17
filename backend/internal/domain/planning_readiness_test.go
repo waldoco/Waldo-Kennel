@@ -420,3 +420,186 @@ func TestPlanningReadinessReasonCodes(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanningReadinessPlannerFactsNeverMergeAcrossQuestions(t *testing.T) {
+	fence := readinessFence()
+	region := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	region.Prompt = "Which region?"
+	region.WorkUnitKeys = []string{"a"}
+	date := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	date.Prompt = "Which release date?"
+	date.WorkUnitKeys = []string{"a"}
+
+	out, err := CanonicalizePlanningReadinessIssues([]PlanningReadinessIssue{region, date}, nil)
+	if err != nil {
+		t.Fatalf("canonicalize: %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("two different questions coalesced into %d issues; an owner answer would be lost", len(out))
+	}
+
+	// The same question asked for two units still coalesces, keeping the union.
+	one := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	one.Prompt = "  Which   REGION? "
+	one.WorkUnitKeys = []string{"b"}
+	one.Choices = []PlanningReadinessChoice{{Key: "x", Label: "X"}}
+	two := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	two.Prompt = "which region?"
+	two.WorkUnitKeys = []string{"a"}
+	two.Choices = []PlanningReadinessChoice{{Key: "x", Label: "relabelled"}}
+	out, err = CanonicalizePlanningReadinessIssues([]PlanningReadinessIssue{one, two}, nil)
+	if err != nil {
+		t.Fatalf("canonicalize same question: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("same question with superficial rewording did not coalesce: %d issues", len(out))
+	}
+	if got := strings.Join(out[0].WorkUnitKeys, ","); got != "a,b" {
+		t.Fatalf("coalesced unit keys = %q", got)
+	}
+
+	// A different choice contract is a different question.
+	other := two
+	other.Choices = []PlanningReadinessChoice{{Key: "y", Label: "X"}}
+	out, err = CanonicalizePlanningReadinessIssues([]PlanningReadinessIssue{one, other}, nil)
+	if err != nil {
+		t.Fatalf("canonicalize choice contract: %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("same prompt with different choice keys coalesced: %d issues", len(out))
+	}
+
+	// Control-plane issues still coalesce on kind|route|class|aliases alone.
+	c1 := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	c1.WorkUnitKeys = []string{"b"}
+	c1.Prompt = "Connect the tracker."
+	c2 := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	c2.WorkUnitKeys = []string{"a"}
+	c2.Prompt = "Different wording, same condition."
+	out, err = CanonicalizePlanningReadinessIssues([]PlanningReadinessIssue{c1, c2}, nil)
+	if err != nil {
+		t.Fatalf("canonicalize control-plane: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("control-plane duplicates did not coalesce: %d issues", len(out))
+	}
+	_ = fence
+}
+
+func TestPlanningReadinessListEncodingHasElementBoundaries(t *testing.T) {
+	fence := readinessFence()
+	a := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	a.WorkUnitKeys = []string{"ab", "c"}
+	b := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	b.WorkUnitKeys = []string{"a", "bc"}
+	if CanonicalPlanningIssueKey(fence, a) == CanonicalPlanningIssueKey(fence, b) {
+		t.Fatal("list encoding aliased [ab c] with [a bc]")
+	}
+	c := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	c.WorkUnitKeys = []string{"abc"}
+	if CanonicalPlanningIssueKey(fence, a) == CanonicalPlanningIssueKey(fence, c) {
+		t.Fatal("list encoding aliased [ab c] with [abc]")
+	}
+	d := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	d.WorkUnitKeys = []string{"a", "b", "c"}
+	if CanonicalPlanningIssueKey(fence, a) == CanonicalPlanningIssueKey(fence, d) {
+		t.Fatal("list encoding aliased [ab c] with [a b c]")
+	}
+}
+
+func TestPlanningReadinessClosedInventories(t *testing.T) {
+	// Connector classes are frozen to the normalized inventory.
+	unknown := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	unknown.ConnectorClass = "totally-new-class"
+	if got := validationCode(t, unknown.Validate()); got != ReadinessIssueInvalid {
+		t.Fatalf("unknown connector class code = %q", got)
+	}
+	known := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	known.ConnectorClass = ConnectorClassIssueTracker
+	if err := known.Validate(); err != nil {
+		t.Fatalf("inventory connector class: %v", err)
+	}
+	// Requested capability is closed to the local capability inventory.
+	badCap := validIssue(ReadinessAuthorityInsufficient, RouteReviseContract)
+	badCap.RequestedCapability = "kennel.exec"
+	if got := validationCode(t, badCap.Validate()); got != ReadinessIssueInvalid {
+		t.Fatalf("unknown capability code = %q", got)
+	}
+	goodCap := validIssue(ReadinessAuthorityInsufficient, RouteReviseContract)
+	goodCap.RequestedCapability = CapabilityWorktreeExec
+	if err := goodCap.Validate(); err != nil {
+		t.Fatalf("closed capability: %v", err)
+	}
+}
+
+func TestPlanningReadinessVersionPinned(t *testing.T) {
+	result := PlanningReadinessResult{
+		Version: "other", Status: PlanningReady,
+		Message: "Planned.", Proposal: &PlanDraftProposal{Summary: "x"},
+	}
+	if got := validationCode(t, result.Validate()); got != ReadinessPayloadInvalid {
+		t.Fatalf("wrong version code = %q", got)
+	}
+	result.Version = ""
+	if err := result.Validate(); err == nil {
+		t.Fatal("blank version accepted")
+	}
+	result.Version = PlanningReadinessEnvelopeVersion
+	if err := result.Validate(); err != nil {
+		t.Fatalf("pinned version: %v", err)
+	}
+}
+
+func TestPlanningReadinessNormalizationConstructor(t *testing.T) {
+	proposal := &PlanDraftProposal{Summary: "do it"}
+	if got := NewPlanningReadinessResult("ok", proposal, nil); got.Status != PlanningReady {
+		t.Fatalf("proposal without issues = %q, want ready", got.Status)
+	}
+	answerable := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	answerable.Key = "pri-answer"
+	got := NewPlanningReadinessResult("answer needed", proposal, []PlanningReadinessIssue{answerable})
+	if got.Status != PlanningNeedsContext {
+		t.Fatalf("answerable issues = %q, want needs_context", got.Status)
+	}
+	if got.Proposal != nil {
+		t.Fatal("needs_context packet still carries a proposal")
+	}
+	operational := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	operational.Key = "pri-setup"
+	got = NewPlanningReadinessResult("setup needed", proposal, []PlanningReadinessIssue{answerable, operational})
+	if got.Status != PlanningBlocked {
+		t.Fatalf("mixed packet = %q, want blocked", got.Status)
+	}
+	if len(got.Issues) != 2 {
+		t.Fatalf("blocked packet retained %d issues, want both", len(got.Issues))
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatalf("normalized blocked packet is valid: %v", err)
+	}
+	if got.Version != PlanningReadinessEnvelopeVersion {
+		t.Fatalf("constructor version = %q", got.Version)
+	}
+}
+
+func TestPlanningReadinessIdentifierFencing(t *testing.T) {
+	for _, bad := range []string{"", "with space", "with,comma", "café", "tab\there", "newline\nhere", string(rune(0x7f)) + "del"} {
+		if err := ValidateReadinessIdentifier(bad); err == nil {
+			t.Fatalf("identifier %q accepted", bad)
+		}
+	}
+	for _, good := range []string{"verify-release", "C1", "unit_2", "a.b/c"} {
+		if err := ValidateReadinessIdentifier(good); err != nil {
+			t.Fatalf("identifier %q rejected: %v", good, err)
+		}
+	}
+	dup := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	dup.WorkUnitKeys = []string{"a", "a"}
+	if err := dup.Validate(); err == nil {
+		t.Fatal("duplicate work unit key accepted")
+	}
+	ctrl := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	ctrl.CriterionAliases = []string{"C1\t"}
+	if err := ctrl.Validate(); err == nil {
+		t.Fatal("control character in criterion alias accepted")
+	}
+}

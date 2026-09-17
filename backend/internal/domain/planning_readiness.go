@@ -211,8 +211,6 @@ func readinessValidation(code PlanningReadinessValidationCode, format string, ar
 type readinessIssueSpec struct {
 	routes            []PlanningEscalationRoute
 	allowPlanner      bool
-	capability        bool // RequestedCapability applies
-	connector         bool // ConnectorClass applies
 	choices           bool // Choices apply
 	admissionEvidence bool // AdmissionReasonCodes apply
 }
@@ -225,10 +223,10 @@ var readinessIssueSpecs = map[PlanningReadinessIssueKind]readinessIssueSpec{
 		routes: []PlanningEscalationRoute{RouteAnswerContext}, allowPlanner: true, choices: true,
 	},
 	ReadinessAuthorityInsufficient: {
-		routes: []PlanningEscalationRoute{RouteReviseContract}, capability: true,
+		routes: []PlanningEscalationRoute{RouteReviseContract},
 	},
 	ReadinessConnectorMissing: {
-		routes: []PlanningEscalationRoute{RouteConfigureConnector}, connector: true,
+		routes: []PlanningEscalationRoute{RouteConfigureConnector},
 	},
 	ReadinessWorkerUnavailable: {
 		routes:            []PlanningEscalationRoute{RouteChooseHarness, RouteAuthenticateHarness},
@@ -244,6 +242,77 @@ var readinessIssueSpecs = map[PlanningReadinessIssueKind]readinessIssueSpec{
 		routes:            []PlanningEscalationRoute{RouteRetryPlanning, RouteAuthenticateHarness},
 		admissionEvidence: true,
 	},
+}
+
+// ConnectorClass is the frozen vocabulary of connector classes the normalized
+// routing inventory can represent. The inventory is closed on purpose: an
+// arbitrary provider string is never a connector class, and a class enters
+// this registry only when the normalized inventory actually models it.
+type ConnectorClass string
+
+// Connector classes represented by the normalized inventory at launch.
+const (
+	ConnectorClassIssueTracker ConnectorClass = "issue_tracker"
+)
+
+// connectorClassRegistry is the exact membership of the frozen inventory.
+var connectorClassRegistry = []ConnectorClass{
+	ConnectorClassIssueTracker,
+}
+
+// Valid reports whether the connector class is in the frozen inventory.
+func (c ConnectorClass) Valid() bool {
+	for _, known := range connectorClassRegistry {
+		if c == known {
+			return true
+		}
+	}
+	return false
+}
+
+// closedLocalCapabilities is the exact local capability inventory a readiness
+// issue may name. It mirrors the capability constants the Contract ceiling is
+// expressed in; anything else is not a capability Kennel can grant.
+var closedLocalCapabilities = []string{
+	CapabilityWorktreeRead,
+	CapabilityWorktreeWrite,
+	CapabilityWorktreeExec,
+}
+
+// ValidClosedCapability reports whether the capability is a member of the
+// closed local capability inventory.
+func ValidClosedCapability(capability string) bool {
+	for _, known := range closedLocalCapabilities {
+		if capability == known {
+			return true
+		}
+	}
+	return false
+}
+
+// MaxPlanningReadinessIdentifierLength bounds machine identifiers carried by
+// readiness issues.
+const MaxPlanningReadinessIdentifierLength = 100
+
+// ValidateReadinessIdentifier enforces the identifier contract for WorkUnit
+// keys and criterion aliases carried on issues: printable ASCII only, so no
+// control character, combining mark, or Unicode normalization form can split
+// one logical identifier into two canonical identities.
+func ValidateReadinessIdentifier(value string) error {
+	if value == "" {
+		return fmt.Errorf("identifier is blank")
+	}
+	if len(value) > MaxPlanningReadinessIdentifierLength {
+		return fmt.Errorf("identifier exceeds %d bytes", MaxPlanningReadinessIdentifierLength)
+	}
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '-' || r == '_' || r == '.' || r == '/'
+		if !ok {
+			return fmt.Errorf("identifier %q contains character %q outside [A-Za-z0-9._/-]", value, r)
+		}
+	}
+	return nil
 }
 
 // PlanningReadinessChoice is one owner-selectable answer. Keys are stable for
@@ -268,7 +337,7 @@ type PlanningReadinessIssue struct {
 	WorkUnitKeys         []string
 	CriterionAliases     []string
 	RequestedCapability  string
-	ConnectorClass       string
+	ConnectorClass       ConnectorClass
 	AdmissionReasonCodes []AdmissionReasonCode
 }
 
@@ -279,7 +348,7 @@ func (issue PlanningReadinessIssue) normalizedRequestedClass() string {
 	if issue.RequestedCapability != "" {
 		return strings.ToLower(strings.TrimSpace(issue.RequestedCapability))
 	}
-	return strings.ToLower(strings.TrimSpace(issue.ConnectorClass))
+	return strings.ToLower(strings.TrimSpace(string(issue.ConnectorClass)))
 }
 
 // Validate enforces the closed issue contract: known taxonomy, legal route for
@@ -335,21 +404,29 @@ func (issue PlanningReadinessIssue) Validate() error {
 	if len(issue.Reason) > MaxPlanningReadinessReasonLength {
 		return readinessValidation(ReadinessIssueInvalid, "readiness issue %q reason exceeds %d bytes", issue.Key, MaxPlanningReadinessReasonLength)
 	}
-	if issue.RequestedCapability != "" && !spec.capability {
-		return readinessValidation(ReadinessIssueInvalid,
-			"readiness kind %q does not carry a requested capability", issue.Kind)
-	}
-	if issue.ConnectorClass != "" && !spec.connector {
+	if issue.Kind == ReadinessConnectorMissing {
+		if !issue.ConnectorClass.Valid() {
+			return readinessValidation(ReadinessIssueInvalid,
+				"connector_missing issue %q names connector class %q outside the frozen inventory", issue.Key, issue.ConnectorClass)
+		}
+	} else if issue.ConnectorClass != "" {
 		return readinessValidation(ReadinessIssueInvalid,
 			"readiness kind %q does not carry a connector class", issue.Kind)
 	}
-	if issue.Kind == ReadinessConnectorMissing && strings.TrimSpace(issue.ConnectorClass) == "" {
+	if issue.Kind == ReadinessAuthorityInsufficient {
+		if !ValidClosedCapability(issue.RequestedCapability) {
+			return readinessValidation(ReadinessIssueInvalid,
+				"authority_insufficient issue %q names capability %q outside the closed inventory", issue.Key, issue.RequestedCapability)
+		}
+	} else if issue.RequestedCapability != "" {
 		return readinessValidation(ReadinessIssueInvalid,
-			"connector_missing issue %q names no connector class", issue.Key)
+			"readiness kind %q does not carry a requested capability", issue.Kind)
 	}
-	if issue.Kind == ReadinessAuthorityInsufficient && strings.TrimSpace(issue.RequestedCapability) == "" {
-		return readinessValidation(ReadinessIssueInvalid,
-			"authority_insufficient issue %q names no requested capability", issue.Key)
+	if err := validateReadinessIdentifierList("work unit key", issue.WorkUnitKeys); err != nil {
+		return readinessValidation(ReadinessIssueInvalid, "readiness issue %q: %v", issue.Key, err)
+	}
+	if err := validateReadinessIdentifierList("criterion alias", issue.CriterionAliases); err != nil {
+		return readinessValidation(ReadinessIssueInvalid, "readiness issue %q: %v", issue.Key, err)
 	}
 	if len(issue.Choices) > 0 && !spec.choices {
 		return readinessValidation(ReadinessIssueInvalid,
@@ -394,6 +471,10 @@ type PlanningReadinessResult struct {
 
 // Validate enforces the closed-shape envelope rules.
 func (r PlanningReadinessResult) Validate() error {
+	if r.Version != PlanningReadinessEnvelopeVersion {
+		return readinessValidation(ReadinessPayloadInvalid,
+			"readiness envelope version %q is not %q", r.Version, PlanningReadinessEnvelopeVersion)
+	}
 	if !r.Status.Valid() {
 		return readinessValidation(ReadinessStatusInvalid, "unknown readiness status %q", r.Status)
 	}
@@ -458,6 +539,45 @@ func (r PlanningReadinessResult) Validate() error {
 	return nil
 }
 
+// NormalizePlanningReadinessStatus is the single canonical status derivation.
+// A packet is ready only when a proposal exists and zero issues remain. Any
+// operational issue normalizes the whole packet to blocked while retaining
+// every owner-answerable issue in the same generation. Callers never label a
+// packet themselves; they assemble proposal and issues and normalize.
+func NormalizePlanningReadinessStatus(proposal *PlanDraftProposal, issues []PlanningReadinessIssue) PlanningReadinessStatus {
+	if proposal != nil && len(issues) == 0 {
+		return PlanningReady
+	}
+	for _, issue := range issues {
+		if issue.Route != RouteAnswerContext {
+			return PlanningBlocked
+		}
+	}
+	return PlanningNeedsContext
+}
+
+// NewPlanningReadinessResult assembles one normalized envelope. The status is
+// always derived, never accepted from a caller: a proposal carrying issues is
+// not ready, and a non-ready packet carries no proposal, matching the rule
+// that no PlanRevision is ever written for needs_context or blocked.
+func NewPlanningReadinessResult(
+	message string,
+	proposal *PlanDraftProposal,
+	issues []PlanningReadinessIssue,
+) PlanningReadinessResult {
+	status := NormalizePlanningReadinessStatus(proposal, issues)
+	if status != PlanningReady {
+		proposal = nil
+	}
+	return PlanningReadinessResult{
+		Version:  PlanningReadinessEnvelopeVersion,
+		Status:   status,
+		Message:  message,
+		Proposal: proposal,
+		Issues:   issues,
+	}
+}
+
 // PlanningReadinessFence binds one packet to the exact frozen inputs of its
 // evaluation. Any change to the fence is a new packet generation.
 type PlanningReadinessFence struct {
@@ -476,41 +596,84 @@ func writeLengthDelimited(builder *strings.Builder, field string) {
 	builder.WriteString(field)
 }
 
+// writeLengthDelimitedList appends a list as its element count followed by
+// each element length-delimited individually. Comma-joining before delimiting
+// would let ["a,b","c"] and ["a","b,c"] alias; per-element delimiting with a
+// count cannot.
+func writeLengthDelimitedList(builder *strings.Builder, values []string) {
+	writeLengthDelimited(builder, strconv.Itoa(len(values)))
+	for _, value := range values {
+		writeLengthDelimited(builder, value)
+	}
+}
+
+// validateReadinessIdentifierList fences one issue's machine references: every
+// entry is a well-formed identifier, unique, and bounded in count.
+func validateReadinessIdentifierList(label string, values []string) error {
+	if len(values) > MaxPlanDraftWorkUnits*2 {
+		return fmt.Errorf("%s list exceeds %d entries", label, MaxPlanDraftWorkUnits*2)
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		if err := ValidateReadinessIdentifier(value); err != nil {
+			return fmt.Errorf("%s %q is not a valid identifier: %v", label, value, err)
+		}
+		if seen[value] {
+			return fmt.Errorf("%s %q is duplicated", label, value)
+		}
+		seen[value] = true
+	}
+	return nil
+}
+
 func sortedCopy(values []string) []string {
 	out := append([]string(nil), values...)
 	sort.Strings(out)
 	return out
 }
 
-// canonicalIssueIdentityFields are the identity inputs of one issue within a
-// packet. Display text, recommendations, and choice labels are excluded by
+// writeCanonicalIssueIdentity appends the identity inputs of one issue within
+// a packet. Display text, recommendations, and choice labels are excluded by
 // design: they never define identity.
-func canonicalIssueIdentityFields(issue PlanningReadinessIssue) []string {
-	fields := []string{
-		string(issue.Kind),
-		string(issue.Route),
-		issue.normalizedRequestedClass(),
-		strings.Join(sortedCopy(issue.WorkUnitKeys), ","),
-		strings.Join(sortedCopy(issue.CriterionAliases), ","),
-	}
-	return fields
+func writeCanonicalIssueIdentity(builder *strings.Builder, issue PlanningReadinessIssue) {
+	writeLengthDelimited(builder, string(issue.Kind))
+	writeLengthDelimited(builder, string(issue.Route))
+	writeLengthDelimited(builder, issue.normalizedRequestedClass())
+	writeLengthDelimitedList(builder, sortedCopy(issue.WorkUnitKeys))
+	writeLengthDelimitedList(builder, sortedCopy(issue.CriterionAliases))
 }
 
-// issueCoalesceDigest hashes the coalescing identity of one issue: kind, route,
-// normalized requested class, and criterion aliases. WorkUnit keys are
-// deliberately excluded — duplicate issues raised from several units coalesce
-// into one issue whose affected unit keys are the sorted union.
+// issueCoalesceDigest hashes the coalescing identity of one issue. WorkUnit
+// keys are deliberately excluded — duplicate issues raised from several units
+// coalesce into one issue whose affected unit keys are the sorted union.
+//
+// Control-plane issues coalesce on kind, route, normalized requested class,
+// and criterion aliases: their content is a deterministic function of that
+// identity. Planner-declared issues carry their meaning in the question
+// itself, so they coalesce only when the full normalized answer contract —
+// prompt and choice keys — also agrees. Two different questions never merge
+// into one, because merging them would silently discard an owner answer.
 func issueCoalesceDigest(issue PlanningReadinessIssue) SHA256Digest {
 	var builder strings.Builder
-	for _, field := range []string{
-		string(issue.Kind),
-		string(issue.Route),
-		issue.normalizedRequestedClass(),
-		strings.Join(sortedCopy(issue.CriterionAliases), ","),
-	} {
-		writeLengthDelimited(&builder, field)
+	writeLengthDelimited(&builder, string(issue.Kind))
+	writeLengthDelimited(&builder, string(issue.Route))
+	writeLengthDelimited(&builder, issue.normalizedRequestedClass())
+	writeLengthDelimitedList(&builder, sortedCopy(issue.CriterionAliases))
+	if issue.Source == ReadinessSourcePlannerDeclared {
+		writeLengthDelimited(&builder, normalizePlannerAnswerText(issue.Prompt))
+		choiceKeys := make([]string, 0, len(issue.Choices))
+		for _, choice := range issue.Choices {
+			choiceKeys = append(choiceKeys, choice.Key)
+		}
+		writeLengthDelimitedList(&builder, sortedCopy(choiceKeys))
 	}
 	return DigestSHA256([]byte(builder.String()))
+}
+
+// normalizePlannerAnswerText folds case and whitespace so superficially
+// reworded duplicates of the same question still coalesce.
+func normalizePlannerAnswerText(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(text), " "))
 }
 
 // CanonicalPlanningIssueKey derives the stable issue key from the packet fence
@@ -523,9 +686,7 @@ func CanonicalPlanningIssueKey(fence PlanningReadinessFence, issue PlanningReadi
 	writeLengthDelimited(&builder, fence.ContractRevisionID.String())
 	writeLengthDelimited(&builder, fence.ContextDigest.String())
 	writeLengthDelimited(&builder, fence.RoutingSnapshotID)
-	for _, field := range canonicalIssueIdentityFields(issue) {
-		writeLengthDelimited(&builder, field)
-	}
+	writeCanonicalIssueIdentity(&builder, issue)
 	return "pri-" + DigestSHA256([]byte(builder.String())).String()
 }
 

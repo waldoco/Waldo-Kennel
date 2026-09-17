@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -96,13 +97,17 @@ var authorityClaimFields = []string{
 
 // parsePlanningReadinessReply decodes one strict provider envelope into the
 // canonical readiness result. Unknown fields fail closed; authority-bearing
-// fields fail as authority claims. Planner-declared issues are stamped with
-// their only legal source and route, canonicalized, keyed under the evaluation
-// fence, and validated against the domain contract.
+// fields fail as authority claims; trailing data after the envelope fails
+// closed. Planner-declared issues are stamped with their only legal source
+// and route, canonicalized, keyed under the evaluation fence, and validated
+// against the domain contract. WorkUnit keys and criterion aliases are fenced
+// to the evaluation's frozen draft keys and Contract aliases: the planner may
+// reference real units and criteria, never invent them.
 func parsePlanningReadinessReply(
 	data []byte,
 	fence domain.PlanningReadinessFence,
 	workUnitOrder []string,
+	criterionAliases []string,
 ) (domain.PlanningReadinessResult, error) {
 	invalid := func(format string, args ...any) (domain.PlanningReadinessResult, error) {
 		return domain.PlanningReadinessResult{}, fmt.Errorf(format, args...)
@@ -116,6 +121,21 @@ func parsePlanningReadinessReply(
 				field, domain.ReadinessAuthorityClaim)
 		}
 		return invalid("waldo returned an unreadable readiness envelope: %v (%s)", err, domain.ReadinessPayloadInvalid)
+	}
+	// One envelope, nothing after it. A second value (or trailing garbage that
+	// is not whitespace) means the stream was not the strict envelope.
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return invalid("waldo returned trailing data after the readiness envelope (%s)", domain.ReadinessPayloadInvalid)
+	}
+
+	allowedUnits := make(map[string]bool, len(workUnitOrder))
+	for _, key := range workUnitOrder {
+		allowedUnits[key] = true
+	}
+	allowedAliases := make(map[string]bool, len(criterionAliases))
+	for _, alias := range criterionAliases {
+		allowedAliases[alias] = true
 	}
 
 	result := domain.PlanningReadinessResult{
@@ -133,6 +153,26 @@ func parsePlanningReadinessReply(
 			Recommendation:   strings.TrimSpace(raw.Recommendation),
 			WorkUnitKeys:     trimAll(raw.WorkUnitKeys),
 			CriterionAliases: trimAll(raw.CriterionAliases),
+		}
+		for _, rawKey := range raw.WorkUnitKeys {
+			if strings.TrimSpace(rawKey) == "" {
+				return invalid("waldo referenced a blank work unit key (%s)", domain.ReadinessIssueInvalid)
+			}
+		}
+		for _, rawAlias := range raw.CriterionAliases {
+			if strings.TrimSpace(rawAlias) == "" {
+				return invalid("waldo referenced a blank criterion alias (%s)", domain.ReadinessIssueInvalid)
+			}
+		}
+		for _, key := range issue.WorkUnitKeys {
+			if !allowedUnits[key] {
+				return invalid("waldo referenced unknown work unit key %q (%s)", key, domain.ReadinessIssueInvalid)
+			}
+		}
+		for _, alias := range issue.CriterionAliases {
+			if !allowedAliases[alias] {
+				return invalid("waldo referenced unknown criterion alias %q (%s)", alias, domain.ReadinessIssueInvalid)
+			}
 		}
 		for _, choice := range raw.Choices {
 			issue.Choices = append(issue.Choices, domain.PlanningReadinessChoice{
