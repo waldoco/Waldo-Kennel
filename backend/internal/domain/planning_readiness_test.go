@@ -603,3 +603,64 @@ func TestPlanningReadinessIdentifierFencing(t *testing.T) {
 		t.Fatal("control character in criterion alias accepted")
 	}
 }
+
+// End-to-end: canonicalize, mint keys, assemble the normalized packet, and
+// validate it. Distinct questions and distinct choice contracts must produce
+// distinct canonical keys, and the resulting packet must validate.
+func TestPlanningReadinessKeyMintingEndToEnd(t *testing.T) {
+	fence := readinessFence()
+	region := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	region.Prompt = "Which region?"
+	date := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	date.Prompt = "Which release date?"
+	choiceA := validIssue(ReadinessFactMissing, RouteAnswerContext)
+	choiceA.Prompt = "Which channel?"
+	choiceA.Choices = []PlanningReadinessChoice{{Key: "stable", Label: "Stable"}}
+	choiceB := choiceA
+	choiceB.Choices = []PlanningReadinessChoice{{Key: "beta", Label: "Stable"}}
+
+	canonical, err := CanonicalizePlanningReadinessIssues(
+		[]PlanningReadinessIssue{region, date, choiceA, choiceB}, nil)
+	if err != nil {
+		t.Fatalf("canonicalize: %v", err)
+	}
+	if len(canonical) != 4 {
+		t.Fatalf("canonicalized to %d issues, want 4 distinct questions", len(canonical))
+	}
+	keys := map[string]bool{}
+	for i := range canonical {
+		canonical[i].Key = CanonicalPlanningIssueKey(fence, canonical[i])
+		if keys[canonical[i].Key] {
+			t.Fatalf("distinct questions minted duplicate key %q", canonical[i].Key)
+		}
+		keys[canonical[i].Key] = true
+	}
+	packet := NewPlanningReadinessResult("Four answers needed.", nil, canonical)
+	if packet.Status != PlanningNeedsContext {
+		t.Fatalf("packet status = %q, want needs_context", packet.Status)
+	}
+	if err := packet.Validate(); err != nil {
+		t.Fatalf("minted packet must validate: %v", err)
+	}
+
+	// Control-plane duplicates merge, then mint one key and validate.
+	c1 := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	c1.WorkUnitKeys = []string{"b"}
+	c2 := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	c2.WorkUnitKeys = []string{"a"}
+	merged, err := CanonicalizePlanningReadinessIssues([]PlanningReadinessIssue{c1, c2}, nil)
+	if err != nil {
+		t.Fatalf("canonicalize control-plane: %v", err)
+	}
+	if len(merged) != 1 {
+		t.Fatalf("control-plane merged to %d issues", len(merged))
+	}
+	merged[0].Key = CanonicalPlanningIssueKey(fence, merged[0])
+	blocked := NewPlanningReadinessResult("Setup needed.", nil, merged)
+	if blocked.Status != PlanningBlocked {
+		t.Fatalf("control-plane packet status = %q, want blocked", blocked.Status)
+	}
+	if err := blocked.Validate(); err != nil {
+		t.Fatalf("merged control-plane packet must validate: %v", err)
+	}
+}

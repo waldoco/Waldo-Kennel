@@ -632,41 +632,44 @@ func sortedCopy(values []string) []string {
 	return out
 }
 
-// writeCanonicalIssueIdentity appends the identity inputs of one issue within
-// a packet. Display text, recommendations, and choice labels are excluded by
-// design: they never define identity.
-func writeCanonicalIssueIdentity(builder *strings.Builder, issue PlanningReadinessIssue) {
+// writeIssueSemanticIdentity appends the semantic identity of one issue: the
+// inputs both coalescing and key derivation share. Kind, route, normalized
+// requested class, and criterion aliases identify a control-plane condition.
+// A planner-declared issue carries its meaning in the question itself, so its
+// normalized answer contract (prompt and choice keys) is identity too —
+// otherwise two distinct questions would mint one key and collide downstream.
+// Display text beyond the answer contract (recommendation, choice labels)
+// never defines identity.
+func writeIssueSemanticIdentity(builder *strings.Builder, issue PlanningReadinessIssue) {
 	writeLengthDelimited(builder, string(issue.Kind))
 	writeLengthDelimited(builder, string(issue.Route))
 	writeLengthDelimited(builder, issue.normalizedRequestedClass())
-	writeLengthDelimitedList(builder, sortedCopy(issue.WorkUnitKeys))
 	writeLengthDelimitedList(builder, sortedCopy(issue.CriterionAliases))
-}
-
-// issueCoalesceDigest hashes the coalescing identity of one issue. WorkUnit
-// keys are deliberately excluded — duplicate issues raised from several units
-// coalesce into one issue whose affected unit keys are the sorted union.
-//
-// Control-plane issues coalesce on kind, route, normalized requested class,
-// and criterion aliases: their content is a deterministic function of that
-// identity. Planner-declared issues carry their meaning in the question
-// itself, so they coalesce only when the full normalized answer contract —
-// prompt and choice keys — also agrees. Two different questions never merge
-// into one, because merging them would silently discard an owner answer.
-func issueCoalesceDigest(issue PlanningReadinessIssue) SHA256Digest {
-	var builder strings.Builder
-	writeLengthDelimited(&builder, string(issue.Kind))
-	writeLengthDelimited(&builder, string(issue.Route))
-	writeLengthDelimited(&builder, issue.normalizedRequestedClass())
-	writeLengthDelimitedList(&builder, sortedCopy(issue.CriterionAliases))
 	if issue.Source == ReadinessSourcePlannerDeclared {
-		writeLengthDelimited(&builder, normalizePlannerAnswerText(issue.Prompt))
+		writeLengthDelimited(builder, normalizePlannerAnswerText(issue.Prompt))
 		choiceKeys := make([]string, 0, len(issue.Choices))
 		for _, choice := range issue.Choices {
 			choiceKeys = append(choiceKeys, choice.Key)
 		}
-		writeLengthDelimitedList(&builder, sortedCopy(choiceKeys))
+		writeLengthDelimitedList(builder, sortedCopy(choiceKeys))
 	}
+}
+
+// writeCanonicalIssueIdentity appends the full canonical identity of one issue
+// within a packet: the semantic identity plus the affected WorkUnit keys.
+func writeCanonicalIssueIdentity(builder *strings.Builder, issue PlanningReadinessIssue) {
+	writeIssueSemanticIdentity(builder, issue)
+	writeLengthDelimitedList(builder, sortedCopy(issue.WorkUnitKeys))
+}
+
+// issueCoalesceDigest hashes the coalescing identity of one issue: exactly the
+// shared semantic identity, with WorkUnit keys deliberately excluded.
+// Duplicate issues raised from several units coalesce into one issue whose
+// affected unit keys are the sorted union; two issues with distinct semantic
+// identities never merge, because merging them would silently discard content.
+func issueCoalesceDigest(issue PlanningReadinessIssue) SHA256Digest {
+	var builder strings.Builder
+	writeIssueSemanticIdentity(&builder, issue)
 	return DigestSHA256([]byte(builder.String()))
 }
 
