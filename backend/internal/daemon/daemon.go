@@ -555,6 +555,8 @@ func Run() error {
 	} else if len(receipts) > 0 {
 		log.Warn("recovered interrupted Waldo continuations into durable owner decisions", "count", len(receipts))
 	}
+	connectionKernel := harnessconnection.New(store)
+	pairingCoordinator := harnesspairing.New(store, connectionKernel)
 	srv, err := httpd.NewWithDeps(cfg, log, termMgr, httpd.APIDeps{
 		Projects:            projectSvc,
 		Agents:              agentSvc,
@@ -596,7 +598,7 @@ func Run() error {
 		SessionCapabilities:  browserAuthority,
 		OwnerAuthority:       ownerAuthority,
 		ReplacementDecisions: store,
-		PairingCoordinator:   harnesspairing.New(store, harnessconnection.New(store)),
+		PairingCoordinator:   pairingCoordinator,
 		OwnerProofKernel:     ownerproof.New(store),
 	})
 	if err != nil {
@@ -623,6 +625,13 @@ func Run() error {
 			}
 		}()
 	}
+	harnessEndpoints, err := startHarnessEndpoints(ctx, cfg.DataDir, store, connectionKernel, pairingCoordinator, log)
+	if err != nil {
+		return err
+	}
+	defer harnessEndpoints.Close()
+	srv.SetHarnessAddresses(harnessEndpoints.PairingAddress, harnessEndpoints.CommandAddress)
+
 	var usageDone <-chan struct{}
 
 	// Late-bind: the LAN listener shares the exact loopback router instance so
