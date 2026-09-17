@@ -150,7 +150,11 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 				return MissionProjection{}, err
 			}
 			if found && doc.OutcomeID == outcomeID && doc.Revision == spec.DocumentContextRevision && doc.Digest == spec.DocumentContextDigest && doc.Approved() {
-				view.Nodes[i].Links = append(view.Nodes[i].Links, MissionLink{Kind: "document_context", ID: string(doc.ID), Label: "Approved documents", State: "available"})
+				label := fmt.Sprintf("%d approved documents", len(doc.Sources))
+				if len(doc.Sources) == 1 {
+					label = doc.Sources[0].Name
+				}
+				view.Nodes[i].Links = append(view.Nodes[i].Links, MissionLink{Kind: "document_context", ID: string(doc.ID), Label: label, State: "available"})
 			}
 		}
 	}
@@ -307,7 +311,10 @@ func measuredMissionChanges(receipt domain.AttemptReceipt) *MissionChangeSummary
 	return &MissionChangeSummary{Additions: additions, Deletions: deletions, FilesChanged: int64(len(receipt.Files)), SourceAttemptID: string(receipt.AttemptID), ArtifactVersion: receipt.ArtifactVersion, MeasurementState: "measured"}
 }
 
-func missionNodeGeneration(node MissionNode) int64 { return digestGeneration(node) }
+func missionNodeGeneration(node MissionNode) int64 {
+	node.Generation = 0
+	return digestGeneration(node)
+}
 func missionProjectionGeneration(view MissionProjection) int64 {
 	copy := view
 	copy.Generation = 0

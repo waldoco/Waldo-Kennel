@@ -203,3 +203,12 @@ func TestMeasuredMissionChangesRequiresFrozenCompleteFullyMeasuredReceipt(t *tes
 		t.Fatal("partly measured receipt projected summary")
 	}
 }
+
+func TestMissionNodeGenerationIsIdempotentAfterEnrichment(t *testing.T) {
+	node := MissionNode{WorkUnitID: "wu", Links: []MissionLink{{Kind: "evidence", ID: "ev", Label: "Evidence", State: "available"}}}
+	first := missionNodeGeneration(node)
+	node.Generation = first
+	if second := missionNodeGeneration(node); second != first {
+		t.Fatalf("generation drifted on recompute: %d -> %d", first, second)
+	}
+}
