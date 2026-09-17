@@ -188,6 +188,7 @@ func (p PlanDraftProposal) Validate() error {
 // truth. Array serialization order is deliberately irrelevant.
 func (p PlanDraftProposal) TopologicalOrder() ([]string, error) {
 	units := make(map[string]PlanDraftWorkUnit, len(p.WorkUnits))
+	proposalPosition := make(map[string]int, len(p.WorkUnits))
 	indegree := make(map[string]int, len(p.WorkUnits))
 	dependents := make(map[string][]string, len(p.WorkUnits))
 	for _, unit := range p.WorkUnits {
@@ -199,6 +200,7 @@ func (p PlanDraftProposal) TopologicalOrder() ([]string, error) {
 			return nil, fmt.Errorf("plan draft work unit key %q is duplicated", key)
 		}
 		units[key] = unit
+		proposalPosition[key] = len(proposalPosition)
 		indegree[key] = 0
 	}
 	for key, unit := range units {
@@ -226,19 +228,19 @@ func (p PlanDraftProposal) TopologicalOrder() ([]string, error) {
 			ready = append(ready, key)
 		}
 	}
-	sort.Strings(ready)
+	sort.SliceStable(ready, func(i, j int) bool { return proposalPosition[ready[i]] < proposalPosition[ready[j]] })
 	order := make([]string, 0, len(units))
 	for len(ready) > 0 {
 		key := ready[0]
 		ready = ready[1:]
 		order = append(order, key)
 		next := append([]string(nil), dependents[key]...)
-		sort.Strings(next)
+		sort.SliceStable(next, func(i, j int) bool { return proposalPosition[next[i]] < proposalPosition[next[j]] })
 		for _, dependent := range next {
 			indegree[dependent]--
 			if indegree[dependent] == 0 {
 				ready = append(ready, dependent)
-				sort.Strings(ready)
+				sort.SliceStable(ready, func(i, j int) bool { return proposalPosition[ready[i]] < proposalPosition[ready[j]] })
 			}
 		}
 	}

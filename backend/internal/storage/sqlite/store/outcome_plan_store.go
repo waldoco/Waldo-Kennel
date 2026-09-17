@@ -33,6 +33,21 @@ func (s *Store) AppendPlanRevision(ctx context.Context, outcomeID domain.Outcome
 		return domain.PlanRevision{}, fmt.Errorf("append plan for %s: only proposed plans are created", outcomeID)
 	}
 	plan.OutcomeID = outcomeID
+	// Pre-position callers are legacy in-process producers. Freeze their
+	// reviewed slice order once at append; new planner output arrives already
+	// positioned by the canonical compiler. Partial/malformed positions still
+	// fail domain validation.
+	positioned := 0
+	for i := range plan.WorkUnits {
+		if plan.WorkUnits[i].Position > 0 {
+			positioned++
+		}
+	}
+	if positioned == 0 {
+		for i := range plan.WorkUnits {
+			plan.WorkUnits[i].Position = int64(i + 1)
+		}
+	}
 	if err := validateCanonicalPlanPersistence(plan); err != nil {
 		return domain.PlanRevision{}, err
 	}
@@ -101,7 +116,7 @@ WHERE outcome_id = ? AND number = ?`, plan.OutcomeID, plan.ContractRevisionNumbe
 		if err != nil {
 			return domain.PlanRevision{}, fmt.Errorf("plan %s work unit %s budget: %w", plan.ID, unit.ID, err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO work_units (id,plan_revision_id,kind,title,contract_revision_number,output_summary,evidence_checks,verification_requirement,stop_conditions,execution_budget_json,intent) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, unit.ID, plan.ID, string(unit.Kind), unit.Title, unit.ContractRevisionNumber, unit.OutputSummary, checks, unit.VerificationRequirement, stops, string(budgetJSON), string(unit.Intent)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO work_units (id,plan_revision_id,kind,title,position,contract_revision_number,output_summary,evidence_checks,verification_requirement,stop_conditions,execution_budget_json,intent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, unit.ID, plan.ID, string(unit.Kind), unit.Title, unit.Position, unit.ContractRevisionNumber, unit.OutputSummary, checks, unit.VerificationRequirement, stops, string(budgetJSON), string(unit.Intent)); err != nil {
 			return domain.PlanRevision{}, fmt.Errorf("create work unit %s: %w", unit.ID, err)
 		}
 
@@ -419,7 +434,7 @@ SELECT routing_decisions_json FROM plan_revisions WHERE id = ?`, plan.ID).Scan(&
 
 		var budgetJSON sql.NullString
 		var intent string
-		if err := s.readDB.QueryRowContext(ctx, `SELECT execution_budget_json, intent FROM work_units WHERE id=? AND plan_revision_id=?`, unit.ID, plan.ID).Scan(&budgetJSON, &intent); err != nil {
+		if err := s.readDB.QueryRowContext(ctx, `SELECT execution_budget_json, intent, COALESCE(position, 0) FROM work_units WHERE id=? AND plan_revision_id=?`, unit.ID, plan.ID).Scan(&budgetJSON, &intent, &unit.Position); err != nil {
 			return fmt.Errorf("get execution budget for work unit %s: %w", unit.ID, err)
 		}
 		unit.Intent = domain.WorkUnitIntent(intent)
@@ -501,8 +516,21 @@ WHERE work_unit_id = ?
 		}
 	}
 
-	// Keep serialized readback deterministic even if SQLite row order changes.
-	sort.Slice(plan.WorkUnits, func(i, j int) bool { return plan.WorkUnits[i].ID < plan.WorkUnits[j].ID })
+	// Keep every projection aligned with the frozen serial Plan order. Legacy
+	// Plans have no positions and retain the historical lexical opaque-ID
+	// policy. New Plans are fully positioned by validation.
+	legacy := len(plan.WorkUnits) > 0
+	for i := range plan.WorkUnits {
+		if plan.WorkUnits[i].Position != 0 {
+			legacy = false
+			break
+		}
+	}
+	if legacy {
+		sort.Slice(plan.WorkUnits, func(i, j int) bool { return plan.WorkUnits[i].ID < plan.WorkUnits[j].ID })
+	} else {
+		sort.Slice(plan.WorkUnits, func(i, j int) bool { return plan.WorkUnits[i].Position < plan.WorkUnits[j].Position })
+	}
 	return nil
 }
 

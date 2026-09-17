@@ -158,6 +158,9 @@ func migrate(db *sql.DB) error {
 	if err := prepareInteractivePlanningMigration(db); err != nil {
 		return fmt.Errorf("prepare interactive-planning migration: %w", err)
 	}
+	if err := prepareWorkUnitPositionMigration(db); err != nil {
+		return fmt.Errorf("prepare work-unit-position migration: %w", err)
+	}
 	// Builds can advance a database past a migration that is added or
 	// renumbered later (notably across fast-moving Nightly releases). Apply
 	// those embedded migrations instead of permanently wedging daemon startup
@@ -183,6 +186,9 @@ func migrate(db *sql.DB) error {
 	if err := reconcileExecutionRoutingSchema(db); err != nil {
 		return fmt.Errorf("reconcile execution routing schema: %w", err)
 	}
+	if err := reconcileWorkUnitPositionSchema(db); err != nil {
+		return fmt.Errorf("reconcile work-unit-position schema: %w", err)
+	}
 	if err := reconcilePlanReviewSchema(db); err != nil {
 		return fmt.Errorf("reconcile plan-review schema: %w", err)
 	}
@@ -207,6 +213,41 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("install scoped Outcome deletion guards: %w", err)
 	}
 	return nil
+}
+
+// prepareWorkUnitPositionMigration lets degraded profiles whose Outcome tables
+// were skipped pass Goose. Reconciliation installs the same shape after the
+// execution-routing seam has restored work_units.
+func prepareWorkUnitPositionMigration(db *sql.DB) error {
+	var gooseTable, workUnits int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goose_db_version'`).Scan(&gooseTable); err != nil || gooseTable == 0 {
+		return err
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='work_units'`).Scan(&workUnits); err != nil || workUnits != 0 {
+		return err
+	}
+	_, err := db.Exec(`INSERT INTO goose_db_version (version_id, is_applied) VALUES (154, 1)`)
+	return err
+}
+
+func reconcileWorkUnitPositionSchema(db *sql.DB) error {
+	var workUnits, position int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='work_units'`).Scan(&workUnits); err != nil || workUnits == 0 {
+		return err
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('work_units') WHERE name='position'`).Scan(&position); err != nil {
+		return err
+	}
+	if position == 0 {
+		if _, err := db.Exec(`ALTER TABLE work_units ADD COLUMN position INTEGER`); err != nil {
+			return err
+		}
+	}
+	_, err := db.Exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_work_units_plan_position ON work_units(plan_revision_id, position) WHERE position IS NOT NULL;
+DROP TRIGGER IF EXISTS work_units_position_immutable_update;
+CREATE TRIGGER IF NOT EXISTS work_units_immutable_update BEFORE UPDATE ON work_units BEGIN SELECT RAISE(ABORT, 'work units are immutable'); END;`)
+	return err
 }
 
 // prepareInteractivePlanningMigration lets a profile whose Outcome migration

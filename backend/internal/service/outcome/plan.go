@@ -204,13 +204,21 @@ func (s *Service) compileAndRoutePlan(
 		return nil, nil, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_INVALID", err.Error(), nil)
 	}
 
+	order, err := draft.TopologicalOrder()
+	if err != nil {
+		return nil, nil, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_INVALID", err.Error(), nil)
+	}
+	drafts := make(map[string]domain.PlanDraftWorkUnit, len(draft.WorkUnits))
 	ids := make(map[string]domain.WorkUnitID, len(draft.WorkUnits))
 	for _, draftUnit := range draft.WorkUnits {
-		ids[strings.TrimSpace(draftUnit.Key)] = domain.WorkUnitID("wu-" + uuid.NewString())
+		key := strings.TrimSpace(draftUnit.Key)
+		drafts[key] = draftUnit
+		ids[key] = domain.WorkUnitID("wu-" + uuid.NewString())
 	}
 
 	units := make([]domain.WorkUnit, 0, len(draft.WorkUnits))
-	for _, draftUnit := range draft.WorkUnits {
+	for index, key := range order {
+		draftUnit := drafts[key]
 		unitID := ids[strings.TrimSpace(draftUnit.Key)]
 		criteria := make([]domain.CriterionID, 0, len(draftUnit.CriteriaCovered))
 		checks := make([]string, 0, len(draftUnit.EvidenceIdeas))
@@ -252,6 +260,7 @@ func (s *Service) compileAndRoutePlan(
 			Kind:                    domain.WorkUnitDirect,
 			Intent:                  draftUnit.Intent,
 			Title:                   strings.TrimSpace(draftUnit.Title),
+			Position:                int64(index + 1),
 			ContractRevisionNumber:  revision.Number,
 			OutputSummary:           strings.TrimSpace(draftUnit.OutputSummary),
 			EvidenceChecks:          uniqueNonBlank(checks),

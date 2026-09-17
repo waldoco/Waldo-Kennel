@@ -245,3 +245,43 @@ func TestPlanApprovalRejectsLegacyIntentAndCapabilityDrift(t *testing.T) {
 		t.Fatalf("drift err=%v", err)
 	}
 }
+
+func TestPlanRevisionTopologicalOrderUsesFrozenPositionNotOpaqueIdentity(t *testing.T) {
+	root := validWorkUnit()
+	root.ID, root.Position = "wu-root", 1
+	first := validWorkUnit()
+	first.ID, first.Position, first.DependsOn = "wu-z-random", 2, []WorkUnitID{root.ID}
+	second := validWorkUnit()
+	second.ID, second.Position, second.DependsOn = "wu-a-random", 3, []WorkUnitID{root.ID}
+	join := validWorkUnit()
+	join.ID, join.Position, join.DependsOn = "wu-join", 4, []WorkUnitID{first.ID, second.ID}
+	plan := validPlanRevision()
+	plan.WorkUnits = []WorkUnit{second, join, root, first}
+	ordered, err := plan.TopologicalWorkUnits()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []WorkUnitID{root.ID, first.ID, second.ID, join.ID}
+	for i := range want {
+		if ordered[i].ID != want[i] {
+			t.Fatalf("ordered[%d] = %s, want %s", i, ordered[i].ID, want[i])
+		}
+	}
+}
+
+func TestPlanRevisionRejectsPartialOrDuplicateFrozenPositions(t *testing.T) {
+	first := validWorkUnit()
+	first.ID, first.Position = "wu-a", 1
+	second := validWorkUnit()
+	second.ID, second.Position = "wu-b", 0
+	plan := validPlanRevision()
+	plan.WorkUnits = []WorkUnit{first, second}
+	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "fully populated") {
+		t.Fatalf("partial positions validation = %v", err)
+	}
+	second.Position = 1
+	plan.WorkUnits[1] = second
+	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "repeat position") {
+		t.Fatalf("duplicate positions validation = %v", err)
+	}
+}

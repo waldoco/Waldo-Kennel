@@ -115,3 +115,22 @@ func TestPlanDraftProposalRequiresCriterionCoverage(t *testing.T) {
 		t.Fatal("work unit without criterion aliases should be rejected")
 	}
 }
+
+func TestPlanDraftTopologicalOrderUsesProposalOrderForIndependentBranches(t *testing.T) {
+	root := validPlanDraftWorkUnit("root")
+	second := validPlanDraftWorkUnit("second")
+	second.DependsOn = []string{"root"}
+	first := validPlanDraftWorkUnit("first")
+	first.DependsOn = []string{"root"}
+	join := validPlanDraftWorkUnit("join")
+	join.DependsOn = []string{"first", "second"}
+	proposal := PlanDraftProposal{Summary: "Stable fork and join.", WorkUnits: []PlanDraftWorkUnit{root, second, first, join}}
+	order, err := proposal.TopologicalOrder()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"root", "second", "first", "join"}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("order = %v, want proposal-order tie break %v", order, want)
+	}
+}

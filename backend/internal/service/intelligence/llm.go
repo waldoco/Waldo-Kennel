@@ -55,7 +55,7 @@ Break the Contract into the smallest set of work units that can actually be exec
 Rules:
 - Prefer few units. One unit is correct when the work is genuinely one step. Never split work just to look thorough.
 - Each unit must produce something observable that moves at least one criterion toward proof.
-- Use dependsOn only for real ordering constraints. Units with no dependency between them will be allowed to run in parallel, so do not serialize work that is genuinely independent.
+- Use dependsOn only for real ordering constraints. Use dependencies only for real ordering constraints. Independent units keep future execution options open, but the current launch executes the canonical Plan order serially. Do not add fake dependencies merely to force display or execution order.
 - intent classifies the work: "inspect" reads only; "modify" edits files; "execute" runs commands; "modify_and_execute" does both. Choose the LEAST intent that can do the unit's job — it decides how much authority the unit is granted.
 - criteriaCovered references the criterion aliases given to you (C1, C2, ...). Every criterion should be covered by at least one unit.
 - evidenceIdeas are the artifacts that would prove the unit did its job.

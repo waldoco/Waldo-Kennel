@@ -76,9 +76,12 @@ func (k WorkUnitKind) Valid() bool { return k == WorkUnitDirect }
 type WorkUnit struct {
 	ID WorkUnitID
 	// Intent is immutable user-meaning; capabilities are derived execution requirements.
-	Intent                  WorkUnitIntent
-	Kind                    WorkUnitKind
-	Title                   string
+	Intent WorkUnitIntent
+	Kind   WorkUnitKind
+	Title  string
+	// Position is the immutable, one-based serial order frozen at compilation.
+	// Identity is opaque and must never decide execution order.
+	Position                int64
 	ContractRevisionNumber  int64
 	Provider                AgentHarness
 	ModelSelection          ExecutionBindingModelSelection
@@ -348,6 +351,8 @@ func (p PlanRevision) Validate() error {
 	}
 
 	units := make(map[WorkUnitID]WorkUnit, len(p.WorkUnits))
+	positions := make(map[int64]WorkUnitID, len(p.WorkUnits))
+	positioned := 0
 	for i, unit := range p.WorkUnits {
 		if err := unit.Validate(); err != nil {
 			return fmt.Errorf("work unit %d: %w", i+1, err)
@@ -359,6 +364,25 @@ func (p PlanRevision) Validate() error {
 			return fmt.Errorf("duplicate work unit id %q", unit.ID)
 		}
 		units[unit.ID] = unit
+		if unit.Position > 0 {
+			if prior, duplicate := positions[unit.Position]; duplicate {
+				return fmt.Errorf("work units %s and %s repeat position %d", prior, unit.ID, unit.Position)
+			}
+			positions[unit.Position] = unit.ID
+			positioned++
+		}
+	}
+	// All-zero is readable legacy state used by pre-position Plans. Canonical
+	// Plans compiled now are fully positioned; partial positioning is corrupt.
+	if positioned != 0 {
+		if positioned != len(p.WorkUnits) {
+			return fmt.Errorf("plan work unit positions must be either fully populated or legacy-unset")
+		}
+		for position := int64(1); position <= int64(len(p.WorkUnits)); position++ {
+			if _, exists := positions[position]; !exists {
+				return fmt.Errorf("plan work unit positions must be contiguous from 1; missing %d", position)
+			}
+		}
 	}
 	for _, unit := range p.WorkUnits {
 		for _, dependency := range unit.DependsOn {
@@ -408,6 +432,7 @@ func validatePlanReviewStrings(kind string, values []string) error {
 // TopologicalWorkUnits derives deterministic serial order from dependency truth.
 func (p PlanRevision) TopologicalWorkUnits() ([]WorkUnit, error) {
 	units := map[WorkUnitID]WorkUnit{}
+	orderRank := map[WorkUnitID]int64{}
 	indegree := map[WorkUnitID]int{}
 	dependents := map[WorkUnitID][]WorkUnitID{}
 	for _, unit := range p.WorkUnits {
@@ -418,6 +443,13 @@ func (p PlanRevision) TopologicalWorkUnits() ([]WorkUnit, error) {
 			return nil, fmt.Errorf("duplicate work unit id %q", unit.ID)
 		}
 		units[unit.ID] = unit
+		if unit.Position > 0 {
+			orderRank[unit.ID] = unit.Position
+		} else {
+			// Legacy Plans predate frozen positions. Preserve their historical
+			// lexical opaque-ID policy; never invent a migration-time order.
+			orderRank[unit.ID] = 0
+		}
 		indegree[unit.ID] = 0
 	}
 	for _, unit := range p.WorkUnits {
@@ -443,19 +475,34 @@ func (p PlanRevision) TopologicalWorkUnits() ([]WorkUnit, error) {
 			ready = append(ready, id)
 		}
 	}
-	sort.Slice(ready, func(i, j int) bool { return ready[i] < ready[j] })
+	sort.Slice(ready, func(i, j int) bool {
+		if orderRank[ready[i]] == orderRank[ready[j]] {
+			return ready[i] < ready[j]
+		}
+		return orderRank[ready[i]] < orderRank[ready[j]]
+	})
 	order := make([]WorkUnit, 0, len(units))
 	for len(ready) > 0 {
 		id := ready[0]
 		ready = ready[1:]
 		order = append(order, units[id])
 		next := append([]WorkUnitID(nil), dependents[id]...)
-		sort.Slice(next, func(i, j int) bool { return next[i] < next[j] })
+		sort.Slice(next, func(i, j int) bool {
+			if orderRank[next[i]] == orderRank[next[j]] {
+				return next[i] < next[j]
+			}
+			return orderRank[next[i]] < orderRank[next[j]]
+		})
 		for _, dependent := range next {
 			indegree[dependent]--
 			if indegree[dependent] == 0 {
 				ready = append(ready, dependent)
-				sort.Slice(ready, func(i, j int) bool { return ready[i] < ready[j] })
+				sort.Slice(ready, func(i, j int) bool {
+					if orderRank[ready[i]] == orderRank[ready[j]] {
+						return ready[i] < ready[j]
+					}
+					return orderRank[ready[i]] < orderRank[ready[j]]
+				})
 			}
 		}
 	}

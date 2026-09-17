@@ -358,6 +358,7 @@ func TestStartAttemptDeliversExactAssignedContractAndApprovedCheckMaterial(t *te
 	}}
 	unrelated := unit
 	unrelated.ID = "wu-unrelated-delivery"
+	unrelated.Position = 2
 	unrelated.Title = "Handle a separate responsibility"
 	unrelated.OutputSummary = "Produce an unrelated result."
 	unrelated.EvidenceChecks = []string{"Inspect the unrelated result."}

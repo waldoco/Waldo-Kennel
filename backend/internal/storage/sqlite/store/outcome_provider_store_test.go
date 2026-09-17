@@ -2,10 +2,15 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
 	"testing"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/sqlitetest"
 )
 
 func seedProviderPlanOutcome(t *testing.T, s *sqlite.Store) domain.ContractRevision {
@@ -151,5 +156,55 @@ func TestOutcomeStore_CanonicalPlanRejectsUnusedCapabilityGrant(t *testing.T) {
 
 	if _, err := s.AppendPlanRevision(context.Background(), plan.OutcomeID, plan); err == nil {
 		t.Fatal("canonical writer accepted an unused exec grant")
+	}
+}
+
+func TestOutcomeStore_LegacyNullPositionsReadBackInHistoricalLexicalIDOrder(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := sqlitetest.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := seedProviderPlanOutcome(t, s)
+	plan := canonicalGraphPlan(t, revision)
+	saved, err := s.AppendPlanRevision(context.Background(), plan.OutcomeID, plan)
+	if err != nil {
+		t.Fatalf("append plan: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "kennel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TRIGGER work_units_immutable_update`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE work_units SET position=NULL WHERE plan_revision_id=?`, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER work_units_immutable_update BEFORE UPDATE ON work_units BEGIN SELECT RAISE(ABORT, 'work units are immutable'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = sqlite.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, found, err := s.GetPlanRevision(context.Background(), plan.OutcomeID, saved.ID)
+	if err != nil || !found {
+		t.Fatalf("legacy readback found=%v err=%v", found, err)
+	}
+	if len(got.WorkUnits) != 2 || got.WorkUnits[0].ID != "wu-change" || got.WorkUnits[1].ID != "wu-inspect" {
+		t.Fatalf("legacy work unit order = %+v, want lexical IDs", got.WorkUnits)
+	}
+	if got.WorkUnits[0].Position != 0 || got.WorkUnits[1].Position != 0 {
+		t.Fatalf("legacy positions should remain explicitly unset: %+v", got.WorkUnits)
 	}
 }

@@ -14138,6 +14138,9 @@ components:
           type: string
         outputSummary:
           type: string
+        position:
+          format: int64
+          type: integer
         provider:
           type: string
         requiredCapabilities:
@@ -14156,6 +14159,7 @@ components:
       - id
       - kind
       - title
+      - position
       - contractRevisionNumber
       - dependsOn
       - criterionIds

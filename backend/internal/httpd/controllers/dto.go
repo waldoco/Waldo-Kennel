@@ -3088,6 +3088,7 @@ type PlanWorkUnitResponse struct {
 	ID                      string   `json:"id"`
 	Kind                    string   `json:"kind"`
 	Title                   string   `json:"title"`
+	Position                int64    `json:"position"`
 	ContractRevisionNumber  int64    `json:"contractRevisionNumber"`
 	DependsOn               []string `json:"dependsOn"`
 	CriterionIDs            []string `json:"criterionIds"`
@@ -3339,6 +3340,7 @@ func workUnitResponse(unit domain.WorkUnit) PlanWorkUnitResponse {
 		ID:                      string(unit.ID),
 		Kind:                    string(unit.Kind),
 		Title:                   unit.Title,
+		Position:                unit.Position,
 		ContractRevisionNumber:  unit.ContractRevisionNumber,
 		DependsOn:               stringWorkUnitIDs(unit.DependsOn),
 		CriterionIDs:            stringCriterionIDs(unit.CriterionIDs),

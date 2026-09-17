@@ -215,6 +215,9 @@ func TestProposePlanCompilesIntelligenceGraphAndRoutesEveryWorkUnit(t *testing.T
 	if len(view.Plan.WorkUnits) != 2 || len(view.Plan.RoutingDecisions) != 2 {
 		t.Fatalf("compiled plan = %+v", view.Plan)
 	}
+	if view.Plan.WorkUnits[0].Title != "Implement outcome" || view.Plan.WorkUnits[0].Position != 1 || view.Plan.WorkUnits[1].Title != "Verify outcome" || view.Plan.WorkUnits[1].Position != 2 {
+		t.Fatalf("compiled frozen order = %+v", view.Plan.WorkUnits)
+	}
 	ordered, err := view.Plan.TopologicalWorkUnits()
 	if err != nil {
 		t.Fatalf("topological order: %v", err)

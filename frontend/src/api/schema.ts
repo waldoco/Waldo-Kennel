@@ -4797,6 +4797,8 @@ export interface components {
             model?: string;
             modelSelection?: string;
             outputSummary: string;
+            /** Format: int64 */
+            position: number;
             provider?: string;
             requiredCapabilities: string[];
             stopConditions: string[];
