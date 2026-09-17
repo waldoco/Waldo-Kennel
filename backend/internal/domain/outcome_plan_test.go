@@ -9,6 +9,7 @@ func validWorkUnit() WorkUnit {
 	return WorkUnit{
 		ID:                      "wu-test",
 		Kind:                    WorkUnitDirect,
+		Role:                    WorkUnitRoleImplement,
 		Title:                   "Build and prove the feature",
 		ContractRevisionNumber:  1,
 		OutputSummary:           "Working local feature in the isolated worktree",
@@ -41,6 +42,7 @@ func TestPlanRevisionSupportsBoundedWorkUnitGraph(t *testing.T) {
 	second := validWorkUnit()
 	second.ID = "wu-b"
 	second.DependsOn = []WorkUnitID{first.ID}
+	second.Inputs = []WorkUnitInput{{FromWorkUnitID: first.ID, Required: "first result", Position: 1}}
 	plan := validPlanRevision()
 	plan.WorkUnits = []WorkUnit{second, first} // serialization order is intentionally reversed
 	if err := plan.Validate(); err != nil {
@@ -59,9 +61,11 @@ func TestPlanRevisionRejectsDependencyCycle(t *testing.T) {
 	first := validWorkUnit()
 	first.ID = "wu-a"
 	first.DependsOn = []WorkUnitID{"wu-b"}
+	first.Inputs = []WorkUnitInput{{FromWorkUnitID: "wu-b", Required: "B result", Position: 1}}
 	second := validWorkUnit()
 	second.ID = "wu-b"
 	second.DependsOn = []WorkUnitID{"wu-a"}
+	second.Inputs = []WorkUnitInput{{FromWorkUnitID: "wu-a", Required: "A result", Position: 1}}
 	plan := validPlanRevision()
 	plan.WorkUnits = []WorkUnit{first, second}
 	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "cycle") {
@@ -195,6 +199,7 @@ func TestComputePlanRunBriefCoreDigestBindsGraphAndExecution(t *testing.T) {
 	second := validWorkUnit()
 	second.ID = "wu-b"
 	second.DependsOn = []WorkUnitID{"wu-a"}
+	second.Inputs = []WorkUnitInput{{FromWorkUnitID: "wu-a", Required: "A result", Position: 1}}
 	graphDigest, err := ComputePlanRunBriefCoreDigest(revision, []WorkUnit{second, unit}, validGrants())
 	if err != nil {
 		t.Fatal(err)

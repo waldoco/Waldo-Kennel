@@ -174,7 +174,7 @@ func (p PlanDraftProposal) Validate() error {
 				return fmt.Errorf("plan draft work unit %q repeats input source %q", key, from)
 			}
 			seenInputs[from] = struct{}{}
-			if err := validateInputRequirement(input.Required); err != nil {
+			if err := ValidateWorkUnitInputRequirement(input.Required); err != nil {
 				return fmt.Errorf("plan draft work unit %q input from %q: %w", key, from, err)
 			}
 		}
@@ -356,7 +356,7 @@ func validateRoleIntent(role WorkUnitRole, intent WorkUnitIntent) error {
 	return nil
 }
 
-func validateInputRequirement(value string) error {
+func ValidateWorkUnitInputRequirement(value string) error {
 	v := strings.TrimSpace(value)
 	if v == "" {
 		return fmt.Errorf("required handoff is blank")
@@ -365,8 +365,21 @@ func validateInputRequirement(value string) error {
 		return fmt.Errorf("required handoff exceeds %d bytes", MaxPlanDraftInputRequirementLength)
 	}
 	lower := strings.ToLower(v)
-	if strings.HasPrefix(v, "/") || strings.HasPrefix(v, "./") || strings.HasPrefix(v, "../") || strings.Contains(lower, "://") || strings.HasPrefix(lower, "capability:") || strings.HasPrefix(lower, "secret:") || strings.HasPrefix(lower, "artifact:") || strings.HasPrefix(lower, "command:") {
-		return fmt.Errorf("required handoff must be semantic prose, not an authority-bearing locator")
+	first := strings.Fields(lower)
+	command := false
+	if len(first) > 0 {
+		switch first[0] {
+		case "rm", "git", "sh", "bash", "zsh", "cmd", "powershell", "curl", "wget", "python", "python3", "node", "npm", "pnpm", "go", "make":
+			command = true
+		}
+	}
+	pathlike := strings.HasPrefix(v, "/") || strings.HasPrefix(v, "./") || strings.HasPrefix(v, "../") || strings.HasPrefix(v, "~/") || (len(v) >= 3 && ((v[0] >= 'A' && v[0] <= 'Z') || (v[0] >= 'a' && v[0] <= 'z')) && v[1] == ':' && (v[2] == '\\' || v[2] == '/')) || strings.HasPrefix(lower, "file:") || strings.Contains(lower, "://")
+	meta := strings.ContainsAny(v, ";&|`$<>")
+	if !strings.ContainsAny(v, " \t") && strings.Contains(v, "/") {
+		pathlike = true
+	}
+	if pathlike || command || meta || strings.HasPrefix(lower, "capability:") || strings.HasPrefix(lower, "secret:") || strings.HasPrefix(lower, "artifact:") || strings.HasPrefix(lower, "command:") {
+		return fmt.Errorf("required handoff must be semantic prose, not a path, URI, command, or authority-bearing locator")
 	}
 	return nil
 }

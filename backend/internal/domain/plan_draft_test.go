@@ -182,3 +182,62 @@ func TestPlanDraftRejectsRoleConflictsAndFakeInputLocators(t *testing.T) {
 		t.Fatal("authority-bearing input locator should fail")
 	}
 }
+
+func TestInputRequirementRejectsObviousPathsCommandsAndMetacharacters(t *testing.T) {
+	for _, value := range []string{"rm -rf build", "git checkout main", "echo ok | tee x", "C:\\tmp\\x", "~/secret", "file:/tmp/x", "relative/path.txt", "$(whoami)"} {
+		err := ValidateWorkUnitInputRequirement(value)
+		if value == "relative/path.txt" {
+			if err == nil {
+				t.Errorf("%q accepted", value)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("%q accepted", value)
+		}
+	}
+}
+func TestCanonicalInputRejectsMalformedRequirementAndDigestBindsInput(t *testing.T) {
+	unit := validWorkUnit()
+	unit.ID = "child"
+	unit.Role = WorkUnitRoleImplement
+	unit.DependsOn = []WorkUnitID{"parent"}
+	unit.Inputs = []WorkUnitInput{{FromWorkUnitID: "parent", Required: "rm -rf build", Position: 1}}
+	if err := unit.Validate(); err == nil {
+		t.Fatal("canonical command-like input accepted")
+	}
+	unit.Inputs[0].Required = "reviewed findings"
+	parent := validWorkUnit()
+	parent.ID = "parent"
+	parent.Role = WorkUnitRoleInvestigate
+	parent.Intent = WorkUnitIntentInspect
+	parent.RequiredCapabilities = []string{CapabilityWorktreeRead}
+	plan := validPlanRevision()
+	plan.WorkUnits = []WorkUnit{parent, unit}
+	rev := ContractRevision{ID: "cr", OutcomeID: plan.OutcomeID, Number: 1, Goal: "g", SuccessCriteria: []string{"c"}, Criteria: []ContractCriterion{{ID: "c", ContractRevisionID: "cr", Position: 1, Text: "c"}}, Review: "r"}
+	unit.CriterionIDs = []CriterionID{"c"}
+	plan.WorkUnits = []WorkUnit{parent, unit}
+	d1, err := ComputePlanRunBriefCoreDigest(rev, plan.WorkUnits, plan.Grants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.WorkUnits[1].Inputs[0].Required = "different findings"
+	d2, err := ComputePlanRunBriefCoreDigest(rev, plan.WorkUnits, plan.Grants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d1 == d2 {
+		t.Fatal("semantic input mutation retained digest")
+	}
+}
+func TestLegacyRoleCannotBeNewlyApproved(t *testing.T) {
+	p := validPlanRevision()
+	p.WorkUnits[0].Intent = WorkUnitIntentModifyAndExecute
+	p.WorkUnits[0].RequiredCapabilities = []string{CapabilityWorktreeRead, CapabilityWorktreeWrite, CapabilityWorktreeExec}
+	p.WorkUnits[0].Role = WorkUnitRoleLegacy
+	rev := ContractRevision{ID: "cr", OutcomeID: p.OutcomeID, Number: 1, Goal: "g", SuccessCriteria: []string{"c"}, Criteria: []ContractCriterion{{ID: "c", ContractRevisionID: "cr", Position: 1, Text: "c"}}, Review: "r", AuthorityCeiling: ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true, ExecuteLocal: true}}
+	p.WorkUnits[0].CriterionIDs = []CriterionID{"c"}
+	if err := p.ValidateForApproval(rev); err == nil {
+		t.Fatal("legacy role approved")
+	}
+}

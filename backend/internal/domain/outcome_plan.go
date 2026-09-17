@@ -582,6 +582,9 @@ func (p PlanRevision) ValidateForApproval(revision ContractRevision) error {
 		routing[record.WorkUnitID] = record
 	}
 	for _, unit := range p.WorkUnits {
+		if !unit.Role.ValidForNewWork() {
+			return fmt.Errorf("work unit %s has legacy or unknown role and must be re-planned", unit.ID)
+		}
 		if !unit.Intent.Valid() {
 			return fmt.Errorf("work unit %s has legacy or unknown intent and must be re-planned", unit.ID)
 		}
@@ -817,8 +820,8 @@ func validateCanonicalInputs(self WorkUnitID, dependencies []WorkUnitID, inputs 
 			return fmt.Errorf("work unit repeats input source %q", in.FromWorkUnitID)
 		}
 		seen[in.FromWorkUnitID] = struct{}{}
-		if strings.TrimSpace(in.Required) == "" {
-			return fmt.Errorf("work unit input requirement is blank")
+		if err := ValidateWorkUnitInputRequirement(in.Required); err != nil {
+			return fmt.Errorf("work unit input from %s: %w", in.FromWorkUnitID, err)
 		}
 		if in.Position != int64(i+1) {
 			return fmt.Errorf("work unit input positions must be contiguous")

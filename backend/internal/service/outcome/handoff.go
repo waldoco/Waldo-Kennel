@@ -13,16 +13,16 @@ import (
 const (
 	// CodeUpstreamArtifactMissing means a dependency produced nothing that was
 	// retained, so there is nothing to hand down.
-	CodeUpstreamArtifactMissing = "UPSTREAM_ARTIFACT_MISSING"
+	CodeUpstreamArtifactMissing = "WORK_UNIT_INPUT_ARTIFACT_MISSING"
 	// CodeUpstreamArtifactIncomplete means a dependency's snapshot hit a bound
 	// or held something it could not represent.
-	CodeUpstreamArtifactIncomplete = "UPSTREAM_ARTIFACT_INCOMPLETE"
+	CodeUpstreamArtifactIncomplete = "WORK_UNIT_INPUT_ARTIFACT_MISSING"
 	// CodeUpstreamArtifactUnreviewed means a dependency's result was never
 	// frozen, so what it holds can still change under the successor.
-	CodeUpstreamArtifactUnreviewed = "UPSTREAM_ARTIFACT_UNREVIEWED"
+	CodeUpstreamArtifactUnreviewed = "WORK_UNIT_INPUT_NOT_RETAINED"
 	// CodeUpstreamLineageMismatch means a retained receipt does not belong to
 	// the attempt or plan the successor is being admitted under.
-	CodeUpstreamLineageMismatch = "UPSTREAM_LINEAGE_MISMATCH"
+	CodeUpstreamLineageMismatch = "WORK_UNIT_INPUT_LINEAGE_MISMATCH"
 )
 
 // resolveUpstreamReceipts returns, in dependency order, the exact retained
@@ -71,6 +71,15 @@ func upstreamReceiptsFor(
 	receipts := make([]domain.AttemptReceipt, 0, len(unit.DependsOn))
 	for _, dependencyID := range unit.DependsOn {
 		producer, ok := producingAttempt(dependencyID, scoped)
+		succeeded := 0
+		for _, candidate := range attemptsForWorkUnit(dependencyID, scoped) {
+			if candidate.Status == domain.AttemptSucceeded {
+				succeeded++
+			}
+		}
+		if succeeded > 1 {
+			return nil, apierr.Conflict(CodeUpstreamLineageMismatch, "More than one succeeded predecessor lineage exists; select an exact producer before admission", map[string]any{"workUnitId": unit.ID, "dependencyId": dependencyID})
+		}
 		if !ok {
 			return nil, apierr.Conflict(CodeUpstreamArtifactMissing,
 				"A WorkUnit this one depends on has not produced a proved result yet",
@@ -99,17 +108,18 @@ func upstreamReceiptsFor(
 // derived from retained bytes plus proof about those bytes. A reconciled
 // attempt has ended without being classified, and its output may still change.
 func producingAttempt(unitID domain.WorkUnitID, scoped []domain.Attempt) (domain.Attempt, bool) {
-	var latest domain.Attempt
-	var found bool
+	var producer domain.Attempt
+	found := false
 	for _, attempt := range attemptsForWorkUnit(unitID, scoped) {
 		if attempt.Status != domain.AttemptSucceeded {
 			continue
 		}
-		if !found || attempt.Number > latest.Number {
-			latest, found = attempt, true
+		if found {
+			return domain.Attempt{}, false
 		}
+		producer, found = attempt, true
 	}
-	return latest, found
+	return producer, found
 }
 
 // upstreamReceiptUsable refuses a receipt that cannot honestly be handed down.

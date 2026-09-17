@@ -144,17 +144,16 @@ func TestOnlyASucceededAttemptProducesTheHandoff(t *testing.T) {
 	}
 }
 
-// A retried dependency hands down its latest proved result, not its first.
-func TestUpstreamTakesTheLatestSucceededAttempt(t *testing.T) {
+// Multiple succeeded lineages are ambiguous and must block rather than selecting "latest".
+func TestUpstreamRejectsAmbiguousSucceededLineage(t *testing.T) {
 	plan := schedulerPlanFixture()
-	unit := plan.WorkUnits[0]
-	first := attemptOn("att-first", unit.ID, plan, domain.AttemptSucceeded)
+	successor := plan.WorkUnits[1]
+	dep := successor.DependsOn[0]
+	first := attemptOn("att-first", dep, plan, domain.AttemptSucceeded)
 	first.Number = 1
-	second := attemptOn("att-second", unit.ID, plan, domain.AttemptSucceeded)
+	second := attemptOn("att-second", dep, plan, domain.AttemptSucceeded)
 	second.Number = 2
-
-	got, ok := producingAttempt(unit.ID, []domain.Attempt{first, second})
-	if !ok || got.ID != "att-second" {
-		t.Fatalf("producer = %s ok=%v, want att-second", got.ID, ok)
+	if got, err := upstreamReceiptsFor(successor, []domain.Attempt{first, second}, lookupOf(succeededReceipt(first), succeededReceipt(second))); len(got) != 0 || codeOf(t, err) != CodeUpstreamLineageMismatch {
+		t.Fatalf("ambiguous lineage got=%v err=%v", got, err)
 	}
 }
