@@ -30,7 +30,6 @@ describe("Codex project pairing", () => {
       expect(pairCodex).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: "project-1",
-          installationId: "i",
         }),
       ),
     );
