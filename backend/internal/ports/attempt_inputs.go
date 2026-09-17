@@ -55,6 +55,9 @@ type AttemptInputRef struct {
 	AttemptID       domain.AttemptID
 	WorkUnitID      domain.WorkUnitID
 	ArtifactVersion string
+	// Required is the frozen semantic reason this predecessor output is consumed.
+	// It is provider guidance, never a locator or authority source.
+	Required string
 }
 
 // AttemptDocumentInputs names the approved supplied-document snapshot a

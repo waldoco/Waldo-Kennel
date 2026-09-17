@@ -161,10 +161,14 @@ func (s *Service) admittedInputsFor(ctx context.Context, plan domain.PlanRevisio
 	if err != nil {
 		return nil, err
 	}
+	required := make(map[domain.WorkUnitID]string, len(unit.Inputs))
+	for _, input := range unit.Inputs {
+		required[input.FromWorkUnitID] = input.Required
+	}
 	inputs := make([]ports.AttemptInputRef, 0, len(receipts))
 	for _, receipt := range receipts {
 		inputs = append(inputs, ports.AttemptInputRef{
-			AttemptID: receipt.AttemptID, WorkUnitID: receipt.WorkUnitID, ArtifactVersion: receipt.ArtifactVersion,
+			AttemptID: receipt.AttemptID, WorkUnitID: receipt.WorkUnitID, ArtifactVersion: receipt.ArtifactVersion, Required: required[receipt.WorkUnitID],
 		})
 	}
 	return inputs, nil
@@ -178,6 +182,13 @@ func inputArtifactVersions(inputs []ports.AttemptInputRef) []string {
 		versions = append(versions, input.ArtifactVersion)
 	}
 	return versions
+}
+func inputDigests(inputs []ports.AttemptInputRef) []string {
+	values := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		values = append(values, input.ArtifactVersion+"@"+input.WorkUnitID.String()+"@"+input.Required)
+	}
+	return values
 }
 
 // materializationFailed converts a provisioning failure into a refusal that

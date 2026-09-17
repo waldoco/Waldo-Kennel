@@ -863,7 +863,7 @@ func (s *Service) authorizeAttemptCapabilities(revision domain.ContractRevision,
 // fingerprint that ignored the inputs would call the two the same.
 func computeCompiledBriefDigest(binding domain.ExecutionBinding, mode domain.SessionMode, core, policyDigest string, inputs []ports.AttemptInputRef) string {
 	sum := sha256.Sum256([]byte("v3|" + string(binding.Provider) + "|" + string(binding.ModelSelection) + "|" + binding.Model +
-		"|" + string(mode) + "|" + core + "|" + policyDigest + "|" + strings.Join(inputArtifactVersions(inputs), ",")))
+		"|" + string(mode) + "|" + core + "|" + policyDigest + "|" + strings.Join(inputDigests(inputs), ",")))
 	return hex.EncodeToString(sum[:])
 }
 
