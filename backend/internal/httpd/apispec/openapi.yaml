@@ -10829,6 +10829,10 @@ components:
         generation:
           format: int64
           type: integer
+        inputs:
+          items:
+            $ref: '#/components/schemas/ControllersWorkUnitInputResponse'
+          type: array
         nextAction:
           type: string
         planRevisionId:
@@ -10838,6 +10842,8 @@ components:
           - agent
           - owner
           - unconfirmed
+          type: string
+        role:
           type: string
         scheduleState:
           type: string
@@ -10852,6 +10858,8 @@ components:
       - workUnitId
       - planRevisionId
       - title
+      - role
+      - inputs
       - dependsOn
       - scheduleState
       - blockingDependencies
@@ -11856,6 +11864,20 @@ components:
           type:
           - "null"
           - integer
+      type: object
+    ControllersWorkUnitInputResponse:
+      properties:
+        fromWorkUnitId:
+          type: string
+        position:
+          format: int64
+          type: integer
+        required:
+          type: string
+      required:
+      - fromWorkUnitId
+      - required
+      - position
       type: object
     ConversationAccountPayload:
       properties:
@@ -14130,6 +14152,10 @@ components:
           type: array
         id:
           type: string
+        inputs:
+          items:
+            $ref: '#/components/schemas/ControllersWorkUnitInputResponse'
+          type: array
         kind:
           type: string
         model:
@@ -14147,6 +14173,8 @@ components:
           items:
             type: string
           type: array
+        role:
+          type: string
         stopConditions:
           items:
             type: string
@@ -14159,6 +14187,8 @@ components:
       - id
       - kind
       - title
+      - role
+      - inputs
       - position
       - contractRevisionNumber
       - dependsOn
