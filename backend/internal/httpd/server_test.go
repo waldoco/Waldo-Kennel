@@ -158,6 +158,7 @@ func TestServerLifecycle(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	srv.SetSupervisorAddress("/tmp/kennel-supervise-test.sock")
+	srv.SetHarnessAddresses("/tmp/kennel-pair-test.sock", "/tmp/kennel-command-test.sock")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -181,6 +182,9 @@ func TestServerLifecycle(t *testing.T) {
 	}
 	if info.SupervisorAddress != "/tmp/kennel-supervise-test.sock" {
 		t.Errorf("run-file supervisorAddress = %q, want published address", info.SupervisorAddress)
+	}
+	if info.HarnessPairingAddress != "/tmp/kennel-pair-test.sock" || info.HarnessCommandAddress != "/tmp/kennel-command-test.sock" {
+		t.Errorf("run-file harness addresses = %q, %q", info.HarnessPairingAddress, info.HarnessCommandAddress)
 	}
 
 	cancel()

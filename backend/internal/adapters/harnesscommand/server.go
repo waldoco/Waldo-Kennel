@@ -40,7 +40,7 @@ func NewServer(listener net.Listener, cfg ServerConfig) (*Server, error) {
 	}
 	p := cfg.PeerVerifier
 	if p == nil {
-		return nil, fmt.Errorf("harnesscommand: peer verifier is required")
+		p = NewLocalPeerVerifier()
 	}
 	n := cfg.Now
 	if n == nil {

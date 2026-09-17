@@ -11,9 +11,11 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "running.json")
 	want := Info{
 		PID: 4242, Port: 3001,
-		StartedAt:         time.Now().UTC().Truncate(time.Second),
-		AppRunID:          "apprun-1",
-		SupervisorAddress: "/tmp/kennel-supervise-test.sock",
+		StartedAt:             time.Now().UTC().Truncate(time.Second),
+		AppRunID:              "apprun-1",
+		SupervisorAddress:     "/tmp/kennel-supervise-test.sock",
+		HarnessPairingAddress: "/tmp/kennel-pair-test.sock",
+		HarnessCommandAddress: "/tmp/kennel-command-test.sock",
 	}
 
 	if err := Write(path, want); err != nil {
@@ -27,7 +29,7 @@ func TestWriteReadRoundTrip(t *testing.T) {
 		t.Fatal("Read returned nil for an existing file")
 		return
 	}
-	if got.PID != want.PID || got.Port != want.Port || got.AppRunID != want.AppRunID || got.SupervisorAddress != want.SupervisorAddress || !got.StartedAt.Equal(want.StartedAt) {
+	if got.PID != want.PID || got.Port != want.Port || got.AppRunID != want.AppRunID || got.SupervisorAddress != want.SupervisorAddress || got.HarnessPairingAddress != want.HarnessPairingAddress || got.HarnessCommandAddress != want.HarnessCommandAddress || !got.StartedAt.Equal(want.StartedAt) {
 		t.Errorf("round trip mismatch: got %+v, want %+v", *got, want)
 	}
 }
