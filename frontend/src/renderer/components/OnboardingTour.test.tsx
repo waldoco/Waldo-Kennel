@@ -23,7 +23,12 @@ const ctx = vi.hoisted(() => ({
 
 vi.mock("../hooks/useAgentsQuery", () => ({
 	refreshAgentsIfStale: vi.fn(async () => undefined),
-	useAgentsQuery: () => ({ data: ctx.agents, isPending: ctx.isPending }),
+	useAgentsQuery: () => ({
+		data: ctx.agents,
+		isPending: ctx.isPending,
+		isError: false,
+		refetch: vi.fn(),
+	}),
 }));
 
 vi.mock("../hooks/useSettings", () => ({
@@ -80,7 +85,11 @@ describe("OnboardingTour", () => {
 			isLoading: false,
 			error: undefined,
 		});
-		vi.mocked(useUpdateReasoning).mockReturnValue({ update: ctx.updateReasoning, saving: false, error: undefined });
+		vi.mocked(useUpdateReasoning).mockReturnValue({
+			update: ctx.updateReasoning,
+			saving: false,
+			error: undefined,
+		});
 		resetStore();
 	});
 
@@ -90,8 +99,10 @@ describe("OnboardingTour", () => {
 
 		rerender(<OnboardingTour daemonReady />);
 		expect(screen.getByTestId("onboarding-tour")).toBeInTheDocument();
-		expect(screen.getByText("Let's get Kennel set up")).toBeInTheDocument();
-		expect(screen.getByLabelText("Step 1 of 3")).toBeInTheDocument();
+		expect(
+			screen.getByText("Bring an Outcome. Keep the final say."),
+		).toBeInTheDocument();
+		expect(screen.getByLabelText("Step 1 of 5")).toBeInTheDocument();
 	});
 
 	it("stays closed once the tour has been finished before", () => {
@@ -101,70 +112,60 @@ describe("OnboardingTour", () => {
 		expect(screen.queryByTestId("onboarding-tour")).not.toBeInTheDocument();
 	});
 
-	it("walks forward and back through the three steps", () => {
+	it("walks forward and back through the first-run path", () => {
 		render(<OnboardingTour daemonReady />);
 
 		expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
-		fireEvent.click(screen.getByRole("button", { name: /Let's go/ }));
-		expect(screen.getByText("Coding agents")).toBeInTheDocument();
-		expect(screen.getByLabelText("Step 2 of 3")).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		expect(screen.getByText("Check the local runtime")).toBeInTheDocument();
+		expect(screen.getByLabelText("Step 2 of 5")).toBeInTheDocument();
 
-		fireEvent.click(screen.getByRole("button", { name: /Next/ }));
-		expect(screen.getByText("Create your first Outcome")).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+		expect(screen.getByText("Connect your first provider")).toBeInTheDocument();
 
 		fireEvent.click(screen.getByRole("button", { name: "Back" }));
-		expect(screen.getByText("Coding agents")).toBeInTheDocument();
+		expect(screen.getByText("Check the local runtime")).toBeInTheDocument();
 	});
 
-	it("stores the picked agent as the default for new sessions", () => {
+	it("connects Codex from live inventory and never claims project pairing", async () => {
 		render(<OnboardingTour daemonReady />);
-		fireEvent.click(screen.getByRole("button", { name: /Let's go/ }));
-
-		// Both installed agents are offered; only the authorized one is marked as
-		// signed in, and picking is independent of that mark.
-		expect(screen.getAllByLabelText("Signed in")).toHaveLength(1);
-		fireEvent.click(screen.getByRole("button", { name: /Claude Code/ }));
-
-		expect(useUiStore.getState().defaultAgentId).toBe("claude-code");
-		expect(window.localStorage.getItem("kennel.agent.default")).toBe("claude-code");
-		expect(screen.getByText(/Waldo reasoning through Claude Code is not available yet/)).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+		fireEvent.click(screen.getByRole("button", { name: "Use Codex" }));
+		await waitFor(() =>
+			expect(ctx.updateReasoning).toHaveBeenCalledWith({
+				provider: "codex",
+				model: "",
+				effort: "",
+			}),
+		);
+		expect(useUiStore.getState().defaultAgentId).toBe("codex");
+		expect(
+			screen.getByText(/native confirmation before the first pairing/),
+		).toBeInTheDocument();
 	});
 
-	it("binds an explicit Codex onboarding choice to daemon reasoning without verifying", async () => {
-		render(<OnboardingTour daemonReady />);
-		fireEvent.click(screen.getByRole("button", { name: /Let's go/ }));
-		fireEvent.click(screen.getByRole("button", { name: /codexCodex/i }));
-
-		await waitFor(() => expect(ctx.updateReasoning).toHaveBeenCalledWith({ provider: "codex", model: "", effort: "" }));
-		expect(ctx.updateReasoning).toHaveBeenCalledTimes(1);
-		expect(screen.getByText(/Codex is selected for Waldo reasoning/)).toBeInTheDocument();
-	});
-
-	it("explains how to install an agent when none are on the machine", () => {
+	it("shows an honest Codex empty state with recovery", () => {
 		ctx.agents = { authorized: [], installed: [], supported: [] };
 		render(<OnboardingTour daemonReady />);
-		fireEvent.click(screen.getByRole("button", { name: /Let's go/ }));
-
-		expect(screen.getByText(/No coding agents found on this machine yet/)).toBeInTheDocument();
-		ctx.agents = {
-			authorized: [{ id: "codex", label: "Codex" }],
-			installed: [
-				{ id: "codex", label: "Codex" },
-				{ id: "claude-code", label: "Claude Code" },
-			],
-			supported: [],
-		};
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+		expect(screen.getByText("Codex not found")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Check again" }),
+		).toBeInTheDocument();
 	});
 
-	it("offers the real Project registration flow from the Outcome step", () => {
+	it("opens the real Project registration flow from the final step", () => {
 		render(<OnboardingTour daemonReady />);
-		fireEvent.click(screen.getByRole("button", { name: /Let's go/ }));
-		fireEvent.click(screen.getByRole("button", { name: /Next/ }));
-
-		fireEvent.click(screen.getByRole("button", { name: "Create a Project" }));
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		for (let i = 0; i < 3; i++)
+			fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+		fireEvent.click(
+			screen.getByRole("button", { name: "Choose a Project folder" }),
+		);
 		expect(screen.queryByTestId("onboarding-tour")).not.toBeInTheDocument();
 		expect(useUiStore.getState().createProjectNonce).toBe(1);
-		expect(window.localStorage.getItem("kennel.onboarding.completed")).toBe("true");
 	});
 
 	it("treats skipping as answered so the tour does not return next launch", () => {
@@ -172,6 +173,8 @@ describe("OnboardingTour", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Skip tour" }));
 
 		expect(useUiStore.getState().hasCompletedOnboarding).toBe(true);
-		expect(window.localStorage.getItem("kennel.onboarding.completed")).toBe("true");
+		expect(window.localStorage.getItem("kennel.onboarding.completed")).toBe(
+			"true",
+		);
 	});
 });

@@ -1,135 +1,133 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { useTranslation } from "react-i18next";
-import { ArrowLeft, ArrowRight, Check, FolderPlus, Sparkles, Target, X } from "lucide-react";
-import { agentLabel } from "../lib/agent-options";
+import {
+	ArrowLeft,
+	ArrowRight,
+	Check,
+	CheckCircle2,
+	Circle,
+	FileCheck2,
+	FolderPlus,
+	GitBranch,
+	Loader2,
+	RefreshCw,
+	ShieldCheck,
+	Sparkles,
+	Target,
+	TerminalSquare,
+	X,
+	XCircle,
+} from "lucide-react";
 import { cn } from "../lib/utils";
-import { refreshAgentsIfStale, useAgentsQuery } from "../hooks/useAgentsQuery";
+import { useAgentsQuery } from "../hooks/useAgentsQuery";
 import { useSettings, useUpdateReasoning } from "../hooks/useSettings";
+import { aoBridge } from "../lib/bridge";
 import { useUiStore } from "../stores/ui-store";
 import { AgentAvatar } from "./AgentAvatar";
 import { Button } from "./ui/button";
 
 /**
- * First-run setup tour.
- *
- * Three steps, each one decision or next action, in the order a person needs
- * them: which providers are ready and how to enter the first Outcome. Every
- * setting remains reachable from Settings afterwards, so nothing
- * and every one of them is reachable again from Settings afterwards, so nothing
- * here is a one-shot choice a person can regret.
+ * First-run path for the Outcome product. It only claims readiness returned by
+ * a real daemon or native bridge. In particular, tmux has no read endpoint yet,
+ * so this surface calls that out instead of manufacturing a green check.
  */
+const STEPS = ["welcome", "system", "codex", "journey", "project"] as const;
+type Step = (typeof STEPS)[number];
 
-const STEP_IDS = ["welcome", "agent", "outcome"] as const;
-type StepId = (typeof STEP_IDS)[number];
-
-// Spelled out rather than built from the step id: the typed `t` only accepts
-// literal keys, and a template string would trade that check for nothing.
-const STEP_TITLE_KEYS = {
-	welcome: "onboarding.step.welcome.title",
-	agent: "onboarding.step.agent.title",
-	outcome: "onboarding.step.outcome.title",
-} as const satisfies Record<StepId, string>;
+const TITLES: Record<Step, string> = {
+	welcome: "Welcome",
+	system: "System check",
+	codex: "Connect Codex",
+	journey: "How work moves",
+	project: "Your first Project",
+};
 
 export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
-	const { t } = useTranslation();
 	const isOpen = useUiStore((state) => state.isOnboardingOpen);
 	const hasCompleted = useUiStore((state) => state.hasCompletedOnboarding);
 	const openOnboarding = useUiStore((state) => state.openOnboarding);
 	const closeOnboarding = useUiStore((state) => state.closeOnboarding);
 	const [stepIndex, setStepIndex] = useState(0);
 
-	// A person meets the tour once, on the launch where they have never finished
-	// it — and not before the daemon is up, because the agent step asks the daemon
-	// what is installed and a setup dialog over a startup spinner teaches nothing.
-	// Re-running it later is a deliberate act from Settings.
 	useEffect(() => {
 		if (!hasCompleted && daemonReady) openOnboarding();
 	}, [daemonReady, hasCompleted, openOnboarding]);
-
 	useEffect(() => {
 		if (isOpen) setStepIndex(0);
 	}, [isOpen]);
 
-	const stepId = STEP_IDS[stepIndex];
-	const isLast = stepIndex === STEP_IDS.length - 1;
-
+	const step = STEPS[stepIndex];
+	const isLast = stepIndex === STEPS.length - 1;
 	return (
-		<Dialog.Root open={isOpen} onOpenChange={(next) => !next && closeOnboarding()}>
+		<Dialog.Root
+			open={isOpen}
+			onOpenChange={(next) => !next && closeOnboarding()}
+		>
 			<Dialog.Portal>
 				<Dialog.Overlay className="dialog-overlay data-[state=open]:animate-overlay-in" />
 				<Dialog.Content
 					aria-describedby={undefined}
-					className="fixed left-1/2 top-1/2 z-overlay flex w-[min(680px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel hairline border-border bg-card shadow-[var(--shadow-import-modal)] outline-none data-[state=open]:animate-modal-in"
+					className="fixed left-1/2 top-1/2 z-overlay flex w-[min(720px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel hairline border-border bg-card shadow-[var(--shadow-import-modal)] outline-none data-[state=open]:animate-modal-in"
 					data-testid="onboarding-tour"
 				>
-					<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4.5 py-3">
-						<Dialog.Title className="flex min-w-0 items-baseline gap-1.5">
+					<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+						<Dialog.Title className="flex min-w-0 items-baseline gap-2">
 							<span className="truncate text-sm font-medium text-foreground">
-								{t(STEP_TITLE_KEYS[stepId])}
+								{TITLES[step]}
 							</span>
 							<span className="shrink-0 text-2xs text-passive">
-								{t("onboarding.stepCount", { current: stepIndex + 1, total: STEP_IDS.length })}
+								· {stepIndex + 1} of {STEPS.length}
 							</span>
 						</Dialog.Title>
-						<div className="flex shrink-0 items-center gap-2.5">
-							<StepPager
-								current={stepIndex}
-								label={t("onboarding.progressAria", {
-									current: stepIndex + 1,
-									total: STEP_IDS.length,
-								})}
-								total={STEP_IDS.length}
-							/>
-							{/* Named apart from "Skip tour" in the footer: two controls that do
-							    the same thing may share behaviour, never an accessible name. */}
+						<div className="flex items-center gap-3">
+							<StepPager current={stepIndex} total={STEPS.length} />
 							<Dialog.Close
-								aria-label={t("onboarding.close")}
+								aria-label="Close setup"
 								className="grid size-control-chip place-items-center rounded-md text-passive transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
 							>
 								<X aria-hidden="true" className="size-icon-md" />
 							</Dialog.Close>
 						</div>
 					</header>
-
-					{/* One fixed height for every step, not a minimum: a tour that grows
-					    with its content moves its own footer buttons while a person is
-					    reaching for them. Long steps scroll inside this box instead. */}
-					<div className="board-scrollbar h-onboarding-body shrink-0 overflow-y-auto px-4.5 py-5">
-						{stepId === "welcome" ? <WelcomeStep /> : null}
-						{stepId === "agent" ? <AgentStep /> : null}
-						{stepId === "outcome" ? <OutcomeStep /> : null}
+					<div className="board-scrollbar h-[340px] shrink-0 overflow-y-auto px-5 py-5.5">
+						{step === "welcome" ? <WelcomeStep /> : null}
+						{step === "system" ? <SystemStep /> : null}
+						{step === "codex" ? <CodexStep /> : null}
+						{step === "journey" ? <JourneyStep /> : null}
+						{step === "project" ? <ProjectStep /> : null}
 					</div>
-
-					<footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4.5 py-3">
+					<footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-5 py-3.5">
 						<Button
 							className="gap-1.5"
 							disabled={stepIndex === 0}
-							onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
+							onClick={() => setStepIndex((n) => Math.max(0, n - 1))}
 							size="sm"
 							variant="ghost"
 						>
-							<ArrowLeft aria-hidden="true" className="size-icon-sm" />
-							{t("onboarding.back")}
+							<ArrowLeft aria-hidden="true" className="size-icon-sm" /> Back
 						</Button>
 						<Button onClick={closeOnboarding} size="sm" variant="ghost">
-							{t("onboarding.skip")}
+							Skip tour
 						</Button>
 						<Button
 							className="gap-1.5"
 							onClick={() =>
-								isLast ? closeOnboarding() : setStepIndex((current) => current + 1)
+								isLast ? closeOnboarding() : setStepIndex((n) => n + 1)
 							}
 							size="sm"
 							variant="primary"
 						>
-							{isLast ? <Check aria-hidden="true" className="size-icon-sm" /> : null}
+							{isLast ? (
+								<Check aria-hidden="true" className="size-icon-sm" />
+							) : null}
 							{stepIndex === 0
-								? t("onboarding.start")
+								? "Set up Kennel"
 								: isLast
-									? t("onboarding.finish")
-									: t("onboarding.next")}
-							{isLast ? null : <ArrowRight aria-hidden="true" className="size-icon-sm" />}
+									? "Finish"
+									: "Continue"}
+							{isLast ? null : (
+								<ArrowRight aria-hidden="true" className="size-icon-sm" />
+							)}
 						</Button>
 					</footer>
 				</Dialog.Content>
@@ -138,39 +136,41 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 	);
 }
 
-/**
- * Progress reads in neutral greys, not the lane hues. Orange and green mean
- * "this session needs you" and "this session is ready" everywhere else in the
- * app; spending them on a step counter would make them mean nothing.
- */
-function StepPager({ current, label, total }: { current: number; label: string; total: number }) {
+function StepPager({ current, total }: { current: number; total: number }) {
 	return (
-		<div aria-label={label} className="flex items-center gap-1" role="progressbar">
-			{Array.from({ length: total }, (_, index) => (
+		<div
+			aria-label={`Step ${current + 1} of ${total}`}
+			aria-valuemax={total}
+			aria-valuemin={1}
+			aria-valuenow={current + 1}
+			className="flex items-center gap-1"
+			role="progressbar"
+		>
+			{Array.from({ length: total }, (_, i) => (
 				<span
 					aria-hidden="true"
 					className={cn(
-						"size-1.5 rounded-full transition-colors",
-						index === current
-							? "bg-foreground"
-							: index < current
-								? "bg-muted-foreground"
-								: "bg-border-strong",
+						"h-1.5 rounded-full transition-[width,background-color] duration-200",
+						i === current
+							? "w-5 bg-foreground"
+							: i < current
+								? "w-1.5 bg-muted-foreground"
+								: "w-1.5 bg-border-strong",
 					)}
-					key={index}
+					key={i}
 				/>
 			))}
 		</div>
 	);
 }
 
-function StepHeading({
-	description,
+function Heading({
+	body,
 	icon,
 	title,
 }: {
-	description: string;
-	icon?: ReactNode;
+	body: string;
+	icon: ReactNode;
 	title: string;
 }) {
 	return (
@@ -179,47 +179,345 @@ function StepHeading({
 				{icon}
 				{title}
 			</h2>
-			<p className="text-xs leading-body text-foreground opacity-60">{description}</p>
+			<p className="max-w-[62ch] text-xs leading-body text-foreground/60">
+				{body}
+			</p>
 		</div>
 	);
 }
 
 function WelcomeStep() {
-	const { t } = useTranslation();
-	const items: { body: string; icon: ReactNode; title: string }[] = [
-		{
-			body: t("onboarding.welcome.agentBody"),
-			icon: <Sparkles aria-hidden="true" className="size-icon-md" />,
-			title: t("onboarding.welcome.agentTitle"),
-		},
-		{
-			body: t("onboarding.welcome.outcomeBody", { defaultValue: "Register a Project, then describe your first Outcome in Work." }),
-			icon: <Target aria-hidden="true" className="size-icon-md" />,
-			title: t("onboarding.welcome.outcomeTitle", { defaultValue: "Start with an Outcome" }),
-		},
-	];
 	return (
-		<div className="flex flex-col items-center gap-5 text-center">
-			<div className="flex flex-col gap-2.5">
-				<h2 className="text-heading-sm font-medium leading-snug text-foreground">
-					{t("onboarding.welcome.heading")}
+		<div className="flex flex-col items-center gap-6 text-center">
+			<div className="grid size-14 place-items-center rounded-2xl hairline border-border bg-popover text-foreground shadow-sm">
+				<Sparkles className="size-6" />
+			</div>
+			<div className="flex flex-col gap-2">
+				<h2 className="text-heading-sm font-medium text-foreground">
+					Bring an Outcome. Keep the final say.
 				</h2>
-				<p className="text-xs leading-body text-foreground opacity-60">
-					{t("onboarding.welcome.body")}
+				<p className="mx-auto max-w-[54ch] text-xs leading-body text-foreground/60">
+					Kennel turns a goal into a reviewed Contract, an approved Plan, and
+					visible work. Nothing runs until you authorize it.
 				</p>
 			</div>
-			{/* The two steps ahead, named before they arrive: a tour that says how
-			    long it is up front is one a person will actually finish. */}
-			<ol className="flex w-full flex-col gap-1 text-left">
-				{items.map((item) => (
-					<li className="flex items-start gap-3 rounded-md px-2 py-2" key={item.title}>
-						<span className="grid size-control-md shrink-0 place-items-center rounded-full hairline border-border bg-popover text-muted-foreground">
-							{item.icon}
+			<div className="grid w-full grid-cols-3 gap-2 text-left">
+				<WelcomeCard
+					icon={<ShieldCheck />}
+					title="Governed"
+					body="Authority stays inside the Contract you approve."
+				/>
+				<WelcomeCard
+					icon={<GitBranch />}
+					title="Traceable"
+					body="Every WorkUnit keeps its plan and evidence lineage."
+				/>
+				<WelcomeCard
+					icon={<FileCheck2 />}
+					title="Yours to accept"
+					body="Agent completion never replaces your decision."
+				/>
+			</div>
+			<p className="text-2xs text-passive">
+				About two minutes. You can change provider settings later.
+			</p>
+		</div>
+	);
+}
+function WelcomeCard({
+	body,
+	icon,
+	title,
+}: {
+	body: string;
+	icon: ReactNode;
+	title: string;
+}) {
+	return (
+		<div className="rounded-lg hairline border-border bg-popover/60 p-3.5">
+			<span className="mb-2 block text-muted-foreground [&_svg]:size-icon-md">
+				{icon}
+			</span>
+			<p className="text-xs font-medium">{title}</p>
+			<p className="mt-1 text-2xs leading-body text-passive">{body}</p>
+		</div>
+	);
+}
+
+function SystemStep() {
+	const [installState, setInstallState] = useState<
+		"idle" | "installing" | "installed" | "failed" | "cancelled"
+	>("idle");
+	const [message, setMessage] = useState<string | null>(null);
+	const install = async () => {
+		setInstallState("installing");
+		setMessage(null);
+		try {
+			const result = await aoBridge.app.installTmux();
+			setInstallState(result.status);
+			setMessage(result.message ?? null);
+		} catch (error) {
+			setInstallState("failed");
+			setMessage(
+				error instanceof Error ? error.message : "tmux setup could not start.",
+			);
+		}
+	};
+	return (
+		<div className="flex flex-col gap-5">
+			<Heading
+				icon={
+					<TerminalSquare className="size-icon-base text-muted-foreground" />
+				}
+				title="Check the local runtime"
+				body="Kennel runs coding work on your machine. The daemon is ready. macOS and Linux sessions also need tmux; Windows uses its native terminal runtime."
+			/>
+			<StatusRow
+				state="ready"
+				title="Kennel daemon"
+				body="Running and responding on this Mac."
+			/>
+			<StatusRow
+				state={
+					installState === "installed"
+						? "ready"
+						: installState === "failed"
+							? "error"
+							: "unknown"
+				}
+				title="Session runtime"
+				body={
+					installState === "installed"
+						? "tmux was installed successfully."
+						: installState === "failed"
+							? (message ?? "tmux could not be installed.")
+							: "Kennel does not yet expose a setup probe. It will check tmux before the first session starts."
+				}
+				action={
+					installState !== "installed" ? (
+						<Button
+							disabled={installState === "installing"}
+							onClick={() => void install()}
+							size="sm"
+							variant="outline"
+						>
+							{installState === "installing" ? (
+								<>
+									<Loader2 className="mr-1.5 size-icon-sm animate-spin" />
+									Installing…
+								</>
+							) : (
+								"Install tmux with Homebrew"
+							)}
+						</Button>
+					) : undefined
+				}
+			/>
+			{installState === "cancelled" ? (
+				<p className="text-2xs text-passive" role="status">
+					Installation was cancelled. No changes were made.
+				</p>
+			) : null}
+			<p className="rounded-md bg-muted/45 px-3 py-2.5 text-2xs leading-body text-passive">
+				Git and the selected provider are checked by the daemon when a Project
+				is registered. Missing prerequisites stop before work starts and stay
+				recoverable.
+			</p>
+		</div>
+	);
+}
+
+function StatusRow({
+	action,
+	body,
+	state,
+	title,
+}: {
+	action?: ReactNode;
+	body: string;
+	state: "ready" | "unknown" | "error";
+	title: string;
+}) {
+	const Icon =
+		state === "ready" ? CheckCircle2 : state === "error" ? XCircle : Circle;
+	return (
+		<div className="flex items-center gap-3 rounded-lg hairline border-border bg-popover/55 p-3.5">
+			<Icon
+				className={cn(
+					"size-icon-base shrink-0",
+					state === "ready"
+						? "text-status-ready"
+						: state === "error"
+							? "text-error"
+							: "text-passive",
+				)}
+			/>
+			<div className="min-w-0 flex-1">
+				<p className="text-xs font-medium">{title}</p>
+				<p className="mt-0.5 text-2xs leading-body text-passive">{body}</p>
+			</div>
+			{action}
+		</div>
+	);
+}
+
+function CodexStep() {
+	const agents = useAgentsQuery();
+	const { settings } = useSettings();
+	const { update, saving } = useUpdateReasoning();
+	const setDefaultAgentId = useUiStore((state) => state.setDefaultAgentId);
+	const defaultAgentId = useUiStore((state) => state.defaultAgentId);
+	const [notice, setNotice] = useState<string | null>(null);
+	const codex = useMemo(
+		() => agents.data?.installed?.find((agent) => agent.id === "codex"),
+		[agents.data],
+	);
+	const authorized =
+		agents.data?.authorized?.some((agent) => agent.id === "codex") ?? false;
+	const connect = async () => {
+		setNotice(null);
+		setDefaultAgentId("codex");
+		try {
+			const result = await update({
+				provider: "codex",
+				model: settings?.reasoning.model ?? "",
+				effort: settings?.reasoning.effort ?? "",
+			});
+			setNotice(
+				result?.ready
+					? "Codex is ready for planning."
+					: "Codex was selected, but sign-in or App Server readiness still needs attention in Settings.",
+			);
+		} catch {
+			setNotice(
+				"Codex was selected, but the setting could not be saved. Try again or open Settings.",
+			);
+		}
+	};
+	return (
+		<div className="flex flex-col gap-5">
+			<Heading
+				icon={<Sparkles className="size-icon-base text-muted-foreground" />}
+				title="Connect your first provider"
+				body="Codex can reason about Contracts and Plans, then carry out approved WorkUnits inside the Project you choose."
+			/>
+			{agents.isPending ? (
+				<div className="flex items-center gap-2 rounded-lg hairline border-border p-4 text-xs text-passive">
+					<Loader2 className="size-icon-sm animate-spin" />
+					Looking for Codex…
+				</div>
+			) : agents.isError ? (
+				<StatusRow
+					state="error"
+					title="Provider check failed"
+					body="The daemon could not read the provider inventory."
+					action={
+						<Button
+							onClick={() => void agents.refetch?.()}
+							size="sm"
+							variant="outline"
+						>
+							<RefreshCw className="mr-1.5 size-icon-sm" />
+							Try again
+						</Button>
+					}
+				/>
+			) : !codex ? (
+				<StatusRow
+					state="unknown"
+					title="Codex not found"
+					body="Install and sign in to Codex, then ask Kennel to check again. No provider is selected automatically."
+					action={
+						<Button
+							onClick={() => void agents.refetch?.()}
+							size="sm"
+							variant="outline"
+						>
+							<RefreshCw className="mr-1.5 size-icon-sm" />
+							Check again
+						</Button>
+					}
+				/>
+			) : (
+				<div className="flex items-center gap-3 rounded-lg hairline border-border bg-popover/55 p-4">
+					<AgentAvatar provider="codex" />
+					<div className="min-w-0 flex-1">
+						<p className="text-xs font-medium">{codex.label || "Codex"}</p>
+						<p className="mt-0.5 text-2xs text-passive">
+							{authorized
+								? "Installed · sign-in detected"
+								: "Installed · sign-in not confirmed"}
+						</p>
+					</div>
+					{defaultAgentId === "codex" &&
+					settings?.reasoning.provider === "codex" ? (
+						<span className="flex items-center gap-1 text-2xs text-status-ready">
+							<Check className="size-icon-sm" />
+							Selected
 						</span>
-						<span className="flex min-w-0 flex-col gap-0.5">
-							<span className="text-xs font-medium text-foreground">{item.title}</span>
-							<span className="text-2xs text-passive">{item.body}</span>
+					) : (
+						<Button
+							disabled={saving}
+							onClick={() => void connect()}
+							size="sm"
+							variant="primary"
+						>
+							{saving ? "Connecting…" : "Use Codex"}
+						</Button>
+					)}
+				</div>
+			)}
+			{notice ? (
+				<p
+					className="rounded-md bg-muted/45 px-3 py-2.5 text-2xs leading-body text-passive"
+					role="status"
+				>
+					{notice}
+				</p>
+			) : null}
+			<p className="text-2xs leading-body text-passive">
+				Provider authority is Project-scoped. After you add a Project, Kennel
+				asks for native confirmation before the first pairing. This tour does
+				not bypass that approval.
+			</p>
+		</div>
+	);
+}
+
+function JourneyStep() {
+	const stages = [
+		["1", "Project", "Choose the repository or workspace that holds the work."],
+		["2", "Outcome", "Describe the result you want, not a list of tasks."],
+		["3", "Contract", "Review success criteria, boundaries, and authority."],
+		["4", "Planning", "Discuss the approach and approve the exact WorkUnits."],
+		[
+			"5",
+			"Mission Control",
+			"Watch progress, answer Needs You, inspect proof, and accept.",
+		],
+	] as const;
+	return (
+		<div className="flex flex-col gap-5">
+			<Heading
+				icon={<GitBranch className="size-icon-base text-muted-foreground" />}
+				title="One path from intent to proof"
+				body="Kennel keeps each decision in its own place, so setup never turns into silent execution."
+			/>
+			<ol className="relative flex flex-col gap-1 before:absolute before:bottom-5 before:left-[17px] before:top-5 before:w-px before:bg-border">
+				{stages.map(([n, title, body]) => (
+					<li
+						className="relative flex gap-3 rounded-lg p-2.5 transition-colors hover:bg-popover/60"
+						key={n}
+					>
+						<span className="z-10 grid size-6 shrink-0 place-items-center rounded-full hairline border-border-strong bg-card text-2xs font-medium">
+							{n}
 						</span>
+						<div>
+							<p className="text-xs font-medium">{title}</p>
+							<p className="mt-0.5 text-2xs leading-body text-passive">
+								{body}
+							</p>
+						</div>
 					</li>
 				))}
 			</ol>
@@ -227,137 +525,45 @@ function WelcomeStep() {
 	);
 }
 
-function AgentStep() {
-	const { t } = useTranslation();
-	const defaultAgentId = useUiStore((state) => state.defaultAgentId);
-	const setDefaultAgentId = useUiStore((state) => state.setDefaultAgentId);
-	const agentsQuery = useAgentsQuery();
-	const { settings } = useSettings();
-	const { update: updateReasoning } = useUpdateReasoning();
-	const [reasoningNotice, setReasoningNotice] = useState<string | null>(null);
-
-	// The daemon probes agent binaries at boot, so an agent installed after launch
-	// is invisible until something re-probes. Asking a person to pick is exactly
-	// the moment to freshen the inventory.
-	useEffect(() => {
-		void refreshAgentsIfStale();
-	}, []);
-
-	const agents = useMemo(() => {
-		const installed = agentsQuery.data?.installed ?? [];
-		const authorized = new Set((agentsQuery.data?.authorized ?? []).map((agent) => agent.id));
-		return installed.map((agent) => ({
-			id: agent.id,
-			isAuthorized: authorized.has(agent.id),
-			label: agent.label || agentLabel(agent.id),
-		}));
-	}, [agentsQuery.data]);
-
-	const selectAgent = (agentId: string, label: string, isSelected: boolean) => {
-		const nextAgentId = isSelected ? "" : agentId;
-		setDefaultAgentId(nextAgentId);
-		if (isSelected) {
-			setReasoningNotice(null);
-			return;
-		}
-
-		if (agentId !== "codex") {
-			setReasoningNotice(t("onboarding.agent.reasoningUnavailable", { agent: label }));
-			return;
-		}
-
-		if (settings?.reasoning.provider === "codex") {
-			setReasoningNotice(
-				settings.reasoning.ready
-					? t("onboarding.agent.reasoningReady")
-					: t("onboarding.agent.reasoningNotReady"),
-			);
-			return;
-		}
-
-		void updateReasoning({
-			provider: "codex",
-			model: settings?.reasoning.model ?? "",
-			effort: settings?.reasoning.effort ?? "",
-		}).then((status) => {
-			setReasoningNotice(
-				status?.ready ? t("onboarding.agent.reasoningReady") : t("onboarding.agent.reasoningNotReady"),
-			);
-		}).catch(() => {
-			setReasoningNotice(t("onboarding.agent.reasoningSyncFailed"));
-		});
-	};
-
-	return (
-		<div className="flex flex-col gap-4.5">
-			<StepHeading
-				description={t("onboarding.agent.body")}
-				icon={<Sparkles aria-hidden="true" className="size-icon-base text-muted-foreground" />}
-				title={t("onboarding.agent.heading")}
-			/>
-			{agentsQuery.isPending ? (
-				<p className="text-xs text-passive">{t("onboarding.agent.detecting")}</p>
-			) : agents.length === 0 ? (
-				<p className="rounded-md hairline border-border bg-popover px-3 py-2.5 text-xs leading-body text-passive">
-					{t("onboarding.agent.noneFound")}
-				</p>
-			) : (
-				<div className="grid grid-cols-2 gap-1.5">
-					{agents.map((agent) => {
-						const isSelected = defaultAgentId === agent.id;
-						return (
-							<button
-								aria-pressed={isSelected}
-								className={cn(
-									"flex items-center gap-2.5 rounded-md hairline px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-									isSelected
-										? "border-border-strong bg-popover text-foreground"
-										: "border-border bg-transparent text-muted-foreground hover:bg-popover hover:text-foreground",
-								)}
-								key={agent.id}
-								onClick={() => selectAgent(agent.id, agent.label, isSelected)}
-								type="button"
-							>
-								<AgentAvatar provider={agent.id} />
-								<span className="min-w-0 flex-1 truncate text-xs font-medium">{agent.label}</span>
-								{/* A check means the local auth probe passed, not that this is the
-								    pick — selection is the plate and the stronger hairline. */}
-								{agent.isAuthorized ? (
-									<Check
-										aria-label={t("onboarding.agent.signedIn")}
-										className="size-icon-sm shrink-0 text-status-ready"
-									/>
-								) : null}
-							</button>
-						);
-					})}
-				</div>
-			)}
-			{reasoningNotice ? <p className="text-2xs text-passive" role="status">{reasoningNotice}</p> : null}
-			<p className="text-2xs text-passive">{t("onboarding.agent.perSessionHint")}</p>
-		</div>
+function ProjectStep() {
+	const requestCreateProject = useUiStore(
+		(state) => state.requestCreateProject,
 	);
-}
-
-function OutcomeStep() {
-	const { t } = useTranslation();
-	const requestCreateProject = useUiStore((state) => state.requestCreateProject);
 	const closeOnboarding = useUiStore((state) => state.closeOnboarding);
-
 	return (
-		<div className="flex flex-col gap-4.5">
-			<StepHeading
-				description={t("onboarding.outcome.body", { defaultValue: "Kennel keeps the responsibility with you. Register a Project, describe what you want to be true, then review the Contract and Plan before authorizing any work." })}
-				title={t("onboarding.outcome.heading", { defaultValue: "Create your first Outcome" })}
-				icon={<Target aria-hidden="true" className="size-icon-base text-muted-foreground" />}
-			/>
-			<div className="flex flex-col gap-2 rounded-md hairline border-border bg-popover px-3 py-3">
-				<p className="text-xs leading-body text-passive">{t("onboarding.outcome.projectHint", { defaultValue: "A Project keeps repository context and provider preferences together. It does not start work." })}</p>
-				<Button className="self-start gap-1.5" onClick={() => { closeOnboarding(); requestCreateProject(); }} size="sm" variant="primary">
-					<FolderPlus aria-hidden="true" className="size-icon-sm" />
-					{t("onboarding.outcome.createProject", { defaultValue: "Create a Project" })}
-				</Button>
+		<div className="flex flex-col items-center gap-5 text-center">
+			<div className="grid size-12 place-items-center rounded-xl hairline border-border bg-popover">
+				<Target className="size-5" />
 			</div>
+			<Heading
+				icon={null}
+				title="Start with a Project"
+				body="Choose one repository or a workspace of repositories. Registering it records context and provider preferences; it does not start agent work."
+			/>
+			<div className="w-full rounded-lg hairline border-border bg-popover/55 p-4 text-left">
+				<p className="text-xs font-medium">Next, Kennel will guide you to:</p>
+				<ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-2xs text-passive">
+					<li>• review repository readiness</li>
+					<li>• confirm Codex pairing</li>
+					<li>• describe your first Outcome</li>
+					<li>• approve Contract and Plan</li>
+				</ul>
+			</div>
+			<Button
+				className="gap-1.5"
+				onClick={() => {
+					closeOnboarding();
+					requestCreateProject();
+				}}
+				size="sm"
+				variant="primary"
+			>
+				<FolderPlus className="size-icon-sm" />
+				Choose a Project folder
+			</Button>
+			<p className="text-2xs text-passive">
+				You can reopen this tour from Settings.
+			</p>
 		</div>
 	);
 }
