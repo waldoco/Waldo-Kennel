@@ -30,6 +30,7 @@ import {
 import { listFeatureBuilds, getActiveFeatureBuild } from "./main/feature-builds";
 import { createAttemptReplacementHandler } from "./main/owner-command-handler";
 import { createHarnessAuthorityHandler } from "./main/harness-authority-handler";
+import { createCodexDiscoveryHandler, createCodexPairingStateHandler, unsupportedCodexPairing } from "./main/provider-pairing-handler";
 import { readUpdateSettings, type UpdateSettings, type UpdateStatus } from "./main/update-settings";
 import { readKeybindingOverrides, writeKeybindingOverrides } from "./main/keybinding-settings";
 import {
@@ -1639,6 +1640,25 @@ ipcMain.handle("ownerCommand:harnessAuthority", createHarnessAuthorityHandler({
 	ownerCommandToken,
 	fetch: globalThis.fetch,
 }));
+ipcMain.handle("providerPairing:discoverCodex", createCodexDiscoveryHandler({
+	getShellWebContents,
+	getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
+	fetch: globalThis.fetch,
+	path: () => cachedShellEnv?.PATH ?? process.env.PATH ?? "",
+}));
+ipcMain.handle("providerPairing:getCodex", createCodexPairingStateHandler({
+	getShellWebContents,
+	getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
+	fetch: globalThis.fetch,
+	path: () => cachedShellEnv?.PATH ?? process.env.PATH ?? "",
+}));
+// Activation remains deliberately closed until the reviewed generation-preserving
+// pairing coordinator is wired into this desktop build.
+ipcMain.handle("providerPairing:pairCodex", (event) => {
+	const shell = getShellWebContents();
+	if (!shell || shell.isDestroyed() || event.sender !== shell || event.senderFrame !== shell.mainFrame) throw Error("Provider pairing must come from the live primary Kennel shell main frame");
+	return unsupportedCodexPairing();
+});
 ipcMain.handle("app:getVersion", () => app.getVersion());
 ipcMain.handle("app:openExternal", async (_event, url: string) => {
 	await openAllowedAppExternalURL(url, shell);

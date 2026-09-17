@@ -1,0 +1,155 @@
+import { createHash, randomUUID } from "node:crypto";
+import { constants } from "node:fs";
+import { access, realpath } from "node:fs/promises";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import type { WebContents } from "electron";
+import type {
+  CodexDiscoveryState,
+  CodexPairingState,
+} from "../shared/provider-pairing";
+
+type Event = { sender: WebContents; senderFrame: WebContents["mainFrame"] };
+type Daemon = { port: number };
+type Deps = {
+  getShellWebContents: () => WebContents | null;
+  getDaemonConnection: () => Daemon | null;
+  fetch: typeof globalThis.fetch;
+  path: () => string;
+  resolve?: (candidate: string) => Promise<string>;
+  version?: (executable: string) => Promise<string>;
+};
+const run = promisify(execFile);
+const safeId = (value: string) =>
+  `codex-${createHash("sha256").update(value).digest("hex")}`;
+const projectId = (input: unknown) =>
+  typeof input === "object" &&
+  input !== null &&
+  typeof (input as { projectId?: unknown }).projectId === "string" &&
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(
+    (input as { projectId: string }).projectId,
+  )
+    ? (input as { projectId: string }).projectId
+    : null;
+const primary = (d: Deps, e: Event) => {
+  const shell = d.getShellWebContents();
+  if (
+    !shell ||
+    shell.isDestroyed() ||
+    e.sender !== shell ||
+    e.senderFrame !== shell.mainFrame
+  )
+    throw Error(
+      "Provider pairing must come from the live primary Kennel shell main frame",
+    );
+};
+const defaultResolve = async (candidate: string) => {
+  const canonical = await realpath(candidate);
+  await access(canonical, constants.X_OK);
+  return canonical;
+};
+const defaultVersion = async (executable: string) =>
+  (await run(executable, ["--version"], { timeout: 5000, env: {} })).stdout;
+export function createCodexDiscoveryHandler(d: Deps) {
+  return async (e: Event, input: unknown): Promise<CodexDiscoveryState> => {
+    primary(d, e);
+    if (!projectId(input)) throw Error("Project is invalid");
+    const resolve = d.resolve ?? defaultResolve,
+      version = d.version ?? defaultVersion;
+    for (const directory of d.path().split(path.delimiter).filter(Boolean)) {
+      try {
+        const executable = await resolve(
+          path.join(
+            directory,
+            process.platform === "win32" ? "codex.exe" : "codex",
+          ),
+        );
+        const output = (await version(executable)).trim();
+        const match = output.match(
+          /(?:codex(?:-cli)?\s+)?(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)/i,
+        );
+        if (!match)
+          return {
+            state: "incompatible",
+            message: "The installed Codex version could not be verified.",
+          };
+        return {
+          state: "installed",
+          installationId: safeId(executable),
+          version: match[1],
+          source: "path",
+        };
+      } catch {
+        /* next path entry */
+      }
+    }
+    return {
+      state: "not_found",
+      message: "Codex was not found on this computer.",
+    };
+  };
+}
+export function createCodexPairingStateHandler(d: Deps) {
+  return async (e: Event, input: unknown): Promise<CodexPairingState> => {
+    primary(d, e);
+    const id = projectId(input);
+    if (!id) throw Error("Project is invalid");
+    const daemon = d.getDaemonConnection();
+    if (!daemon)
+      return {
+        state: "action_needed",
+        reason: "daemon_unavailable",
+        repair: "start_daemon",
+        message: "Start the Kennel daemon to pair Codex.",
+      };
+    const intentsResponse = await d.fetch(
+      `http://127.0.0.1:${daemon.port}/api/v1/harness-pairing-intents?projectId=${encodeURIComponent(id)}&limit=20`,
+    );
+    if (!intentsResponse.ok)
+      return {
+        state: "error",
+        message: "Codex pairing state could not be loaded.",
+      };
+    const body = (await intentsResponse.json()) as {
+      data?: {
+        intents?: Array<{
+          id: string;
+          status: string;
+          proofState?: string;
+          missionId?: string;
+          connectionId?: string;
+          expectedGeneration?: number;
+        }>;
+      };
+    };
+    const intent = body.data?.intents?.[0];
+    if (!intent) return { state: "unpaired" };
+    if (intent.status === "requested")
+      return { state: "awaiting_confirmation" };
+    if (intent.status === "approved" && intent.proofState !== "proved")
+      return { state: "pairing" };
+    if (intent.status === "failed" || intent.status === "expired")
+      return {
+        state: "error",
+        message:
+          "Pairing did not complete. Your previous connection was not changed.",
+      };
+    if (intent.connectionId && intent.proofState === "proved")
+      return {
+        state: "connected",
+        connectionId: intent.connectionId,
+        generation: intent.expectedGeneration,
+      };
+    return { state: "unpaired" };
+  };
+}
+export function unsupportedCodexPairing(): CodexPairingState {
+  return {
+    state: "action_needed",
+    reason: "pairing_activation_unavailable",
+    repair: "update_kennel",
+    message: "Codex pairing activation is not available in this build.",
+  };
+}
+export const newProviderRequestKey = () => randomUUID();
