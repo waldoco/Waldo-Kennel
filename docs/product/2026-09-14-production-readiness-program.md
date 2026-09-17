@@ -49,7 +49,7 @@ Kennel, connect a provider, and complete one governed Outcome loop with proof
 ### 2.2 Shipped but not proven in the final package
 
 - The full UI-only planning → execution → Result → rework journey (issue #38 gate). Rehearsal script ready; not yet run on a packaged Mac build at current HEAD.
-- First-user onboarding: fresh-profile install → connect provider → add repository → Outcome → Acceptance, without terminal or API rescue. Never rehearsed.
+- First-user onboarding: fresh-profile install → add/import repository (or create an empty project) → connect Codex inside that project → Outcome → Acceptance, without terminal or API rescue. Never rehearsed.
 - macOS signing, notarization, DMG, install, update rehearsal (#117). Machinery exists (`frontend/forge.config.ts`); zero published releases or tags as of 2026-09-14.
 - Claude/OpenCode chat and Cursor/Pi anything in a packaged build. `docs/STATUS.md` states the boundary verbatim.
 - Linux: enforcement fails closed by design today; Acceptance cannot complete (#179, post-launch lane).
@@ -218,7 +218,7 @@ context, UI, and release lanes proceed against the same evidence rule.
 | C1.1 | Runtime protocol negotiation + drift CI | This PR: unit/conformance tests, live fetch against latest published CLI, live handshake |
 | C1.2 | Fresh #115 governed canary at current HEAD | Packaged Attempt on owner Mac; artifact only in leased worktree; restart persistence; recorded in `docs/verification/` |
 | C1.3 | #38 packaged UI-only Outcome journey | Full planning → execution → Result → rework on packaged build, recorded; this doubles as launch demo footage |
-| C1.4 | First-user onboarding rehearsal | Fresh-profile install → connect Codex → add repo → Outcome → Acceptance, no terminal/API rescue; gaps filed as exact slices |
+| C1.4 | First-user onboarding rehearsal | Fresh-profile install → add/import repo (or create an empty project) → connect Codex inside that project → Outcome → Acceptance, no terminal/API rescue; gaps filed as exact slices |
 | C1.5 | Install/update path (#117) | Signed + notarized DMG, published release, update canary, integrity checks, README link verification |
 | C1.6 | Protocol provenance persistence (follow-up) | Migration + receipt/record fields surfacing digest, negotiated set, degraded capabilities in Mission Control |
 
