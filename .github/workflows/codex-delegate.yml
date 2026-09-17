@@ -3,9 +3,9 @@
 # SECURITY BOUNDARY: a prompt to Codex is code execution as the runner service
 # account on the owner's Mac. Dispatch and repository write access are currently
 # owner-only. The owner explicitly granted this Codex channel on 2026-09-18.
-# A verifier loaded from protected outcome-loop runs before candidate checkout
-# and limits the starting tree to a full SHA already contained by that branch.
-# This workflow never commits or pushes; normal review/promotion owns publication.
+# A verifier and boundary wrapper loaded from the exact protected workflow commit
+# run outside the candidate checkout. The wrapper itself does not request commit
+# or push; Codex retains the service account's ambient git/network/HOME authority.
 name: owner Codex delegation on self-hosted Mac
 run-name: "Codex delegate @ ${{ inputs.commit_sha }}"
 
@@ -47,7 +47,7 @@ jobs:
       - name: Check out protected trust anchor
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: outcome-loop
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
           path: trusted
@@ -94,14 +94,13 @@ jobs:
           codex --version
           codex login status >/dev/null 2>&1
 
-      - name: Run headless Codex delegation
+      - name: Run headless Codex delegation through trusted wrapper
         shell: bash
-        working-directory: candidate
         env:
           CODEX_DELEGATE_PROMPT: ${{ inputs.prompt }}
           CODEX_DELEGATE_RESUME_FROM: ${{ inputs.resume_from }}
           CODEX_DELEGATE_TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
-        run: ./scripts/ci/codex-delegate.sh
+        run: ./trusted/scripts/ci/codex-delegate.sh "$GITHUB_WORKSPACE/candidate"
 
       - name: Upload full Codex output
         if: always()
