@@ -166,22 +166,17 @@ func TestEventsStreamResetsCursorAheadOfCurrentDatabase(t *testing.T) {
 	}
 }
 
-func TestWriteSSEEventSanitizesEventNameNewlines(t *testing.T) {
+func TestWriteSSEEventRejectsUnregisteredEventName(t *testing.T) {
 	rec := httptest.NewRecorder()
 	sentSeq := int64(0)
 	e := testCDCEvent(1)
 	e.Type = cdc.EventType("session_updated\nid: 999\rdata: injected")
 
-	if err := writeSSEEvent(rec, rec, e, &sentSeq); err != nil {
-		t.Fatalf("writeSSEEvent: %v", err)
+	if err := writeSSEEvent(rec, rec, e, &sentSeq); err == nil {
+		t.Fatal("unregistered injected event type accepted")
 	}
-
-	body := rec.Body.String()
-	if strings.Contains(body, "\nid: 999") || strings.Contains(body, "\rdata: injected") {
-		t.Fatalf("body contains injected SSE field: %q", body)
-	}
-	if !strings.Contains(body, "event: session_updated_id: 999_data: injected\n") {
-		t.Fatalf("body = %q, want sanitized event name", body)
+	if rec.Body.Len() != 0 || sentSeq != 0 {
+		t.Fatalf("invalid event was partially emitted: %q seq=%d", rec.Body.String(), sentSeq)
 	}
 }
 
