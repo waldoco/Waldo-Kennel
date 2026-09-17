@@ -1971,7 +1971,7 @@ func (c *Controller) reconcileDurableTurnsLocked(
 	if c.ackedTurnID == targetProviderTurnID {
 		c.ackedTurnID = ""
 	}
-	if c.pendingTurnID == "" {
+	if c.pendingTurnID == "" && c.state != ports.ChatControllerStopped {
 		c.state = ports.ChatControllerReady
 	}
 	c.mu.Unlock()

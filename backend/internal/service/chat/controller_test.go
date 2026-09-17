@@ -165,10 +165,16 @@ func (f *fakeConversation) sentMessages() []ports.ChatUserMessage {
 
 func (f *fakeConversation) Interrupt(context.Context, string) error { return nil }
 
-type restartRequiredConversation struct{ *fakeConversation }
+type restartRequiredConversation struct {
+	*fakeConversation
+	streamClosed chan struct{}
+}
 
 func (c *restartRequiredConversation) Interrupt(context.Context, string) error {
 	_ = c.Close()
+	if c.streamClosed != nil {
+		<-c.streamClosed
+	}
 	return ports.ErrChatInterruptRestartRequired
 }
 
@@ -1081,7 +1087,7 @@ func TestControllerStreamClosureReportsSessionExited(t *testing.T) {
 
 func TestInterruptRestartUsesCurrentStartContext(t *testing.T) {
 	st := openStore(t)
-	first := &restartRequiredConversation{fakeConversation: newFakeConversation()}
+	first := &restartRequiredConversation{fakeConversation: newFakeConversation(), streamClosed: make(chan struct{})}
 	replacement := newFakeConversation()
 	driver := &sequenceDriver{conversations: []ports.ChatConversation{first, replacement}}
 	svc := chatsvc.New(chatsvc.Options{
@@ -1116,7 +1122,17 @@ func TestInterruptRestartUsesCurrentStartContext(t *testing.T) {
 		t.Fatalf("queue: %v", err)
 	}
 
-	if err = svc.Interrupt(context.Background(), testSession); err != nil {
+	done := make(chan error, 1)
+	go func() { done <- svc.Interrupt(context.Background(), testSession) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for controller.State() != ports.ChatControllerStopped && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if controller.State() != ports.ChatControllerStopped {
+		t.Fatal("provider stream closed without making the old controller stopped")
+	}
+	close(first.streamClosed)
+	if err = <-done; err != nil {
 		t.Fatalf("interrupt restart: %v", err)
 	}
 	if len(readyContexts) != 2 {
