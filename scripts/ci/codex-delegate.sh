@@ -61,8 +61,6 @@ finish() {
 	trap - EXIT
 	capture_status=0
 
-	# Re-resolve all roots after Codex exits. Final artifacts are created in a new,
-	# unpredictable directory that was not exposed to the child.
 	temp_real="$(real "$RUNNER_TEMP")" || capture_status=1
 	final_root="$(mktemp -d "$RUNNER_TEMP/waldo-kennel-codex-delegate.capture.XXXXXX")" || capture_status=1
 	if [[ "$capture_status" -eq 0 ]]; then
@@ -78,6 +76,7 @@ finish() {
 	diff_tmp="$(mktemp "$RUNNER_TEMP/.codex-diff.XXXXXX")" || capture_status=1
 	output_tmp="$(mktemp "$RUNNER_TEMP/.codex-output.XXXXXX")" || capture_status=1
 	diagnostic_tmp="$(mktemp "$RUNNER_TEMP/.codex-diagnostic.XXXXXX")" || capture_status=1
+	marker_tmp="$(mktemp "$RUNNER_TEMP/.codex-marker.XXXXXX")" || capture_status=1
 
 	current_head=""
 	if [[ "$capture_status" -eq 0 ]]; then
@@ -96,6 +95,15 @@ finish() {
 	fi
 	cat "$raw_output" > "$output_tmp" || capture_status=1
 
+	# Install the three data files first. Diagnostic must describe the status after
+	# every data capture/install operation has completed.
+	if [[ "$capture_status" -eq 0 && -d "$final_root" && ! -L "$final_root" && -d "$work_product" && ! -L "$work_product" ]]; then
+		safe_install "$output_tmp" "$final_root/output.log" || capture_status=1
+		safe_install "$status_tmp" "$work_product/git-status.txt" || capture_status=1
+		safe_install "$diff_tmp" "$work_product/git-diff.patch" || capture_status=1
+	else capture_status=1
+	fi
+
 	if [[ "$codex_status" -eq 0 && "$capture_status" -eq 0 ]]; then final_status=0; else final_status=1; fi
 	{
 		printf 'Kennel Codex delegation\n'
@@ -111,27 +119,39 @@ finish() {
 		printf 'authority=Wrapper does not request commit or push; Codex retains service-account ambient git, network, HOME, and credential authority\n'
 		printf '\nLast 250 output lines:\n'; tail -n 250 "$raw_output"
 	} > "$diagnostic_tmp" || capture_status=1
+	if [[ "$capture_status" -eq 0 ]]; then safe_install "$diagnostic_tmp" "$final_root/diagnostic.log" || capture_status=1; fi
 
-	# Revalidate parents immediately before each non-overwriting destination move.
-	if [[ -d "$final_root" && ! -L "$final_root" && -d "$work_product" && ! -L "$work_product" ]]; then
-		safe_install "$output_tmp" "$final_root/output.log" || capture_status=1
-		safe_install "$diagnostic_tmp" "$final_root/diagnostic.log" || capture_status=1
-		safe_install "$status_tmp" "$work_product/git-status.txt" || capture_status=1
-		safe_install "$diff_tmp" "$work_product/git-diff.patch" || capture_status=1
-	else capture_status=1
+	# Recompute after diagnostic creation/install, then perform final structural and
+	# content consistency checks before attesting the four files.
+	if [[ "$codex_status" -eq 0 && "$capture_status" -eq 0 ]]; then final_status=0; else final_status=1; fi
+	for file in "$final_root/output.log" "$final_root/diagnostic.log" "$work_product/git-status.txt" "$work_product/git-diff.patch"; do
+		[[ -f "$file" && ! -L "$file" ]] || capture_status=1
+		case "$(real "$file" 2>/dev/null || true)" in "$final_root"/*) ;; *) capture_status=1;; esac
+	done
+	if ! grep -Fx "codex_status=$codex_status" "$final_root/diagnostic.log" >/dev/null 2>&1 || \
+	   ! grep -Fx "capture_status=$capture_status" "$final_root/diagnostic.log" >/dev/null 2>&1; then capture_status=1; fi
+	if [[ "$codex_status" -eq 0 && "$capture_status" -eq 0 ]]; then final_status=0; proof_line='proof=passed: Codex exec completed and best-effort working-tree patch capture succeeded'; else final_status=1; proof_line='proof=failed: Codex execution or work-product capture failed'; fi
+	grep -Fx "$proof_line" "$final_root/diagnostic.log" >/dev/null 2>&1 || capture_status=1
+	if [[ "$capture_status" -ne 0 ]]; then final_status=1; fi
+
+	if [[ "$capture_status" -eq 0 ]]; then
+		output_digest="$(shasum -a 256 "$final_root/output.log" | awk '{print $1}')" || capture_status=1
+		diagnostic_digest="$(shasum -a 256 "$final_root/diagnostic.log" | awk '{print $1}')" || capture_status=1
+		status_digest="$(shasum -a 256 "$work_product/git-status.txt" | awk '{print $1}')" || capture_status=1
+		diff_digest="$(shasum -a 256 "$work_product/git-diff.patch" | awk '{print $1}')" || capture_status=1
+	fi
+	if [[ "$capture_status" -eq 0 ]]; then
+		printf 'version=1\ncodex_status=%s\ncapture_status=%s\nfinal_status=%s\noutput_sha256=%s\ndiagnostic_sha256=%s\ngit_status_sha256=%s\ngit_diff_sha256=%s\n' "$codex_status" "$capture_status" "$final_status" "$output_digest" "$diagnostic_digest" "$status_digest" "$diff_digest" > "$marker_tmp" || capture_status=1
+		safe_install "$marker_tmp" "$final_root/completion.marker" || capture_status=1
 	fi
 
-	rm -rf "$staging" "$capture_home"; rm -f "$capture_index" "$status_tmp" "$diff_tmp" "$output_tmp" "$diagnostic_tmp"
-	if [[ "$capture_status" -eq 0 ]]; then
+	rm -rf "$staging" "$capture_home"; rm -f "$capture_index" "$status_tmp" "$diff_tmp" "$output_tmp" "$diagnostic_tmp" "$marker_tmp"
+	if [[ "$capture_status" -eq 0 && -f "$final_root/completion.marker" && ! -L "$final_root/completion.marker" ]]; then
 		printf 'CODEX_DELEGATE_FINAL_ROOT=%s\n' "$final_root" >> "$GITHUB_ENV"
+		cat "$final_root/diagnostic.log"
 	else
-		# Preserve any honest diagnostic that was safely installed; the trusted
-		# finalize step will validate it or create a separate failure record.
-		[[ -f "$final_root/diagnostic.log" && ! -L "$final_root/diagnostic.log" ]] && \
-			printf 'CODEX_DELEGATE_FINAL_ROOT=%s\n' "$final_root" >> "$GITHUB_ENV"
 		final_status=1
 	fi
-	[[ -f "$final_root/diagnostic.log" && ! -L "$final_root/diagnostic.log" ]] && cat "$final_root/diagnostic.log"
 	exit "$final_status"
 }
 trap finish EXIT
