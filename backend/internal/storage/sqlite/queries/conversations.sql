@@ -656,8 +656,17 @@ WHERE id = sqlc.arg(id)
 -- is still delivered rather than swept up by a cancellation it predates.
 -- name: CancelQueuedConversationTurns :exec
 UPDATE conversation_turns
-SET state = 'interrupted', completed_at = ?
-WHERE conversation_id = ? AND state = 'queued' AND requested_at <= ?;
+SET state = 'interrupted', error_message = '', completed_at = COALESCE(completed_at, ?)
+WHERE conversation_id = ? AND requested_at <= ?
+  AND (
+      state = 'queued'
+      OR (
+          state = 'failed'
+          AND provider_turn_id = ''
+          AND error_message = 'controller ended before the turn completed'
+          AND completed_at >= sqlc.arg(requested_at)
+      )
+  );
 
 -- An interrupt interface handoff closes intake under the controller's dispatch
 -- lock before this runs. There can be no later accepted row to preserve, so the

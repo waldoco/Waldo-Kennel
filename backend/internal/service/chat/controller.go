@@ -1798,13 +1798,19 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 		if err := c.dispatchGovernedInterrupt(ctx, turn); err != nil {
 			if errors.Is(err, ports.ErrChatInterruptRestartRequired) || errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
 				// Provider acceptance means Stop happened even when local process-tree
-				// containment failed. Preserve the cutoff and block every later effect.
+				// containment failed. Preserve that semantic result durably before a
+				// replacement controller's orphan pass can classify the same work as a
+				// generic crash. sendMu makes turn settlement and queue cancellation one
+				// lifecycle boundary with dispatch.
+				c.sendMu.Lock()
+				settleErr := c.reconcileDurableTurnsLocked(ctx, turn, nil, cutoff)
+				c.sendMu.Unlock()
 				c.mu.Lock()
 				if c.governance != nil {
 					c.governance.blocked = true
 				}
 				c.mu.Unlock()
-				return err
+				return errors.Join(err, settleErr)
 			}
 			if errors.Is(err, ports.ErrChatNoActiveTurn) {
 				c.sendMu.Lock()
@@ -1831,15 +1837,14 @@ func (c *Controller) Interrupt(ctx context.Context) error {
 		}
 	}
 	if err := c.conv.Interrupt(ctx, turn); err != nil {
-		if errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
-			// Provider accepted Stop, but effects may still be running. Never clear
-			// the cutoff or release queued work into the uncontained tree.
-			return err
-		}
-		if errors.Is(err, ports.ErrChatInterruptRestartRequired) {
-			// The driver already killed the non-quiescent provider tree. Preserve the
-			// Stop cutoff: queued pre-Stop work must not be released by recovery.
-			return err
+		if errors.Is(err, ports.ErrChatInterruptContainmentFailed) || errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+			// The provider accepted Stop. Record that result even if containment
+			// failed or required killing the provider tree: stream-end cleanup is a
+			// generic crash fallback and must not overwrite an observed user action.
+			c.sendMu.Lock()
+			settleErr := c.reconcileDurableTurnsLocked(ctx, turn, nil, cutoff)
+			c.sendMu.Unlock()
+			return errors.Join(err, settleErr)
 		}
 		if errors.Is(err, ports.ErrChatNoActiveTurn) {
 			// Serialize durable settlement, memory cleanup, and queue promotion so

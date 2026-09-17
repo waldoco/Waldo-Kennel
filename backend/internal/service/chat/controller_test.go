@@ -1109,6 +1109,12 @@ func TestInterruptRestartUsesCurrentStartContext(t *testing.T) {
 		t.Fatalf("send: %v", err)
 	}
 	first.emit(ports.ChatEvent{Kind: ports.ChatEventTurnStarted, ProviderTurnID: "provider-turn-1"})
+	awaitStoreSnapshot(t, st, controller.ConversationID(), func(s store.ConversationSnapshot) bool {
+		return len(s.Turns) == 1 && s.Turns[0].State == domain.TurnStateRunning
+	})
+	if _, err = controller.Send(context.Background(), ports.ChatUserMessage{Text: "queued", ClientMessageID: "restart-context-queued"}); err != nil {
+		t.Fatalf("queue: %v", err)
+	}
 
 	if err = svc.Interrupt(context.Background(), testSession); err != nil {
 		t.Fatalf("interrupt restart: %v", err)
@@ -1125,6 +1131,13 @@ func TestInterruptRestartUsesCurrentStartContext(t *testing.T) {
 	}
 	if got == controller || got.ProviderConversationID() != replacement.ProviderConversationID() {
 		t.Fatal("interrupt did not resume the provider conversation in a replacement controller")
+	}
+	snapshot := awaitStoreSnapshot(t, st, controller.ConversationID(), func(s store.ConversationSnapshot) bool {
+		return len(s.Turns) == 2 && s.Turns[0].State.Terminal() && s.Turns[1].State.Terminal()
+	})
+	states := turnStateByText(t, snapshot)
+	if states["work"] != domain.TurnStateInterrupted || states["queued"] != domain.TurnStateInterrupted {
+		t.Fatalf("accepted Stop settled states = %+v, want both interrupted", states)
 	}
 }
 

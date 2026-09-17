@@ -329,8 +329,17 @@ func (q *Queries) CancelAllQueuedConversationTurns(ctx context.Context, arg Canc
 
 const cancelQueuedConversationTurns = `-- name: CancelQueuedConversationTurns :exec
 UPDATE conversation_turns
-SET state = 'interrupted', completed_at = ?
-WHERE conversation_id = ? AND state = 'queued' AND requested_at <= ?
+SET state = 'interrupted', error_message = '', completed_at = COALESCE(completed_at, ?)
+WHERE conversation_id = ? AND requested_at <= ?
+  AND (
+      state = 'queued'
+      OR (
+          state = 'failed'
+          AND provider_turn_id = ''
+          AND error_message = 'controller ended before the turn completed'
+          AND completed_at >= ?
+      )
+  )
 `
 
 type CancelQueuedConversationTurnsParams struct {
@@ -344,7 +353,7 @@ type CancelQueuedConversationTurnsParams struct {
 // The cutoff is the moment the user pressed stop, so a message typed after that
 // is still delivered rather than swept up by a cancellation it predates.
 func (q *Queries) CancelQueuedConversationTurns(ctx context.Context, arg CancelQueuedConversationTurnsParams) error {
-	_, err := q.db.ExecContext(ctx, cancelQueuedConversationTurns, arg.CompletedAt, arg.ConversationID, arg.RequestedAt)
+	_, err := q.db.ExecContext(ctx, cancelQueuedConversationTurns, arg.CompletedAt, arg.ConversationID, arg.RequestedAt, arg.RequestedAt)
 	return err
 }
 
