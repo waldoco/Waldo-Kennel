@@ -69,7 +69,13 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 	if reason := workUnitCoherenceReason(*plan, in.contract); reason != "" {
 		return reject(reason)
 	}
-	if err := plan.ValidateForApproval(in.contract); err != nil {
+	var validationErr error
+	if plan.Status == domain.PlanStatusApproved {
+		validationErr = plan.ValidateForExecution(in.contract)
+	} else {
+		validationErr = plan.ValidateForApproval(in.contract)
+	}
+	if validationErr != nil {
 		return reject(domain.AdmissionIntentPermissionConflict)
 	}
 	kind := in.workspaceKind
