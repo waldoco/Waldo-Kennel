@@ -161,3 +161,181 @@ func TestHarnessCommandClaimSerializesQuestionMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type routineCommandFixture struct {
+	commandFixture
+	sessionID        domain.SessionID
+	conversationID   string
+	providerTurnID   string
+	alternateAttempt domain.Attempt
+	alternatePlan    domain.PlanRevision
+}
+
+func newRoutineCommandFixture(t *testing.T, class domain.OwnerCommandClass) routineCommandFixture {
+	t.Helper()
+	s := newTestStore(t)
+	projectID := "ingress-" + string(class)
+	plan, outcomeID := seedApprovedPlan(t, s, projectID)
+	now := time.Date(2026, 9, 17, 8, 0, 0, 0, time.UTC)
+	attempt, err := s.CreateAttemptWithFence(context.Background(), admissionAt(outcomeID, plan, "attempt-"+string(class), domain.FenceSubjectForProject(domain.ProjectID(projectID)), now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := sampleRecord(projectID)
+	rec.Mode = domain.SessionModeChat
+	session, err := s.CreateSession(context.Background(), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := s.CreateConversation(context.Background(), "conv-"+string(class), domain.ConversationScopeSession, domain.ProjectID(projectID), session.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ClaimChatControllerGeneration(context.Background(), session.ID, "gen-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.BindAttemptSession(context.Background(), domain.AttemptSessionRef{AttemptID: attempt.ID, SessionID: string(session.ID), Harness: domain.HarnessCodex, Mode: domain.SessionModeChat, RunBriefCoreDigest: plan.RunBriefCoreDigest, RunBriefCompiledDigest: plan.RunBriefCoreDigest, AdmissionSnapshot: `{}`, BoundAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	alternatePlan, alternateOutcomeID := seedApprovedPlan(t, s, projectID+"-revision-2")
+	alternateAttempt, err := s.CreateAttemptWithFence(context.Background(), admissionAt(alternateOutcomeID, alternatePlan, "attempt-alternate-"+string(class), domain.FenceSubjectForProject(domain.ProjectID(projectID+"-revision-2")), now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerTurnID := "provider-turn-1"
+	if class == domain.OwnerCommandSteer || class == domain.OwnerCommandInterrupt {
+		if err := s.AdoptProviderTurn(context.Background(), conversation.ID, session.ID, "gen-1", "turn-1", providerTurnID, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := domain.OwnerProofTarget{Version: domain.OwnerProofTargetVersion, Class: class, SessionID: string(session.ID), ControllerGeneration: "gen-1"}
+	command := domain.CanonicalHarnessCommand{Version: "v1", Class: class}
+	capability := domain.HarnessCapabilityTurn
+	switch class {
+	case domain.OwnerCommandTurn:
+		target.ExpectedRevision = plan.ID.String()
+		command.Text, command.ClientMessageID = "continue", "client-turn-1"
+	case domain.OwnerCommandSteer:
+		target.ExpectedRevision, target.ProviderTurnID = plan.ID.String(), providerTurnID
+		command.Text, command.ClientMessageID = "focus", "client-steer-1"
+		capability = domain.HarnessCapabilitySteer
+	case domain.OwnerCommandInterrupt:
+		target.ProviderTurnID = providerTurnID
+		capability = domain.HarnessCapabilityInterrupt
+	default:
+		t.Fatalf("unsupported routine class %q", class)
+	}
+	payload, err := command.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetDigest, err := target.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := harnessconnection.NewWithRandom(s, bytes.NewReader(bytes.Repeat([]byte{11}, 128)))
+	issued, err := connection.Issue(context.Background(), harnessconnection.IssueRequest{ConnectionID: domain.HarnessConnectionID("hc-" + string(class)), InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "mission", AppRunID: "run", CapabilityClasses: []domain.HarnessCapabilityClass{capability}, ExpiresAt: now.Add(time.Hour), Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := ownerproof.NewWithRandom(s, bytes.NewReader(bytes.Repeat([]byte{12}, 128))).Mint(context.Background(), ownerproof.MintRequest{ID: domain.OwnerProofID("proof-" + string(class)), AppRunID: "run", MissionID: "mission", ContentDigest: domain.DigestSHA256(payload), TargetDigest: targetDigest, Class: class, ExpiresAt: now.Add(time.Minute), Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ports.HarnessCommandRequest{ConnectionBearer: issued.Bearer, ConnectionBinding: domain.HarnessConnectionBinding{ConnectionID: issued.Connection.ID, InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "mission", AppRunID: "run", Generation: 1, Class: capability}, OwnerProofID: proof.Proof.ID, OwnerProofBearer: proof.Bearer, Target: target, Command: command, AdapterRequestKey: "request-" + string(class), Now: now}
+	return routineCommandFixture{commandFixture: commandFixture{store: s, request: request, connection: connection}, sessionID: session.ID, conversationID: conversation.ID, providerTurnID: providerTurnID, alternateAttempt: alternateAttempt, alternatePlan: alternatePlan}
+}
+
+func testClaimFirstTargetMutation(t *testing.T, f commandFixture, mutate func() error) {
+	t.Helper()
+	entered, release := make(chan struct{}), make(chan struct{})
+	ctx := store.WithCommandClaimHook(context.Background(), func() { close(entered); <-release })
+	claimed := make(chan error, 1)
+	go func() { _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(ctx, f.request); claimed <- err }()
+	<-entered
+	mutated := make(chan error, 1)
+	go func() { mutated <- mutate() }()
+	select {
+	case <-mutated:
+		t.Fatal("target mutation bypassed same writer")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	if err := <-claimed; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-mutated; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHarnessCommandClaimSerializesControllerGenerationMutation(t *testing.T) {
+	t.Run("claim_first", func(t *testing.T) {
+		f := newRoutineCommandFixture(t, domain.OwnerCommandTurn)
+		testClaimFirstTargetMutation(t, f.commandFixture, func() error {
+			return f.store.ClaimChatControllerGeneration(context.Background(), f.sessionID, "gen-2", f.request.Now.Add(time.Second))
+		})
+	})
+	t.Run("mutation_first", func(t *testing.T) {
+		f := newRoutineCommandFixture(t, domain.OwnerCommandTurn)
+		if err := f.store.ClaimChatControllerGeneration(context.Background(), f.sessionID, "gen-2", f.request.Now.Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); !errors.Is(err, domain.ErrHarnessCommandAuthentication) {
+			t.Fatalf("err=%v", err)
+		}
+	})
+}
+
+func bindAlternateRevision(f routineCommandFixture) error {
+	_, err := f.store.BindAttemptSession(context.Background(), domain.AttemptSessionRef{AttemptID: f.alternateAttempt.ID, SessionID: string(f.sessionID), Harness: domain.HarnessCodex, Mode: domain.SessionModeChat, RunBriefCoreDigest: f.alternatePlan.RunBriefCoreDigest, RunBriefCompiledDigest: f.alternatePlan.RunBriefCoreDigest, AdmissionSnapshot: `{}`, BoundAt: f.request.Now.Add(time.Second)})
+	return err
+}
+
+func TestHarnessCommandClaimSerializesExpectedRevisionMutation(t *testing.T) {
+	for _, class := range []domain.OwnerCommandClass{domain.OwnerCommandTurn, domain.OwnerCommandSteer} {
+		t.Run(string(class)+"_claim_first", func(t *testing.T) {
+			f := newRoutineCommandFixture(t, class)
+			testClaimFirstTargetMutation(t, f.commandFixture, func() error { return bindAlternateRevision(f) })
+		})
+		t.Run(string(class)+"_mutation_first", func(t *testing.T) {
+			f := newRoutineCommandFixture(t, class)
+			if err := bindAlternateRevision(f); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); !errors.Is(err, domain.ErrHarnessCommandAuthentication) {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
+func TestHarnessCommandClaimSerializesProviderTurnMutation(t *testing.T) {
+	for _, class := range []domain.OwnerCommandClass{domain.OwnerCommandSteer, domain.OwnerCommandInterrupt} {
+		t.Run(string(class)+"_claim_first", func(t *testing.T) {
+			f := newRoutineCommandFixture(t, class)
+			testClaimFirstTargetMutation(t, f.commandFixture, func() error {
+				return f.store.SettleTurn(context.Background(), f.conversationID, f.providerTurnID, domain.TurnStateInterrupted, "", f.request.Now.Add(time.Second))
+			})
+		})
+		t.Run(string(class)+"_mutation_first", func(t *testing.T) {
+			f := newRoutineCommandFixture(t, class)
+			if err := f.store.SettleTurn(context.Background(), f.conversationID, f.providerTurnID, domain.TurnStateInterrupted, "", f.request.Now.Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); !errors.Is(err, domain.ErrHarnessCommandAuthentication) {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
+func TestHarnessCommandClaimQuestionMutationFirstRejects(t *testing.T) {
+	f := newCommandFixture(t)
+	if err := f.store.ResolveApproval(context.Background(), f.conversationID, f.requestID, `{}`, f.request.Now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); !errors.Is(err, domain.ErrHarnessCommandAuthentication) {
+		t.Fatalf("err=%v", err)
+	}
+}
