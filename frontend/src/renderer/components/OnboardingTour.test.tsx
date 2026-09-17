@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSettings, useUpdateReasoning } from "../hooks/useSettings";
+import { aoBridge } from "../lib/bridge";
 import { useUiStore } from "../stores/ui-store";
 import { OnboardingTour } from "./OnboardingTour";
 
@@ -18,6 +19,7 @@ const ctx = vi.hoisted(() => ({
 		supported: { id: string; label: string }[];
 	},
 	isPending: false,
+	installTmux: vi.fn(),
 	updateReasoning: vi.fn(),
 }));
 
@@ -58,8 +60,15 @@ describe("OnboardingTour", () => {
 			supported: [],
 		};
 		ctx.isPending = false;
+		ctx.installTmux.mockReset();
+		ctx.installTmux.mockResolvedValue({ status: "installed" });
+		aoBridge.app.installTmux = ctx.installTmux;
 		ctx.updateReasoning.mockReset();
-		ctx.updateReasoning.mockResolvedValue({ provider: "codex", ready: true });
+		ctx.updateReasoning.mockResolvedValue({
+			provider: "codex",
+			ready: true,
+			verified: false,
+		});
 		vi.mocked(useSettings).mockReturnValue({
 			settings: {
 				defaultSessionMode: "tui",
@@ -166,6 +175,63 @@ describe("OnboardingTour", () => {
 		);
 		expect(screen.queryByTestId("onboarding-tour")).not.toBeInTheDocument();
 		expect(useUiStore.getState().createProjectNonce).toBe(1);
+	});
+
+	it("keeps runtime readiness unknown after Homebrew exits successfully", async () => {
+		render(<OnboardingTour daemonReady />);
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		fireEvent.click(
+			screen.getByRole("button", { name: "Install tmux with Homebrew" }),
+		);
+		await screen.findByText(/Homebrew finished installing tmux/);
+		expect(
+			screen.queryByText("tmux was installed successfully."),
+		).not.toBeInTheDocument();
+	});
+
+	it("maps ready without verified to selection-only copy", async () => {
+		render(<OnboardingTour daemonReady />);
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+		fireEvent.click(screen.getByRole("button", { name: "Use Codex" }));
+		await screen.findByText(/has not verified a model call yet/);
+		expect(screen.queryByText(/ready for planning/)).not.toBeInTheDocument();
+	});
+
+	it("only saves the local worker preference after reasoning selection succeeds", async () => {
+		ctx.updateReasoning.mockRejectedValueOnce(new Error("offline"));
+		render(<OnboardingTour daemonReady />);
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+		fireEvent.click(screen.getByRole("button", { name: "Use Codex" }));
+		await screen.findByText(/setting could not be saved/);
+		expect(useUiStore.getState().defaultAgentId).toBe("");
+	});
+
+	it("focuses and announces each step, traps Tab, and Escape preserves close semantics", async () => {
+		const opener = document.createElement("button");
+		opener.textContent = "Open setup";
+		document.body.appendChild(opener);
+		opener.focus();
+		render(<OnboardingTour daemonReady />);
+		await waitFor(() =>
+			expect(
+				screen.getByText("Bring an Outcome. Keep the final say."),
+			).toHaveFocus(),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /Set up Kennel/ }));
+		expect(screen.getByText("Check the local runtime")).toHaveFocus();
+		expect(screen.getByText(/Step 2 of 5: System check/)).toHaveAttribute(
+			"aria-live",
+			"polite",
+		);
+		const dialog = screen.getByRole("dialog");
+		fireEvent.keyDown(dialog, { key: "Tab" });
+		expect(dialog.contains(document.activeElement)).toBe(true);
+		fireEvent.keyDown(dialog, { key: "Escape" });
+		expect(screen.queryByTestId("onboarding-tour")).not.toBeInTheDocument();
+		expect(useUiStore.getState().hasCompletedOnboarding).toBe(true);
+		opener.remove();
 	});
 
 	it("treats skipping as answered so the tour does not return next launch", () => {

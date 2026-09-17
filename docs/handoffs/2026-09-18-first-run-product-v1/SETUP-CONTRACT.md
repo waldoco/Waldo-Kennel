@@ -21,14 +21,21 @@ No endpoint currently reports a complete, current first-run prerequisite state. 
   "checkedAt": "RFC3339",
   "prerequisites": [
     {
-      "id": "runtime | git | data_directory | admission_policy",
+      "id": "runtime | git | data_directory",
+      "applicability": "required | not_applicable",
       "state": "ready | missing | incompatible | unknown | error",
       "requiredFor": ["planning", "execution"],
+      "evidence": { "source": "daemon_probe | native_runtime", "checkedAt": "RFC3339" },
       "version": "optional",
-      "message": "safe daemon-authored copy",
-      "repair": "install_tmux | open_help | restart_daemon | none"
+      "messageCode": "stable_copy_key",
+      "repairs": [{ "action": "install_tmux | open_help | restart_daemon", "eligible": true }]
     }
-  ]
+  ],
+  "providerReadiness": {
+    "reasoning": "separate verified model-call state",
+    "projectPairing": "separate Project/provider connection generation",
+    "roleAdmission": "separate Project/role/capability/policy result"
+  }
 }
 ```
 

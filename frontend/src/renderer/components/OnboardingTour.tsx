@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
 	ArrowLeft,
@@ -48,6 +48,7 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 	const openOnboarding = useUiStore((state) => state.openOnboarding);
 	const closeOnboarding = useUiStore((state) => state.closeOnboarding);
 	const [stepIndex, setStepIndex] = useState(0);
+	const contentRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		if (!hasCompleted && daemonReady) openOnboarding();
@@ -55,6 +56,12 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 	useEffect(() => {
 		if (isOpen) setStepIndex(0);
 	}, [isOpen]);
+	useEffect(() => {
+		if (!isOpen) return;
+		contentRef.current
+			?.querySelector<HTMLElement>("[data-onboarding-step-heading]")
+			?.focus();
+	}, [isOpen, stepIndex]);
 
 	const step = STEPS[stepIndex];
 	const isLast = stepIndex === STEPS.length - 1;
@@ -67,6 +74,13 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 				<Dialog.Overlay className="dialog-overlay data-[state=open]:animate-overlay-in" />
 				<Dialog.Content
 					aria-describedby={undefined}
+					ref={contentRef}
+					onOpenAutoFocus={(event) => {
+						event.preventDefault();
+						contentRef.current
+							?.querySelector<HTMLElement>("[data-onboarding-step-heading]")
+							?.focus();
+					}}
 					className="fixed left-1/2 top-1/2 z-overlay flex w-[min(720px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel hairline border-border bg-card shadow-[var(--shadow-import-modal)] outline-none data-[state=open]:animate-modal-in"
 					data-testid="onboarding-tour"
 				>
@@ -89,6 +103,10 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 							</Dialog.Close>
 						</div>
 					</header>
+					<p
+						aria-live="polite"
+						className="sr-only"
+					>{`Step ${stepIndex + 1} of ${STEPS.length}: ${TITLES[step]}`}</p>
 					<div className="board-scrollbar h-[390px] shrink-0 overflow-y-auto px-5 py-5.5">
 						{step === "welcome" ? <WelcomeStep /> : null}
 						{step === "system" ? <SystemStep /> : null}
@@ -175,7 +193,11 @@ function Heading({
 }) {
 	return (
 		<div className="flex flex-col gap-2.5">
-			<h2 className="flex items-center gap-2 text-brand font-medium leading-snug text-foreground">
+			<h2
+				className="flex items-center gap-2 text-brand font-medium leading-snug text-foreground outline-none"
+				data-onboarding-step-heading
+				tabIndex={-1}
+			>
 				{icon}
 				{title}
 			</h2>
@@ -190,10 +212,14 @@ function WelcomeStep() {
 	return (
 		<div className="flex flex-col items-center gap-6 text-center">
 			<div className="grid size-14 place-items-center rounded-2xl hairline border-border bg-popover text-foreground shadow-sm">
-				<Sparkles className="size-6" />
+				<Sparkles aria-hidden="true" className="size-6" />
 			</div>
 			<div className="flex flex-col gap-2">
-				<h2 className="text-heading-sm font-medium text-foreground">
+				<h2
+					className="text-heading-sm font-medium text-foreground outline-none"
+					data-onboarding-step-heading
+					tabIndex={-1}
+				>
 					Bring an Outcome. Keep the final say.
 				</h2>
 				<p className="mx-auto max-w-[54ch] text-xs leading-body text-foreground/60">
@@ -267,7 +293,10 @@ function SystemStep() {
 		<div className="flex flex-col gap-5">
 			<Heading
 				icon={
-					<TerminalSquare className="size-icon-base text-muted-foreground" />
+					<TerminalSquare
+						aria-hidden="true"
+						className="size-icon-base text-muted-foreground"
+					/>
 				}
 				title="Check the local runtime"
 				body="Kennel runs coding work on your machine. The daemon is ready. macOS and Linux sessions also need tmux; Windows uses its native terminal runtime."
@@ -280,7 +309,7 @@ function SystemStep() {
 			<StatusRow
 				state={
 					installState === "installed"
-						? "ready"
+						? "unknown"
 						: installState === "failed"
 							? "error"
 							: "unknown"
@@ -288,7 +317,7 @@ function SystemStep() {
 				title="Session runtime"
 				body={
 					installState === "installed"
-						? "tmux was installed successfully."
+						? "Homebrew finished installing tmux. Kennel will verify the session runtime when the first session starts."
 						: installState === "failed"
 							? (message ?? "tmux could not be installed.")
 							: "Kennel does not yet expose a setup probe. It will check tmux before the first session starts."
@@ -387,17 +416,17 @@ function CodexStep() {
 		agents.data?.authorized?.some((agent) => agent.id === "codex") ?? false;
 	const connect = async () => {
 		setNotice(null);
-		setDefaultAgentId("codex");
 		try {
 			const result = await update({
 				provider: "codex",
 				model: settings?.reasoning.model ?? "",
 				effort: settings?.reasoning.effort ?? "",
 			});
+			setDefaultAgentId("codex");
 			setNotice(
-				result?.ready
-					? "Codex is ready for planning."
-					: "Codex was selected, but sign-in or App Server readiness still needs attention in Settings.",
+				result?.verified === true
+					? "Codex is selected for planning, and Kennel verified a model call."
+					: "Codex is selected for planning; Kennel has not verified a model call yet.",
 			);
 		} catch {
 			setNotice(
@@ -408,7 +437,12 @@ function CodexStep() {
 	return (
 		<div className="flex flex-col gap-5">
 			<Heading
-				icon={<Sparkles className="size-icon-base text-muted-foreground" />}
+				icon={
+					<Sparkles
+						aria-hidden="true"
+						className="size-icon-base text-muted-foreground"
+					/>
+				}
 				title="Connect your first provider"
 				body="Codex can reason about Contracts and Plans, then carry out approved WorkUnits inside the Project you choose."
 			/>
@@ -510,7 +544,12 @@ function JourneyStep() {
 	return (
 		<div className="flex flex-col gap-5">
 			<Heading
-				icon={<GitBranch className="size-icon-base text-muted-foreground" />}
+				icon={
+					<GitBranch
+						aria-hidden="true"
+						className="size-icon-base text-muted-foreground"
+					/>
+				}
 				title="One path from intent to proof"
 				body="Kennel keeps each decision in its own place, so setup never turns into silent execution."
 			/>
