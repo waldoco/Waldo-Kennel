@@ -278,6 +278,15 @@ func parseCodexVersion(output string) (codexVersion, bool) {
 	return version, true
 }
 
+// ParseCodexVersion returns the normalized version used by the driver gate.
+func ParseCodexVersion(output string) (string, bool) {
+	v, ok := parseCodexVersion(output)
+	if !ok {
+		return "", false
+	}
+	return v.String(), true
+}
+
 func (v codexVersion) less(other codexVersion) bool {
 	for i := range v {
 		if v[i] != other[i] {
