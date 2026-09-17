@@ -148,6 +148,7 @@ var shippedMigrations = map[int64]string{
 	142: "0142_governed_control_request_instance.sql",
 	143: "0143_governed_command_claim_adoption.sql",
 	144: "0144_governed_control_claim_adoption.sql",
+	145: "0145_harness_connections.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they
