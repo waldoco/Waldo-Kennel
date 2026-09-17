@@ -25,6 +25,22 @@ describe("Codex provider pairing main handlers", () => {
     );
     expect(JSON.stringify(result)).not.toContain("/private/");
   });
+  it("does not misreport a broken installed Codex as absent", async () => {
+    const handler = createCodexDiscoveryHandler({
+      getShellWebContents: () => shell as never,
+      getDaemonConnection: () => null,
+      fetch,
+      path: () => "/bin",
+      resolve: async () => "/bin/codex",
+      version: async () => {
+        throw new Error("probe failed");
+      },
+    });
+    await expect(handler(event, { projectId: "p" })).resolves.toEqual({
+      state: "incompatible",
+      message: expect.any(String),
+    });
+  });
   it("fails closed outside the primary frame", async () => {
     const handler = createCodexDiscoveryHandler({
       getShellWebContents: () => shell as never,
