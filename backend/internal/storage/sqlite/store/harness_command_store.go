@@ -161,3 +161,15 @@ func digestJSON(v any) string {
 func commandAuthorityClaimFromGen(r gen.CommandAuthorityClaim) domain.CommandAuthorityClaim {
 	return domain.CommandAuthorityClaim{ID: r.ID, AdapterRequestKey: r.AdapterRequestKey, RequestFingerprint: r.RequestFingerprint, OwnerProofID: domain.OwnerProofID(r.OwnerProofID), ConnectionID: domain.HarnessConnectionID(r.HarnessConnectionID), ConnectionGeneration: r.ConnectionGeneration, ConnectionBindingDigest: domain.SHA256Digest(r.ConnectionBindingDigest), TransportClass: domain.HarnessCapabilityClass(r.TransportClass), AppRunID: r.AppRunID, MissionID: r.MissionID, ContentDigest: domain.SHA256Digest(r.ContentDigest), TargetDigest: domain.SHA256Digest(r.TargetDigest), OwnerClass: domain.OwnerCommandClass(r.OwnerClass), CanonicalVersion: r.CanonicalVersion, CanonicalPayload: r.CanonicalPayload, DestinationType: r.DestinationType, DestinationID: r.DestinationID, State: domain.CommandAuthorityClaimState(r.State), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
 }
+
+func (s *Store) ListPendingHarnessCommandOutbox(ctx context.Context) ([]domain.HarnessCommandOutboxRecord, error) {
+	rows, err := s.qr.ListPendingHarnessCommandOutbox(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.HarnessCommandOutboxRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.HarnessCommandOutboxRecord{ClaimID: row.ClaimID, DestinationType: row.DestinationType, DestinationID: row.DestinationID, CanonicalPayload: append([]byte(nil), row.CanonicalPayload...), State: domain.CommandAuthorityClaimState(row.State), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()})
+	}
+	return out, nil
+}

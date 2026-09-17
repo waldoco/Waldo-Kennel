@@ -48,6 +48,13 @@ func (c CanonicalHarnessCommand) Bytes() ([]byte, error) {
 	return json.Marshal(c)
 }
 
+type HarnessCommandOutboxRecord struct {
+	ClaimID, DestinationType, DestinationID string
+	CanonicalPayload                        []byte
+	State                                   CommandAuthorityClaimState
+	CreatedAt, UpdatedAt                    time.Time
+}
+
 type CommandAuthorityClaim struct {
 	ID, AdapterRequestKey, RequestFingerprint string
 	OwnerProofID                              OwnerProofID

@@ -25,7 +25,25 @@ type commandFixture struct {
 
 func newCommandFixture(t *testing.T) commandFixture {
 	t.Helper()
-	s, _, conversationID := conversationFixture(t)
+	s, _, _ := conversationFixture(t)
+	return newCommandFixtureOnStore(t, s)
+}
+
+func newCommandFixtureOnStore(t *testing.T, s *sqlite.Store) commandFixture {
+	t.Helper()
+	ctx := context.Background()
+	seedProject(t, s, "command-fixture")
+	rec := sampleRecord("command-fixture")
+	rec.Mode = domain.SessionModeChat
+	session, err := s.CreateSession(ctx, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := s.CreateConversation(ctx, "conv-command-fixture", domain.ConversationScopeSession, "command-fixture", session.ID, histClock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversationID := conversation.ID
 	now := time.Date(2026, 9, 17, 8, 0, 0, 0, time.UTC)
 	questionID, requestID := "question-generation-1", "provider-question-1"
 	if err := s.UpsertActivity(context.Background(), conversationID, "", domain.ConversationActivity{ID: questionID, Kind: domain.ActivityKindApproval, Status: domain.ActivityStatusPending, RequestID: requestID, Summary: "approve"}, now); err != nil {
@@ -330,5 +348,35 @@ func TestHarnessCommandClaimQuestionMutationFirstRejects(t *testing.T) {
 	}
 	if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); !errors.Is(err, domain.ErrHarnessCommandAuthentication) {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestHarnessCommandOutboxRecoveryReopensPersistedPayloadAndDestination(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := sqlite.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Build against the explicitly located database, then close every connection.
+	f := newCommandFixtureOnStore(t, s)
+	claim, created, err := s.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request)
+	if err != nil || !created {
+		t.Fatalf("created=%v err=%v", created, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := sqlite.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	pending, err := reopened.ListPendingHarnessCommandOutbox(context.Background())
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("pending=%+v err=%v", pending, err)
+	}
+	want, _ := f.request.Command.Bytes()
+	if pending[0].ClaimID != claim.ID || pending[0].DestinationID != claim.DestinationID || pending[0].DestinationType != claim.DestinationType || !bytes.Equal(pending[0].CanonicalPayload, want) {
+		t.Fatalf("recovered=%+v claim=%+v", pending[0], claim)
 	}
 }

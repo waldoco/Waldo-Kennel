@@ -394,6 +394,41 @@ func (q *Queries) InsertOwnerProof(ctx context.Context, arg InsertOwnerProofPara
 	return result.RowsAffected()
 }
 
+const listPendingHarnessCommandOutbox = `-- name: ListPendingHarnessCommandOutbox :many
+SELECT claim_id, destination_type, destination_id, canonical_payload, state, created_at, updated_at FROM harness_command_outbox WHERE state IN ('pending','action_needed') ORDER BY created_at,claim_id
+`
+
+func (q *Queries) ListPendingHarnessCommandOutbox(ctx context.Context) ([]HarnessCommandOutbox, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingHarnessCommandOutbox)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HarnessCommandOutbox{}
+	for rows.Next() {
+		var i HarnessCommandOutbox
+		if err := rows.Scan(
+			&i.ClaimID,
+			&i.DestinationType,
+			&i.DestinationID,
+			&i.CanonicalPayload,
+			&i.State,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveOwnerAnswerQuestion = `-- name: ResolveOwnerAnswerQuestion :execrows
 UPDATE owner_answer_questions SET status='resolved',updated_at=? WHERE conversation_id=? AND request_id=? AND status='pending'
 `

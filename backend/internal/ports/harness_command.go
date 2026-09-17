@@ -18,4 +18,5 @@ type HarnessCommandRequest struct {
 }
 type HarnessCommandStore interface {
 	ValidateAuthoritiesAndCreateCommandClaim(context.Context, HarnessCommandRequest) (domain.CommandAuthorityClaim, bool, error)
+	ListPendingHarnessCommandOutbox(context.Context) ([]domain.HarnessCommandOutboxRecord, error)
 }

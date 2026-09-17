@@ -28,3 +28,6 @@ INSERT INTO command_authority_claims(id,adapter_request_key,request_fingerprint,
 SELECT * FROM command_authority_claims WHERE harness_connection_id=? AND connection_generation=? AND adapter_request_key=?;
 -- name: InsertHarnessCommandOutbox :execrows
 INSERT INTO harness_command_outbox(claim_id,destination_type,destination_id,canonical_payload,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING;
+
+-- name: ListPendingHarnessCommandOutbox :many
+SELECT * FROM harness_command_outbox WHERE state IN ('pending','action_needed') ORDER BY created_at,claim_id;
