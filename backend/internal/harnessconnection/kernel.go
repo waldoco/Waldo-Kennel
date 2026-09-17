@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -20,8 +21,9 @@ import (
 const bearerBytes = 32
 
 type Kernel struct {
-	store  ports.HarnessConnectionStore
-	random io.Reader
+	store    ports.HarnessConnectionStore
+	random   io.Reader
+	randomMu sync.Mutex
 }
 
 func New(store ports.HarnessConnectionStore) *Kernel {
@@ -57,7 +59,9 @@ func (k *Kernel) Issue(ctx context.Context, in IssueRequest) (IssuedConnection, 
 	if err != nil {
 		return IssuedConnection{}, err
 	}
+	k.randomMu.Lock()
 	bearer, verifier, err := newBearer(k.random)
+	k.randomMu.Unlock()
 	if err != nil {
 		return IssuedConnection{}, err
 	}
@@ -124,7 +128,9 @@ func (k *Kernel) Rotate(ctx context.Context, id domain.HarnessConnectionID, gene
 	if k == nil || k.store == nil || k.random == nil {
 		return IssuedConnection{}, domain.ErrHarnessConnectionInvalid
 	}
+	k.randomMu.Lock()
 	bearer, verifier, err := newBearer(k.random)
+	k.randomMu.Unlock()
 	if err != nil {
 		return IssuedConnection{}, err
 	}

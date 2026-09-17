@@ -137,6 +137,7 @@ export function OutcomeMissionPanel({
 						>
 							{(["contract", "plan", "execution", "result", "history"] as const).map((view) => (
 								<Button
+									data-testid={`mission-tab-${view}`}
 									key={view}
 									size="sm"
 									variant={tab === view ? "secondary" : "ghost"}
@@ -152,7 +153,7 @@ export function OutcomeMissionPanel({
 								<MissionContractEditor key={outcomeId} outcomeId={outcomeId} contract={outcome.currentRevision} disabled={connection !== "connected"} />
 								<ContractOverview contract={outcome.currentRevision} />
 								<OutcomeDocumentsPanel outcomeId={outcomeId} />
-								<Button className="mt-4" onClick={() => setTab("plan")}>
+								<Button data-testid="mission-review-plan-cta" className="mt-4" onClick={() => setTab("plan")}>
 									{t("outcome.dashboard.reviewPlan")}
 								</Button>
 							</div>
@@ -279,6 +280,7 @@ function MissionGlance({
 					</p>
 				</div>
 				<Button
+					data-testid="mission-glance-cta"
 					className="shrink-0"
 					onClick={attention.lane === "unavailable" ? onRefresh : () => onSelect(nextTab)}
 					size="sm"

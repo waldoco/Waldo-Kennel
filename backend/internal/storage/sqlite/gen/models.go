@@ -574,6 +574,28 @@ type HarnessConnection struct {
 	UpdatedAt           time.Time
 }
 
+type HarnessPairingChallenge struct {
+	ID                  string
+	Kind                string
+	ConnectionID        string
+	InstallationID      string
+	AdapterDigest       string
+	HarnessIdentity     string
+	ProviderVersion     string
+	ProtocolFingerprint string
+	MissionID           string
+	AppRunID            string
+	CapabilityClasses   string
+	ExpectedGeneration  int64
+	ProofVerifier       string
+	Status              string
+	ResultCode          sql.NullString
+	ConnectionExpiresAt time.Time
+	ExpiresAt           time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type IntakeAnalysisRequest struct {
 	ID                       domain.IntakeAnalysisRequestID
 	IntakeID                 string

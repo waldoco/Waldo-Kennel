@@ -190,7 +190,7 @@ export function CreateProjectFlow({
 				<div className="flex w-full flex-col items-center gap-3">
 					<ImportModePicker disabled={isBusy} onSelect={openFolderStep} />
 					{error && !folderPickerOpen && selectedPath === null && (
-						<p className="text-caption leading-body text-error" role="status">
+						<p className="text-caption leading-body text-error" data-testid="create-project-error" role="status">
 							{error}
 						</p>
 					)}
@@ -354,12 +354,12 @@ function ImportModePicker({
 				<p className="mt-1 text-sm text-muted-foreground">{t("createProject.addDescription")}</p>
 				{onClose && <Button className="absolute right-3 top-3" variant="ghost" size="icon" aria-label={t("createProject.closeDialog")} onClick={onClose}><X className="size-4" /></Button>}
 				<div className="mt-5 grid gap-3 sm:grid-cols-2">
-					<button type="button" disabled={disabled} onClick={() => onSelect("single_repo", true)} className="rounded-lg border border-border p-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+					<button data-testid="create-project-new" type="button" disabled={disabled} onClick={() => onSelect("single_repo", true)} className="rounded-lg border border-border p-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
 						<FolderPlus className="mb-3 size-5" aria-hidden="true" />
 						<span className="block font-medium">{t("createProject.startNew")}</span>
 						<span className="mt-1 block text-sm text-muted-foreground">{t("createProject.startNewDescription")}</span>
 					</button>
-					<button type="button" disabled={disabled} onClick={() => onSelect("single_repo")} className="rounded-lg border border-border p-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+					<button data-testid="create-project-import-existing" type="button" disabled={disabled} onClick={() => onSelect("single_repo")} className="rounded-lg border border-border p-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
 						<Folder className="mb-3 size-5" aria-hidden="true" />
 						<span className="block font-medium">{t("createProject.importExisting")}</span>
 						<span className="mt-1 block text-sm text-muted-foreground">{t("createProject.importExistingDescription")}</span>
@@ -367,7 +367,7 @@ function ImportModePicker({
 				</div>
 				<details className="mt-4 text-sm text-muted-foreground">
 					<summary className="cursor-pointer">{t("createProject.multipleRepositories")}</summary>
-					<Button variant="outline" className="mt-3" disabled={disabled} onClick={() => onSelect("workspace")}>{t("createProject.importWorkspace")}</Button>
+					<Button data-testid="create-project-import-workspace" variant="outline" className="mt-3" disabled={disabled} onClick={() => onSelect("workspace")}>{t("createProject.importWorkspace")}</Button>
 				</details>
 			</div>
 		</>
@@ -451,7 +451,7 @@ function CreateProjectFolderDialog({
 											{isWorkspace ? t("createProject.workspaceRoot") : t("createProject.projectFolder")}
 										</div>
 									</div>
-									<Button type="button" variant="footer" disabled={disabled} onClick={onChooseFolder}>
+									<Button data-testid="create-project-choose-folder" type="button" variant="footer" disabled={disabled} onClick={onChooseFolder}>
 										{t("createProject.change")}
 									</Button>
 								</div>
@@ -492,6 +492,7 @@ function CreateProjectFolderDialog({
 							</div>
 						) : (
 							<button
+								data-testid="create-project-choose-folder"
 								type="button"
 								className="flex min-h-[132px] w-full flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-card)] p-6 text-center transition-colors hover:bg-[var(--color-bg-import-card-hover)] disabled:pointer-events-none disabled:opacity-50 sm:min-h-[160px]"
 								disabled={disabled}

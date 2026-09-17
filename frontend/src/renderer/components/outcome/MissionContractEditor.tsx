@@ -13,7 +13,7 @@ export function MissionContractEditor({ outcomeId, contract, disabled }: {
 }) {
  const { t } = useTranslation();
  const [draft, setDraft] = useState<ContractRevisionRecord | null>(null);
- if (!draft) return <Button className="mb-3" variant="outline" disabled={disabled} onClick={() => setDraft(contract)}>{t("mission.editor.edit")}</Button>;
+ if (!draft) return <Button data-testid="contract-edit" className="mb-3" variant="outline" disabled={disabled} onClick={() => setDraft(contract)}>{t("mission.editor.edit")}</Button>;
  return <div>{draft.id !== contract.id && <p role="alert" className="mb-2 text-sm">{t("mission.editor.changed")}</p>}<ContractDraft outcomeId={outcomeId} contract={draft} disabled={disabled || draft.id !== contract.id} onClose={() => setDraft(null)} /></div>;
 }
 
@@ -48,11 +48,11 @@ function ContractDraft({ outcomeId, contract, disabled, onClose }: { outcomeId: 
  }}>
   <p className="text-sm">{t("mission.editor.note", { revision: contract.number + 1 })}</p>
   <fieldset disabled={busy} className="space-y-4">
-   <label className="block text-sm">{t("mission.editor.goal")}<textarea required className={fieldClass} value={goal} onChange={(e) => setGoal(e.target.value)} /></label>
+   <label className="block text-sm">{t("mission.editor.goal")}<textarea data-testid="contract-goal" required className={fieldClass} value={goal} onChange={(e) => setGoal(e.target.value)} /></label>
    <section className="space-y-3" aria-label={t("mission.criteria")}>
     {criteria.map((criterion, index) => <div key={index} className="space-y-2 border-b border-border pb-3">
-     <label className="block text-sm">{t("mission.editor.criterion", { number: index + 1 })}<textarea required className={fieldClass} value={criterion.text} onChange={(e) => setCriteria(criteria.map((item, i) => i === index ? { ...item, text: e.target.value } : item))} /></label>
-     <label className="block text-sm">{t("mission.editor.evidence")}<textarea className={fieldClass} value={criterion.evidence} onChange={(e) => setCriteria(criteria.map((item, i) => i === index ? { ...item, evidence: e.target.value } : item))} /></label>
+     <label className="block text-sm">{t("mission.editor.criterion", { number: index + 1 })}<textarea data-testid={`contract-criterion-${index}`} required className={fieldClass} value={criterion.text} onChange={(e) => setCriteria(criteria.map((item, i) => i === index ? { ...item, text: e.target.value } : item))} /></label>
+     <label className="block text-sm">{t("mission.editor.evidence")}<textarea data-testid={`contract-evidence-${index}`} className={fieldClass} value={criterion.evidence} onChange={(e) => setCriteria(criteria.map((item, i) => i === index ? { ...item, evidence: e.target.value } : item))} /></label>
      <Button type="button" variant="ghost" disabled={criteria.length === 1} onClick={() => setCriteria(criteria.filter((_, i) => i !== index))}>{t("mission.editor.remove", { number: index + 1 })}</Button>
     </div>)}
     <Button type="button" variant="outline" onClick={() => setCriteria([...criteria, { text: "", evidence: "" }])}>{t("mission.editor.add")}</Button>
@@ -62,9 +62,9 @@ function ContractDraft({ outcomeId, contract, disabled, onClose }: { outcomeId: 
    <label className="block text-sm">{t("mission.editor.nonGoals")}<textarea className={fieldClass} value={nonGoals} onChange={(e) => setNonGoals(e.target.value)} /></label>
    <label className="block text-sm">{t("mission.editor.stops")}<textarea className={fieldClass} value={stops} onChange={(e) => setStops(e.target.value)} /></label>
    <section aria-label={t("mission.editor.permissions")}><h3 className="mb-2 text-sm font-medium">{t("mission.editor.permissions")}</h3><IntakeAuthorityEditor value={authority} onChange={setAuthority} /></section>
-   <div className="flex gap-2"><Button type="submit">{t(mutation.pending ? "mission.editor.saving" : "mission.editor.save")}</Button></div>
+   <div className="flex gap-2"><Button data-testid="contract-save" type="submit">{t(mutation.pending ? "mission.editor.saving" : "mission.editor.save")}</Button></div>
   </fieldset>
-  <Button type="button" variant="ghost" disabled={mutation.pending} onClick={onClose}>{t("mission.editor.discard")}</Button>
+  <Button data-testid="contract-discard" type="button" variant="ghost" disabled={mutation.pending} onClick={onClose}>{t("mission.editor.discard")}</Button>
   {mutation.failure && <p role="alert" className="text-sm text-destructive">{mutation.failure.message}</p>}
  </form>;
 }

@@ -31,6 +31,10 @@ it("starts with one Outcome statement prompt and supports keyboard submission", 
 	render(<QueryClientProvider client={client}><AdaptiveIntakeSurface projectId="project-1" /></QueryClientProvider>);
 	const statement = screen.getByRole("textbox", { name: /what would you like to make true/i });
 	expect(statement).toHaveFocus();
+	// Stable selectors for the packaged Outcome journey harness (docs/handoffs/
+	// 2026-09-16-macos-outcome-journey-harness-plan.md §6).
+	expect(statement).toHaveAttribute("data-testid", "intake-statement-input");
+	expect(screen.getByTestId("intake-capture-submit")).toBeInTheDocument();
 	expect(screen.queryByLabelText(/success criteria/i)).not.toBeInTheDocument();
 	expect(screen.queryByLabelText(/review method/i)).not.toBeInTheDocument();
 	await userEvent.type(statement, "Add keyboard navigation{Meta>}{Enter}{/Meta}");
@@ -143,6 +147,7 @@ function renderReady() {
 it("shows every part of the Contract proposal, not just the four editable fields", async () => {
 	renderReady();
 
+	expect(await screen.findByTestId("intake-confirm")).toBeInTheDocument();
 	// Bounds the previous screen carried but never displayed.
 	expect(await screen.findByText("Stay on this branch")).toBeInTheDocument();
 	expect(screen.getByText("Rewriting the build")).toBeInTheDocument();
