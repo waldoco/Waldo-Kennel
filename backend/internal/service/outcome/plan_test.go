@@ -17,10 +17,13 @@ import (
 type planFakeStore struct {
 	*fakeStore
 
-	mu     sync.Mutex
-	plans  map[domain.OutcomeID][]domain.PlanRevision
-	units  map[domain.PlanRevisionID][]domain.WorkUnit
-	grants map[domain.PlanRevisionID][]domain.CapabilityGrant
+	mu         sync.Mutex
+	plans      map[domain.OutcomeID][]domain.PlanRevision
+	units      map[domain.PlanRevisionID][]domain.WorkUnit
+	grants     map[domain.PlanRevisionID][]domain.CapabilityGrant
+	admissions map[domain.PlanRevisionID]domain.AdmissionVerdict
+	specs      map[domain.PlanRevisionID]map[domain.WorkUnitID]domain.ApprovedExecutableSpec
+	launches   map[domain.AttemptID]domain.WorkspaceBoundLaunchPacket
 }
 
 func newPlanFakeStore() *planFakeStore {
@@ -31,9 +34,12 @@ func newPlanFakeStore() *planFakeStore {
 			revs:     map[domain.OutcomeID][]domain.ContractRevision{},
 			keys:     map[string]domain.OutcomeID{},
 		},
-		plans:  map[domain.OutcomeID][]domain.PlanRevision{},
-		units:  map[domain.PlanRevisionID][]domain.WorkUnit{},
-		grants: map[domain.PlanRevisionID][]domain.CapabilityGrant{},
+		plans:      map[domain.OutcomeID][]domain.PlanRevision{},
+		units:      map[domain.PlanRevisionID][]domain.WorkUnit{},
+		grants:     map[domain.PlanRevisionID][]domain.CapabilityGrant{},
+		admissions: map[domain.PlanRevisionID]domain.AdmissionVerdict{},
+		specs:      map[domain.PlanRevisionID]map[domain.WorkUnitID]domain.ApprovedExecutableSpec{},
+		launches:   map[domain.AttemptID]domain.WorkspaceBoundLaunchPacket{},
 	}
 }
 
@@ -109,6 +115,61 @@ func (f *planFakeStore) ApprovePlanRevision(_ context.Context, outcomeID domain.
 		return out, true, nil
 	}
 	return domain.PlanRevision{}, false, nil
+}
+
+func (f *planFakeStore) GetAdmittedVerdict(_ context.Context, planID domain.PlanRevisionID) (domain.AdmissionVerdict, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	verdict, ok := f.admissions[planID]
+	return verdict, ok, nil
+}
+
+func (f *planFakeStore) AppendAdmissionEvaluation(_ context.Context, verdict domain.AdmissionVerdict) error {
+	return verdict.Validate()
+}
+
+func (f *planFakeStore) ApprovePlanWithAdmission(ctx context.Context, outcomeID domain.OutcomeID, planID domain.PlanRevisionID, verdict domain.AdmissionVerdict) (domain.PlanRevision, bool, error) {
+	if err := verdict.Validate(); err != nil {
+		return domain.PlanRevision{}, true, err
+	}
+	approved, found, err := f.ApprovePlanRevision(ctx, outcomeID, planID)
+	if err != nil || !found {
+		return approved, found, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.admissions[planID] = verdict
+	f.specs[planID] = map[domain.WorkUnitID]domain.ApprovedExecutableSpec{}
+	for _, wu := range verdict.WorkUnits {
+		if wu.Executable != nil {
+			f.specs[planID][wu.WorkUnitID] = *wu.Executable
+		}
+	}
+	return approved, true, nil
+}
+func (f *planFakeStore) GetApprovedExecutableSpec(_ context.Context, planID domain.PlanRevisionID, unitID domain.WorkUnitID) (domain.ApprovedExecutableSpec, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	spec, ok := f.specs[planID][unitID]
+	return spec, ok, nil
+}
+func (f *planFakeStore) PersistWorkspaceBoundLaunchPacket(_ context.Context, packet domain.WorkspaceBoundLaunchPacket) error {
+	if err := packet.Validate(); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.launches[packet.AttemptID]; ok {
+		return errors.New("duplicate launch packet")
+	}
+	f.launches[packet.AttemptID] = packet
+	return nil
+}
+func (f *planFakeStore) GetWorkspaceBoundLaunchPacket(_ context.Context, attemptID domain.AttemptID) (domain.WorkspaceBoundLaunchPacket, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.launches[attemptID]
+	return p, ok, nil
 }
 
 func apiCode(t *testing.T, err error) string {

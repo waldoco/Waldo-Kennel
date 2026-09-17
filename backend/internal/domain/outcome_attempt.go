@@ -296,7 +296,21 @@ const (
 	// ambiguous start: provisioning precedes any provider process, so this
 	// fact asserts that nothing was launched.
 	ObservationInputProvisioningFailed = "input_provisioning_failed"
+	ObservationExecutionUsage          = "execution_usage"
+	ObservationBudgetExceeded          = "budget_exceeded"
 )
+
+// EmittedAttemptObservationKinds is the canonical recognized observation set
+// for lifecycle projection and exhaustive compatibility. Some kinds are legacy
+// or recovery-only and may not have a current service emitter.
+var EmittedAttemptObservationKinds = []string{
+	ObservationAttemptContained, ObservationAttemptResumed, ObservationProviderExit,
+	ObservationAttemptClassified, ObservationAdmissionFailed, ObservationAdmissionAmbiguous,
+	ObservationActivationAmbiguous, ObservationGovernedCheckTerminationUnknown,
+	ObservationProviderStopFailed, ObservationOwnerContained, ObservationOwnerCancel,
+	ObservationOwnerPause, ObservationOwnerResume, ObservationRecoveryAttention,
+	ObservationInputProvisioningFailed, ObservationExecutionUsage, ObservationBudgetExceeded,
+}
 
 // AttemptFence is the custody lock over one worktree subject. At most ONE
 // open fence per subject may exist (partial unique index on released_at IS

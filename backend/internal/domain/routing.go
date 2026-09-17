@@ -45,15 +45,16 @@ type RoutingRequirements struct {
 // RoutingCandidate is normalized harness inventory. ModelSelection/Model describe
 // the candidate's executable fallback semantics when no explicit preference wins.
 type RoutingCandidate struct {
-	ID                  string
-	Provider            string
-	ModelSelection      ExecutionBindingModelSelection
-	Model               string
-	WorkerEligible      bool
-	CoordinatorEligible bool
-	Readiness           CapabilitySupport
-	Capabilities        map[string]CapabilitySupport
-	Models              map[string]CapabilitySupport
+	ID                       string
+	Provider                 string
+	ModelSelection           ExecutionBindingModelSelection
+	Model                    string
+	WorkerEligible           bool
+	CoordinatorEligible      bool
+	Readiness                CapabilitySupport
+	Capabilities             map[string]CapabilitySupport
+	Models                   map[string]CapabilitySupport
+	ExecutionTokenAccounting CapabilitySupport
 }
 
 // RoutingCandidateEvaluation records admission results for one candidate.

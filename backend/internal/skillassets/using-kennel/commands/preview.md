@@ -1,5 +1,8 @@
 # kennel preview
 
+> Compatibility command reference. This command does not grant scheduling or Outcome authority; the daemon validates all governed actions.
+
+
 Open a URL or workspace file in the desktop browser panel for the current
 session, or start a deterministic session-owned dev server from
 an existing `.kennel/launch.json`.

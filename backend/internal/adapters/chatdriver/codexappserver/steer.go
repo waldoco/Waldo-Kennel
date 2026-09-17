@@ -45,6 +45,7 @@ import (
 // feature-detects this interface, and a missed method would present as a steer
 // control that reports the agent cannot do it — while the provider can.
 var _ ports.ChatSteerer = (*conversation)(nil)
+var _ ports.ChatSteerDispatcher = (*conversation)(nil)
 
 // Steer delivers guidance into the turn named by providerTurnID.
 //
@@ -59,15 +60,31 @@ var _ ports.ChatSteerer = (*conversation)(nil)
 // it neither starts nor ends a turn, and the provider's expectedTurnId check is a
 // stronger guarantee than a lock Kennel could hold here — a turn that ends mid-flight
 // makes the request fail rather than land somewhere unintended.
-func (c *conversation) Steer(
+func (c *conversation) Steer(ctx context.Context, providerTurnID string, msg ports.ChatUserMessage) (ports.ChatTurnRef, error) {
+	dispatch, err := c.dispatchSteer(ctx, providerTurnID, msg)
+	return dispatch.Ref, err
+}
+
+func (c *conversation) DispatchSteer(ctx context.Context, providerTurnID string, msg ports.ChatUserMessage) (ports.ChatSteerDispatch, error) {
+	return c.dispatchSteer(ctx, providerTurnID, msg)
+}
+
+func steerDispatchFromReceipt(receipt transportReceipt) ports.ChatSteerDispatch {
+	return ports.ChatSteerDispatch{
+		TransportRequestID: receipt.RequestID, TransportSHA256: receipt.SHA256,
+		TransportBytes: receipt.ByteCount, TransportSequence: receipt.WriteSequence,
+	}
+}
+
+func (c *conversation) dispatchSteer(
 	ctx context.Context,
 	providerTurnID string,
 	msg ports.ChatUserMessage,
-) (ports.ChatTurnRef, error) {
+) (ports.ChatSteerDispatch, error) {
 	if strings.TrimSpace(msg.Text) == "" {
 		// Same rule as SendTurn: there is no keystroke concept here, so an empty
 		// steer is a caller bug rather than a way to nudge the agent.
-		return ports.ChatTurnRef{}, errors.New("steer message text is empty")
+		return ports.ChatSteerDispatch{Acceptance: ports.ChatTurnNotSent}, errors.New("steer message text is empty")
 	}
 
 	if providerTurnID == "" {
@@ -76,12 +93,12 @@ func (c *conversation) Steer(
 		c.mu.Unlock()
 	}
 	if providerTurnID == "" {
-		return ports.ChatTurnRef{}, ports.ErrChatNoSteerableTurn
+		return ports.ChatSteerDispatch{Acceptance: ports.ChatTurnNotSent}, ports.ErrChatNoSteerableTurn
 	}
 
 	input, err := steerInput(msg)
 	if err != nil {
-		return ports.ChatTurnRef{}, err
+		return ports.ChatSteerDispatch{Acceptance: ports.ChatTurnNotSent}, err
 	}
 	params := codexproto.TurnSteerParams{
 		ThreadID:       c.threadID,
@@ -98,12 +115,21 @@ func (c *conversation) Steer(
 	// sandbox fields: a running turn's posture is fixed, and quietly dropping a
 	// per-turn choice here would be less honest than never offering it.
 	var resp codexproto.TurnSteerResponse
-	if err := c.conn.request(ctx, codexproto.MethodTurnSteer, params, &resp); err != nil {
-		if refusal := steerRefusal(err); refusal != nil {
-			return ports.ChatTurnRef{}, refusal
+	receipt, err := c.conn.requestWithTransportReceipt(ctx, codexproto.MethodTurnSteer, params, &resp, nil)
+	dispatch := steerDispatchFromReceipt(receipt)
+	if err != nil {
+		switch {
+		case !receipt.SuccessfulWrite:
+			dispatch.Acceptance = ports.ChatTurnNotSent
+		case steerRefusal(err) != nil:
+			dispatch.Acceptance = ports.ChatTurnRejected
+			return dispatch, steerRefusal(err)
+		default:
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
 		}
-		return ports.ChatTurnRef{}, fmt.Errorf("%s: %w", codexproto.MethodTurnSteer, err)
+		return dispatch, fmt.Errorf("%s: %w", codexproto.MethodTurnSteer, err)
 	}
+	dispatch.Acceptance = ports.ChatTurnAcknowledged
 
 	turn := resp.TurnID
 	if turn == "" {
@@ -115,7 +141,8 @@ func (c *conversation) Steer(
 	c.activeTurn = turn
 	c.mu.Unlock()
 
-	return ports.ChatTurnRef{ProviderTurnID: turn}, nil
+	dispatch.Ref.ProviderTurnID = turn
+	return dispatch, nil
 }
 
 // steerInput converts the complete provider-neutral message before the request is

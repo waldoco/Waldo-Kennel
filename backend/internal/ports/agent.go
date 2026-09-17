@@ -95,6 +95,8 @@ type AgentProfileReadiness struct {
 	// Detail explains what is missing or what was verified, in the adapter's
 	// own words. It is display context, never a machine contract.
 	Detail string `json:"detail,omitempty"`
+	// ExecutionTokenAccounting is true only when this adapter can report trustworthy cumulative execution counters.
+	ExecutionTokenAccounting bool `json:"executionTokenAccounting"`
 }
 
 // AgentProfileReadinessChecker is the optional capability for adapters whose

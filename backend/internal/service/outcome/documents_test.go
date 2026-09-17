@@ -114,6 +114,19 @@ func newDocumentHarness(t *testing.T) *documentHarness {
 	}
 }
 
+func (h *documentHarness) replan(t *testing.T) {
+	t.Helper()
+	plan, err := h.svc.ProposePlan(context.Background(), h.outcomeID, 1)
+	if err != nil {
+		t.Fatalf("replan: %v", err)
+	}
+	if _, err = h.svc.ApprovePlan(context.Background(), h.outcomeID, outcome.ApprovePlanInput{PlanRevisionID: plan.Plan.ID, ExpectedContractRevision: 1}); err != nil {
+		t.Fatalf("approve replanned document context: %v", err)
+	}
+	h.planID = plan.Plan.ID
+	rememberFirstWorkUnit(plan.Plan)
+}
+
 func (h *documentHarness) writeDoc(t *testing.T, name, body string) string {
 	t.Helper()
 	path := filepath.Join(h.dir, name)
@@ -156,6 +169,7 @@ func TestDocumentOutcome_SelectApproveThenStage(t *testing.T) {
 	if !approved.Context.Approved() || approved.Context.ApprovedAt == nil {
 		t.Fatalf("context = %+v, want approved", approved.Context)
 	}
+	h.replan(t)
 
 	if _, err := h.svc.StartAttempt(ctx, h.outcomeID, startInput(h.planID)); err != nil {
 		t.Fatalf("start after approval: %v", err)
@@ -188,6 +202,7 @@ func TestDocumentOutcome_EditedSourcesRefuseAdmission(t *testing.T) {
 	if _, err := h.svc.ApproveDocuments(ctx, h.outcomeID, selected.Context.Digest); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
+	h.replan(t)
 	h.writeDoc(t, "brief.md", "# Rewritten after approval\n")
 
 	view, err := h.svc.GetDocumentContext(ctx, h.outcomeID)

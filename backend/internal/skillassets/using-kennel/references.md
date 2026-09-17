@@ -1,5 +1,8 @@
 # Quick Reference
 
+> **Compatibility CLI note:** these commands describe the currently shipped session CLI. They do not define vNext Outcome authority or session topology. For repository implementation, use `docs/architecture/persistent-mission-runtime.md`; skills and commands remain thin ingress/provider adapters.
+
+
 Natural-language-to-command mappings for common AO tasks.
 
 | You want to... | Command |

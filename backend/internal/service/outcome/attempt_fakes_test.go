@@ -28,6 +28,8 @@ type attemptFakeStore struct {
 	fences         map[string][]domain.AttemptFence
 	refs           map[domain.AttemptID][]domain.AttemptSessionRef
 	obs            map[domain.AttemptID][]domain.AttemptObservation
+	usage          map[domain.AttemptID][]domain.ExecutionUsageSample
+	budgetStops    map[domain.AttemptID]domain.AttemptBudgetStop
 	receipts       map[domain.AttemptID][]domain.AttemptRecoveryReceipt
 
 	// provenance holds recorded protocol-negotiation episodes by session ID,
@@ -64,6 +66,8 @@ func newAttemptFakeStore() *attemptFakeStore {
 		fences:         map[string][]domain.AttemptFence{},
 		refs:           map[domain.AttemptID][]domain.AttemptSessionRef{},
 		obs:            map[domain.AttemptID][]domain.AttemptObservation{},
+		usage:          map[domain.AttemptID][]domain.ExecutionUsageSample{},
+		budgetStops:    map[domain.AttemptID]domain.AttemptBudgetStop{},
 		receipts:       map[domain.AttemptID][]domain.AttemptRecoveryReceipt{},
 	}
 }
@@ -498,11 +502,11 @@ func (f *fakeSpawner) setReadiness(readiness ports.AgentProfileReadiness) {
 
 func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (ports.AttemptSpawnResult, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.spawned = append(f.spawned, req)
 	if f.spawnErr != nil {
 		err := f.spawnErr
 		f.spawnErr = nil
+		f.mu.Unlock()
 		return ports.AttemptSpawnResult{}, err
 	}
 	f.sessionN++
@@ -517,8 +521,15 @@ func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (p
 		},
 	}
 	bound, err := req.ExecutionPolicy.BindWorkspaceRoot(rec.Metadata.WorkspacePath)
+	f.mu.Unlock()
 	if err != nil {
 		return ports.AttemptSpawnResult{}, err
+	}
+	if req.BeforeProviderLaunch == nil {
+		return ports.AttemptSpawnResult{}, errors.New("missing prelaunch persistence callback")
+	}
+	if err := req.BeforeProviderLaunch(context.Background(), rec, bound); err != nil {
+		return ports.AttemptSpawnResult{}, &ports.AttemptPrelaunchError{Stage: "before_provider_launch", Err: err}
 	}
 	return ports.AttemptSpawnResult{Session: domain.Session{SessionRecord: rec}, ExecutionPolicy: &bound, CompletionBoundary: f.completionBoundary}, nil
 }
@@ -692,4 +703,91 @@ func (f *fakeStore) ListRecoveryReceipts(context.Context, domain.AttemptID) ([]d
 
 func (f *fakeStore) RenewFenceForAttempt(context.Context, domain.AttemptID, time.Time) (int64, error) {
 	return 0, nil
+}
+
+func (f *attemptFakeStore) AppendAttemptExecutionUsage(_ context.Context, sample domain.ExecutionUsageSample) (domain.ExecutionUsageSample, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.usage[sample.AttemptID]
+	if len(list) > 0 {
+		p := list[len(list)-1]
+		if sample.Sequence == p.Sequence && sample.InputTokens == p.InputTokens && sample.OutputTokens == p.OutputTokens {
+			return sample, false, nil
+		}
+		if sample.Sequence <= p.Sequence || sample.InputTokens < p.InputTokens || sample.OutputTokens < p.OutputTokens {
+			return domain.ExecutionUsageSample{}, false, errors.New("execution usage is not monotonic")
+		}
+		sample.InputDelta = sample.InputTokens - p.InputTokens
+		sample.OutputDelta = sample.OutputTokens - p.OutputTokens
+	} else {
+		sample.InputDelta = sample.InputTokens
+		sample.OutputDelta = sample.OutputTokens
+	}
+	f.usage[sample.AttemptID] = append(list, sample)
+	return sample, true, nil
+}
+func (f *attemptFakeStore) WorkUnitExecutionUsage(_ context.Context, id domain.WorkUnitID) (domain.ExecutionUsageTotals, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var t domain.ExecutionUsageTotals
+	for _, attempts := range f.attempts {
+		for _, a := range attempts {
+			if a.WorkUnitID == id {
+				for _, u := range f.usage[a.ID] {
+					t.InputTokens += u.InputDelta
+					t.OutputTokens += u.OutputDelta
+				}
+			}
+		}
+	}
+	return t, nil
+}
+
+func (f *attemptFakeStore) ClaimAttemptBudgetStop(_ context.Context, claim domain.AttemptBudgetStop) (domain.AttemptBudgetStop, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.budgetStops == nil {
+		f.budgetStops = map[domain.AttemptID]domain.AttemptBudgetStop{}
+	}
+	if old, ok := f.budgetStops[claim.AttemptID]; ok {
+		if old.SessionID != claim.SessionID || old.Reason != claim.Reason {
+			return old, false, errors.New("attempt budget stop claim conflicts with durable claim")
+		}
+		return old, false, nil
+	}
+	f.budgetStops[claim.AttemptID] = claim
+	return claim, true, nil
+}
+func (f *attemptFakeStore) RecordAttemptBudgetProviderStopped(_ context.Context, id domain.AttemptID, session string, reason domain.RuntimeBudgetReasonCode, result string, at time.Time) (domain.AttemptBudgetStop, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	x, ok := f.budgetStops[id]
+	if !ok || x.SessionID != session || x.Reason != reason {
+		return domain.AttemptBudgetStop{}, errors.New("budget machine stop result conflicts with durable claim")
+	}
+	if x.ProviderStoppedAt != nil {
+		if !domain.CanonicalJSONEqual(x.MachineResult, result) {
+			return x, errors.New("budget machine stop result conflicts with durable result")
+		}
+		return x, nil
+	}
+	x.ProviderStoppedAt = &at
+	x.MachineResult = result
+	f.budgetStops[id] = x
+	return x, nil
+}
+func (f *attemptFakeStore) GetAttemptBudgetStop(_ context.Context, id domain.AttemptID) (domain.AttemptBudgetStop, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	x, ok := f.budgetStops[id]
+	return x, ok, nil
+}
+func (f *attemptFakeStore) ListUnfinishedAttemptBudgetStops(_ context.Context) ([]domain.AttemptBudgetStop, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.AttemptBudgetStop
+	for _, x := range f.budgetStops {
+		out = append(out, x)
+	}
+	return out, nil
 }

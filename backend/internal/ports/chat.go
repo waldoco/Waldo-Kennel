@@ -3,6 +3,8 @@ package ports
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 )
@@ -43,6 +45,15 @@ var (
 	// letting a protocol error escape: pressing stop a moment too late is an
 	// ordinary thing for a person to do, not an internal failure.
 	ErrChatNoActiveTurn = errors.New("no active turn to interrupt")
+	// ErrChatInterruptRestartRequired means the provider accepted Stop but did not
+	// quiesce its active command before the bounded grace period. The driver has
+	// killed its owned process tree; the service must resume the same native
+	// conversation in a fresh controller before reporting Stop complete.
+	ErrChatInterruptRestartRequired = errors.New("chat interrupt requires controller restart")
+	// ErrChatInterruptContainmentFailed means the provider accepted Stop but the
+	// owned process tree could not be terminated. Effects may still be running;
+	// callers must preserve the Stop cutoff and block further dispatch.
+	ErrChatInterruptContainmentFailed = errors.New("chat interrupt process containment failed")
 	// ErrChatRequestNotPending means the request a decision names is not waiting
 	// for one: already answered, superseded, or from a controller that has been
 	// replaced. Two clients looking at the same approval is normal, so one of them
@@ -56,6 +67,10 @@ var (
 	// ErrChatConfigOptionInvalid means a client named an unknown option, sent the
 	// wrong value type, or selected a value the provider did not advertise.
 	ErrChatConfigOptionInvalid = errors.New("chat config option value is invalid")
+	// ErrChatProfileMismatch means a provider's structured Start/Resume policy
+	// did not acknowledge the comparable fields of Kennel's requested native
+	// profile. The conversation is closed before boundary evidence may count.
+	ErrChatProfileMismatch = errors.New("chat native profile mismatch")
 )
 
 // ChatCapability names something a driver may or may not be able to do. Kennel gates
@@ -170,6 +185,10 @@ type ChatStartConfig struct {
 	// ExecutionPolicy is non-nil only for a governed Attempt. Chat adapters must
 	// validate and map it before opening a provider conversation.
 	ExecutionPolicy *domain.AttemptExecutionPolicy
+	// NativeSandboxProfile is an explicit provider-neutral native chat constraint.
+	// It proves a provider substrate only; it is not Outcome authority and must
+	// never set, derive, or bypass ExecutionPolicy.
+	NativeSandboxProfile *ChatNativeSandboxProfile
 	// SystemPrompt carries Kennel's standing instructions for the session.
 	SystemPrompt string
 	// AdditionalDirectories are extra absolute workspace roots the provider may
@@ -195,11 +214,97 @@ type ChatResumeConfig struct {
 	// ExecutionPolicy is the frozen Attempt policy for governed recovery.
 	// Drivers must apply the same per-turn enforcement boundary as fresh start.
 	ExecutionPolicy *domain.AttemptExecutionPolicy
+	// NativeSandboxProfile reapplies the same immutable native substrate
+	// constraint after a fresh provider process. It remains separate from the
+	// governed Attempt execution policy above.
+	NativeSandboxProfile *ChatNativeSandboxProfile
 	// SystemPrompt is recomputed by the session manager on restore and reapplied
 	// to the provider process. It is not persisted in the conversation transcript.
 	SystemPrompt          string
 	AdditionalDirectories []string
 	MCPServers            []ChatMCPServerConfig
+}
+
+// ChatNativeSandbox names a provider-neutral native chat sandbox mode.
+type ChatNativeSandbox string
+
+const (
+	ChatNativeSandboxWorkspaceWrite ChatNativeSandbox = "workspace_write"
+)
+
+// ChatNativeSandboxProfile is a bounded native-provider substrate constraint.
+// Stage 1 admits exactly workspace-write, network denied, no additional roots,
+// and both ambient temporary-root exclusions. Absence preserves legacy chat.
+type ChatNativeSandboxProfile struct {
+	Sandbox             ChatNativeSandbox `json:"sandbox"`
+	NetworkAccess       bool              `json:"network_access"`
+	WritableRoots       []string          `json:"writable_roots"`
+	ExcludeSlashTmp     bool              `json:"exclude_slash_tmp"`
+	ExcludeTmpdirEnvVar bool              `json:"exclude_tmpdir_env_var"`
+}
+
+type ChatNativePolicyBoundary string
+
+const (
+	ChatNativePolicyBoundaryThreadStart  ChatNativePolicyBoundary = "thread_start"
+	ChatNativePolicyBoundaryTurnStart    ChatNativePolicyBoundary = "turn_start"
+	ChatNativePolicyBoundaryThreadResume ChatNativePolicyBoundary = "thread_resume"
+)
+
+type ChatNativePolicyClaimClass string
+
+const (
+	ChatNativePolicyClaimRequestIntegrity       ChatNativePolicyClaimClass = "request_integrity"
+	ChatNativePolicyClaimProviderAcknowledgment ChatNativePolicyClaimClass = "provider_acknowledgment"
+	ChatNativePolicyClaimBehavioralConformance  ChatNativePolicyClaimClass = "behavioral_conformance"
+)
+
+type ChatNativePolicyObservationAvailability string
+
+const (
+	ChatNativePolicyObservationAvailable                 ChatNativePolicyObservationAvailability = "available"
+	ChatNativePolicyObservationPublicProtocolUnavailable ChatNativePolicyObservationAvailability = "public_protocol_unavailable"
+)
+
+type ChatNativePolicyComparison string
+
+const (
+	ChatNativePolicyComparisonMatchComparableFields ChatNativePolicyComparison = "match_comparable_fields"
+	ChatNativePolicyComparisonNotObservable         ChatNativePolicyComparison = "not_observable"
+)
+
+// ChatNativePolicyEvidence separates request integrity, provider
+// acknowledgment, and behavioral conformance. Turn records deliberately keep
+// ObservedPolicy nil when the public protocol exposes no effective per-turn
+// policy; transport hashes never contain raw frame bytes or prompt content.
+type ChatNativePolicyEvidence struct {
+	Sequence                        int64                                   `json:"sequence"`
+	Boundary                        ChatNativePolicyBoundary                `json:"boundary"`
+	ClaimClass                      ChatNativePolicyClaimClass              `json:"claim_class"`
+	ThreadID                        string                                  `json:"thread_id,omitempty"`
+	ProviderTurnID                  string                                  `json:"turn_id,omitempty"`
+	RequestedPolicy                 map[string]any                          `json:"requested_policy,omitempty"`
+	ObservedPolicy                  map[string]any                          `json:"observed_policy"`
+	ObservationSource               string                                  `json:"observation_source"`
+	ProviderObservationAvailability ChatNativePolicyObservationAvailability `json:"provider_observation_availability"`
+	ComparisonResult                ChatNativePolicyComparison              `json:"comparison_result"`
+	CanonicalizationVersion         string                                  `json:"canonicalization_version"`
+	RuntimeBinarySHA256             string                                  `json:"runtime_binary_sha256,omitempty"`
+	ProtocolDigest                  string                                  `json:"protocol_digest,omitempty"`
+	RequestWireShape                string                                  `json:"request_wire_shape"`
+	TransportRequestID              int64                                   `json:"transport_request_id,omitempty"`
+	TransportMethod                 string                                  `json:"transport_method,omitempty"`
+	TransportWriteSequence          int64                                   `json:"transport_write_sequence,omitempty"`
+	TransportSHA256                 string                                  `json:"transport_sha256,omitempty"`
+	TransportByteCount              int                                     `json:"transport_byte_count,omitempty"`
+	TransportSuccessfulWrite        bool                                    `json:"transport_successful_write"`
+	Timestamp                       time.Time                               `json:"timestamp"`
+}
+
+// ChatNativePolicyEvidenceReader exposes bounded native policy evidence for a
+// Stage 1 proof without exposing raw provider frames or prompt content.
+type ChatNativePolicyEvidenceReader interface {
+	NativePolicyEvidence() []ChatNativePolicyEvidence
 }
 
 // ChatMCPServerConfig is the provider-neutral session-setup shape for a tool
@@ -519,6 +624,72 @@ type (
 // ChatTurnRef identifies a turn the provider accepted.
 type ChatTurnRef struct {
 	ProviderTurnID string
+}
+
+// ChatTurnAcceptance describes only what the provider transport proved about a
+// turn request. A fully written request with no conclusive response is delivery
+// unknown, not rejection and not permission to retry.
+type ChatTurnAcceptance string
+
+// Valid reports whether the transport result has defined delivery semantics.
+func (a ChatTurnAcceptance) Valid() bool {
+	switch a {
+	case ChatTurnNotSent, ChatTurnRejected, ChatTurnDeliveryUnknown, ChatTurnAcknowledged:
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	ChatTurnNotSent         ChatTurnAcceptance = "not_sent"
+	ChatTurnRejected        ChatTurnAcceptance = "rejected"
+	ChatTurnDeliveryUnknown ChatTurnAcceptance = "delivery_unknown"
+	ChatTurnAcknowledged    ChatTurnAcceptance = "acknowledged"
+)
+
+// ChatTurnDispatch is the evidence returned by a driver that can distinguish
+// transport write from provider acceptance. Transport fields contain no prompt,
+// credentials, provider response, or other request content.
+type ChatTurnDispatch struct {
+	Acceptance         ChatTurnAcceptance
+	Ref                ChatTurnRef
+	TransportRequestID int64
+	TransportSHA256    string
+	TransportBytes     int
+	TransportSequence  int64
+}
+
+// Validate rejects contradictory transport evidence before a controller can
+// turn it into durable command state.
+func (d ChatTurnDispatch) Validate() error {
+	if !d.Acceptance.Valid() {
+		return errors.New("chat turn dispatch acceptance is invalid")
+	}
+	written := d.TransportRequestID > 0 && strings.TrimSpace(d.TransportSHA256) != "" &&
+		d.TransportBytes > 0 && d.TransportSequence > 0
+	switch d.Acceptance {
+	case ChatTurnNotSent:
+		if written || d.Ref.ProviderTurnID != "" {
+			return errors.New("not-sent chat turn cannot carry transport or provider evidence")
+		}
+	case ChatTurnRejected, ChatTurnDeliveryUnknown:
+		if !written || d.Ref.ProviderTurnID != "" {
+			return errors.New("unacknowledged written chat turn has contradictory evidence")
+		}
+	case ChatTurnAcknowledged:
+		if !written || strings.TrimSpace(d.Ref.ProviderTurnID) == "" {
+			return errors.New("acknowledged chat turn requires transport and provider turn evidence")
+		}
+	}
+	return nil
+}
+
+// ChatTurnDispatcher is an optional stronger send boundary. Controllers use it
+// for governed delivery; legacy drivers keep the existing SendTurn contract
+// until their protocol can provide equally honest evidence.
+type ChatTurnDispatcher interface {
+	DispatchTurn(ctx context.Context, msg ChatUserMessage) (ChatTurnDispatch, error)
 }
 
 // ChatDeferredTurnStarter is implemented by protocols whose prompt call is the

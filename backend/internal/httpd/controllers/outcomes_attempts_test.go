@@ -234,6 +234,11 @@ func (controllerSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest)
 	if err != nil {
 		return ports.AttemptSpawnResult{}, err
 	}
+	if req.BeforeProviderLaunch != nil {
+		if err := req.BeforeProviderLaunch(context.Background(), rec, bound); err != nil {
+			return ports.AttemptSpawnResult{}, err
+		}
+	}
 	return ports.AttemptSpawnResult{Session: domain.Session{SessionRecord: rec}, ExecutionPolicy: &bound}, nil
 }
 
@@ -251,7 +256,9 @@ func TestAttemptRoutesFunctionalThroughRealStore(t *testing.T) {
 		t.Fatalf("seed project: %v", err)
 	}
 	spawner := controllerSpawner{}
-	svc := outcomevc.New(storeHandle, nil).WithPlanning(intelligencetest.New(), controllerRouting{}).WithExecution(spawner, storeHandle)
+	svc := outcomevc.New(storeHandle, nil).WithPlanning(intelligencetest.New(), controllerRouting{})
+	svc = svc.WithExecution(spawner, storeHandle)
+	svc.AdmissionPolicy = controllerAdmissionPolicy(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := httptest.NewServer(httpd.NewRouterWithControl(config.Config{}, log, nil, httpd.APIDeps{
 		Outcomes: svc,
@@ -356,11 +363,11 @@ func TestAttemptRoutesFunctionalThroughRealStore(t *testing.T) {
 
 	// Recovery reconcile cannot prove liveness for the never-signalled fake:
 	// lost verdict + replacement receipt, then a replacement may start.
+	unprovenBytes, unprovenStatus, _ := doRequest(t, srv, http.MethodPost,
+		"/api/v1/outcomes/"+id+"/attempts/"+attemptEnvelope.Attempt.ID+"/recovery", `{"action":"replace"}`)
 	recBytes, recStatus, _ := doRequest(t, srv, http.MethodPost,
 		"/api/v1/outcomes/"+id+"/attempts/"+attemptEnvelope.Attempt.ID+"/recovery",
 		`{"action":"replace","confirmProviderStopped":true}`)
-	unprovenBytes, unprovenStatus, _ := doRequest(t, srv, http.MethodPost,
-		"/api/v1/outcomes/"+id+"/attempts/"+attemptEnvelope.Attempt.ID+"/recovery", `{"action":"replace"}`)
 	if unprovenStatus != http.StatusConflict || !strings.Contains(string(unprovenBytes), "ATTEMPT_CUSTODY_UNPROVEN") {
 		t.Fatalf("unproven replace = %d want 409: %s", unprovenStatus, unprovenBytes)
 	}

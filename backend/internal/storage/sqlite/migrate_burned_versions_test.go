@@ -140,6 +140,20 @@ var shippedMigrations = map[int64]string{
 	134: "0134_governed_process_completion.sql",
 	135: "0135_repository_context_limits.sql",
 	136: "0136_chat_protocol_provenance.sql",
+	137: "0137_admission_packets.sql",
+	138: "0138_work_unit_intent_and_execution_usage.sql",
+	139: "0139_attempt_replacement_decisions.sql",
+	140: "0140_governed_commands.sql",
+	141: "0141_governed_control_commands.sql",
+	142: "0142_governed_control_request_instance.sql",
+	143: "0143_governed_command_claim_adoption.sql",
+	144: "0144_governed_control_claim_adoption.sql",
+	145: "0145_harness_connections.sql",
+	146: "0146_harness_pairing_challenges.sql",
+	147: "0147_owner_proofs.sql",
+	148: "0148_owner_proof_target_binding.sql",
+	149: "0149_needs_you_cdc.sql",
+	150: "0150_harness_authority_api.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they

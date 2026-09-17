@@ -97,8 +97,9 @@ type View struct {
 // injected explicitly; absence fails closed rather than inventing provider or
 // execution behavior.
 type Service struct {
-	store ports.OutcomeStore
-	proof ports.OutcomeProofStore
+	store     ports.OutcomeStore
+	admission ports.AdmissionStore
+	proof     ports.OutcomeProofStore
 
 	proposer ports.DecompositionProposer
 	reaper   ports.AnalystSessionReaper
@@ -115,7 +116,8 @@ type Service struct {
 	planningTurnMu sync.Mutex
 	planningTurns  map[domain.PlanningSessionID]*planningTurnCancellation
 
-	PolicyLayers [][]string
+	PolicyLayers    [][]string
+	AdmissionPolicy *domain.AdmissionPolicy
 
 	spawner    ports.AttemptSessionSpawner
 	heartbeats heartbeatSource
@@ -153,6 +155,9 @@ type Service struct {
 	// bytes that execution actually reads.
 	documents     ports.DocumentContextStore
 	documentBytes ports.DocumentSnapshotStore
+
+	needsYou           ports.NeedsYouStore
+	needsYouDispatcher NeedsYouDispatcher
 
 	staleHeartbeat time.Duration
 }
@@ -198,6 +203,9 @@ func New(store ports.OutcomeStore, clock func() time.Time) *Service {
 		store: store, clock: clock, checkReservationEpoch: uuid.NewString(), activeCheckRuns: map[string]int{},
 		planningTurns: make(map[domain.PlanningSessionID]*planningTurnCancellation),
 	}
+	if admission, ok := store.(ports.AdmissionStore); ok {
+		service.admission = admission
+	}
 	if proof, ok := store.(ports.OutcomeProofStore); ok {
 		service.proof = proof
 	}
@@ -214,6 +222,12 @@ func New(store ports.OutcomeStore, clock func() time.Time) *Service {
 		service.receipts = receipts
 	}
 	return service
+}
+
+// WithAdmissionStore overrides admission evidence storage for degraded-profile tests and wiring.
+func (s *Service) WithAdmissionStore(store ports.AdmissionStore) *Service {
+	s.admission = store
+	return s
 }
 
 // WithPlanning wires non-authoritative planning and deterministic execution

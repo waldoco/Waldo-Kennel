@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +20,8 @@ import (
 
 // eventBuffer bounds the normalized event stream. Deltas are dropped when a
 // consumer falls this far behind; lifecycle events are not.
+var _ ports.ChatTurnDispatcher = (*conversation)(nil)
+
 const eventBuffer = 4096
 
 // approvalWait bounds how long the provider is left blocked on an unanswered
@@ -25,6 +29,11 @@ const eventBuffer = 4096
 // resolves would hang the session indefinitely. On expiry Kennel refuses rather than
 // deciding on the user's behalf.
 const approvalWait = 30 * time.Minute
+
+// interruptQuiescenceWait is the provider grace period after it accepts Stop.
+// A command that remains active after this bound is not safe to leave attached:
+// Codex 0.154.0 can report the turn interrupted while its shell keeps writing.
+const interruptQuiescenceWait = 1500 * time.Millisecond
 
 // errConversationClosed reports a decision arriving after the controller ended.
 var errConversationClosed = errors.New("conversation closed")
@@ -56,6 +65,14 @@ type conversation struct {
 	// governedSandboxPolicy is sent on every governed turn. Thread/start only
 	// accepts a broad sandbox name; turn/start carries the effective boundary.
 	governedSandboxPolicy map[string]any
+	// nativeSandboxPolicy is the immutable Stage 1 substrate constraint. It is
+	// separate from governed Outcome execution and is pinned after caller turn
+	// settings. nativePolicyEvidence stores bounded records without raw frames or
+	// prompt content.
+	nativeSandboxPolicy  map[string]any
+	nativePolicyEvidence []ports.ChatNativePolicyEvidence
+	runtimeBinarySHA256  string
+	protocolDigest       string
 	// intelligencePermissions names the request-scoped, injected permission
 	// profile pinned on every Waldo proposal turn. It must never be inferred
 	// from ordinary Chat permission modes.
@@ -64,7 +81,23 @@ type conversation struct {
 
 	mu      sync.Mutex
 	pending map[string]*parkedRequest
-	closed  bool
+	// rawCodeModeExec pairs the public opt-in rawResponseItem/completed call/output
+	// records that Codex emits for Code Mode exec. Pump is its sole owner.
+	rawCodeModeExec map[string]codeModeExecCall
+	// rawExecCompleted holds raw fallback completions until turn/completed, so a
+	// standard commandExecution item can win without duplicate activities. Pump owns it.
+	rawExecCompleted map[string]ports.ChatEvent
+	closed           bool
+	// emitWG tracks in-flight emit calls so c.events is only closed once every
+	// send that started before closed flipped true has returned. Without this,
+	// a caller outside pump (Interrupt's clearInterrupt, in particular) can be
+	// sending on c.events at the exact moment pump's own shutdown closes it.
+	emitWG sync.WaitGroup
+	// interruptWG keeps the event stream open for an Interrupt already in
+	// progress. Only that caller can release a deferred interrupted terminal
+	// after it verifies process-tree quiescence; generic connection shutdown
+	// cannot make that claim.
+	interruptWG sync.WaitGroup
 
 	// sendMu serializes turn dispatch so only one operation mutates the provider
 	// conversation at a time.
@@ -73,6 +106,13 @@ type conversation struct {
 	// activeTurn is the most recent provider turn id, used when a caller asks to
 	// interrupt without naming one.
 	activeTurn string
+	// terminalTurns and activeCommands let Interrupt distinguish a settled stop
+	// from Codex's early interrupted notification. They are bounded to the live
+	// thread and reset as turns settle.
+	terminalTurns    map[string]bool
+	activeCommands   map[string]int
+	interrupting     map[string]bool
+	deferredTerminal map[string]ports.ChatEvent
 
 	// contextTokens is the conversation's latest position in the model's context,
 	// and contextWindow the size of that context. Both come from the provider's
@@ -108,6 +148,7 @@ var _ ports.ChatUsageReporter = (*conversation)(nil)
 // Same reason, for compaction. Losing this method does not break a build; it just
 // makes the control disappear and long conversations start failing again.
 var _ ports.ChatCompactor = (*conversation)(nil)
+var _ ports.ChatAnswerDispatcher = (*conversation)(nil)
 
 // Same reason, for the MCP reload: a dropped method makes the affordance vanish and
 // leaves a session with a dead tool server no way back.
@@ -115,11 +156,17 @@ var _ ports.ChatMCPReloader = (*conversation)(nil)
 
 func newConversation(proc *process, log *slog.Logger) *conversation {
 	c := &conversation{
-		proc:     proc,
-		log:      log,
-		events:   make(chan ports.ChatEvent, eventBuffer),
-		pending:  make(map[string]*parkedRequest),
-		pumpDone: make(chan struct{}),
+		proc:             proc,
+		log:              log,
+		events:           make(chan ports.ChatEvent, eventBuffer),
+		pending:          make(map[string]*parkedRequest),
+		rawCodeModeExec:  make(map[string]codeModeExecCall),
+		rawExecCompleted: make(map[string]ports.ChatEvent),
+		terminalTurns:    make(map[string]bool),
+		activeCommands:   make(map[string]int),
+		interrupting:     make(map[string]bool),
+		deferredTerminal: make(map[string]ports.ChatEvent),
+		pumpDone:         make(chan struct{}),
 	}
 	c.conn = newConn(proc.stdin, proc.stdout, log, c.handleServerRequest)
 	return c
@@ -134,6 +181,32 @@ func (c *conversation) start(threadID, model, effort string, governedSandboxPoli
 	c.threadEffort = effort
 	c.governedSandboxPolicy = governedSandboxPolicy
 	go c.pump()
+}
+
+func (c *conversation) configureNativeSandbox(policy map[string]any, initial ports.ChatNativePolicyEvidence) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	initial.Sequence = 1
+	initial.RuntimeBinarySHA256 = c.runtimeBinarySHA256
+	initial.ProtocolDigest = c.protocolDigest
+	records := []ports.ChatNativePolicyEvidence{cloneNativePolicyEvidence(initial)}
+	if err := validateNativePolicyEvidence(records, policy, initial.ThreadID, c.runtimeBinarySHA256, c.protocolDigest); err != nil {
+		return err
+	}
+	c.nativeSandboxPolicy = cloneSandboxPolicy(policy)
+	c.nativePolicyEvidence = records
+	return nil
+}
+
+// NativePolicyEvidence returns a defensive copy of the bounded Stage 1 records.
+func (c *conversation) NativePolicyEvidence() []ports.ChatNativePolicyEvidence {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	records := make([]ports.ChatNativePolicyEvidence, len(c.nativePolicyEvidence))
+	for i := range c.nativePolicyEvidence {
+		records[i] = cloneNativePolicyEvidence(c.nativePolicyEvidence[i])
+	}
+	return records
 }
 
 // ProviderConversationID is the Codex thread id Kennel persists for resume.
@@ -156,7 +229,7 @@ func (c *conversation) Events() <-chan ports.ChatEvent { return c.events }
 // connection ends, then reports why and closes the stream.
 func (c *conversation) pump() {
 	defer close(c.pumpDone)
-	defer close(c.events)
+	defer c.closeEvents()
 
 	for n := range c.conn.notifs() {
 		// Before normalizing, because a token-usage report is the only place the
@@ -167,7 +240,24 @@ func (c *conversation) pump() {
 		// The clock is passed in rather than read inside: a rate-limit reset arrives
 		// as an absolute instant and has to become a remaining duration, and a
 		// normalizer that reads the clock itself cannot be tested deterministically.
+		c.normalizeRawExec(n)
+
 		for _, ev := range normalizeNotification(n, time.Now()) {
+			c.trackInterruptState(ev)
+			if c.deferInterruptedTerminal(ev) {
+				continue
+			}
+			if ev.Kind == ports.ChatEventActivityCompleted && ev.ActivityKind == domain.ActivityKindCommand {
+				delete(c.rawExecCompleted, ev.ProviderItemID)
+			}
+			if ev.Kind == ports.ChatEventTurnCompleted {
+				for callID, fallback := range c.rawExecCompleted {
+					if fallback.ProviderTurnID == ev.ProviderTurnID {
+						c.emit(fallback)
+						delete(c.rawExecCompleted, callID)
+					}
+				}
+			}
 			rootConversation := ev.ProviderConversationID == "" || ev.ProviderConversationID == c.threadID
 			if ev.Kind == ports.ChatEventTurnStarted && ev.ProviderTurnID != "" && rootConversation {
 				c.mu.Lock()
@@ -212,7 +302,22 @@ func (c *conversation) pump() {
 
 // emit delivers an event, preferring to drop a delta over blocking the reader. A
 // lifecycle event is never dropped silently.
+//
+// pump is not the only emitter: Interrupt's forced-stop path emits its own
+// terminal event from the caller's goroutine, after the app-server process (and
+// so pump's connection) may already have ended. Sending on c.events after pump
+// has closed it would panic, so every send is gated on closed, and closeEvents
+// waits for every emit that got past that gate before it closes the channel.
 func (c *conversation) emit(ev ports.ChatEvent) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.emitWG.Add(1)
+	c.mu.Unlock()
+	defer c.emitWG.Done()
+
 	select {
 	case c.events <- ev:
 		return
@@ -240,9 +345,33 @@ func (c *conversation) emit(ev ports.ChatEvent) {
 	}
 }
 
+// closeEvents ends the event stream once every emit already admitted past the
+// closed gate has returned. Setting closed here is redundant with the common
+// path (failPendingApprovals already set it before pump's defers run), but
+// Close can end the connection before pump ever reaches that point, so this
+// stays the single place that guarantees closed is true before the channel is.
+func (c *conversation) closeEvents() {
+	// If an Interrupt is already verifying quiescence, let it release (or
+	// discard) its deferred terminal before closing the stream. A connection
+	// close with no active Interrupt never releases deferred terminals.
+	c.interruptWG.Wait()
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	c.emitWG.Wait()
+	close(c.events)
+}
+
 // SendTurn delivers one message to the provider.
 func (c *conversation) SendTurn(ctx context.Context, msg ports.ChatUserMessage) (ports.ChatTurnRef, error) {
-	return c.sendTurn(ctx, msg, nil)
+	dispatch, err := c.dispatchTurn(ctx, msg, nil)
+	return dispatch.Ref, err
+}
+
+// DispatchTurn preserves the distinction between a provider rejection and an
+// ambiguous result after the complete request frame crossed the transport.
+func (c *conversation) DispatchTurn(ctx context.Context, msg ports.ChatUserMessage) (ports.ChatTurnDispatch, error) {
+	return c.dispatchTurn(ctx, msg, nil)
 }
 
 // sendTurn is the shared turn/start boundary. Structured reasoning uses the
@@ -250,10 +379,15 @@ func (c *conversation) SendTurn(ctx context.Context, msg ports.ChatUserMessage) 
 // adapter prevents a generic chat caller from smuggling provider wire fields
 // through the ports contract.
 func (c *conversation) sendTurn(ctx context.Context, msg ports.ChatUserMessage, outputSchema json.RawMessage) (ports.ChatTurnRef, error) {
+	dispatch, err := c.dispatchTurn(ctx, msg, outputSchema)
+	return dispatch.Ref, err
+}
+
+func (c *conversation) dispatchTurn(ctx context.Context, msg ports.ChatUserMessage, outputSchema json.RawMessage) (ports.ChatTurnDispatch, error) {
 	if strings.TrimSpace(msg.Text) == "" {
 		// There is no keystroke concept here: an empty message is a caller bug,
 		// not a way to nudge the agent.
-		return ports.ChatTurnRef{}, errors.New("chat message text is empty")
+		return ports.ChatTurnDispatch{Acceptance: ports.ChatTurnNotSent}, errors.New("chat message text is empty")
 	}
 
 	c.sendMu.Lock()
@@ -290,24 +424,54 @@ func (c *conversation) sendTurn(ctx context.Context, msg ports.ChatUserMessage, 
 		params["approvalPolicy"] = "on-request"
 		params["sandboxPolicy"] = cloneSandboxPolicy(c.governedSandboxPolicy)
 	}
+	if c.nativeSandboxPolicy != nil {
+		// This Stage 1 profile is a substrate constraint, not governed authority.
+		// Pin it after every caller setting so a per-turn choice cannot widen or
+		// drop any frozen field.
+		params["approvalPolicy"] = "on-request"
+		params["sandboxPolicy"] = cloneSandboxPolicy(c.nativeSandboxPolicy)
+	}
 
 	var resp struct {
 		Turn struct {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	if err := c.conn.request(ctx, "turn/start", params, &resp); err != nil {
-		return ports.ChatTurnRef{}, fmt.Errorf("turn/start: %w", err)
+	var receipt transportReceipt
+	var err error
+	receipt, err = c.conn.requestWithTransportReceipt(ctx, "turn/start", params, &resp, c.nativeSandboxPolicy)
+	dispatch := turnDispatchFromReceipt(receipt)
+	if err != nil {
+		var providerErr *rpcError
+		switch {
+		case !receipt.SuccessfulWrite:
+			dispatch.Acceptance = ports.ChatTurnNotSent
+		case errors.As(err, &providerErr):
+			dispatch.Acceptance = ports.ChatTurnRejected
+		default:
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+		}
+		return dispatch, fmt.Errorf("turn/start: %w", err)
 	}
+	dispatch.Acceptance = ports.ChatTurnAcknowledged
 	if strings.TrimSpace(resp.Turn.ID) == "" {
-		return ports.ChatTurnRef{}, errors.New("turn/start returned no turn id")
+		dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+		return dispatch, errors.New("turn/start returned no turn id")
 	}
 
+	if c.nativeSandboxPolicy != nil {
+		if err := c.appendNativeTurnPolicyEvidence(resp.Turn.ID, receipt, params); err != nil {
+			dispatch.Acceptance = ports.ChatTurnAcknowledged
+			dispatch.Ref.ProviderTurnID = resp.Turn.ID
+			return dispatch, err
+		}
+	}
 	c.mu.Lock()
 	c.activeTurn = resp.Turn.ID
 	c.mu.Unlock()
 
-	return ports.ChatTurnRef{ProviderTurnID: resp.Turn.ID}, nil
+	dispatch.Ref.ProviderTurnID = resp.Turn.ID
+	return dispatch, nil
 }
 
 // applyTurnSettings folds the caller's per-turn choices into a turn/start payload.
@@ -315,6 +479,13 @@ func (c *conversation) sendTurn(ctx context.Context, msg ports.ChatUserMessage, 
 // Only fields the caller actually chose are sent. An omitted field lets the
 // provider fall back to what the thread was started with, which is why a caller
 // that chooses nothing behaves exactly as it did before per-turn settings existed.
+func turnDispatchFromReceipt(receipt transportReceipt) ports.ChatTurnDispatch {
+	return ports.ChatTurnDispatch{
+		TransportRequestID: receipt.RequestID, TransportSHA256: receipt.SHA256,
+		TransportBytes: receipt.ByteCount, TransportSequence: receipt.WriteSequence,
+	}
+}
+
 func applyTurnSettings(params map[string]any, settings ports.ChatTurnSettings) {
 	if settings.Model != "" {
 		params["model"] = settings.Model
@@ -365,11 +536,124 @@ func turnSandboxPolicyForExecution(sandbox string) map[string]any {
 }
 
 func cloneSandboxPolicy(policy map[string]any) map[string]any {
+	if policy == nil {
+		return nil
+	}
 	clone := make(map[string]any, len(policy))
 	for key, value := range policy {
 		clone[key] = value
 	}
 	return clone
+}
+
+func cloneNativePolicyEvidence(record ports.ChatNativePolicyEvidence) ports.ChatNativePolicyEvidence {
+	record.RequestedPolicy = cloneSandboxPolicy(record.RequestedPolicy)
+	record.ObservedPolicy = cloneSandboxPolicy(record.ObservedPolicy)
+	return record
+}
+
+func (c *conversation) appendNativeTurnPolicyEvidence(turnID string, receipt transportReceipt, params map[string]any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	expectedSHA256, expectedByteCount, err := canonicalRequestFrameDigest(receipt.RequestID, "turn/start", params)
+	if err != nil || receipt.Method != "turn/start" || receipt.SHA256 != expectedSHA256 || receipt.ByteCount != expectedByteCount {
+		return fmt.Errorf("native turn transport receipt mismatch: method=%q sha_match=%t bytes=%d want=%d: %v",
+			receipt.Method, receipt.SHA256 == expectedSHA256, receipt.ByteCount, expectedByteCount, err)
+	}
+	record := ports.ChatNativePolicyEvidence{
+		Sequence: int64(len(c.nativePolicyEvidence) + 1), Boundary: ports.ChatNativePolicyBoundaryTurnStart,
+		ClaimClass: ports.ChatNativePolicyClaimRequestIntegrity, ThreadID: c.threadID, ProviderTurnID: turnID,
+		RequestedPolicy: cloneSandboxPolicy(c.nativeSandboxPolicy), ObservedPolicy: nil,
+		ObservationSource:               "public_protocol_unavailable",
+		ProviderObservationAvailability: ports.ChatNativePolicyObservationPublicProtocolUnavailable,
+		ComparisonResult:                ports.ChatNativePolicyComparisonNotObservable,
+		CanonicalizationVersion:         nativePolicyCanonicalizationVersion,
+		RuntimeBinarySHA256:             c.runtimeBinarySHA256, ProtocolDigest: c.protocolDigest,
+		RequestWireShape:   "jsonrpc2 newline-delimited exact-frame-sha256",
+		TransportRequestID: receipt.RequestID, TransportMethod: receipt.Method, TransportWriteSequence: receipt.WriteSequence,
+		TransportSHA256: receipt.SHA256, TransportByteCount: receipt.ByteCount,
+		TransportSuccessfulWrite: receipt.SuccessfulWrite, Timestamp: receipt.WrittenAt,
+	}
+	records := append(append([]ports.ChatNativePolicyEvidence(nil), c.nativePolicyEvidence...), record)
+	if err := validateNativePolicyEvidence(records, c.nativeSandboxPolicy, c.threadID, c.runtimeBinarySHA256, c.protocolDigest); err != nil {
+		return fmt.Errorf("native turn policy evidence: %w", err)
+	}
+	c.nativePolicyEvidence = records
+	return nil
+}
+
+func validateNativePolicyEvidence(records []ports.ChatNativePolicyEvidence, expectedPolicy map[string]any, threadID, runtimeSHA256, protocolDigest string) error {
+	if len(records) == 0 {
+		return errors.New("native policy evidence is empty")
+	}
+	if !isLowerHexSHA256(runtimeSHA256) || protocolDigest == "" {
+		return errors.New("native policy runtime/protocol provenance is missing")
+	}
+	seenTurns := map[string]bool{}
+	seenRequests := map[int64]bool{}
+	seenWrites := map[int64]bool{}
+	var previousWrite int64
+	for i, record := range records {
+		if record.Sequence != int64(i+1) || record.ThreadID != threadID || record.Timestamp.IsZero() ||
+			record.RuntimeBinarySHA256 != runtimeSHA256 || record.ProtocolDigest != protocolDigest ||
+			record.CanonicalizationVersion != nativePolicyCanonicalizationVersion {
+			return fmt.Errorf("record %d has invalid sequence, identity, time, or provenance", i)
+		}
+		if i == 0 {
+			if record.Boundary != ports.ChatNativePolicyBoundaryThreadStart && record.Boundary != ports.ChatNativePolicyBoundaryThreadResume {
+				return errors.New("first native policy record is not Start or Resume")
+			}
+			expectedSource := "thread_start_response.sandbox"
+			expectedWireShape := "thread/start sandbox enum"
+			if record.Boundary == ports.ChatNativePolicyBoundaryThreadResume {
+				expectedSource = "thread_resume_response.sandbox"
+				expectedWireShape = "thread/resume sandbox enum"
+			}
+			if record.ClaimClass != ports.ChatNativePolicyClaimProviderAcknowledgment ||
+				record.ProviderObservationAvailability != ports.ChatNativePolicyObservationAvailable ||
+				record.ComparisonResult != ports.ChatNativePolicyComparisonMatchComparableFields || record.ObservedPolicy == nil ||
+				record.ObservationSource != expectedSource || record.RequestWireShape != expectedWireShape ||
+				!semanticJSONEqual(record.RequestedPolicy, map[string]any{"sandbox": "workspace-write"}) ||
+				record.TransportSuccessfulWrite || record.TransportRequestID != 0 || record.TransportWriteSequence != 0 ||
+				record.TransportMethod != "" || record.TransportSHA256 != "" || record.TransportByteCount != 0 {
+				return errors.New("native Start/Resume acknowledgment is incomplete")
+			}
+			if err := validateNativeThreadSandbox(record.ObservedPolicy); err != nil {
+				return err
+			}
+			continue
+		}
+		if record.Boundary != ports.ChatNativePolicyBoundaryTurnStart || record.ClaimClass != ports.ChatNativePolicyClaimRequestIntegrity ||
+			record.ProviderTurnID == "" || record.ObservedPolicy != nil || record.ObservationSource != "public_protocol_unavailable" ||
+			record.ProviderObservationAvailability != ports.ChatNativePolicyObservationPublicProtocolUnavailable ||
+			record.ComparisonResult != ports.ChatNativePolicyComparisonNotObservable || !record.TransportSuccessfulWrite ||
+			record.RequestWireShape != "jsonrpc2 newline-delimited exact-frame-sha256" ||
+			record.TransportRequestID <= 0 || record.TransportMethod != "turn/start" || record.TransportWriteSequence <= previousWrite ||
+			!isLowerHexSHA256(record.TransportSHA256) || record.TransportByteCount <= 0 ||
+			!semanticJSONEqual(record.RequestedPolicy, expectedPolicy) {
+			return fmt.Errorf("turn policy record %d is incomplete, widened, mutated, or out of order", i)
+		}
+		if seenTurns[record.ProviderTurnID] || seenRequests[record.TransportRequestID] || seenWrites[record.TransportWriteSequence] {
+			return fmt.Errorf("turn policy record %d duplicates turn, request, or write identity", i)
+		}
+		seenTurns[record.ProviderTurnID] = true
+		seenRequests[record.TransportRequestID] = true
+		seenWrites[record.TransportWriteSequence] = true
+		previousWrite = record.TransportWriteSequence
+	}
+	return nil
+}
+
+func isLowerHexSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // ListModels asks the provider which models this account may use.
@@ -567,32 +851,138 @@ func formatTokens(tokens int64) string {
 	return fmt.Sprintf("%.1fk tokens", float64(tokens)/1000)
 }
 
-// Interrupt cancels a turn. An empty turn id targets the active one.
+// deferInterruptedTerminal keeps the UI in its working/stopping state until
+// Interrupt has either observed command settlement or killed the owned tree.
+func (c *conversation) deferInterruptedTerminal(ev ports.ChatEvent) bool {
+	if ev.Kind != ports.ChatEventTurnCompleted || ev.TurnState != domain.TurnStateInterrupted || ev.ProviderTurnID == "" {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.interrupting[ev.ProviderTurnID] {
+		return false
+	}
+	c.deferredTerminal[ev.ProviderTurnID] = ev
+	return true
+}
+
+func (c *conversation) clearInterrupt(turnID string, emitTerminal bool) {
+	c.mu.Lock()
+	delete(c.interrupting, turnID)
+	ev, ok := c.deferredTerminal[turnID]
+	delete(c.deferredTerminal, turnID)
+	c.mu.Unlock()
+	if emitTerminal && ok {
+		c.emit(ev)
+	}
+}
+
+// trackInterruptState records only the lifecycle needed to know whether Stop
+// has actually settled. Provider prose and output are deliberately irrelevant.
+func (c *conversation) trackInterruptState(ev ports.ChatEvent) {
+	if ev.ProviderTurnID == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch {
+	case ev.Kind == ports.ChatEventTurnStarted:
+		delete(c.terminalTurns, ev.ProviderTurnID)
+	case ev.Kind == ports.ChatEventTurnCompleted:
+		c.terminalTurns[ev.ProviderTurnID] = true
+	case ev.Kind == ports.ChatEventActivityStarted && ev.ActivityKind == domain.ActivityKindCommand:
+		c.activeCommands[ev.ProviderTurnID]++
+	case ev.Kind == ports.ChatEventActivityCompleted && ev.ActivityKind == domain.ActivityKindCommand:
+		if c.activeCommands[ev.ProviderTurnID] > 1 {
+			c.activeCommands[ev.ProviderTurnID]--
+		} else {
+			delete(c.activeCommands, ev.ProviderTurnID)
+		}
+	}
+}
+
+// Interrupt preserves the legacy error contract while governed callers consume
+// the stronger dispatch and quiescence receipt.
 func (c *conversation) Interrupt(ctx context.Context, providerTurnID string) error {
+	_, err := c.DispatchInterrupt(ctx, providerTurnID)
+	return err
+}
+
+// DispatchInterrupt cancels a turn and does not report process quiescence until
+// Stage 1's owned-process boundary has been crossed.
+func (c *conversation) DispatchInterrupt(ctx context.Context, providerTurnID string) (ports.ChatInterruptDispatch, error) {
 	if providerTurnID == "" {
 		c.mu.Lock()
 		providerTurnID = c.activeTurn
 		c.mu.Unlock()
 	}
 	if providerTurnID == "" {
-		return ports.ErrChatNoActiveTurn
+		return ports.ChatInterruptDispatch{Acceptance: ports.ChatTurnNotSent}, ports.ErrChatNoActiveTurn
 	}
-	if err := c.conn.request(ctx, "turn/interrupt", map[string]any{
+	c.interruptWG.Add(1)
+	defer c.interruptWG.Done()
+	c.mu.Lock()
+	c.interrupting[providerTurnID] = true
+	c.mu.Unlock()
+	receipt, err := c.conn.requestWithTransportReceipt(ctx, "turn/interrupt", map[string]any{
 		"threadId": c.threadID,
 		"turnId":   providerTurnID,
-	}, nil); err != nil {
+	}, nil, nil)
+	dispatch := ports.ChatInterruptDispatch{TransportRequestID: receipt.RequestID, TransportSHA256: receipt.SHA256, TransportBytes: receipt.ByteCount, TransportSequence: receipt.WriteSequence, Quiescence: domain.GovernedCommandQuiescencePending}
+	if err != nil {
 		// The provider refuses an interrupt for a turn it does not consider
 		// active — which happens either side of the turn: pressed before it has
 		// acknowledged the start, or after it already finished. Neither is an
 		// internal failure, so it is translated here, where the provider's
 		// vocabulary is known, instead of escaping as a protocol error and
 		// reaching the user as "Internal server error".
-		if isNoActiveTurn(err) {
-			return ports.ErrChatNoActiveTurn
+		c.clearInterrupt(providerTurnID, false)
+		if !receipt.SuccessfulWrite {
+			dispatch.Acceptance = ports.ChatTurnNotSent
+		} else {
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
 		}
-		return fmt.Errorf("turn/interrupt: %w", err)
+		if isNoActiveTurn(err) {
+			dispatch.Acceptance = ports.ChatTurnRejected
+			return dispatch, ports.ErrChatNoActiveTurn
+		}
+		return dispatch, fmt.Errorf("turn/interrupt: %w", err)
 	}
-	return nil
+	dispatch.Acceptance = ports.ChatTurnAcknowledged
+	// Pipe-backed tests have no owned process to police. A real app-server does:
+	// do not report Stop complete until its command lifecycle has settled.
+	if c.proc.forceStop == nil {
+		c.clearInterrupt(providerTurnID, true)
+		dispatch.Quiescence = domain.GovernedCommandQuiescenceCodexTree
+		dispatch.QuiescenceEvidenceRef = "codex-process-tree:no-owned-process:" + receipt.SHA256
+		return dispatch, nil
+	}
+	deadline := time.NewTimer(interruptQuiescenceWait)
+	defer deadline.Stop()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			c.clearInterrupt(providerTurnID, true)
+			dispatch.Acceptance = ports.ChatTurnDeliveryUnknown
+			return dispatch, ctx.Err()
+		case <-ticker.C:
+			// Provider lifecycle settlement is useful transcript evidence, but Codex
+			// 0.154.0 can settle both turn and command before the shell's final write.
+			// There is no process-level quiescence signal on the public protocol, so
+			// only terminating the owned process group closes the effect boundary.
+		case <-deadline.C:
+			if err := c.proc.forceStop(); err != nil {
+				c.clearInterrupt(providerTurnID, true)
+				return dispatch, fmt.Errorf("%w: force-stop interrupted app-server: %v", ports.ErrChatInterruptContainmentFailed, err)
+			}
+			c.clearInterrupt(providerTurnID, true)
+			dispatch.Quiescence = domain.GovernedCommandQuiescenceCodexTree
+			dispatch.QuiescenceEvidenceRef = "codex-process-tree:force-stopped:" + receipt.SHA256
+			return dispatch, ports.ErrChatInterruptRestartRequired
+		}
+	}
 }
 
 // isNoActiveTurn recognizes the provider's "nothing to interrupt" refusal.
@@ -616,32 +1006,53 @@ func isNoActiveTurn(err error) bool {
 // consuming the request on a bad one would leave the user's real answer with
 // nothing left to answer while the provider waits out its timeout.
 func (c *conversation) ResolveRequest(ctx context.Context, requestID string, decision ports.ChatDecision) error {
+	_, err := c.resolveRequest(ctx, requestID, decision)
+	return err
+}
+
+// DispatchAnswer waits for the complete JSON-RPC reply-frame write. The app-server
+// protocol has no response to that reply, so this is transport evidence only.
+func (c *conversation) DispatchAnswer(ctx context.Context, requestID, _ string, decision ports.ChatDecision) (ports.ChatAnswerDispatch, error) {
+	written, err := c.resolveRequest(ctx, requestID, decision)
+	if err != nil {
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteNotStarted}, err
+	}
+	select {
+	case writeErr := <-written:
+		if writeErr != nil {
+			return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteUnknown}, writeErr
+		}
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerFrameWriteComplete}, nil
+	case <-ctx.Done():
+		return ports.ChatAnswerDispatch{WriteOutcome: ports.ChatAnswerWriteUnknown}, ctx.Err()
+	}
+}
+
+func (c *conversation) resolveRequest(ctx context.Context, requestID string, decision ports.ChatDecision) (<-chan error, error) {
 	c.mu.Lock()
 	parked, ok := c.pending[requestID]
 	closed := c.closed
 	if closed {
 		c.mu.Unlock()
-		return errConversationClosed
+		return nil, errConversationClosed
 	}
 	if !ok {
 		c.mu.Unlock()
-		// Already resolved, superseded, or from a previous controller. Refusing is
-		// required: a stale card must never resolve a newer request.
-		return fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
+		return nil, fmt.Errorf("%w: %q", ports.ErrChatRequestNotPending, requestID)
 	}
 	reply, err := parked.reply(decision)
 	if err != nil {
 		c.mu.Unlock()
-		return err
+		return nil, err
 	}
 	delete(c.pending, requestID)
 	c.mu.Unlock()
 
 	select {
 	case parked.ch <- reply:
-		return nil
+		return parked.written, nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -654,6 +1065,7 @@ func (c *conversation) ResolveRequest(ctx context.Context, requestID string, dec
 // reconstruct them. Kennel echoes what the provider sent rather than rebuilding it.
 type parkedRequest struct {
 	ch      chan ports.ChatDecision
+	written chan error
 	method  string
 	offered map[string]json.RawMessage
 }
@@ -717,15 +1129,16 @@ func (c *conversation) handleServerRequest(ctx context.Context, req serverReques
 	}
 
 	ch := make(chan ports.ChatDecision, 1)
+	written := make(chan error, 1)
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
 		return nil, errConversationClosed
 	}
-	c.pending[requestID] = &parkedRequest{ch: ch, method: req.Method, offered: offered}
+	c.pending[requestID] = &parkedRequest{ch: ch, written: written, method: req.Method, offered: offered}
 	c.mu.Unlock()
 
-	c.emit(ports.ChatEvent{
+	event := ports.ChatEvent{
 		Kind:           ports.ChatEventApprovalRequested,
 		ProviderItemID: requestID,
 		RequestID:      requestID,
@@ -734,11 +1147,16 @@ func (c *conversation) handleServerRequest(ctx context.Context, req serverReques
 		Summary:        summary,
 		Detail:         detail,
 		Decisions:      decisions,
-	})
+	}
+	if req.Method == codexproto.MethodItemToolRequestUserInput {
+		event.Kind = ports.ChatEventInputRequested
+		event.Input = codexInputRequest(summary, pQuestions(req.Params))
+	}
+	c.emit(event)
 
 	select {
 	case decision := <-ch:
-		return approvalReply(req.Method, decision), nil
+		return serverReply{value: approvalReply(req.Method, decision), written: written}, nil
 
 	case <-time.After(approvalWait):
 		c.discardPending(requestID)
@@ -888,10 +1306,14 @@ type approvalPayload struct {
 	// render from this rather than a fixed set of buttons.
 	AvailableDecisions []json.RawMessage `json:"availableDecisions"`
 	Questions          []struct {
-		ID      string `json:"id"`
-		Prompt  string `json:"prompt"`
-		Options []struct {
-			Label string `json:"label"`
+		ID       string `json:"id"`
+		Header   string `json:"header"`
+		Question string `json:"question"`
+		IsSecret *bool  `json:"isSecret,omitempty"`
+		IsOther  *bool  `json:"isOther,omitempty"`
+		Options  []struct {
+			Label       string `json:"label"`
+			Description string `json:"description,omitempty"`
 		} `json:"options"`
 	} `json:"questions"`
 }
@@ -917,7 +1339,7 @@ func parseApproval(method string, params json.RawMessage) ([]ports.ChatDecisionO
 	case method == "item/fileChange/requestApproval":
 		summary = "Apply file changes"
 	case method == "item/tool/requestUserInput" && len(p.Questions) > 0:
-		summary = p.Questions[0].Prompt
+		summary = p.Questions[0].Question
 	case p.Reason != "":
 		summary = p.Reason
 	}
@@ -944,6 +1366,71 @@ func parseApproval(method string, params json.RawMessage) ([]ports.ChatDecisionO
 		encoded = nil
 	}
 	return options, summary, encoded
+}
+
+// pQuestions decodes the provider's complete request_user_input questions for
+// the typed event. Detail keeps the same provider fields for exact rendering.
+func pQuestions(params json.RawMessage) []struct {
+	ID       string `json:"id"`
+	Header   string `json:"header"`
+	Question string `json:"question"`
+	IsSecret *bool  `json:"isSecret,omitempty"`
+	IsOther  *bool  `json:"isOther,omitempty"`
+	Options  []struct {
+		Label       string `json:"label"`
+		Description string `json:"description,omitempty"`
+	} `json:"options"`
+} {
+	var payload approvalPayload
+	if json.Unmarshal(params, &payload) != nil {
+		return nil
+	}
+	return payload.Questions
+}
+
+func codexInputRequest(summary string, questions []struct {
+	ID       string `json:"id"`
+	Header   string `json:"header"`
+	Question string `json:"question"`
+	IsSecret *bool  `json:"isSecret,omitempty"`
+	IsOther  *bool  `json:"isOther,omitempty"`
+	Options  []struct {
+		Label       string `json:"label"`
+		Description string `json:"description,omitempty"`
+	} `json:"options"`
+}) *ports.ChatInputRequest {
+	properties := make(map[string]any, len(questions))
+	required := make([]string, 0, len(questions))
+	for _, question := range questions {
+		property := map[string]any{"type": "string", "title": question.Header, "description": question.Question}
+		if question.IsSecret != nil && *question.IsSecret {
+			property["format"] = "password"
+		}
+		if len(question.Options) > 0 {
+			values := make([]string, 0, len(question.Options))
+			for _, option := range question.Options {
+				values = append(values, option.Label)
+			}
+			if question.IsOther != nil && *question.IsOther {
+				property["examples"] = values
+				property["x-kennel-allows-other"] = true
+			} else {
+				property["enum"] = values
+			}
+		}
+		properties[question.ID] = property
+		required = append(required, question.ID)
+	}
+	return &ports.ChatInputRequest{
+		Mode:    ports.ChatInputModeForm,
+		Message: summary,
+		Schema: map[string]any{
+			"type":                 "object",
+			"properties":           properties,
+			"required":             required,
+			"additionalProperties": false,
+		},
+	}
 }
 
 // decisionOption reads one entry of availableDecisions, which is either a plain
@@ -1008,4 +1495,146 @@ func approvalReply(method string, decision ports.ChatDecision) any {
 		return map[string]any{"decision": json.RawMessage(decision.Raw)}
 	}
 	return map[string]any{"decision": decision.ID}
+}
+
+// The provider deliberately excludes this internal/experimental notification from
+// generated method constants while still exporting its typed payload. Native Stage 1
+// opts into it because gpt-5.6-luna Code Mode otherwise has no public command lifecycle.
+const methodRawResponseItemCompleted = "rawResponseItem/completed"
+
+type codeModeExecCall struct{ command, cwd string }
+
+var codeModeExecField = regexp.MustCompile(`(?:^|[,({])\s*(cmd|workdir)\s*:\s*("(?:\\.|[^"\\])*")`)
+
+func parseCodeModeExecInput(input string) (codeModeExecCall, bool) {
+	if !strings.Contains(input, "tools.exec_command(") || !strings.Contains(input, "text(JSON.stringify(") {
+		return codeModeExecCall{}, false
+	}
+	var call codeModeExecCall
+	for _, match := range codeModeExecField.FindAllStringSubmatch(input, -1) {
+		value, err := strconv.Unquote(match[2])
+		if err != nil {
+			return codeModeExecCall{}, false
+		}
+		switch match[1] {
+		case "cmd":
+			call.command = value
+		case "workdir":
+			call.cwd = value
+		}
+	}
+	return call, call.command != ""
+}
+
+func rawOutputText(raw *json.RawMessage) string {
+	if raw == nil || len(*raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(*raw, &text) == nil {
+		return text
+	}
+	var items []struct{ Type, Text string }
+	if json.Unmarshal(*raw, &items) != nil {
+		return ""
+	}
+	var parts []string
+	for _, item := range items {
+		if item.Type == "input_text" || item.Type == "output_text" {
+			parts = append(parts, item.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+type codeModeExecResult struct {
+	ExitCode int    `json:"exit_code"`
+	Output   string `json:"output"`
+}
+
+func parseCodeModeExecOutput(text string) (codeModeExecResult, bool) {
+	// The host prefixes a human line, then emits one JSON object. Decode only the
+	// final complete line; never infer success from prose or assistant text.
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		var result codeModeExecResult
+		if json.Unmarshal([]byte(strings.TrimSpace(lines[i])), &result) == nil && strings.Contains(lines[i], `"exit_code"`) {
+			return result, true
+		}
+	}
+	return codeModeExecResult{}, false
+}
+
+func parseDirectExecArguments(raw json.RawMessage) (codeModeExecCall, bool) {
+	var args struct {
+		Command string `json:"cmd"`
+		CWD     string `json:"workdir"`
+	}
+	if json.Unmarshal(raw, &args) != nil || args.Command == "" {
+		return codeModeExecCall{}, false
+	}
+	return codeModeExecCall{command: args.Command, cwd: args.CWD}, true
+}
+
+func (c *conversation) markRawCommand(turnID string, delta int) {
+	if turnID == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.activeCommands == nil {
+		c.activeCommands = make(map[string]int)
+	}
+	if delta > 0 {
+		c.activeCommands[turnID] += delta
+	} else if c.activeCommands[turnID] > 1 {
+		c.activeCommands[turnID]--
+	} else {
+		delete(c.activeCommands, turnID)
+	}
+}
+
+func (c *conversation) normalizeRawExec(n notification) {
+	if n.Method != methodRawResponseItemCompleted {
+		return
+	}
+	var p codexproto.RawResponseItemCompletedNotification
+	if json.Unmarshal(n.Params, &p) != nil || p.Item.CallID == nil {
+		return
+	}
+	callID := *p.Item.CallID
+	switch p.Item.Type {
+	case codexproto.ResponseItemTypeCustomToolCall:
+		if p.Item.Name == nil || *p.Item.Name != "exec" || p.Item.Input == nil {
+			return
+		}
+		if call, ok := parseCodeModeExecInput(*p.Item.Input); ok {
+			c.rawCodeModeExec[callID] = call
+			c.markRawCommand(p.TurnID, 1)
+		}
+	case codexproto.ResponseItemTypeFunctionCall:
+		if p.Item.Name == nil || *p.Item.Name != "exec_command" {
+			return
+		}
+		if call, ok := parseDirectExecArguments(p.Item.Arguments); ok {
+			c.rawCodeModeExec[callID] = call
+			c.markRawCommand(p.TurnID, 1)
+		}
+	case codexproto.ResponseItemTypeCustomToolCallOutput, codexproto.ResponseItemTypeFunctionCallOutput:
+		call, ok := c.rawCodeModeExec[callID]
+		if !ok {
+			return
+		}
+		delete(c.rawCodeModeExec, callID)
+		c.markRawCommand(p.TurnID, -1)
+		result, ok := parseCodeModeExecOutput(rawOutputText(p.Item.Output))
+		if !ok {
+			return
+		}
+		status := domain.ActivityStatusCompleted
+		if result.ExitCode != 0 {
+			status = domain.ActivityStatusFailed
+		}
+		c.rawExecCompleted[callID] = ports.ChatEvent{Kind: ports.ChatEventActivityCompleted, ProviderTurnID: p.TurnID, ProviderItemID: callID, ActivityKind: domain.ActivityKindCommand, ActivityStatus: status, Summary: commandSummary(call.command), Detail: encodeDetail(map[string]any{"command": call.command, "cwd": call.cwd, "output": result.Output, "exitCode": result.ExitCode, "source": "rawResponseItem/completed:exec-fallback"})}
+	}
 }

@@ -1,5 +1,8 @@
 # Kennel Builds Kennel — implementation plan
 
+> **Superseded for vNext (2026-09-15):** Historical implementation plan; do not execute its phases as current order. Use [persistent mission runtime](../../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 > **Execution rule:** implement this program in separate verified branches/PRs. Do not execute all tasks as one patch. At the start of every slice, inspect current `beta` and update the delta map before editing.
 
 **Goal:** build the first truthful self-hosting Waldo Kennel kernel: a user defines Outcomes, Kennel schedules/reconciles bounded WorkUnits and provider Attempts, receipts/evidence explain retained results, and only the user accepts closure.

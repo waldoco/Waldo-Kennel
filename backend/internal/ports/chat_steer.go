@@ -34,6 +34,32 @@ type ChatSteerer interface {
 	Steer(ctx context.Context, providerTurnID string, msg ChatUserMessage) (ChatTurnRef, error)
 }
 
+// ChatSteerDispatch carries truthful acceptance plus content-free transport
+// evidence for one steer. It reuses the turn acceptance vocabulary because the
+// delivery meanings are identical, while keeping the operation type distinct.
+type ChatSteerDispatch struct {
+	Acceptance         ChatTurnAcceptance
+	Ref                ChatTurnRef
+	TransportRequestID int64
+	TransportSHA256    string
+	TransportBytes     int
+	TransportSequence  int64
+}
+
+func (d ChatSteerDispatch) Validate() error {
+	return (ChatTurnDispatch{
+		Acceptance: d.Acceptance, Ref: d.Ref, TransportRequestID: d.TransportRequestID,
+		TransportSHA256: d.TransportSHA256, TransportBytes: d.TransportBytes,
+		TransportSequence: d.TransportSequence,
+	}).Validate()
+}
+
+// ChatSteerDispatcher is the governed steering seam. Legacy providers retain
+// ChatSteerer until their protocol can expose equally honest evidence.
+type ChatSteerDispatcher interface {
+	DispatchSteer(ctx context.Context, providerTurnID string, msg ChatUserMessage) (ChatSteerDispatch, error)
+}
+
 // Errors a ChatSteerer returns. Both are ordinary outcomes rather than failures,
 // and they are distinct because the advice a client should give differs: one means
 // "send this as a new message instead", the other means "wait, then try again".

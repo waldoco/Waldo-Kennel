@@ -1,5 +1,8 @@
 # Kennel technical chassis architecture
 
+> **Classification (2026-09-15):** Runtime chassis reference. Legacy AO/session topology is current-code history, not vNext product architecture. Use the [canonical documentation map](README.md).
+
+
 - **Status:** Current technical reference for the daemon/runtime chassis and Outcome-control-plane boundary
 - **Updated:** 2026-09-08
 - **Product/kernel authority:** [`product/kennel-v1-product-architecture.md`](product/kennel-v1-product-architecture.md)

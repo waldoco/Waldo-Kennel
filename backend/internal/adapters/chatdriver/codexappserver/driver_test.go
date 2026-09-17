@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -131,6 +133,7 @@ func newTestDriver(t *testing.T) (*Driver, *scriptedServer) {
 			"model/list":     `{"data":[{"id":"gpt-test","displayName":"GPT Test","isDefault":true}]}`,
 			"thread/start":   `{"thread":{"id":"thread-1"},"model":"gpt-test","cwd":"/tmp/ws","approvalPolicy":"never","activePermissionProfile":{"id":":read-only"}}`,
 			"turn/start":     `{"turn":{"id":"turn-1","status":"inProgress","items":[]}}`,
+			"turn/steer":     `{"turnId":"turn-1"}`,
 			"turn/interrupt": `{}`,
 			"thread/resume":  `{"thread":{"id":"thread-1"}}`,
 		},
@@ -351,6 +354,28 @@ func TestSendTurnRejectsEmptyText(t *testing.T) {
 // The whole approval design in one test: the provider blocks on a server->client
 // request, Kennel surfaces it with the provider's own decision list, and the user's
 // choice is what unblocks the turn.
+func TestDispatchAnswerReportsCompleteReplyFrameWrite(t *testing.T) {
+	d, srv := newTestDriver(t)
+	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conv.Close() }()
+	srv.push(`{"id":71,"method":"item/commandExecution/requestApproval","params":{"availableDecisions":["accept"]}}`)
+	ev := nextEvent(t, conv.Events(), ports.ChatEventApprovalRequested)
+	dispatch, err := conv.(ports.ChatAnswerDispatcher).DispatchAnswer(context.Background(), ev.RequestID, "local-card-1", ports.ChatDecision{ID: "accept"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dispatch.WriteOutcome != ports.ChatAnswerFrameWriteComplete {
+		t.Fatalf("write outcome = %q", dispatch.WriteOutcome)
+	}
+	reply := srv.awaitFrame(func(f frame) bool { return f.ID != nil && string(*f.ID) == "71" && f.Method == "" })
+	if len(reply.Result) == 0 {
+		t.Fatal("complete outcome reported without reply result")
+	}
+}
+
 func TestApprovalIsParkedUntilResolved(t *testing.T) {
 	d, srv := newTestDriver(t)
 	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
@@ -1233,5 +1258,493 @@ func TestEnvSliceWithNoOverlayStillInheritsTheEnvironment(t *testing.T) {
 	}
 	if !sawHome {
 		t.Error("an empty overlay produced an environment with no HOME")
+	}
+}
+
+func TestRequestUserInputEmitsTypedQuestionsAndForwardsExactAnswers(t *testing.T) {
+	d, srv := newTestDriver(t)
+	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = conv.Close() }()
+
+	srv.push(`{"id":21,"method":"item/tool/requestUserInput","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-questions","isBlocking":true,"questions":[{"id":"database","header":"Database","question":"Which database should the proof use?","isOther":true,"options":[{"label":"SQLite","description":"Local file"},{"label":"Postgres","description":"Network service"}]},{"id":"token","header":"Token","question":"Enter the temporary token","isSecret":true,"options":[]},{"id":"mode","header":"Mode","question":"Which run mode?","options":[{"label":"Fast"},{"label":"Thorough"}]}]}}`)
+	ev := nextEvent(t, conv.Events(), ports.ChatEventInputRequested)
+	if ev.RequestID != "21" || ev.ProviderItemID != "21" {
+		t.Fatalf("request ids = %q/%q, want 21/21", ev.RequestID, ev.ProviderItemID)
+	}
+	if ev.Summary != "Which database should the proof use?" {
+		t.Fatalf("summary = %q", ev.Summary)
+	}
+	if ev.Input == nil || ev.Input.Mode != ports.ChatInputModeForm {
+		t.Fatalf("typed input = %#v", ev.Input)
+	}
+	properties, ok := ev.Input.Schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties = %#v", ev.Input.Schema["properties"])
+	}
+	database := properties["database"].(map[string]any)
+	if _, constrained := database["enum"]; constrained {
+		t.Fatal("isOther question was constrained to enum-only")
+	}
+	if got := database["examples"].([]string); strings.Join(got, ",") != "SQLite,Postgres" || database["x-kennel-allows-other"] != true {
+		t.Fatalf("database other/options = %#v", database)
+	}
+	token := properties["token"].(map[string]any)
+	if token["format"] != "password" {
+		t.Fatalf("secret token schema = %#v", token)
+	}
+	var detail struct {
+		Method    string `json:"method"`
+		ItemID    string `json:"itemId"`
+		Questions []struct {
+			ID       string `json:"id"`
+			Header   string `json:"header"`
+			Question string `json:"question"`
+			IsSecret *bool  `json:"isSecret"`
+			IsOther  *bool  `json:"isOther"`
+			Options  []struct {
+				Label       string `json:"label"`
+				Description string `json:"description"`
+			} `json:"options"`
+		} `json:"questions"`
+	}
+	if err := json.Unmarshal(ev.Detail, &detail); err != nil {
+		t.Fatalf("detail: %v", err)
+	}
+	if detail.Method != "item/tool/requestUserInput" || detail.ItemID != "item-questions" ||
+		len(detail.Questions) != 3 || detail.Questions[0].ID != "database" ||
+		detail.Questions[0].IsOther == nil || !*detail.Questions[0].IsOther ||
+		detail.Questions[1].IsSecret == nil || !*detail.Questions[1].IsSecret ||
+		detail.Questions[0].Options[0].Description != "Local file" {
+		t.Fatalf("detail = %#v", detail)
+	}
+
+	raw := []byte(`{"answers":{"database":{"answers":["DuckDB"]},"token":{"answers":["ephemeral-test-value"]},"mode":{"answers":["Thorough"]}}}`)
+	if err := conv.ResolveRequest(context.Background(), ev.RequestID, ports.ChatDecision{Raw: raw}); err != nil {
+		t.Fatalf("ResolveRequest: %v", err)
+	}
+	reply := srv.awaitFrame(func(f frame) bool { return f.ID != nil && string(*f.ID) == "21" && f.Method == "" })
+	if string(reply.Result) != string(raw) {
+		t.Fatalf("provider answer = %s, want exact %s", reply.Result, raw)
+	}
+	for i := 0; i < 2; i++ {
+		err := conv.ResolveRequest(context.Background(), ev.RequestID, ports.ChatDecision{Raw: raw})
+		if !errors.Is(err, ports.ErrChatRequestNotPending) {
+			t.Fatalf("repeat %d = %v, want ErrChatRequestNotPending", i+1, err)
+		}
+	}
+}
+
+func TestNativeSandboxProfileMapsOnlyExactStage1Boundary(t *testing.T) {
+	profile := &ports.ChatNativeSandboxProfile{
+		Sandbox: ports.ChatNativeSandboxWorkspaceWrite, NetworkAccess: false, WritableRoots: []string{},
+		ExcludeSlashTmp: true, ExcludeTmpdirEnvVar: true,
+	}
+	got, err := nativeSandboxPolicy(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"type": "workspaceWrite", "networkAccess": false, "writableRoots": []string{}, "excludeSlashTmp": true, "excludeTmpdirEnvVar": true}
+	if !semanticJSONEqual(got, want) {
+		t.Fatalf("policy = %#v, want %#v", got, want)
+	}
+	bad := *profile
+	bad.NetworkAccess = true
+	if _, err := nativeSandboxPolicy(&bad); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("network-enabled profile error = %v", err)
+	}
+	bad = *profile
+	bad.WritableRoots = []string{"/tmp"}
+	if _, err := nativeSandboxPolicy(&bad); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("extra-root profile error = %v", err)
+	}
+}
+
+func TestNativeThreadSandboxAcknowledgmentMatchesOnlyRequestedEnum(t *testing.T) {
+	// thread/start and thread/resume accept only the coarse sandbox enum. A
+	// response can expose resolved detail from provider configuration, but it is
+	// not an acknowledgment of the detailed policy sent on each turn.
+	for _, observed := range []map[string]any{
+		{"type": "workspaceWrite"},
+		{"type": "workspaceWrite", "networkAccess": false, "writableRoots": []any{}},
+		{"type": "workspaceWrite", "excludeSlashTmp": false, "excludeTmpdirEnvVar": false},
+	} {
+		if err := validateNativeThreadSandbox(observed); err != nil {
+			t.Fatalf("coarse workspace-write acknowledgment %#v: %v", observed, err)
+		}
+	}
+	if err := validateNativeThreadSandbox(nil); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("missing acknowledgment error = %v", err)
+	}
+	if err := validateNativeThreadSandbox(map[string]any{"type": "dangerFullAccess"}); !errors.Is(err, ports.ErrChatProfileMismatch) {
+		t.Fatalf("widened acknowledgment error = %v", err)
+	}
+}
+
+func TestNativeTurnWirePolicyIsSemanticAndReceiptDigestIsExact(t *testing.T) {
+	params := map[string]any{"threadId": "thread-1", "input": []any{}, "sandboxPolicy": map[string]any{
+		"type": "workspaceWrite", "networkAccess": false, "writableRoots": []string{}, "excludeSlashTmp": true, "excludeTmpdirEnvVar": true,
+	}}
+	digest, bytes, err := canonicalRequestFrameDigest(17, "turn/start", params)
+	if err != nil || len(digest) != 64 || bytes <= 0 {
+		t.Fatalf("digest = %q bytes=%d err=%v", digest, bytes, err)
+	}
+	payload := map[string]any{"id": int64(17), "method": "turn/start", "params": params}
+	raw, _ := json.Marshal(payload)
+	raw = append(raw, '\n')
+	if err := validateSerializedTurnSandboxPolicy(raw, params["sandboxPolicy"].(map[string]any)); err != nil {
+		t.Fatalf("semantic policy: %v", err)
+	}
+	widened := map[string]any{"type": "workspaceWrite", "networkAccess": true}
+	if err := validateSerializedTurnSandboxPolicy(raw, widened); err == nil {
+		t.Fatal("widened expected policy accepted")
+	}
+}
+
+func TestParseCodeModeExecInputExactWrapper(t *testing.T) {
+	input := `const r = await tools.exec_command({cmd:"mkdir -p '/var/tmp/x'",workdir:"/repo",yield_time_ms:10000}); text(JSON.stringify(r));`
+	got, ok := parseCodeModeExecInput(input)
+	if !ok || got.command != "mkdir -p '/var/tmp/x'" || got.cwd != "/repo" {
+		t.Fatalf("got=%+v ok=%t", got, ok)
+	}
+	for _, bad := range []string{`tools.exec_command({cmd:"x"})`, `text(JSON.stringify(r))`, `const r = await tools.exec_command({cmd:foo}); text(JSON.stringify(r));`} {
+		if _, ok := parseCodeModeExecInput(bad); ok {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+}
+
+func TestNormalizeRawExecPairsCallAndOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name, call, output string
+	}{
+		{"code-mode", `{"threadId":"th","turnId":"tu","item":{"type":"custom_tool_call","call_id":"call-1","name":"exec","input":"const r = await tools.exec_command({cmd:\"mkdir /var/tmp/x\",workdir:\"/repo\"}); text(JSON.stringify(r));"}}`, `{"threadId":"th","turnId":"tu","item":{"type":"custom_tool_call_output","call_id":"call-1","output":[{"type":"input_text","text":"Script completed\n"},{"type":"input_text","text":"{\"exit_code\":1,\"output\":\"Read-only file system\\n\"}"}]}}`},
+		{"direct", `{"threadId":"th","turnId":"tu","item":{"type":"function_call","call_id":"call-1","name":"exec_command","arguments":{"cmd":"mkdir /var/tmp/x","workdir":"/repo"}}}`, `{"threadId":"th","turnId":"tu","item":{"type":"function_call_output","call_id":"call-1","output":"{\"exit_code\":1,\"output\":\"Read-only file system\\n\"}"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &conversation{rawCodeModeExec: map[string]codeModeExecCall{}, rawExecCompleted: map[string]ports.ChatEvent{}}
+			c.normalizeRawExec(notification{Method: methodRawResponseItemCompleted, Params: json.RawMessage(tc.call)})
+			if len(c.rawExecCompleted) != 0 {
+				t.Fatal("call emitted completion")
+			}
+			c.normalizeRawExec(notification{Method: methodRawResponseItemCompleted, Params: json.RawMessage(tc.output)})
+			ev, ok := c.rawExecCompleted["call-1"]
+			if !ok || ev.ActivityStatus != domain.ActivityStatusFailed || ev.ProviderTurnID != "tu" {
+				t.Fatalf("event=%+v ok=%t", ev, ok)
+			}
+			var detail map[string]any
+			if err := json.Unmarshal(ev.Detail, &detail); err != nil || detail["command"] != "mkdir /var/tmp/x" || detail["output"] != "Read-only file system\n" {
+				t.Fatalf("detail=%s err=%v", ev.Detail, err)
+			}
+			c.normalizeRawExec(notification{Method: methodRawResponseItemCompleted, Params: json.RawMessage(tc.output)})
+			if len(c.rawExecCompleted) != 1 {
+				t.Fatal("duplicate output changed fallback set")
+			}
+		})
+	}
+}
+
+func TestParseDirectExecArgumentsFailsClosed(t *testing.T) {
+	got, ok := parseDirectExecArguments(json.RawMessage(`{"cmd":"go test ./...","workdir":"/repo"}`))
+	if !ok || got.command != "go test ./..." || got.cwd != "/repo" {
+		t.Fatalf("got=%+v ok=%t", got, ok)
+	}
+	for _, bad := range []string{`{}`, `{"cmd":""}`, `not-json`} {
+		if _, ok := parseDirectExecArguments(json.RawMessage(bad)); ok {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+}
+
+func TestInterruptDefersInterruptedTurnUntilOwnedTreeStops(t *testing.T) {
+	d, srv := newTestDriver(t)
+	convRaw, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	conv := convRaw.(*conversation)
+	forced := make(chan struct{}, 1)
+	conv.proc.forceStop = func() error { forced <- struct{}{}; return nil }
+	defer func() { _ = conv.Close() }()
+
+	srv.push(`{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress","items":[]}}}`)
+	srv.push(`{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"type":"commandExecution","id":"cmd-1","command":"sleep 3","status":"inProgress"}}}`)
+	_ = nextEvent(t, conv.Events(), ports.ChatEventTurnStarted)
+	_ = nextEvent(t, conv.Events(), ports.ChatEventActivityStarted)
+
+	done := make(chan error, 1)
+	go func() { done <- conv.Interrupt(context.Background(), "turn-1") }()
+	_ = srv.awaitFrame(func(f frame) bool { return f.Method == "turn/interrupt" })
+	deadline := time.Now().Add(time.Second)
+	for {
+		conv.mu.Lock()
+		armed := conv.interrupting["turn-1"]
+		conv.mu.Unlock()
+		if armed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("interrupt was not armed")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	srv.push(`{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","items":[]}}}`)
+	srv.push(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"type":"commandExecution","id":"cmd-1","command":"sleep 3","status":"completed","exitCode":130}}}`)
+	_ = nextEvent(t, conv.Events(), ports.ChatEventActivityCompleted)
+	select {
+	case ev := <-conv.Events():
+		t.Fatalf("interrupted terminal emitted before process-tree stop: %#v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := <-done; !errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+		t.Fatalf("Interrupt error=%v", err)
+	}
+	select {
+	case <-forced:
+	default:
+		t.Fatal("forceStop was not called")
+	}
+	terminal := nextEvent(t, conv.Events(), ports.ChatEventTurnCompleted)
+	if terminal.TurnState != domain.TurnStateInterrupted {
+		t.Fatalf("terminal state=%s", terminal.TurnState)
+	}
+}
+func TestInterruptForceStopsNonQuiescentOwnedProcess(t *testing.T) {
+	clientReads, serverWrites := io.Pipe()
+	serverReads, clientWrites := io.Pipe()
+	forced := make(chan struct{}, 1)
+	conv := newConversation(&process{stdin: clientWrites, stdout: clientReads, stop: func() error { return nil }, forceStop: func() error { forced <- struct{}{}; _ = serverWrites.Close(); return nil }}, slog.New(slog.DiscardHandler))
+	conv.start("thread-1", "", "", nil)
+	defer func() { _ = serverReads.Close(); _ = conv.Close() }()
+	go func() {
+		br := bufio.NewReader(serverReads)
+		for {
+			line, err := readFrame(br)
+			if err != nil {
+				return
+			}
+			var f frame
+			if json.Unmarshal(line, &f) != nil || f.ID == nil {
+				continue
+			}
+			_, _ = io.WriteString(serverWrites, `{"id":`+string(*f.ID)+`,"result":{}}`+"\n")
+		}
+	}()
+	conv.mu.Lock()
+	conv.activeCommands["turn-1"] = 1
+	conv.interrupting["turn-1"] = false
+	conv.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := conv.Interrupt(ctx, "turn-1")
+	if !errors.Is(err, ports.ErrChatInterruptRestartRequired) {
+		t.Fatalf("Interrupt error=%v", err)
+	}
+	select {
+	case <-forced:
+	default:
+		t.Fatal("forceStop was not called")
+	}
+}
+
+func TestConnectionCloseDoesNotReleaseUnverifiedInterruptedTerminal(t *testing.T) {
+	clientReads, serverWrites := io.Pipe()
+	serverReads, clientWrites := io.Pipe()
+	conv := newConversation(&process{stdin: clientWrites, stdout: clientReads, stop: func() error { return nil }}, slog.New(slog.DiscardHandler))
+	conv.start("thread-1", "", "", nil)
+	defer func() { _ = serverReads.Close(); _ = conv.Close() }()
+
+	conv.mu.Lock()
+	conv.interrupting["turn-1"] = true
+	conv.mu.Unlock()
+	serverWrites.Write([]byte(`{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","items":[]}}}` + "\n"))
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		conv.mu.Lock()
+		_, deferred := conv.deferredTerminal["turn-1"]
+		conv.mu.Unlock()
+		if deferred {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("interrupted terminal was not deferred")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// A generic connection close proves only that app-server transport ended.
+	// A detached child can still be producing effects, so this must not release
+	// the deferred interrupted terminal.
+	_ = serverWrites.Close()
+	for ev := range conv.Events() {
+		if ev.Kind == ports.ChatEventTurnCompleted && ev.ProviderTurnID == "turn-1" {
+			t.Fatalf("unverified interrupted terminal escaped on connection close: %#v", ev)
+		}
+	}
+}
+
+func TestDispatchTurnReportsAcknowledgedWithTransportEvidence(t *testing.T) {
+	d, _ := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	dispatcher, ok := opened.(ports.ChatTurnDispatcher)
+	if !ok {
+		t.Fatal("Codex conversation has no evidence-aware dispatch")
+	}
+	got, err := dispatcher.DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "go", ClientMessageID: "dispatch-evidence-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Acceptance != ports.ChatTurnAcknowledged || got.Ref.ProviderTurnID != "turn-1" || got.TransportRequestID <= 0 || got.TransportSHA256 == "" || got.TransportBytes <= 0 || got.TransportSequence <= 0 {
+		t.Fatalf("dispatch evidence=%+v", got)
+	}
+}
+
+func TestDispatchTurnReportsProviderRejectionAfterFullWrite(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.replyError("turn/start", -32602, "invalid turn")
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "go"})
+	if err == nil {
+		t.Fatal("expected provider rejection")
+	}
+	if got.Acceptance != ports.ChatTurnRejected || got.TransportSHA256 == "" || got.Ref.ProviderTurnID != "" {
+		t.Fatalf("rejection evidence=%+v err=%v", got, err)
+	}
+}
+
+func TestDispatchTurnReportsUnknownAfterFullWriteWithoutResponse(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.mu.Lock()
+	delete(srv.responses, "turn/start")
+	srv.mu.Unlock()
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(ctx, ports.ChatUserMessage{Text: "go"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err=%v", err)
+	}
+	if got.Acceptance != ports.ChatTurnDeliveryUnknown || got.TransportSHA256 == "" || got.TransportBytes <= 0 || got.TransportSequence <= 0 {
+		t.Fatalf("unknown evidence=%+v", got)
+	}
+}
+
+func TestDispatchTurnReportsNotSentBeforeTransport(t *testing.T) {
+	d, srv := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "   "})
+	if err == nil {
+		t.Fatal("expected local validation failure")
+	}
+	if got.Acceptance != ports.ChatTurnNotSent || got.TransportRequestID != 0 || got.TransportSHA256 != "" || srv.sentMethod("turn/start") {
+		t.Fatalf("not-sent evidence=%+v turn/start sent=%v", got, srv.sentMethod("turn/start"))
+	}
+}
+
+func TestDispatchTurnReportsUnknownWhenWrittenResponseHasNoTurnID(t *testing.T) {
+	d, srv := newTestDriver(t)
+	srv.respondTo("turn/start", `{"turn":{}}`)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	got, err := opened.(ports.ChatTurnDispatcher).DispatchTurn(context.Background(), ports.ChatUserMessage{Text: "go"})
+	if err == nil {
+		t.Fatal("expected missing turn id")
+	}
+	if got.Acceptance != ports.ChatTurnDeliveryUnknown || got.TransportSHA256 == "" || got.Ref.ProviderTurnID != "" {
+		t.Fatalf("missing-id evidence=%+v err=%v", got, err)
+	}
+}
+
+func TestNativeWorktreeEnvironmentConfinesGoScratch(t *testing.T) {
+	workspace := t.TempDir()
+	env, err := nativeWorktreeEnvironment(workspace, map[string]string{
+		"PATH": "/pinned/bin", "GOCACHE": "/outside/cache", "GOTMPDIR": "/outside/tmp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["PATH"] != "/pinned/bin" {
+		t.Fatalf("unrelated overlay changed: %#v", env)
+	}
+	if want := filepath.Join(workspace, ".gocache"); env["GOCACHE"] != want {
+		t.Errorf("GOCACHE=%q, want %q", env["GOCACHE"], want)
+	}
+	if want := filepath.Join(workspace, ".gotmp"); env["GOTMPDIR"] != want {
+		t.Errorf("GOTMPDIR=%q, want %q", env["GOTMPDIR"], want)
+	} else if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
+		t.Fatalf("GOTMPDIR was not created: info=%v err=%v", info, statErr)
+	}
+}
+
+func TestDispatchInterruptReportsAcknowledgedAndQuiescent(t *testing.T) {
+	d, _ := newTestDriver(t)
+	opened, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	dispatch, err := opened.(ports.ChatInterruptDispatcher).DispatchInterrupt(context.Background(), "turn-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dispatch.Acceptance != ports.ChatTurnAcknowledged || dispatch.TransportRequestID <= 0 || dispatch.TransportSHA256 == "" || dispatch.TransportBytes <= 0 || dispatch.TransportSequence <= 0 {
+		t.Fatalf("dispatch=%+v", dispatch)
+	}
+	if dispatch.Quiescence != domain.GovernedCommandQuiescenceCodexTree || dispatch.QuiescenceEvidenceRef == "" {
+		t.Fatalf("quiescence=%+v", dispatch)
+	}
+}
+
+func TestInterruptForceStopFailureIsTypedContainmentFailure(t *testing.T) {
+	clientReads, serverWrites := io.Pipe()
+	serverReads, clientWrites := io.Pipe()
+	containment := errors.New("kill process group denied")
+	conv := newConversation(&process{stdin: clientWrites, stdout: clientReads, stop: func() error { return nil }, forceStop: func() error { return containment }}, slog.New(slog.DiscardHandler))
+	conv.start("thread-1", "", "", nil)
+	defer func() { _ = serverReads.Close(); _ = serverWrites.Close(); _ = conv.Close() }()
+	go func() {
+		br := bufio.NewReader(serverReads)
+		for {
+			line, err := readFrame(br)
+			if err != nil {
+				return
+			}
+			var f frame
+			if json.Unmarshal(line, &f) == nil && f.ID != nil {
+				_, _ = io.WriteString(serverWrites, `{"id":`+string(*f.ID)+`,"result":{}}`+"\n")
+			}
+		}
+	}()
+	conv.mu.Lock()
+	conv.activeCommands["turn-1"] = 1
+	conv.mu.Unlock()
+	dispatch, err := conv.DispatchInterrupt(context.Background(), "turn-1")
+	if !errors.Is(err, ports.ErrChatInterruptContainmentFailed) {
+		t.Fatalf("err=%v", err)
+	}
+	if dispatch.Acceptance != ports.ChatTurnAcknowledged || dispatch.Quiescence != domain.GovernedCommandQuiescencePending {
+		t.Fatalf("dispatch=%+v", dispatch)
 	}
 }

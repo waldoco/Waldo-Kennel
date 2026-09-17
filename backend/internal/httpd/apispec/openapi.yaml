@@ -471,6 +471,152 @@ paths:
       summary: Stream CDC events with durable replay
       tags:
       - events
+  /api/v1/harness-connections:
+    get:
+      operationId: listHarnessConnections
+      parameters:
+      - in: query
+        name: missionId
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllersHarnessConnectionListResponse'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List harness connections
+      tags:
+      - harness-authority
+  /api/v1/harness-connections/{connectionId}:
+    get:
+      operationId: getHarnessConnection
+      parameters:
+      - in: path
+        name: connectionId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllersHarnessConnectionDetailResponse'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Get harness connection
+      tags:
+      - harness-authority
+  /api/v1/harness-pairing-intents:
+    get:
+      operationId: listHarnessPairingIntents
+      parameters:
+      - in: query
+        name: projectId
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllersHarnessPairingIntentListResponse'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List pairing intents
+      tags:
+      - harness-authority
+  /api/v1/harness-pairing-intents/{intentId}:
+    get:
+      operationId: getHarnessPairingIntent
+      parameters:
+      - in: path
+        name: intentId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllersHarnessPairingIntentDetailResponse'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Get pairing intent
+      tags:
+      - harness-authority
   /api/v1/intake-analysis-requests/{requestId}/proposal:
     post:
       operationId: submitIntakeAnalysisProposal
@@ -2809,6 +2955,170 @@ paths:
           description: Not Implemented
       summary: Append provenance-bearing Evidence to an exact current criterion and
         subject revision
+      tags:
+      - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you:
+    get:
+      operationId: getOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionsEnvelope'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Read current typed owner questions for the Outcome's active Attempt
+        and WorkUnits
+      tags:
+      - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you/{questionId}/answers:
+    post:
+      operationId: answerOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      - description: Durable Needs-You question identifier.
+        in: path
+        name: questionId
+        required: true
+        schema:
+          description: Durable Needs-You question identifier.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NeedsYouAnswerRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Answer one exact Needs-You generation through the governed command
+        lifecycle
+      tags:
+      - outcomes
+  /api/v1/outcomes/{outcomeId}/needs-you/{questionId}/reconcile:
+    post:
+      operationId: reconcileOutcomeNeedsYou
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      - description: Durable Needs-You question identifier.
+        in: path
+        name: questionId
+        required: true
+        schema:
+          description: Durable Needs-You question identifier.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NeedsYouReconcileRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeedsYouQuestionEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Settle delivery_unknown only when later provider evidence closed the
+        question
       tags:
       - outcomes
   /api/v1/outcomes/{outcomeId}/plan:
@@ -9467,6 +9777,24 @@ components:
       - name
       - scope
       type: object
+    ChatDecisionAnswer:
+      properties:
+        id:
+          type: string
+        raw: {}
+      required:
+      - id
+      type: object
+    ChatInputAnswer:
+      properties:
+        action:
+          type: string
+        content:
+          additionalProperties: {}
+          type: object
+      required:
+      - action
+      type: object
     ClaimPRRequest:
       properties:
         allowTakeover:
@@ -9831,6 +10159,49 @@ components:
       - costUsd
       - costEstimated
       type: object
+    ControllersAuthorityReceiptView:
+      properties:
+        action:
+          type: string
+        confirmed:
+          type: boolean
+        createdAt:
+          format: date-time
+          type: string
+        expectedGeneration:
+          format: int64
+          type: integer
+        id:
+          type: string
+        targetDigest:
+          type: string
+        targetId:
+          type: string
+        targetType:
+          type: string
+      required:
+      - id
+      - action
+      - targetType
+      - targetId
+      - targetDigest
+      - expectedGeneration
+      - confirmed
+      - createdAt
+      type: object
+    ControllersCapabilityView:
+      properties:
+        class:
+          type: string
+        effect:
+          type: string
+        material:
+          type: boolean
+      required:
+      - class
+      - effect
+      - material
+      type: object
     ControllersChangeOutcomeDeletionRequest:
       properties:
         action:
@@ -9876,6 +10247,72 @@ components:
       - matchesGenerated
       - negotiatedAt
       type: object
+    ControllersConnectionView:
+      properties:
+        actionNeededCommands:
+          format: int64
+          type: integer
+        adapterDigest:
+          type: string
+        capabilities:
+          items:
+            $ref: '#/components/schemas/ControllersCapabilityView'
+          type: array
+        digest:
+          type: string
+        expiresAt:
+          format: date-time
+          type: string
+        generation:
+          format: int64
+          type: integer
+        harnessIdentity:
+          type: string
+        id:
+          type: string
+        installationId:
+          type: string
+        missionId:
+          type: string
+        protocolFingerprint:
+          type: string
+        providerVersion:
+          type: string
+        reason:
+          type: string
+        repair:
+          type: string
+        revokedAt:
+          format: date-time
+          type:
+          - "null"
+          - string
+        state:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        version:
+          type: string
+      required:
+      - id
+      - version
+      - digest
+      - installationId
+      - harnessIdentity
+      - providerVersion
+      - adapterDigest
+      - protocolFingerprint
+      - missionId
+      - capabilities
+      - generation
+      - expiresAt
+      - state
+      - reason
+      - repair
+      - actionNeededCommands
+      - updatedAt
+      type: object
     ControllersDocumentSourceResponse:
       properties:
         contentDigest:
@@ -9898,6 +10335,144 @@ components:
       - name
       - contentDigest
       - sizeBytes
+      type: object
+    ControllersGovernedControlBlockResponse:
+      properties:
+        id:
+          type: string
+        kind:
+          enum:
+          - steer
+          - answer
+          - interrupt
+          type: string
+        providerTurnId:
+          type: string
+        quiescence:
+          enum:
+          - not_applicable
+          - pending
+          - codex_process_tree_verified
+          type: string
+        quiescenceEvidenceRef:
+          type: string
+        requestInstanceId:
+          type: string
+        since:
+          type: string
+        state:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
+      required:
+      - kind
+      - id
+      - state
+      - quiescence
+      - since
+      type: object
+    ControllersGovernedTurnBlockResponse:
+      properties:
+        kind:
+          enum:
+          - turn
+          type: string
+        quiescence:
+          enum:
+          - not_applicable
+          - pending
+          - codex_process_tree_verified
+          type: string
+        quiescenceEvidenceRef:
+          type: string
+        since:
+          type: string
+        state:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
+        turnId:
+          type: string
+      required:
+      - kind
+      - turnId
+      - state
+      - quiescence
+      - since
+      type: object
+    ControllersHarnessConnectionDetailData:
+      properties:
+        connection:
+          $ref: '#/components/schemas/ControllersConnectionView'
+        receipts:
+          items:
+            $ref: '#/components/schemas/ControllersAuthorityReceiptView'
+          type: array
+      required:
+      - connection
+      - receipts
+      type: object
+    ControllersHarnessConnectionDetailResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessConnectionDetailData'
+      required:
+      - data
+      type: object
+    ControllersHarnessConnectionListData:
+      properties:
+        connections:
+          items:
+            $ref: '#/components/schemas/ControllersConnectionView'
+          type: array
+      required:
+      - connections
+      type: object
+    ControllersHarnessConnectionListResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessConnectionListData'
+      required:
+      - data
+      type: object
+    ControllersHarnessPairingIntentDetailData:
+      properties:
+        intent:
+          $ref: '#/components/schemas/ControllersPairingIntentView'
+        receipts:
+          items:
+            $ref: '#/components/schemas/ControllersAuthorityReceiptView'
+          type: array
+      required:
+      - intent
+      - receipts
+      type: object
+    ControllersHarnessPairingIntentDetailResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessPairingIntentDetailData'
+      required:
+      - data
+      type: object
+    ControllersHarnessPairingIntentListData:
+      properties:
+        intents:
+          items:
+            $ref: '#/components/schemas/ControllersPairingIntentView'
+          type: array
+      required:
+      - intents
+      type: object
+    ControllersHarnessPairingIntentListResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessPairingIntentListData'
+      required:
+      - data
       type: object
     ControllersIntakeAnalysisRequestEnvelope:
       properties:
@@ -10524,6 +11099,70 @@ components:
       required:
       - workUnitId
       - usage
+      type: object
+    ControllersPairingIntentView:
+      properties:
+        adapterDigest:
+          type: string
+        capabilities:
+          items:
+            $ref: '#/components/schemas/ControllersCapabilityView'
+          type: array
+        connectionExpiresAt:
+          format: date-time
+          type: string
+        connectionId:
+          type: string
+        digest:
+          type: string
+        expectedGeneration:
+          format: int64
+          type: integer
+        expiresAt:
+          format: date-time
+          type: string
+        harnessIdentity:
+          type: string
+        id:
+          type: string
+        installationId:
+          type: string
+        kind:
+          type: string
+        missionId:
+          type: string
+        proofState:
+          type: string
+        protocolFingerprint:
+          type: string
+        providerVersion:
+          type: string
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        version:
+          type: string
+      required:
+      - id
+      - version
+      - digest
+      - kind
+      - connectionId
+      - installationId
+      - harnessIdentity
+      - providerVersion
+      - adapterDigest
+      - protocolFingerprint
+      - missionId
+      - capabilities
+      - expectedGeneration
+      - connectionExpiresAt
+      - expiresAt
+      - status
+      - proofState
+      - updatedAt
       type: object
     ControllersRepositoryContextLimitsResponse:
       properties:
@@ -11389,6 +12028,14 @@ components:
           type: string
         conversationId:
           type: string
+        governedControlBlocks:
+          items:
+            $ref: '#/components/schemas/ControllersGovernedControlBlockResponse'
+          type: array
+        governedTurnBlocks:
+          items:
+            $ref: '#/components/schemas/ControllersGovernedTurnBlockResponse'
+          type: array
         harness:
           type: string
         hasMoreBefore:
@@ -11485,6 +12132,16 @@ components:
           - string
         diff:
           $ref: '#/components/schemas/ConversationTurnDiffResponse'
+        dispatchBlockedSince:
+          type:
+          - "null"
+          - string
+        dispatchBlockedState:
+          enum:
+          - claimed
+          - dispatching
+          - delivery_unknown
+          type: string
         errorMessage:
           type: string
         id:
@@ -12601,6 +13258,115 @@ components:
           type: boolean
       required:
       - muted
+      type: object
+    NeedsYouAnswerRequest:
+      properties:
+        decision:
+          $ref: '#/components/schemas/ChatDecisionAnswer'
+        generation:
+          type: string
+        input:
+          $ref: '#/components/schemas/ChatInputAnswer'
+        requestKey:
+          type: string
+      required:
+      - requestKey
+      - generation
+      type: object
+    NeedsYouOption:
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      type: object
+    NeedsYouQuestion:
+      properties:
+        attemptId:
+          type: string
+        commandId:
+          type: string
+        conversationId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        generation:
+          type: string
+        id:
+          type: string
+        inputMode:
+          type: string
+        inputSchema:
+          additionalProperties: {}
+          type: object
+        kind:
+          type: string
+        options:
+          items:
+            $ref: '#/components/schemas/NeedsYouOption'
+          type: array
+        outcomeId:
+          type: string
+        planRevisionId:
+          type: string
+        reason:
+          type: string
+        recommendation:
+          type: string
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        url:
+          type: string
+        workUnitId:
+          type: string
+      required:
+      - id
+      - outcomeId
+      - planRevisionId
+      - workUnitId
+      - attemptId
+      - sessionId
+      - conversationId
+      - requestId
+      - generation
+      - kind
+      - reason
+      - status
+      - createdAt
+      - updatedAt
+      type: object
+    NeedsYouQuestionEnvelope:
+      properties:
+        question:
+          $ref: '#/components/schemas/NeedsYouQuestion'
+      required:
+      - question
+      type: object
+    NeedsYouQuestionsEnvelope:
+      properties:
+        questions:
+          items:
+            $ref: '#/components/schemas/NeedsYouQuestion'
+          type: array
+      required:
+      - questions
+      type: object
+    NeedsYouReconcileRequest:
+      properties:
+        generation:
+          type: string
+      required:
+      - generation
       type: object
     NotificationEnvelope:
       properties:
@@ -16129,6 +16895,8 @@ tags:
   name: push
 - description: Server-sent CDC event stream with durable replay
   name: events
+- description: Renderer-safe harness pairing and connection projections
+  name: harness-authority
 - description: Legacy Kennel project import (availability probe and run)
   name: import
 - description: Developer-only maintenance operations

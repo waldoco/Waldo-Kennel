@@ -25,6 +25,17 @@ type AcceptanceDecision struct {
 	CreatedAt           time.Time
 }
 
+type AdmissionVerdict struct {
+	ID                     string
+	OutcomeID              string
+	PlanRevisionID         sql.NullString
+	ContractRevisionNumber sql.NullInt64
+	Status                 string
+	PolicyVersion          string
+	EvaluatedAt            time.Time
+	VerdictJson            string
+}
+
 type AgentModelCatalog struct {
 	AgentID       string
 	ProjectID     string
@@ -88,6 +99,13 @@ type AppSetting struct {
 	RepositoryContextMaxFiles        sql.NullInt64
 	RepositoryContextMaxBytes        sql.NullInt64
 	RepositoryContextMaxVisited      sql.NullInt64
+}
+
+type ApprovedExecutableSpec struct {
+	PlanRevisionID string
+	WorkUnitID     string
+	Digest         string
+	SpecJson       string
 }
 
 type Attempt struct {
@@ -193,6 +211,21 @@ type AttemptRecoveryReceipt struct {
 	CreatedAt            time.Time
 }
 
+type AttemptReplacementDecision struct {
+	ID                     string
+	OutcomeID              string
+	PredecessorAttemptID   string
+	PlanRevisionID         string
+	WorkUnitID             string
+	RunIntentGeneration    int64
+	ContractRevisionNumber int64
+	Action                 string
+	RequestKey             string
+	RequestFingerprint     string
+	OwnerPrincipal         string
+	CreatedAt              time.Time
+}
+
 type AttemptSession struct {
 	ID                     string
 	AttemptID              domain.AttemptID
@@ -222,6 +255,14 @@ type ChangeLog struct {
 	CreatedAt time.Time
 }
 
+type ChatCommandTarget struct {
+	SessionID             string
+	ControllerGeneration  string
+	ExpectedRevision      string
+	CapabilityFingerprint string
+	UpdatedAt             time.Time
+}
+
 type ChatProtocolProvenance struct {
 	SessionID            string
 	Seq                  int64
@@ -235,6 +276,31 @@ type ChatProtocolProvenance struct {
 	DegradedCapabilities string
 	MissingFloor         string
 	NegotiatedAt         time.Time
+}
+
+type CommandAuthorityClaim struct {
+	ID                      string
+	AdapterRequestKey       string
+	RequestFingerprint      string
+	OwnerProofID            string
+	HarnessConnectionID     string
+	ConnectionGeneration    int64
+	ConnectionBindingDigest string
+	ConnectionExpiresAt     time.Time
+	ConnectionRevokedAt     sql.NullTime
+	TransportClass          string
+	AppRunID                string
+	MissionID               string
+	ContentDigest           string
+	TargetDigest            string
+	OwnerClass              string
+	CanonicalVersion        string
+	CanonicalPayload        []byte
+	DestinationType         string
+	DestinationID           string
+	State                   string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 type ContractCriterium struct {
@@ -479,6 +545,145 @@ type EvidenceItem struct {
 	CreatedAt          time.Time
 }
 
+type GovernedCommand struct {
+	ID                     string
+	SessionID              string
+	IdempotencyKey         string
+	RequestFingerprint     string
+	CommandClass           string
+	State                  string
+	ControllerGeneration   string
+	ExpectedRevision       string
+	CapabilityFingerprint  string
+	ProviderConversationID string
+	ClientMessageID        string
+	ProviderTurnID         string
+	ProviderEventID        string
+	ProviderCursor         string
+	ReplayStrategy         string
+	ReconciliationOutcome  string
+	Quiescence             string
+	QuiescenceEvidenceRef  string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type GovernedControlCommand struct {
+	ID                     string
+	SessionID              string
+	IdempotencyKey         string
+	RequestFingerprint     string
+	CommandClass           string
+	State                  string
+	ControllerGeneration   string
+	ExpectedRevision       string
+	CapabilityFingerprint  string
+	ProviderConversationID string
+	ClientMessageID        string
+	ProviderTurnID         string
+	TargetGeneration       string
+	Quiescence             string
+	QuiescenceEvidenceRef  string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	RequestInstanceID      string
+}
+
+type HarnessAuthorityReceipt struct {
+	ID                 string
+	Action             string
+	TargetType         string
+	TargetID           string
+	TargetDigest       string
+	ExpectedGeneration int64
+	RequestKey         string
+	RequestFingerprint string
+	OwnerPrincipal     string
+	ConfirmationRef    string
+	CreatedAt          time.Time
+}
+
+type HarnessCommandOutbox struct {
+	ClaimID          string
+	DestinationType  string
+	DestinationID    string
+	CanonicalPayload []byte
+	State            string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type HarnessConnection struct {
+	ID                  string
+	InstallationID      string
+	AdapterDigest       string
+	HarnessIdentity     string
+	ProviderVersion     string
+	ProtocolFingerprint string
+	MissionID           string
+	AppRunID            string
+	CapabilityClasses   string
+	CapabilityVerifier  string
+	Generation          int64
+	ExpiresAt           time.Time
+	RevokedAt           sql.NullTime
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type HarnessPairingChallenge struct {
+	ID                  string
+	Kind                string
+	ConnectionID        string
+	InstallationID      string
+	AdapterDigest       string
+	HarnessIdentity     string
+	ProviderVersion     string
+	ProtocolFingerprint string
+	MissionID           string
+	AppRunID            string
+	CapabilityClasses   string
+	ExpectedGeneration  int64
+	ProofVerifier       string
+	Status              string
+	ResultCode          sql.NullString
+	ConnectionExpiresAt time.Time
+	ExpiresAt           time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type HarnessPairingIntent struct {
+	ID                         string
+	ProjectID                  string
+	Kind                       string
+	ConnectionID               string
+	InstallationID             string
+	AdapterDigest              string
+	HarnessIdentity            string
+	ProviderVersion            string
+	ProtocolFingerprint        string
+	MissionID                  string
+	AppRunID                   string
+	CapabilityClasses          string
+	ExpectedGeneration         int64
+	ConnectionExpiresAt        time.Time
+	ExpiresAt                  time.Time
+	Digest                     string
+	Status                     string
+	ProposalRequestKey         string
+	ProposalRequestFingerprint string
+	ChallengeID                sql.NullString
+	DecisionID                 string
+	Decision                   string
+	DecisionRequestKey         string
+	OwnerPrincipal             string
+	ConfirmationRef            string
+	DecidedAt                  sql.NullTime
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
+}
+
 type IntakeAnalysisRequest struct {
 	ID                       domain.IntakeAnalysisRequestID
 	IntakeID                 string
@@ -710,6 +915,30 @@ type OutcomeTrash struct {
 	TrashRootID string
 	Erasing     int64
 	DeletedAt   time.Time
+}
+
+type OwnerAnswerQuestion struct {
+	ID             string
+	ConversationID string
+	RequestID      string
+	Generation     string
+	Status         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type OwnerProof struct {
+	ID              string
+	Verifier        string
+	AppRunID        string
+	MissionID       string
+	ContentDigest   string
+	TargetDigest    string
+	CommandClass    string
+	ConfirmationRef string
+	ExpiresAt       time.Time
+	CreatedAt       time.Time
+	ConsumedAt      sql.NullTime
 }
 
 type PR struct {
@@ -1321,6 +1550,15 @@ type WorkUnitProviderBinding struct {
 type WorkUnitRequiredCapability struct {
 	WorkUnitID string
 	Capability string
+}
+
+type WorkspaceBoundLaunchPacket struct {
+	AttemptID  string
+	SpecDigest string
+	SessionID  string
+	Digest     string
+	PacketJson string
+	CreatedAt  time.Time
 }
 
 type WorkspaceRepo struct {

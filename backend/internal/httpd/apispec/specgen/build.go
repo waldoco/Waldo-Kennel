@@ -77,6 +77,7 @@ func Build() ([]byte, error) {
 			"Mobile push-device registration for OS push notifications"),
 		*(&openapi31.Tag{Name: "events"}).WithDescription(
 			"Server-sent CDC event stream with durable replay"),
+		*(&openapi31.Tag{Name: "harness-authority"}).WithDescription("Renderer-safe harness pairing and connection projections"),
 		*(&openapi31.Tag{Name: "import"}).WithDescription(
 			"Legacy Kennel project import (availability probe and run)"),
 		*(&openapi31.Tag{Name: "dev"}).WithDescription(
@@ -415,6 +416,15 @@ var schemaNames = map[string]string{
 	"ControllersRecoveryReceiptResponse":                  "RecoveryReceiptResponse",
 	"ControllersAttemptFenceResponse":                     "AttemptFenceResponse",
 	"ControllersAttemptIDParam":                           "AttemptIDParam",
+	"ControllersNeedsYouQuestionIDParam":                  "NeedsYouQuestionIDParam",
+	"ControllersNeedsYouQuestionsEnvelope":                "NeedsYouQuestionsEnvelope",
+	"ControllersNeedsYouAnswerRequest":                    "NeedsYouAnswerRequest",
+	"ControllersNeedsYouQuestionEnvelope":                 "NeedsYouQuestionEnvelope",
+	"ControllersNeedsYouReconcileRequest":                 "NeedsYouReconcileRequest",
+	"DomainNeedsYouQuestion":                              "NeedsYouQuestion",
+	"DomainNeedsYouOption":                                "NeedsYouOption",
+	"DomainChatDecisionAnswer":                            "ChatDecisionAnswer",
+	"DomainChatInputAnswer":                               "ChatInputAnswer",
 	"ControllersMarkNotificationReadRequest":              "MarkNotificationReadRequest",
 	"ControllersNotificationEnvelope":                     "NotificationEnvelope",
 	"ControllersMarkAllNotificationsReadRequest":          "MarkAllNotificationsReadRequest",
@@ -558,6 +568,7 @@ type operation struct {
 
 func operations() []operation {
 	ops := append([]operation{}, eventOperations()...)
+	ops = append(ops, harnessAuthorityOperations()...)
 	ops = append(ops, agentOperations()...)
 	ops = append(ops, projectOperations()...)
 	ops = append(ops, sessionOperations()...)
@@ -1724,6 +1735,24 @@ func notificationOperations() []operation {
 			},
 		},
 		{
+			method: http.MethodGet, path: "/api/v1/outcomes/{outcomeId}/needs-you", id: "getOutcomeNeedsYou", tag: "outcomes",
+			summary:    "Read current typed owner questions for the Outcome's active Attempt and WorkUnits",
+			pathParams: []any{controllers.OutcomeIDParam{}},
+			resps:      []respUnit{{http.StatusOK, controllers.NeedsYouQuestionsEnvelope{}}, {http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/outcomes/{outcomeId}/needs-you/{questionId}/answers", id: "answerOutcomeNeedsYou", tag: "outcomes",
+			summary:    "Answer one exact Needs-You generation through the governed command lifecycle",
+			pathParams: []any{controllers.OutcomeIDParam{}, controllers.NeedsYouQuestionIDParam{}}, reqBody: controllers.NeedsYouAnswerRequest{},
+			resps: []respUnit{{http.StatusOK, controllers.NeedsYouQuestionEnvelope{}}, {http.StatusBadRequest, envelope.APIError{}}, {http.StatusConflict, envelope.APIError{}}, {http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/outcomes/{outcomeId}/needs-you/{questionId}/reconcile", id: "reconcileOutcomeNeedsYou", tag: "outcomes",
+			summary:    "Settle delivery_unknown only when later provider evidence closed the question",
+			pathParams: []any{controllers.OutcomeIDParam{}, controllers.NeedsYouQuestionIDParam{}}, reqBody: controllers.NeedsYouReconcileRequest{},
+			resps: []respUnit{{http.StatusOK, controllers.NeedsYouQuestionEnvelope{}}, {http.StatusBadRequest, envelope.APIError{}}, {http.StatusConflict, envelope.APIError{}}, {http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}},
+		},
+		{
 			method: http.MethodPost, path: "/api/v1/outcomes/{outcomeId}/attempts", id: "startOutcomeAttempt", tag: "outcomes",
 			summary:    "Admit an approved plan onto a real provider session (fail-closed; idempotent by requestKey)",
 			pathParams: []any{controllers.OutcomeIDParam{}},
@@ -1970,6 +1999,32 @@ func reviewOperations() []operation {
 
 type eventsQuery struct {
 	After *int64 `query:"after,omitempty" minimum:"0" description:"Replay events with seq greater than this cursor. When omitted, clients may send Last-Event-ID instead."`
+}
+
+type harnessIntentParam struct {
+	IntentID string `path:"intentId"`
+}
+type harnessConnectionParam struct {
+	ConnectionID string `path:"connectionId"`
+}
+type harnessIntentQuery struct {
+	ProjectID string `query:"projectId,omitempty"`
+	Limit     int    `query:"limit,omitempty" minimum:"1" maximum:"200"`
+}
+type harnessConnectionQuery struct {
+	MissionID string `query:"missionId,omitempty"`
+	Limit     int    `query:"limit,omitempty" minimum:"1" maximum:"200"`
+}
+
+func harnessAuthorityOperations() []operation {
+	common := []respUnit{{http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}}
+	detailErrors := append(append([]respUnit(nil), common...), respUnit{http.StatusNotFound, envelope.APIError{}})
+	return []operation{
+		{method: http.MethodGet, path: "/api/v1/harness-pairing-intents", id: "listHarnessPairingIntents", tag: "harness-authority", summary: "List pairing intents", pathParams: []any{harnessIntentQuery{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessPairingIntentListResponse{}}}, common...)},
+		{method: http.MethodGet, path: "/api/v1/harness-pairing-intents/{intentId}", id: "getHarnessPairingIntent", tag: "harness-authority", summary: "Get pairing intent", pathParams: []any{harnessIntentParam{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessPairingIntentDetailResponse{}}}, detailErrors...)},
+		{method: http.MethodGet, path: "/api/v1/harness-connections", id: "listHarnessConnections", tag: "harness-authority", summary: "List harness connections", pathParams: []any{harnessConnectionQuery{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessConnectionListResponse{}}}, common...)},
+		{method: http.MethodGet, path: "/api/v1/harness-connections/{connectionId}", id: "getHarnessConnection", tag: "harness-authority", summary: "Get harness connection", pathParams: []any{harnessConnectionParam{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessConnectionDetailResponse{}}}, detailErrors...)},
+	}
 }
 
 func eventOperations() []operation {

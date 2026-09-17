@@ -1,5 +1,8 @@
 # Waldo Kennel v1 — canonical kernel and Work product architecture
 
+> **Historical design (superseded for execution/session topology on 2026-09-15).** Use [Persistent mission runtime](../architecture/persistent-mission-runtime.md). Retained for product rationale and provenance.
+
+
 - **Status:** Canonical authority for v1 Work/kernel implementation
 - **Date:** 2026-09-04
 - **Target repository:** `waldoco/Waldo-Kennel`

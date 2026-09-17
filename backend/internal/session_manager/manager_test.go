@@ -1196,6 +1196,7 @@ func TestSpawn_ExactExecutionPolicyOverridesProjectPermissionsAndReachesLaunch(t
 	binding := domain.ExecutionBinding{Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault}
 	if _, _, _, err := m.Spawn(context.Background(), ports.SpawnConfig{
 		ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding, ExecutionPolicy: policy,
+		BeforeProviderLaunch: func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy) error { return nil },
 	}); err != nil {
 		t.Fatal(err)
 	}

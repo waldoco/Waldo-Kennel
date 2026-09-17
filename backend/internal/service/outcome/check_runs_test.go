@@ -72,6 +72,7 @@ func newCheckedHarness(t *testing.T, observe func(domain.ApprovedCheck) ports.At
 		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(&fakeSpawner{readiness: ports.AgentProfileReadiness{Ready: true, Detail: "profile ok"}}, newFakeHeartbeats()).
 		WithCheckRunner(runner, runs)
+	svc.AdmissionPolicy = testAdmissionPolicy()
 	base.svc = svc
 	return &checkedHarness{classificationHarness: base, runner: runner, runs: runs, check: check}
 }

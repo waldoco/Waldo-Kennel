@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1202" viewBox="0 0 1400 1202">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker></defs>
+<rect width="100%" height="100%" fill="#0c0f14"/>
+<text x="700" y="36" text-anchor="middle" font-family="Arial" font-size="25" font-weight="700" fill="white">Persistent-session implementation order: stages 0-12</text>
+<line x1="700" y1="107" x2="700" y2="141" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="191" x2="700" y2="225" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="275" x2="700" y2="309" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="359" x2="700" y2="393" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="443" x2="700" y2="477" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="527" x2="700" y2="561" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="611" x2="700" y2="645" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="695" x2="700" y2="729" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="779" x2="700" y2="813" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="863" x2="700" y2="897" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="947" x2="700" y2="981" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<line x1="700" y1="1031" x2="700" y2="1065" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<rect x="210" y="57" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="87" text-anchor="middle" font-family="Arial" font-size="16" fill="white">0 Contract freeze</text>
+<rect x="210" y="141" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="171" text-anchor="middle" font-family="Arial" font-size="16" fill="white">1 Native Codex and compatibility proof</text>
+<rect x="210" y="225" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="255" text-anchor="middle" font-family="Arial" font-size="16" fill="white">2 Unified session controller</text>
+<rect x="210" y="309" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="339" text-anchor="middle" font-family="Arial" font-size="16" fill="white">3 S1 and authenticated harness connection</text>
+<rect x="210" y="393" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="423" text-anchor="middle" font-family="Arial" font-size="16" fill="white">4 Intake and installed mission entry</text>
+<rect x="210" y="477" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="507" text-anchor="middle" font-family="Arial" font-size="16" fill="white">5 Persistent-session cutover</text>
+<rect x="210" y="561" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="591" text-anchor="middle" font-family="Arial" font-size="16" fill="white">6 Artifact, integration, and immutable verification</text>
+<rect x="210" y="645" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="675" text-anchor="middle" font-family="Arial" font-size="16" fill="white">7 Nonterminal attention</text>
+<rect x="210" y="729" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="759" text-anchor="middle" font-family="Arial" font-size="16" fill="white">8 Supervisor protocol and failure isolation</text>
+<rect x="210" y="813" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="843" text-anchor="middle" font-family="Arial" font-size="16" fill="white">9 MissionProjection</text>
+<rect x="210" y="897" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="927" text-anchor="middle" font-family="Arial" font-size="16" fill="white">10 UI integration</text>
+<rect x="210" y="981" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="1011" text-anchor="middle" font-family="Arial" font-size="16" fill="white">11 Serial packaged proof</text>
+<rect x="210" y="1065" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="1095" text-anchor="middle" font-family="Arial" font-size="16" fill="white">12 Cleanup and expansion</text>
+</svg>

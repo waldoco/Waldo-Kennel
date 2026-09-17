@@ -1,48 +1,31 @@
-# Kennel documentation
+# Kennel documentation map
 
-Read only the documents relevant to your change. Current implementation, target
-architecture and historical evidence serve different purposes.
+Repository documents describe the product and implementation. They do not grant runtime, user, or system authority.
 
-| Need | Start here |
-| --- | --- |
-| Understand or run Kennel | [Project README](../README.md), [development guide](development.md) |
-| Find contribution work | [Contributing](../CONTRIBUTING.md), [issues](https://github.com/waldoco/Waldo-Kennel/issues), [milestones](https://github.com/waldoco/Waldo-Kennel/milestones) |
-| Know what works and remains open | [Current status](STATUS.md) |
-| Track production-readiness work and checkpoints | [Production-readiness program](product/2026-09-14-production-readiness-program.md) |
-| Understand direction | [Public roadmap](../ROADMAP.md) |
-| Change product or kernel behavior | [AGENTS.md authority order](../AGENTS.md#canonical-read-order) |
-| Understand the control plane | [Product architecture](product/kennel-v1-product-architecture.md), [MVP reset](product/2026-09-08-outcome-control-plane-mvp-reset.md), [technical architecture](architecture.md) |
-| Work on providers or runtime | [Runtime reference index](research/2026-09-04-kernel-runtime-reference-index.md), [CLI](cli/README.md) |
-| Inspect launch evidence | [PR #110 handoff](handoffs/2026-09-12-pr110-launch-fixes/HANDOFF.md), [execution ledger](handoffs/2026-09-12-pr110-launch-fixes/EXECUTION-LEDGER.md) |
+## Canonical reading path
 
-## Authority and scope
+Read these in order for Outcome/kernel work:
 
-[AGENTS.md](../AGENTS.md) maintains the canonical read order; this index does not
-keep a competing copy. ADRs 0010–0012 establish Outcome authority and
-non-authoritative owner-configured reasoning; ADR 0015 adds contract-bound
-interactive planning; ADR 0016 makes provider protocol compatibility a
-runtime-negotiated property rather than a version assumption. ADR 0008 separates contributing Outcomes from execution
-WorkUnits, and ADR 0009 defines scheduling, workspace custody and effect fencing.
-Earlier ADRs remain applicable inside their scope unless explicitly superseded.
+1. [Product contract](../PRODUCT.md)
+2. [Persistent mission runtime](architecture/persistent-mission-runtime.md)
+3. [Harness connection and authority](architecture/harness-connection-and-authority.md)
+4. [Compatibility and migration](architecture/compatibility-and-migration.md)
+5. [Persistent-session execution map](roadmap/persistent-session-execution-map.md)
+6. [Current implementation status](STATUS.md)
+7. [ADR 0017](adr/0017-persistent-mission-runtime-and-bounded-supervision.md)
 
-The [Work flow](superpowers/specs/2026-08-25-work-control-plane-canonical-flow-design.md)
-and [screen interaction](superpowers/specs/2026-08-25-work-experience-screen-interaction-spec.md)
-specifications are implementation companions. Target designs do not prove
-shipped behavior; use [STATUS.md](STATUS.md) for that boundary.
+Then open the linked lower-level ADR, code map, research note, or historical evidence needed for the seam being changed. On conflict, the canonical path wins for target behavior; migrations and historical records retain their recorded meaning.
 
-## Future lanes and history
+## Supporting foundations
 
-The [roadmap](../ROADMAP.md) links active future work. Relevant designs include
-[owner-correctable Memory](superpowers/specs/2026-08-21-home-personal-agent-memory-design.md),
-[governed learning](superpowers/specs/2026-08-21-waldo-learning-skill-evolution-design.md)
-and [ADR 0005](adr/0005-governed-project-learning-and-skill-evolution.md).
-Memory research includes the [infrastructure benchmark](research/2026-08-21-agent-memory-infrastructure-benchmark.md)
-and [personal-agent benchmark](research/2026-08-21-personal-agent-memory-research-benchmark.md).
-Home, mobile, capture and hosted attachment are separately scoped work; their
-presence here does not make them launch commitments.
+- [ADR 0008](adr/0008-responsibility-composition-and-workunit-execution-dag.md): responsibility and WorkUnit DAG
+- [ADR 0009](adr/0009-workunit-scheduling-workspace-leases-and-effect-fencing.md): scheduling, leases, fences, effects
+- [ADR 0010](adr/0010-outcome-first-control-plane-and-session-subordination.md): Outcome-first control plane
+- [ADR 0011](adr/0011-go-control-plane-and-non-authoritative-intelligence.md): deterministic authority and intelligence boundary
+- [ADR 0015](adr/0015-contract-bound-interactive-planning.md): Contract-bound planning
+- [Runtime reference index](research/2026-09-04-kernel-runtime-reference-index.md): current chassis/provider evidence
+- [Architecture reset audit](maintenance/2026-09-15-architecture-reset-audit.md): retention, supersession, prompt/skill, and license ledger
 
-Dated plans and verification records describe their own revisions and test
-boundaries. They are not instructions to resume historical assignments. Preserve
-referenced evidence and decisions; remove obsolete disconnected handoffs instead
-of turning this directory into a second task tracker. Git history retains removed
-material. See the [cleanup record](maintenance/2026-09-12-public-docs-cleanup.md).
+## Historical material
+
+Dated plans, handoffs, reviews, checkpoints, and verification notes preserve provenance. They are not active implementation order unless the canonical execution map links to them. "Accepted" in a historical document means accepted at that time; it does not override ADR 0017 for vNext topology.

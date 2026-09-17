@@ -37,6 +37,7 @@ func newReworkHarness(t *testing.T) *reworkHarness {
 		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(&fakeSpawner{readiness: ports.AgentProfileReadiness{Ready: true, Detail: "profile ok"}}, newFakeHeartbeats()).
 		WithRunIntents(h.intents)
+	h.svc.AdmissionPolicy = testAdmissionPolicy()
 
 	ctx := context.Background()
 	view, err := h.svc.Create(ctx, validCreateInput())
