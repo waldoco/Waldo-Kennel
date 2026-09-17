@@ -108,6 +108,7 @@ func (c *OutcomesController) Register(r chi.Router) {
 	r.Post("/outcomes/{outcomeId}/planning-sessions/{planningSessionId}/proposal", c.finalizePlanning)
 	r.Post("/outcomes/{outcomeId}/planning-sessions/{planningSessionId}/cancel", c.cancelPlanning)
 	r.Get("/outcomes/{outcomeId}/plans/{planId}/schedule", c.schedule)
+	r.Get("/outcomes/{outcomeId}/plans/{planId}/mission", c.mission)
 	r.Post("/outcomes/{outcomeId}/attempts", c.startAttempt)
 	r.Get("/outcomes/{outcomeId}/attempts", c.listAttempts)
 	r.Get("/outcomes/{outcomeId}/attempts/{attemptId}", c.getAttempt)
@@ -321,6 +322,26 @@ func (c *OutcomesController) schedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	envelope.WriteJSON(w, http.StatusOK, ScheduleEnvelope{Schedule: scheduleResponse(view)})
+}
+
+func (c *OutcomesController) mission(w http.ResponseWriter, r *http.Request) {
+	if c.Attempts == nil {
+		apispec.NotImplemented(w, r, http.MethodGet, "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission")
+		return
+	}
+	projector, ok := c.Attempts.(interface {
+		GetMissionProjection(context.Context, domain.OutcomeID, domain.PlanRevisionID) (outcomevc.MissionProjection, error)
+	})
+	if !ok {
+		apispec.NotImplemented(w, r, http.MethodGet, "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission")
+		return
+	}
+	view, err := projector.GetMissionProjection(r.Context(), domain.OutcomeID(chi.URLParam(r, "outcomeId")), domain.PlanRevisionID(chi.URLParam(r, "planId")))
+	if err != nil {
+		envelope.WriteError(w, r, err)
+		return
+	}
+	envelope.WriteJSON(w, http.StatusOK, MissionEnvelope{Mission: missionResponse(view)})
 }
 
 func (c *OutcomesController) latestPlan(w http.ResponseWriter, r *http.Request) {

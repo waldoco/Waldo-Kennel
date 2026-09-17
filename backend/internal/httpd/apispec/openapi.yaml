@@ -3700,6 +3700,58 @@ paths:
         authority)
       tags:
       - outcomes
+  /api/v1/outcomes/{outcomeId}/plans/{planId}/mission:
+    get:
+      operationId: getOutcomeMissionProjection
+      parameters:
+      - description: Outcome identifier, e.g. out-<uuid>.
+        in: path
+        name: outcomeId
+        required: true
+        schema:
+          description: Outcome identifier, e.g. out-<uuid>.
+          type: string
+      - description: Plan revision identifier, e.g. plan-<uuid>.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Plan revision identifier, e.g. plan-<uuid>.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllersMissionEnvelope'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Read the authoritative WorkUnit mission graph without launching work
+      tags:
+      - outcomes
   /api/v1/outcomes/{outcomeId}/plans/{planId}/schedule:
     get:
       operationId: getOutcomePlanSchedule
@@ -10685,6 +10737,212 @@ components:
       - currentRevisionNumber
       - createdAt
       - updatedAt
+      type: object
+    ControllersMissionAttemptResponse:
+      properties:
+        attemptId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        number:
+          format: int64
+          type: integer
+        session:
+          $ref: '#/components/schemas/ControllersMissionSessionResponse'
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+      - attemptId
+      - number
+      - status
+      - createdAt
+      - updatedAt
+      type: object
+    ControllersMissionAttentionResponse:
+      properties:
+        generation:
+          type: string
+        kind:
+          enum:
+          - needs_choice
+          - needs_input
+          type: string
+        questionId:
+          type: string
+        reasonCode:
+          type: string
+      required:
+      - kind
+      - reasonCode
+      - generation
+      type: object
+    ControllersMissionEdgeResponse:
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+      required:
+      - from
+      - to
+      type: object
+    ControllersMissionEnvelope:
+      properties:
+        mission:
+          $ref: '#/components/schemas/ControllersMissionProjectionResponse'
+      required:
+      - mission
+      type: object
+    ControllersMissionNodeResponse:
+      properties:
+        attention:
+          $ref: '#/components/schemas/ControllersMissionAttentionResponse'
+        blockedDetail:
+          type: string
+        blockedReason:
+          type: string
+        blockingDependencies:
+          items:
+            type: string
+          type: array
+        criterionIds:
+          items:
+            type: string
+          type: array
+        criterionReady:
+          additionalProperties:
+            type: boolean
+          type:
+          - object
+          - "null"
+        currentAttempt:
+          $ref: '#/components/schemas/ControllersMissionAttemptResponse'
+        dependsOn:
+          items:
+            type: string
+          type: array
+        generation:
+          format: int64
+          type: integer
+        nextAction:
+          type: string
+        planRevisionId:
+          type: string
+        responsibility:
+          enum:
+          - agent
+          - owner
+          - unconfirmed
+          type: string
+        scheduleState:
+          type: string
+        title:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        workUnitId:
+          type: string
+      required:
+      - workUnitId
+      - planRevisionId
+      - title
+      - dependsOn
+      - scheduleState
+      - blockingDependencies
+      - criterionIds
+      - criterionReady
+      - responsibility
+      - updatedAt
+      - generation
+      type: object
+    ControllersMissionProjectionResponse:
+      properties:
+        contractRevisionNumber:
+          format: int64
+          type: integer
+        custodyHeldByWorkUnitId:
+          type: string
+        edges:
+          items:
+            $ref: '#/components/schemas/ControllersMissionEdgeResponse'
+          type: array
+        generation:
+          format: int64
+          type: integer
+        missionId:
+          type: string
+        nextRunnableWorkUnitId:
+          type: string
+        noRunnableReason:
+          type: string
+        nodes:
+          items:
+            $ref: '#/components/schemas/ControllersMissionNodeResponse'
+          type: array
+        outcomeId:
+          type: string
+        planRevisionId:
+          type: string
+        planRevisionNumber:
+          format: int64
+          type: integer
+        topologyFingerprint:
+          type: string
+        topologyGeneration:
+          format: int64
+          type: integer
+        updatedAt:
+          format: date-time
+          type: string
+        version:
+          type: integer
+      required:
+      - version
+      - outcomeId
+      - missionId
+      - contractRevisionNumber
+      - planRevisionId
+      - planRevisionNumber
+      - topologyFingerprint
+      - topologyGeneration
+      - generation
+      - updatedAt
+      - nodes
+      - edges
+      type: object
+    ControllersMissionSessionResponse:
+      properties:
+        attemptSessionRefId:
+          type: string
+        boundAt:
+          format: date-time
+          type: string
+        generation:
+          format: int64
+          type: integer
+        harness:
+          type: string
+        mode:
+          type: string
+        sessionId:
+          type: string
+        status:
+          enum:
+          - unknown
+          type: string
+      required:
+      - attemptSessionRefId
+      - generation
+      - sessionId
+      - harness
+      - mode
+      - status
+      - boundAt
       type: object
     ControllersOutcomeDeletionEnvelope:
       properties:

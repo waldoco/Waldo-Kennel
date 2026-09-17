@@ -1658,6 +1658,12 @@ func notificationOperations() []operation {
 			},
 		},
 		{
+			method: http.MethodGet, path: "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission", id: "getOutcomeMissionProjection", tag: "outcomes",
+			summary:    "Read the authoritative WorkUnit mission graph without launching work",
+			pathParams: []any{controllers.OutcomeIDParam{}, controllers.PlanIDParam{}},
+			resps:      []respUnit{{http.StatusOK, controllers.MissionEnvelope{}}, {http.StatusConflict, envelope.APIError{}}, {http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}},
+		},
+		{
 			method: http.MethodGet, path: "/api/v1/outcomes/{outcomeId}/proof", id: "getOutcomeProof", tag: "outcomes",
 			summary:    "Read criterion-bound Evidence, Verification, explicit decisions, and derived proof state",
 			pathParams: []any{controllers.OutcomeIDParam{}},

@@ -4257,3 +4257,99 @@ type ChangeOutcomeDeletionRequest struct {
 type OutcomeDeletionResult struct {
 	Action string `json:"action"`
 }
+
+// MissionProjectionResponse is the authoritative, read-only WorkUnit graph.
+type MissionProjectionResponse struct {
+	Version                 int                   `json:"version"`
+	OutcomeID               string                `json:"outcomeId"`
+	MissionID               string                `json:"missionId"`
+	ContractRevisionNumber  int64                 `json:"contractRevisionNumber"`
+	PlanRevisionID          string                `json:"planRevisionId"`
+	PlanRevisionNumber      int64                 `json:"planRevisionNumber"`
+	TopologyFingerprint     string                `json:"topologyFingerprint"`
+	TopologyGeneration      int64                 `json:"topologyGeneration"`
+	Generation              int64                 `json:"generation"`
+	UpdatedAt               time.Time             `json:"updatedAt"`
+	Nodes                   []MissionNodeResponse `json:"nodes"`
+	Edges                   []MissionEdgeResponse `json:"edges"`
+	NextRunnableWorkUnitID  string                `json:"nextRunnableWorkUnitId,omitempty"`
+	CustodyHeldByWorkUnitID string                `json:"custodyHeldByWorkUnitId,omitempty"`
+	NoRunnableReason        string                `json:"noRunnableReason,omitempty"`
+}
+type MissionNodeResponse struct {
+	WorkUnitID           string                    `json:"workUnitId"`
+	PlanRevisionID       string                    `json:"planRevisionId"`
+	Title                string                    `json:"title"`
+	DependsOn            []string                  `json:"dependsOn"`
+	ScheduleState        string                    `json:"scheduleState"`
+	BlockingDependencies []string                  `json:"blockingDependencies"`
+	BlockedReason        string                    `json:"blockedReason,omitempty"`
+	BlockedDetail        string                    `json:"blockedDetail,omitempty"`
+	CriterionIDs         []string                  `json:"criterionIds"`
+	CriterionReady       map[string]bool           `json:"criterionReady"`
+	CurrentAttempt       *MissionAttemptResponse   `json:"currentAttempt,omitempty"`
+	Attention            *MissionAttentionResponse `json:"attention,omitempty"`
+	NextAction           string                    `json:"nextAction,omitempty"`
+	Responsibility       string                    `json:"responsibility" enum:"agent,owner,unconfirmed"`
+	UpdatedAt            time.Time                 `json:"updatedAt"`
+	Generation           int64                     `json:"generation"`
+}
+type MissionAttemptResponse struct {
+	ID        string                  `json:"attemptId"`
+	Number    int64                   `json:"number"`
+	Status    string                  `json:"status"`
+	CreatedAt time.Time               `json:"createdAt"`
+	UpdatedAt time.Time               `json:"updatedAt"`
+	Session   *MissionSessionResponse `json:"session,omitempty"`
+}
+type MissionSessionResponse struct {
+	RefID     string    `json:"attemptSessionRefId"`
+	Seq       int64     `json:"generation"`
+	SessionID string    `json:"sessionId"`
+	Harness   string    `json:"harness"`
+	Mode      string    `json:"mode"`
+	Status    string    `json:"status" enum:"unknown"`
+	BoundAt   time.Time `json:"boundAt"`
+}
+type MissionAttentionResponse struct {
+	Kind       string `json:"kind" enum:"needs_choice,needs_input"`
+	ReasonCode string `json:"reasonCode"`
+	QuestionID string `json:"questionId,omitempty"`
+	Generation string `json:"generation"`
+}
+type MissionEdgeResponse struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+type MissionEnvelope struct {
+	Mission MissionProjectionResponse `json:"mission"`
+}
+
+func missionResponse(view outcomevc.MissionProjection) MissionProjectionResponse {
+	out := MissionProjectionResponse{Version: view.Version, OutcomeID: string(view.OutcomeID), MissionID: string(view.MissionID), ContractRevisionNumber: view.ContractRevisionNumber, PlanRevisionID: string(view.PlanRevisionID), PlanRevisionNumber: view.PlanRevisionNumber, TopologyFingerprint: view.TopologyFingerprint, TopologyGeneration: view.TopologyGeneration, Generation: view.Generation, UpdatedAt: view.UpdatedAt, NextRunnableWorkUnitID: string(view.NextRunnableID), CustodyHeldByWorkUnitID: string(view.CustodyHeldBy), NoRunnableReason: view.NoRunnableReason}
+	out.Nodes = make([]MissionNodeResponse, 0, len(view.Nodes))
+	out.Edges = make([]MissionEdgeResponse, 0, len(view.Edges))
+	for _, n := range view.Nodes {
+		r := MissionNodeResponse{WorkUnitID: n.WorkUnitID, PlanRevisionID: n.PlanRevisionID, Title: n.Title, DependsOn: stringWorkUnitIDs(n.DependsOn), ScheduleState: n.ScheduleState, BlockingDependencies: stringWorkUnitIDs(n.BlockingDependencies), BlockedReason: n.BlockedReason, BlockedDetail: n.BlockedDetail, CriterionIDs: stringCriterionIDs(n.CriterionIDs), CriterionReady: map[string]bool{}, NextAction: n.NextAction, Responsibility: n.Responsibility, UpdatedAt: n.UpdatedAt, Generation: n.Generation}
+		for k, v := range n.CriterionReady {
+			r.CriterionReady[string(k)] = v
+		}
+		if n.CurrentAttempt != nil {
+			a := n.CurrentAttempt
+			r.CurrentAttempt = &MissionAttemptResponse{ID: a.ID, Number: a.Number, Status: a.Status, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
+			if a.Session != nil {
+				x := a.Session
+				r.CurrentAttempt.Session = &MissionSessionResponse{RefID: x.RefID, Seq: x.Seq, SessionID: x.SessionID, Harness: x.Harness, Mode: x.Mode, Status: x.Status, BoundAt: x.BoundAt}
+			}
+		}
+		if n.Attention != nil {
+			q := n.Attention
+			r.Attention = &MissionAttentionResponse{Kind: q.Kind, ReasonCode: q.ReasonCode, QuestionID: q.QuestionID, Generation: q.Generation}
+		}
+		out.Nodes = append(out.Nodes, r)
+	}
+	for _, e := range view.Edges {
+		out.Edges = append(out.Edges, MissionEdgeResponse{From: string(e.From), To: string(e.To)})
+	}
+	return out
+}

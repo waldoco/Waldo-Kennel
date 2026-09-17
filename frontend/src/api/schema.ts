@@ -1218,6 +1218,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the authoritative WorkUnit mission graph without launching work */
+        get: operations["getOutcomeMissionProjection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule": {
         parameters: {
             query?: never;
@@ -3501,6 +3518,88 @@ export interface components {
             title: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        ControllersMissionAttemptResponse: {
+            attemptId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            number: number;
+            session?: components["schemas"]["ControllersMissionSessionResponse"];
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ControllersMissionAttentionResponse: {
+            generation: string;
+            /** @enum {string} */
+            kind: "needs_choice" | "needs_input";
+            questionId?: string;
+            reasonCode: string;
+        };
+        ControllersMissionEdgeResponse: {
+            from: string;
+            to: string;
+        };
+        ControllersMissionEnvelope: {
+            mission: components["schemas"]["ControllersMissionProjectionResponse"];
+        };
+        ControllersMissionNodeResponse: {
+            attention?: components["schemas"]["ControllersMissionAttentionResponse"];
+            blockedDetail?: string;
+            blockedReason?: string;
+            blockingDependencies: string[];
+            criterionIds: string[];
+            criterionReady: {
+                [key: string]: boolean;
+            } | null;
+            currentAttempt?: components["schemas"]["ControllersMissionAttemptResponse"];
+            dependsOn: string[];
+            /** Format: int64 */
+            generation: number;
+            nextAction?: string;
+            planRevisionId: string;
+            /** @enum {string} */
+            responsibility: "agent" | "owner" | "unconfirmed";
+            scheduleState: string;
+            title: string;
+            /** Format: date-time */
+            updatedAt: string;
+            workUnitId: string;
+        };
+        ControllersMissionProjectionResponse: {
+            /** Format: int64 */
+            contractRevisionNumber: number;
+            custodyHeldByWorkUnitId?: string;
+            edges: components["schemas"]["ControllersMissionEdgeResponse"][];
+            /** Format: int64 */
+            generation: number;
+            missionId: string;
+            nextRunnableWorkUnitId?: string;
+            noRunnableReason?: string;
+            nodes: components["schemas"]["ControllersMissionNodeResponse"][];
+            outcomeId: string;
+            planRevisionId: string;
+            /** Format: int64 */
+            planRevisionNumber: number;
+            topologyFingerprint: string;
+            /** Format: int64 */
+            topologyGeneration: number;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
+        ControllersMissionSessionResponse: {
+            attemptSessionRefId: string;
+            /** Format: date-time */
+            boundAt: string;
+            /** Format: int64 */
+            generation: number;
+            harness: string;
+            mode: string;
+            sessionId: string;
+            /** @enum {string} */
+            status: "unknown";
         };
         ControllersOutcomeDeletionEnvelope: {
             deletion: components["schemas"]["PortsOutcomeDeletionPreview"];
@@ -10493,6 +10592,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getOutcomeMissionProjection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Outcome identifier, e.g. out-<uuid>. */
+                outcomeId: string;
+                /** @description Plan revision identifier, e.g. plan-<uuid>. */
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControllersMissionEnvelope"];
                 };
             };
             /** @description Not Found */
