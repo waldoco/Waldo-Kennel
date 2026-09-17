@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,7 +25,17 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	d := startDaemon(t, dataDir)
 	requireReasoningProvider(t, d)
 	project := seedProject(t, d, "outcome-persistent")
-	d.mustCall("PATCH", "/settings/session-interface", http.StatusOK, map[string]any{"defaultSessionMode": "chat"}, nil)
+	// Execution intent is explicit fixture wiring, never inferred from the
+	// provider env: with no worker override, routing lexically picks
+	// claude-code (correct production behavior), whose adapter has no governed
+	// execution-policy mapping. Native Codex TUI has the only production one.
+	d.mustCall("PUT", "/projects/"+project+"/config", http.StatusOK, map[string]any{
+		"config": map[string]any{"defaultBranch": "main", "worker": map[string]any{"agent": "codex"}},
+	}, nil)
+	// The governed Attempt proof runs in TUI mode: chat mode (the Codex App
+	// Server driver) deliberately rejects governed Attempt policies because
+	// governed repo-tool injection is not implemented there.
+	d.mustCall("PATCH", "/settings/session-interface", http.StatusOK, map[string]any{"defaultSessionMode": "tui"}, nil)
 
 	var created struct {
 		Outcome struct {
@@ -46,13 +57,17 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 		Plan struct {
 			ID, Status string
 			WorkUnits  []struct {
-				ID string `json:"id"`
+				ID       string `json:"id"`
+				Provider string `json:"provider"`
 			} `json:"workUnits"`
 		} `json:"plan"`
 	}
 	d.mustCall("POST", "/outcomes/"+out+"/plans", http.StatusCreated, map[string]any{"expectedContractRevision": 1}, &plan)
 	if plan.Plan.Status != "proposed" || len(plan.Plan.WorkUnits) != 1 {
 		t.Fatalf("proposal=%+v", plan.Plan)
+	}
+	if plan.Plan.WorkUnits[0].Provider != "codex" {
+		t.Fatalf("frozen plan provider=%q, want codex", plan.Plan.WorkUnits[0].Provider)
 	}
 	assertFrozenBudgetMatchesFixture(t, dataDir, plan.Plan.ID)
 
@@ -61,7 +76,7 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	assertLaunchRows(t, dataDir, out, 0, 0)
 
 	start := startOutcomeAttempt(t, d, out, plan.Plan.ID, plan.Plan.WorkUnits[0].ID, "b4-start")
-	if start.Status != "running" || len(start.Sessions) != 1 || start.Sessions[0].Mode != "chat" {
+	if start.Status != "running" || len(start.Sessions) != 1 || start.Sessions[0].Mode != "tui" {
 		t.Fatalf("started attempt=%+v", start)
 	}
 	session := start.Sessions[0].SessionID
@@ -74,27 +89,25 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	}
 	assertLaunchRows(t, dataDir, out, 1, 1)
 
-	// Steer a real active provider turn. The provider turn and execution session
-	// both remain the same; this is not interrupt-and-respawn.
-	send(t, d, session, "Run this shell command: for i in 1 2 3 4 5 6; do echo b4-$i; sleep 3; done", "b4-long")
-	before := d.awaitConversation(session, 2*time.Minute, "governed turn running", func(s snapshot) bool { _, ok := runningTurn(s); return ok })
-	running, _ := runningTurn(before)
-	var steered steerAccepted
-	d.mustCall("POST", "/sessions/"+session+"/conversation/steer", http.StatusAccepted, map[string]any{"text": "Stop that loop and ensure durable.txt contains exactly PERSISTENT, then reply B4-STEERED.", "clientMessageId": "b4-steer"}, &steered)
-	if steered.ProviderTurnID != running.ProviderTurnID {
-		t.Fatalf("steer moved turn %s -> %s", running.ProviderTurnID, steered.ProviderTurnID)
-	}
-	d.awaitConversation(session, 4*time.Minute, "steered work complete", func(s snapshot) bool { turn, ok := s.turnByID(running.ID); return ok && terminal(turn.State) })
+	// Steer the same live native session through the session-input seam
+	// (`kennel send`'s endpoint). TUI input is send-keys into the one
+	// persistent pane: there is no controller turn to re-id, so
+	// not-interrupt-and-respawn is proven by the same runtime handle answering
+	// the steered instruction.
+	handle := sessionRuntimeHandle(t, dataDir, session)
+	d.mustCall("POST", "/sessions/"+session+"/send", http.StatusOK, map[string]any{"message": "Run this shell command: for i in 1 2 3 4 5 6; do echo b4-$i; sleep 3; done"}, nil)
+	awaitPane(t, handle, 2*time.Minute, "governed command running", func(out string) bool { return strings.Contains(out, "b4-1") })
+	d.mustCall("POST", "/sessions/"+session+"/send", http.StatusOK, map[string]any{"message": "Stop that loop and ensure durable.txt contains exactly PERSISTENT, then reply B4-STEERED."}, nil)
+	awaitPane(t, handle, 4*time.Minute, "steered work complete", func(out string) bool { return strings.Contains(out, "B4-STEERED") })
 
-	// Crash/restart reattaches the same durable provider conversation and keeps
-	// the exact Attempt -> AttemptSessionRef -> session lineage.
-	convBefore := d.conversation(session)
+	// Crash/restart: tmux is the persistence layer and outlives the daemon, so
+	// the same pane must still answer input while the exact
+	// Attempt -> AttemptSessionRef -> session lineage rereads unchanged.
 	d.kill()
 	restarted := startDaemon(t, dataDir)
-	convAfter := restarted.awaitLiveController(session, 90*time.Second)
-	if convAfter.ConversationID != convBefore.ConversationID {
-		t.Fatalf("conversation changed %s -> %s", convBefore.ConversationID, convAfter.ConversationID)
-	}
+	awaitPane(t, handle, 90*time.Second, "pane surviving daemon restart", func(out string) bool { return strings.Contains(out, "B4-STEERED") })
+	restarted.mustCall("POST", "/sessions/"+session+"/send", http.StatusOK, map[string]any{"message": "Reply with exactly: B4-PERSISTENT"}, nil)
+	awaitPane(t, handle, 3*time.Minute, "post-restart reply in the same pane", func(out string) bool { return strings.Contains(out, "B4-PERSISTENT") })
 	reread := getOutcomeAttempt(t, restarted, out, start.ID)
 	if reread.ID != start.ID || len(reread.Sessions) != 1 || reread.Sessions[0].SessionID != session {
 		t.Fatalf("restart changed lineage: %+v", reread)
@@ -228,6 +241,43 @@ func assertSucceededEvidence(t *testing.T, dataDir, outcomeID, attemptID, artifa
 	}
 }
 
+// sessionRuntimeHandle reads the durable tmux handle the TUI session is bound
+// to; the pane it names is the persistence layer this proof steers and
+// crash-tests through.
+func sessionRuntimeHandle(t *testing.T, dataDir, sessionID string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "kennel.db")+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var handle string
+	if err := db.QueryRow(`SELECT runtime_handle_id FROM sessions WHERE id=?`, sessionID).Scan(&handle); err != nil {
+		t.Fatal(err)
+	}
+	if handle == "" {
+		t.Fatalf("session %s has no runtime handle", sessionID)
+	}
+	return handle
+}
+
+// awaitPane polls the live tmux pane until pred holds of its captured text.
+func awaitPane(t *testing.T, handle string, timeout time.Duration, what string, pred func(string) bool) string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var out []byte
+	for time.Now().Before(deadline) {
+		var err error
+		out, err = exec.Command("tmux", "capture-pane", "-t", handle, "-p", "-S", "-300").CombinedOutput()
+		if err == nil && pred(string(out)) {
+			return string(out)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("timed out waiting for %s in pane %s:\n%s", what, handle, out)
+	return ""
+}
+
 type b4Attempt struct {
 	ID, Status string
 	Sessions   []struct{ SessionID, Mode string } `json:"sessions"`
@@ -268,11 +318,11 @@ func assertLaunchRows(t *testing.T, dataDir, out string, wantAttempts, wantRefs 
 	}
 	if wantRefs > 0 {
 		var bad int
-		if err = db.QueryRow(`SELECT count(*) FROM attempt_sessions s JOIN attempts a ON a.id=s.attempt_id JOIN sessions x ON x.id=s.session_id WHERE a.outcome_id=? AND (x.session_mode<>'chat' OR x.provider_conversation_id='' OR x.controller_generation='')`, out).Scan(&bad); err != nil {
+		if err = db.QueryRow(`SELECT count(*) FROM attempt_sessions s JOIN attempts a ON a.id=s.attempt_id JOIN sessions x ON x.id=s.session_id WHERE a.outcome_id=? AND (x.session_mode<>'tui' OR x.runtime_handle_id='')`, out).Scan(&bad); err != nil {
 			t.Fatal(err)
 		}
 		if bad != 0 {
-			t.Fatalf("%d session bindings lack persistent controller proof", bad)
+			t.Fatalf("%d session bindings lack persistent runtime proof", bad)
 		}
 	}
 }
@@ -309,7 +359,7 @@ func TestOutcomeLaunchCutRejectsStaleAuthorizationWithoutCustody(t *testing.T) {
 
 	// A stale expected contract revision may not authorize the plan either.
 	status, e = d.callExpectingError("POST", "/outcomes/"+created.Outcome.ID+"/plans/"+plan.Plan.ID+"/approval", map[string]any{"expectedContractRevision": 2})
-	if status != http.StatusConflict || !strings.Contains(e.Code, "REVISION") {
+	if status != http.StatusConflict || e.Code != "PLAN_CONTRACT_STALE" {
 		t.Fatalf("stale approval=%d/%s", status, e.Code)
 	}
 	assertLaunchRows(t, dataDir, created.Outcome.ID, 0, 0)
