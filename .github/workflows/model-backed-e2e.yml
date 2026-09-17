@@ -27,10 +27,6 @@ jobs:
     env:
       KENNEL_CHAT_E2E: "1"
       KENNEL_WALDO_PROVIDER: codex
-      # Fresh per-run executable. Provisioned below without changing global PATH
-      # or the owner's interactive 0.155 alpha installation.
-      KENNEL_CODEX_BIN: ${{ runner.temp }}/waldo-kennel-e2e/codex-0.153.4/codex
-      KENNEL_E2E_DAEMON_OUTPUT: ${{ runner.temp }}/waldo-kennel-e2e/kennel
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -48,7 +44,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(uname -m)" = arm64
-          root="${{ runner.temp }}/waldo-kennel-e2e/codex-0.153.4"
+          root="$RUNNER_TEMP/waldo-kennel-e2e/codex-0.153.4"
+          printf 'KENNEL_CODEX_BIN=%s\n' "$root/codex" >> "$GITHUB_ENV"
+          printf 'KENNEL_E2E_DAEMON_OUTPUT=%s\n' "$RUNNER_TEMP/waldo-kennel-e2e/kennel" >> "$GITHUB_ENV"
           modules="$root/node_modules/@openai"
           mkdir -p "$modules"
 
@@ -81,7 +79,7 @@ jobs:
           resolved="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$KENNEL_CODEX_BIN")"
           test -x "$resolved"
           case "$resolved" in
-            "${{ runner.temp }}/waldo-kennel-e2e/codex-0.153.4/node_modules/@openai/codex/"*) ;;
+            "$RUNNER_TEMP/waldo-kennel-e2e/codex-0.153.4/node_modules/@openai/codex/"*) ;;
             *) echo "::error::Certified Codex resolved outside its fresh pinned package"; exit 1 ;;
           esac
           test "$("$KENNEL_CODEX_BIN" --version)" = "codex-cli 0.153.4"
