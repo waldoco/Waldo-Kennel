@@ -143,7 +143,10 @@ func (s *Stager) Install(ctx context.Context, req Request) (domain.HarnessAdapte
 		op.Drift = classifyError(err)
 		op.Repair = repairFor(op.Drift)
 		op.UpdatedAt = time.Now().UTC()
-		return op, s.persist(&op)
+		if persistErr := s.persist(&op); persistErr != nil {
+			return op, persistErr
+		}
+		return op, err
 	}
 	op.State = domain.AdapterInstallCommitted
 	op.Drift = domain.AdapterDriftInSync
