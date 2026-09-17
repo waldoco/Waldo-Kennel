@@ -8,6 +8,11 @@
 # workflow commit run outside the candidate checkout. The wrapper itself does not
 # request commit
 # or push; Codex retains the service account's ambient git/network/HOME authority.
+# Uploaded logs, patches, and marker are untrusted outputs produced under that
+# ambient authority. Marker/digest checks detect ordinary wrapper/capture failures;
+# they are not a security attestation against the delegated process. Treat every
+# artifact as work product entering normal review and CI gates, never as evidence.
+# No post-Codex workflow step invokes a checked-in repository executable.
 name: owner Codex delegation on self-hosted Mac
 run-name: "Codex delegate @ ${{ inputs.commit_sha }}"
 
@@ -109,6 +114,7 @@ jobs:
           path: |
             ${{ env.CODEX_DELEGATE_UPLOAD_ROOT }}/output.log
             ${{ env.CODEX_DELEGATE_UPLOAD_ROOT }}/diagnostic.log
+            ${{ env.CODEX_DELEGATE_UPLOAD_ROOT }}/completion.marker
           if-no-files-found: error
           retention-days: 2
 
