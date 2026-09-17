@@ -1,0 +1,124 @@
+# Runs only on the owner's credential-bearing Mac. Keep this workflow limited to
+# reviewed code on outcome-loop; never expose this runner to pull_request code.
+name: model-backed-e2e
+
+on:
+  push:
+    branches: [outcome-loop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The Mac has one signed-in Codex identity. Queue runs rather than interrupting
+# one while it may still own daemon/provider child processes.
+concurrency:
+  group: model-backed-e2e-single-runner
+  cancel-in-progress: false
+
+jobs:
+  codex-e2e:
+    name: real-daemon-real-codex
+    # workflow_dispatch must also select outcome-loop. Never run a manually
+    # selected feature branch on the credential-bearing self-hosted runner.
+    if: github.ref == 'refs/heads/outcome-loop'
+    runs-on: [self-hosted, macOS, ARM64, codex]
+    timeout-minutes: 60
+    env:
+      KENNEL_CHAT_E2E: "1"
+      KENNEL_WALDO_PROVIDER: codex
+      # Fresh per-run executable. Provisioned below without changing global PATH
+      # or the owner's interactive 0.155 alpha installation.
+      KENNEL_CODEX_BIN: ${{ runner.temp }}/waldo-kennel-e2e/codex-0.153.4/codex
+      KENNEL_E2E_DAEMON_OUTPUT: ${{ runner.temp }}/waldo-kennel-e2e/kennel
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Provision integrity-locked certified Codex
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          root="${{ runner.temp }}/waldo-kennel-e2e/codex-0.153.4"
+          modules="$root/node_modules/@openai"
+          mkdir -p "$modules"
+
+          # Integrity values were fetched from the npm registry and independently
+          # recomputed during review on 2026-09-18. Both packages are required:
+          # the top-level JS launcher and its pinned Darwin arm64 native payload.
+          cli_integrity='wbHDmit7S/YvBGVX1DQmk13xtWblZ2cApeJ/pB7xDZ10Cna+DZc5ij7f0F4OxdsXN4FW1oLT48OpogUI1+8Y2w=='
+          arm64_integrity='B1qhN3fa1ay0R0wGziXqgwSkB5icpYChNKHhtBHff/0UtSTC7z+l8aTtvMlGjH3E8HEvY3+njIJelM9CAAoVWg=='
+          curl --fail --location --silent --show-error \
+            --output "$root/codex.tgz" \
+            https://registry.npmjs.org/@openai/codex/-/codex-0.153.4.tgz
+          curl --fail --location --silent --show-error \
+            --output "$root/codex-darwin-arm64.tgz" \
+            https://registry.npmjs.org/@openai/codex/-/codex-0.153.4-darwin-arm64.tgz
+          test "$(openssl dgst -sha512 -binary "$root/codex.tgz" | openssl base64 -A)" = "$cli_integrity"
+          test "$(openssl dgst -sha512 -binary "$root/codex-darwin-arm64.tgz" | openssl base64 -A)" = "$arm64_integrity"
+
+          mkdir "$modules/codex" "$modules/codex-darwin-arm64"
+          tar -xzf "$root/codex.tgz" --strip-components=1 -C "$modules/codex"
+          tar -xzf "$root/codex-darwin-arm64.tgz" --strip-components=1 -C "$modules/codex-darwin-arm64"
+          chmod +x "$modules/codex/bin/codex.js" \
+            "$modules/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
+          ln -s "$modules/codex/bin/codex.js" "$root/codex"
+
+      - name: Verify certified auth as the runner service identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$KENNEL_CODEX_BIN"
+          resolved="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$KENNEL_CODEX_BIN")"
+          test -x "$resolved"
+          case "$resolved" in
+            "${{ runner.temp }}/waldo-kennel-e2e/codex-0.153.4/node_modules/@openai/codex/"*) ;;
+            *) echo "::error::Certified Codex resolved outside its fresh pinned package"; exit 1 ;;
+          esac
+          test "$("$KENNEL_CODEX_BIN" --version)" = "codex-cli 0.153.4"
+          "$KENNEL_CODEX_BIN" login status >/dev/null 2>&1
+          go version
+
+      - name: Run Outcome launch-cut proof first
+        shell: bash
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$KENNEL_E2E_DAEMON_OUTPUT")"
+          go test ./e2e -run '^TestOutcomeLaunchCut' -count=1 -v -timeout 20m
+
+      - name: Run remaining model-backed chat E2E
+        shell: bash
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go test ./e2e -skip '^TestOutcomeLaunchCut' -count=1 -v -timeout 45m
+
+      - name: Remove model-backed E2E processes and files
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          # The test daemon starts in its own process group. Terminating that
+          # exact group also reaches any Codex/session children without killing
+          # unrelated Codex work under the owner's interactive account.
+          while read -r pgid; do
+            [ -n "$pgid" ] || continue
+            kill -TERM -- "-$pgid" 2>/dev/null || true
+          done < <(ps -axo pgid=,command= | awk -v bin="$KENNEL_E2E_DAEMON_OUTPUT" '$2 == bin && $3 == "daemon" {print $1}' | sort -u)
+          sleep 2
+          while read -r pgid; do
+            [ -n "$pgid" ] || continue
+            kill -KILL -- "-$pgid" 2>/dev/null || true
+          done < <(ps -axo pgid=,command= | awk -v bin="$KENNEL_E2E_DAEMON_OUTPUT" '$2 == bin && $3 == "daemon" {print $1}' | sort -u)
+          rm -f "$HOME/.kennel-e2e-approval-probe"
+          rm -rf "${{ runner.temp }}/waldo-kennel-e2e"
