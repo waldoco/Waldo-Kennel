@@ -699,6 +699,24 @@ type HarnessConnection struct {
 	UpdatedAt           time.Time
 }
 
+type HarnessConnectionGeneration struct {
+	ConnectionID        string
+	Generation          int64
+	InstallationID      string
+	AdapterDigest       string
+	HarnessIdentity     string
+	ProviderVersion     string
+	ProtocolFingerprint string
+	MissionID           string
+	AppRunID            string
+	CapabilityClasses   string
+	CapabilityVerifier  string
+	ExpiresAt           time.Time
+	RevokedAt           sql.NullTime
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type HarnessPairingChallenge struct {
 	ID                  string
 	Kind                string

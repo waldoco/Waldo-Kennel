@@ -58,7 +58,7 @@ func TestAuthenticateRejectsSpoofStaleUndeclaredExpiredRevokedAndRotation(t *tes
 			}
 		})
 	}
-	rotated, err := k.Rotate(context.Background(), binding.ConnectionID, 1, now.Add(2*time.Hour), now.Add(time.Minute))
+	rotated, err := k.Rotate(context.Background(), binding.ConnectionID, 1, "app-run-next", now.Add(2*time.Hour), now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +66,7 @@ func TestAuthenticateRejectsSpoofStaleUndeclaredExpiredRevokedAndRotation(t *tes
 		t.Fatal("old bearer accepted")
 	}
 	binding.Generation = 2
+	binding.AppRunID = "app-run-next"
 	if _, err := k.Authenticate(context.Background(), rotated.Bearer, binding, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestConcurrentRotationHasOneWinner(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := k.Rotate(context.Background(), binding.ConnectionID, 1, now.Add(2*time.Hour), now.Add(time.Minute)); err == nil {
+			if _, err := k.Rotate(context.Background(), binding.ConnectionID, 1, binding.AppRunID, now.Add(2*time.Hour), now.Add(time.Minute)); err == nil {
 				mu.Lock()
 				successes++
 				mu.Unlock()

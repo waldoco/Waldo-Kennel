@@ -209,7 +209,7 @@ func TestProve_StaleGenerationOnRotateFails(t *testing.T) {
 	}
 	// Rotate the underlying connection out from under a rotate challenge that
 	// still targets the now-stale generation 1.
-	if _, err := kernel.Rotate(context.Background(), pairReq.ConnectionID, 1, pairReq.Now.Add(48*time.Hour), pairReq.Now.Add(time.Minute)); err != nil {
+	if _, err := kernel.Rotate(context.Background(), pairReq.ConnectionID, 1, pairReq.AppRunID, pairReq.Now.Add(48*time.Hour), pairReq.Now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	rotateReq := pairReq

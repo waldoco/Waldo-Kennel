@@ -54,27 +54,39 @@ func (s *Store) GetHarnessConnection(ctx context.Context, id domain.HarnessConne
 	return rec, true, err
 }
 
-func (s *Store) RotateHarnessConnection(ctx context.Context, id domain.HarnessConnectionID, generation int64, verifier string, expiresAt, updatedAt time.Time) (domain.HarnessConnection, bool, error) {
-	if !domain.SHA256Digest(verifier).Valid() || generation < 1 || expiresAt.IsZero() || updatedAt.IsZero() || !expiresAt.After(updatedAt) {
+func (s *Store) RotateHarnessConnection(ctx context.Context, id domain.HarnessConnectionID, generation int64, appRunID, verifier string, expiresAt, updatedAt time.Time) (domain.HarnessConnection, bool, error) {
+	if !domain.SHA256Digest(verifier).Valid() || strings.TrimSpace(appRunID) == "" || generation < 1 || expiresAt.IsZero() || updatedAt.IsZero() || !expiresAt.After(updatedAt) {
 		return domain.HarnessConnection{}, false, domain.ErrHarnessConnectionInvalid
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	n, err := s.qw.RotateHarnessConnection(ctx, gen.RotateHarnessConnectionParams{CapabilityVerifier: verifier, ExpiresAt: expiresAt.UTC(), UpdatedAt: updatedAt.UTC(), ID: string(id), ExpectedGeneration: generation})
-	if err != nil {
-		return domain.HarnessConnection{}, false, fmt.Errorf("rotate harness connection: %w", err)
-	}
-	if n == 0 {
-		return domain.HarnessConnection{}, false, nil
-	}
-	row, err := s.qw.GetHarnessConnection(ctx, string(id))
-	if err != nil {
-		return domain.HarnessConnection{}, false, err
-	}
-	rec, err := harnessConnectionFromGen(row)
-	return rec, true, err
+	var out domain.HarnessConnection
+	changed := false
+	err := s.inTx(ctx, "rotate harness connection generation", func(q *gen.Queries) error {
+		n, e := q.ArchiveHarnessConnectionGeneration(ctx, gen.ArchiveHarnessConnectionGenerationParams{ID: string(id), ExpectedGeneration: generation})
+		if e != nil {
+			return e
+		}
+		if n != 1 {
+			return nil
+		}
+		n, e = q.RotateHarnessConnection(ctx, gen.RotateHarnessConnectionParams{CapabilityVerifier: verifier, AppRunID: appRunID, ExpiresAt: expiresAt.UTC(), UpdatedAt: updatedAt.UTC(), ID: string(id), ExpectedGeneration: generation})
+		if e != nil {
+			return e
+		}
+		if n != 1 {
+			return domain.ErrHarnessConnectionConflict
+		}
+		row, e := q.GetHarnessConnection(ctx, string(id))
+		if e != nil {
+			return e
+		}
+		out, e = harnessConnectionFromGen(row)
+		changed = e == nil
+		return e
+	})
+	return out, changed, err
 }
-
 func (s *Store) RevokeHarnessConnection(ctx context.Context, id domain.HarnessConnectionID, generation int64, at time.Time) (domain.HarnessConnection, bool, error) {
 	if generation < 1 || at.IsZero() {
 		return domain.HarnessConnection{}, false, domain.ErrHarnessConnectionInvalid

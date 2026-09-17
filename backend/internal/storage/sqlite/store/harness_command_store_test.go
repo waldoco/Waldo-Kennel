@@ -107,7 +107,7 @@ func TestHarnessCommandClaimSerializesConnectionRotationAndRevocation(t *testing
 		mutate func(commandFixture) error
 	}{
 		{"rotate", func(f commandFixture) error {
-			_, err := f.connection.Rotate(context.Background(), "hc-command", 1, f.request.Now.Add(2*time.Hour), f.request.Now.Add(time.Second))
+			_, err := f.connection.Rotate(context.Background(), "hc-command", 1, f.request.ConnectionBinding.AppRunID, f.request.Now.Add(2*time.Hour), f.request.Now.Add(time.Second))
 			return err
 		}},
 		{"revoke", func(f commandFixture) error {

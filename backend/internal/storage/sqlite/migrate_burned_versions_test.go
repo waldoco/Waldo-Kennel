@@ -156,6 +156,7 @@ var shippedMigrations = map[int64]string{
 	150: "0150_harness_authority_api.sql",
 	151: "0151_capability_escalation.sql",
 	152: "0152_attempt_start_reservation.sql",
+	153: "0153_harness_connection_generations.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they

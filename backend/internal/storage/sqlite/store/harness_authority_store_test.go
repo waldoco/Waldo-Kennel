@@ -246,3 +246,29 @@ func TestHarnessPairingProposalConcurrentSingleLiveIntent(t *testing.T) {
 		}
 	}
 }
+
+func TestHarnessConnectionCrossAppRunRotationArchivesOldGeneration(t *testing.T) {
+	_, kernel, raw, intent := seedIntent(t)
+	_ = raw
+	now := intent.CreatedAt
+	issued, err := kernel.Issue(context.Background(), harnessconnection.IssueRequest{ConnectionID: "rotate-cross-run", InstallationID: intent.InstallationID, AdapterDigest: intent.AdapterDigest, HarnessIdentity: intent.HarnessIdentity, ProviderVersion: intent.ProviderVersion, ProtocolFingerprint: intent.ProtocolFingerprint, MissionID: intent.MissionID, AppRunID: "run-old", CapabilityClasses: intent.CapabilityClasses, ExpiresAt: now.Add(time.Hour), Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated, err := kernel.Rotate(context.Background(), issued.Connection.ID, 1, "run-new", now.Add(2*time.Hour), now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotated.Connection.AppRunID != "run-new" || rotated.Connection.Generation != 2 {
+		t.Fatalf("rotated=%+v", rotated.Connection)
+	}
+	binding := harnessconnection.Binding{ConnectionID: issued.Connection.ID, InstallationID: intent.InstallationID, AdapterDigest: intent.AdapterDigest, HarnessIdentity: intent.HarnessIdentity, ProviderVersion: intent.ProviderVersion, ProtocolFingerprint: intent.ProtocolFingerprint, MissionID: intent.MissionID, AppRunID: "run-old", Generation: 1, Class: intent.CapabilityClasses[0]}
+	if _, err = kernel.Authenticate(context.Background(), issued.Bearer, binding, now.Add(time.Minute)); err == nil {
+		t.Fatal("old generation authenticates")
+	}
+	binding.AppRunID = "run-new"
+	binding.Generation = 2
+	if _, err = kernel.Authenticate(context.Background(), rotated.Bearer, binding, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -248,7 +248,7 @@ func (c *Coordinator) issueOrRotate(ctx context.Context, rec domain.HarnessPairi
 			ExpiresAt: rec.ConnectionExpiresAt, Now: rec.UpdatedAt,
 		})
 	case domain.HarnessPairingKindRotate:
-		return c.kernel.Rotate(ctx, rec.ConnectionID, rec.ExpectedGeneration, rec.ConnectionExpiresAt, rec.UpdatedAt)
+		return c.kernel.Rotate(ctx, rec.ConnectionID, rec.ExpectedGeneration, rec.AppRunID, rec.ConnectionExpiresAt, rec.UpdatedAt)
 	default:
 		return harnessconnection.IssuedConnection{}, domain.ErrHarnessPairingInvalid
 	}

@@ -135,7 +135,7 @@ func (k *Kernel) Authenticate(ctx context.Context, bearer string, binding Bindin
 	return publicConnection(rec), nil
 }
 
-func (k *Kernel) Rotate(ctx context.Context, id domain.HarnessConnectionID, generation int64, expiresAt, now time.Time) (IssuedConnection, error) {
+func (k *Kernel) Rotate(ctx context.Context, id domain.HarnessConnectionID, generation int64, appRunID string, expiresAt, now time.Time) (IssuedConnection, error) {
 	if k == nil || k.store == nil || k.random == nil {
 		return IssuedConnection{}, domain.ErrHarnessConnectionInvalid
 	}
@@ -145,7 +145,7 @@ func (k *Kernel) Rotate(ctx context.Context, id domain.HarnessConnectionID, gene
 	if err != nil {
 		return IssuedConnection{}, err
 	}
-	rec, changed, err := k.store.RotateHarnessConnection(ctx, id, generation, verifier, expiresAt.UTC(), now.UTC())
+	rec, changed, err := k.store.RotateHarnessConnection(ctx, id, generation, strings.TrimSpace(appRunID), verifier, expiresAt.UTC(), now.UTC())
 	if err != nil {
 		return IssuedConnection{}, err
 	}

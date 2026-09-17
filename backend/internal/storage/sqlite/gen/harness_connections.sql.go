@@ -11,6 +11,24 @@ import (
 	"time"
 )
 
+const archiveHarnessConnectionGeneration = `-- name: ArchiveHarnessConnectionGeneration :execrows
+INSERT INTO harness_connection_generations(connection_id,generation,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,capability_verifier,expires_at,revoked_at,created_at,updated_at)
+SELECT h.id,h.generation,h.installation_id,h.adapter_digest,h.harness_identity,h.provider_version,h.protocol_fingerprint,h.mission_id,h.app_run_id,h.capability_classes,h.capability_verifier,h.expires_at,h.revoked_at,h.created_at,h.updated_at FROM harness_connections h WHERE h.id=?1 AND h.generation=?2 AND h.revoked_at IS NULL
+`
+
+type ArchiveHarnessConnectionGenerationParams struct {
+	ID                 string
+	ExpectedGeneration int64
+}
+
+func (q *Queries) ArchiveHarnessConnectionGeneration(ctx context.Context, arg ArchiveHarnessConnectionGenerationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, archiveHarnessConnectionGeneration, arg.ID, arg.ExpectedGeneration)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getHarnessConnection = `-- name: GetHarnessConnection :one
 SELECT id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, capability_verifier, generation, expires_at, revoked_at, created_at, updated_at FROM harness_connections WHERE id=?
 `
@@ -111,13 +129,14 @@ func (q *Queries) RevokeHarnessConnection(ctx context.Context, arg RevokeHarness
 }
 
 const rotateHarnessConnection = `-- name: RotateHarnessConnection :execrows
-UPDATE harness_connections SET capability_verifier=?1, generation=generation+1,
- expires_at=?2, revoked_at=NULL, updated_at=?3
-WHERE id=?4 AND generation=?5 AND revoked_at IS NULL
+UPDATE harness_connections SET capability_verifier=?1, app_run_id=?2, generation=generation+1,
+ expires_at=?3, revoked_at=NULL, updated_at=?4
+WHERE id=?5 AND generation=?6 AND revoked_at IS NULL
 `
 
 type RotateHarnessConnectionParams struct {
 	CapabilityVerifier string
+	AppRunID           string
 	ExpiresAt          time.Time
 	UpdatedAt          time.Time
 	ID                 string
@@ -127,6 +146,7 @@ type RotateHarnessConnectionParams struct {
 func (q *Queries) RotateHarnessConnection(ctx context.Context, arg RotateHarnessConnectionParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, rotateHarnessConnection,
 		arg.CapabilityVerifier,
+		arg.AppRunID,
 		arg.ExpiresAt,
 		arg.UpdatedAt,
 		arg.ID,

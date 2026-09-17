@@ -27,7 +27,7 @@ func (s connectionStore) CreateHarnessConnection(context.Context, domain.Harness
 func (s connectionStore) GetHarnessConnection(context.Context, domain.HarnessConnectionID) (domain.HarnessConnection, bool, error) {
 	return s.record, true, nil
 }
-func (s connectionStore) RotateHarnessConnection(context.Context, domain.HarnessConnectionID, int64, string, time.Time, time.Time) (domain.HarnessConnection, bool, error) {
+func (s connectionStore) RotateHarnessConnection(context.Context, domain.HarnessConnectionID, int64, string, string, time.Time, time.Time) (domain.HarnessConnection, bool, error) {
 	return domain.HarnessConnection{}, false, errors.New("unused")
 }
 func (s connectionStore) RevokeHarnessConnection(context.Context, domain.HarnessConnectionID, int64, time.Time) (domain.HarnessConnection, bool, error) {

@@ -60,7 +60,7 @@ func (c connections) CreateHarnessConnection(context.Context, domain.HarnessConn
 func (c connections) GetHarnessConnection(context.Context, domain.HarnessConnectionID) (domain.HarnessConnection, bool, error) {
 	return c.v, c.ok, nil
 }
-func (c connections) RotateHarnessConnection(context.Context, domain.HarnessConnectionID, int64, string, time.Time, time.Time) (domain.HarnessConnection, bool, error) {
+func (c connections) RotateHarnessConnection(context.Context, domain.HarnessConnectionID, int64, string, string, time.Time, time.Time) (domain.HarnessConnection, bool, error) {
 	panic("not used")
 }
 func (c connections) RevokeHarnessConnection(context.Context, domain.HarnessConnectionID, int64, time.Time) (domain.HarnessConnection, bool, error) {
