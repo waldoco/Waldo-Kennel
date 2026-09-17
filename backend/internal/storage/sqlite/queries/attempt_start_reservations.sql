@@ -1,0 +1,6 @@
+-- name: GetAttemptStartReservationByRequestKey :one
+SELECT id,attempt_id,outcome_id,plan_revision_id,work_unit_id,contract_revision_number,run_intent_generation,request_key,request_fingerprint,routing_snapshot_id,routing_generation_id,admission_evaluation_id,refusal_status,denial_detail,created_at
+FROM attempt_start_reservations WHERE request_key=?;
+-- name: GetAttemptStartReservation :one
+SELECT id,attempt_id,outcome_id,plan_revision_id,work_unit_id,contract_revision_number,run_intent_generation,request_key,request_fingerprint,routing_snapshot_id,routing_generation_id,admission_evaluation_id,refusal_status,denial_detail,created_at
+FROM attempt_start_reservations WHERE id=?;

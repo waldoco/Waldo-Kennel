@@ -239,6 +239,24 @@ type AttemptSession struct {
 	BoundAt                time.Time
 }
 
+type AttemptStartReservation struct {
+	ID                     string
+	AttemptID              string
+	OutcomeID              string
+	PlanRevisionID         string
+	WorkUnitID             string
+	ContractRevisionNumber int64
+	RunIntentGeneration    int64
+	RequestKey             string
+	RequestFingerprint     string
+	RoutingSnapshotID      string
+	RoutingGenerationID    string
+	AdmissionEvaluationID  string
+	RefusalStatus          string
+	DenialDetail           string
+	CreatedAt              time.Time
+}
+
 type CapabilityEscalation struct {
 	Digest                 string
 	QuestionID             string
