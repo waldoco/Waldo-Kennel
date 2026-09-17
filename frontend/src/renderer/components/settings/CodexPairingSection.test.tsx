@@ -131,3 +131,82 @@ it("names canonical reconnect and incomplete activation repairs", async () => {
   rerender(<CodexPairingSection projectId="p2" />);
   await screen.findByRole("button", { name: "Retry pairing" });
 });
+
+it("does not project a late native-confirmed pair result onto another Project", async () => {
+  let resolvePair!: (value: {
+    state: "connected";
+    connectionId: string;
+    generation: number;
+  }) => void;
+  const pairCodex = vi.fn(
+    () =>
+      new Promise<{
+        state: "connected";
+        connectionId: string;
+        generation: number;
+      }>((resolve) => {
+        resolvePair = resolve;
+      }),
+  );
+  window.kennel = {
+    app: {
+      discoverCodex: vi.fn(async ({ projectId }: { projectId: string }) => ({
+        state: "installed",
+        installationId: projectId,
+        version: projectId,
+        source: "path",
+      })),
+      getCodexPairing: vi.fn(async () => ({ state: "unpaired" })),
+      pairCodex,
+    } as never,
+  } as never;
+  const { rerender } = render(<CodexPairingSection projectId="project-a" />);
+  await screen.findByText(/Codex project-a/);
+  fireEvent.click(screen.getByRole("button", { name: "Pair Codex" }));
+  await waitFor(() => expect(pairCodex).toHaveBeenCalled());
+  rerender(<CodexPairingSection projectId="project-b" />);
+  await screen.findByText(/Codex project-b/);
+  resolvePair({ state: "connected", connectionId: "a", generation: 7 });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(
+    screen.queryByText(/Connected · generation 7/),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Pair Codex" }),
+  ).not.toHaveAttribute("aria-busy", "true");
+});
+
+it("does not project a late manual Refresh result onto another Project", async () => {
+  let resolveRefresh!: (value: { state: "unpaired" }) => void;
+  const getCodexPairing = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockImplementationOnce(
+      () =>
+        new Promise<{ state: "unpaired" }>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    )
+    .mockResolvedValue({ state: "unpaired" });
+  window.kennel = {
+    app: {
+      discoverCodex: vi.fn(async ({ projectId }: { projectId: string }) => ({
+        state: "installed",
+        installationId: projectId,
+        version: projectId,
+        source: "path",
+      })),
+      getCodexPairing,
+      pairCodex: vi.fn(),
+    } as never,
+  } as never;
+  const { rerender } = render(<CodexPairingSection projectId="project-a" />);
+  await screen.findByRole("button", { name: "Refresh status" });
+  fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
+  rerender(<CodexPairingSection projectId="project-b" />);
+  await screen.findByText(/Codex project-b/);
+  resolveRefresh({ state: "unpaired" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(screen.getByText(/Codex project-b/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Pair Codex" })).toBeEnabled();
+});

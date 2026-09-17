@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   CodexDiscoveryState,
   CodexPairingState,
@@ -37,6 +37,7 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
   const [pairing, setPairing] = useState<CodexPairingState | null>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const operationEpoch = useRef(0);
   const bridge = window.kennel?.app;
   const refresh = async () => {
     if (!bridge?.discoverCodex || !bridge.getCodexPairing) {
@@ -49,17 +50,19 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
     return { found, current };
   };
   useEffect(() => {
-    let current = true;
+    const epoch = ++operationEpoch.current;
     setDiscovery(null);
     setPairing(null);
+    setBusy(false);
+    setRefreshing(false);
     void refresh()
       .then((next) => {
-        if (!current) return;
+        if (operationEpoch.current !== epoch) return;
         setDiscovery(next.found);
         setPairing(next.current);
       })
       .catch((error) => {
-        if (!current) return;
+        if (operationEpoch.current !== epoch) return;
         setDiscovery({
           state: "error",
           message:
@@ -73,27 +76,31 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
         });
       });
     return () => {
-      current = false;
+      operationEpoch.current += 1;
     };
   }, [projectId]);
   const retryRefresh = async () => {
+    const epoch = ++operationEpoch.current;
     setRefreshing(true);
     try {
       const next = await refresh();
+      if (operationEpoch.current !== epoch) return;
       setDiscovery(next.found);
       setPairing(next.current);
     } catch (error) {
+      if (operationEpoch.current !== epoch) return;
       setDiscovery({
         state: "error",
         message:
           error instanceof Error ? error.message : "Provider discovery failed",
       });
     } finally {
-      setRefreshing(false);
+      if (operationEpoch.current === epoch) setRefreshing(false);
     }
   };
   const pair = async () => {
     if (!bridge?.pairCodex || discovery?.state !== "installed") return;
+    const epoch = ++operationEpoch.current;
     setBusy(true);
     setPairing({ state: "awaiting_confirmation" });
     try {
@@ -101,8 +108,10 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
         projectId,
         requestKey: crypto.randomUUID(),
       });
+      if (operationEpoch.current !== epoch) return;
       setPairing(next);
     } catch (error) {
+      if (operationEpoch.current !== epoch) return;
       setPairing({
         state: "error",
         message:
@@ -111,7 +120,7 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
             : "Pairing failed. Your previous connection was not changed.",
       });
     } finally {
-      setBusy(false);
+      if (operationEpoch.current === epoch) setBusy(false);
     }
   };
   const canPair =
