@@ -36,7 +36,9 @@ func (s *Store) CreateHarnessPairingIntent(ctx context.Context, in domain.Harnes
 		if _, err = q.SupersedeLiveHarnessPairingIntents(ctx, gen.SupersedeLiveHarnessPairingIntentsParams{UpdatedAt: in.UpdatedAt, ConnectionID: string(in.ConnectionID), ExpectedGeneration: in.ExpectedGeneration}); err != nil {
 			return err
 		}
-		n, err := q.InsertHarnessPairingIntent(ctx, harnessPairingIntentInsert(in))
+		params := harnessPairingIntentInsert(in)
+		params.ID_2 = in.ProjectID
+		n, err := q.InsertHarnessPairingIntent(ctx, params)
 		if err != nil || n != 1 {
 			return domain.ErrHarnessAuthorityConflict
 		}
