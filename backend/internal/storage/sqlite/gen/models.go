@@ -286,6 +286,8 @@ type CommandAuthorityClaim struct {
 	HarnessConnectionID     string
 	ConnectionGeneration    int64
 	ConnectionBindingDigest string
+	ConnectionExpiresAt     time.Time
+	ConnectionRevokedAt     sql.NullTime
 	TransportClass          string
 	AppRunID                string
 	MissionID               string

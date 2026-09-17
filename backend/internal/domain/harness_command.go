@@ -61,6 +61,8 @@ type CommandAuthorityClaim struct {
 	ConnectionID                              HarnessConnectionID
 	ConnectionGeneration                      int64
 	ConnectionBindingDigest                   SHA256Digest
+	ConnectionExpiresAt                       time.Time
+	ConnectionRevokedAt                       *time.Time
 	TransportClass                            HarnessCapabilityClass
 	AppRunID, MissionID                       string
 	ContentDigest, TargetDigest               SHA256Digest
@@ -73,7 +75,7 @@ type CommandAuthorityClaim struct {
 }
 
 func (c CommandAuthorityClaim) Validate() error {
-	if strings.TrimSpace(c.ID) == "" || strings.TrimSpace(c.AdapterRequestKey) == "" || !c.ContentDigest.Valid() || !c.TargetDigest.Valid() || !c.ConnectionBindingDigest.Valid() || c.ConnectionGeneration < 1 || !c.TransportClass.Valid() || !c.OwnerClass.Valid() || c.OwnerClass.Material() || strings.TrimSpace(c.AppRunID) == "" || strings.TrimSpace(c.MissionID) == "" || strings.TrimSpace(c.DestinationType) == "" || strings.TrimSpace(c.DestinationID) == "" || len(c.CanonicalPayload) == 0 || c.CanonicalVersion != "v1" || c.CreatedAt.IsZero() {
+	if strings.TrimSpace(c.ID) == "" || strings.TrimSpace(c.AdapterRequestKey) == "" || !c.ContentDigest.Valid() || !c.TargetDigest.Valid() || !c.ConnectionBindingDigest.Valid() || c.ConnectionGeneration < 1 || c.ConnectionExpiresAt.IsZero() || !c.TransportClass.Valid() || !c.OwnerClass.Valid() || c.OwnerClass.Material() || strings.TrimSpace(c.AppRunID) == "" || strings.TrimSpace(c.MissionID) == "" || strings.TrimSpace(c.DestinationType) == "" || strings.TrimSpace(c.DestinationID) == "" || len(c.CanonicalPayload) == 0 || c.CanonicalVersion != "v1" || c.CreatedAt.IsZero() {
 		return ErrHarnessCommandInvalid
 	}
 	return nil

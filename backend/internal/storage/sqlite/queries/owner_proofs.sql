@@ -23,7 +23,7 @@ SELECT provider_turn_id,state FROM conversation_turns WHERE handled_by_session_i
 -- name: GetCommandAnswerQuestionTarget :one
 SELECT * FROM owner_answer_questions WHERE id=?;
 -- name: InsertCommandAuthorityClaim :execrows
-INSERT INTO command_authority_claims(id,adapter_request_key,request_fingerprint,owner_proof_id,harness_connection_id,connection_generation,connection_binding_digest,transport_class,app_run_id,mission_id,content_digest,target_digest,owner_class,canonical_version,canonical_payload,destination_type,destination_id,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING;
+INSERT INTO command_authority_claims(id,adapter_request_key,request_fingerprint,owner_proof_id,harness_connection_id,connection_generation,connection_binding_digest,connection_expires_at,connection_revoked_at,transport_class,app_run_id,mission_id,content_digest,target_digest,owner_class,canonical_version,canonical_payload,destination_type,destination_id,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING;
 -- name: GetCommandAuthorityClaimByRequest :one
 SELECT * FROM command_authority_claims WHERE harness_connection_id=? AND connection_generation=? AND adapter_request_key=?;
 -- name: InsertHarnessCommandOutbox :execrows

@@ -88,7 +88,7 @@ func (q *Queries) GetCommandAnswerQuestionTarget(ctx context.Context, id string)
 }
 
 const getCommandAuthorityClaimByRequest = `-- name: GetCommandAuthorityClaimByRequest :one
-SELECT id, adapter_request_key, request_fingerprint, owner_proof_id, harness_connection_id, connection_generation, connection_binding_digest, transport_class, app_run_id, mission_id, content_digest, target_digest, owner_class, canonical_version, canonical_payload, destination_type, destination_id, state, created_at, updated_at FROM command_authority_claims WHERE harness_connection_id=? AND connection_generation=? AND adapter_request_key=?
+SELECT id, adapter_request_key, request_fingerprint, owner_proof_id, harness_connection_id, connection_generation, connection_binding_digest, connection_expires_at, connection_revoked_at, transport_class, app_run_id, mission_id, content_digest, target_digest, owner_class, canonical_version, canonical_payload, destination_type, destination_id, state, created_at, updated_at FROM command_authority_claims WHERE harness_connection_id=? AND connection_generation=? AND adapter_request_key=?
 `
 
 type GetCommandAuthorityClaimByRequestParams struct {
@@ -108,6 +108,8 @@ func (q *Queries) GetCommandAuthorityClaimByRequest(ctx context.Context, arg Get
 		&i.HarnessConnectionID,
 		&i.ConnectionGeneration,
 		&i.ConnectionBindingDigest,
+		&i.ConnectionExpiresAt,
+		&i.ConnectionRevokedAt,
 		&i.TransportClass,
 		&i.AppRunID,
 		&i.MissionID,
@@ -241,7 +243,7 @@ func (q *Queries) GetOwnerProof(ctx context.Context, id string) (OwnerProof, err
 }
 
 const insertCommandAuthorityClaim = `-- name: InsertCommandAuthorityClaim :execrows
-INSERT INTO command_authority_claims(id,adapter_request_key,request_fingerprint,owner_proof_id,harness_connection_id,connection_generation,connection_binding_digest,transport_class,app_run_id,mission_id,content_digest,target_digest,owner_class,canonical_version,canonical_payload,destination_type,destination_id,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
+INSERT INTO command_authority_claims(id,adapter_request_key,request_fingerprint,owner_proof_id,harness_connection_id,connection_generation,connection_binding_digest,connection_expires_at,connection_revoked_at,transport_class,app_run_id,mission_id,content_digest,target_digest,owner_class,canonical_version,canonical_payload,destination_type,destination_id,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
 `
 
 type InsertCommandAuthorityClaimParams struct {
@@ -252,6 +254,8 @@ type InsertCommandAuthorityClaimParams struct {
 	HarnessConnectionID     string
 	ConnectionGeneration    int64
 	ConnectionBindingDigest string
+	ConnectionExpiresAt     time.Time
+	ConnectionRevokedAt     sql.NullTime
 	TransportClass          string
 	AppRunID                string
 	MissionID               string
@@ -276,6 +280,8 @@ func (q *Queries) InsertCommandAuthorityClaim(ctx context.Context, arg InsertCom
 		arg.HarnessConnectionID,
 		arg.ConnectionGeneration,
 		arg.ConnectionBindingDigest,
+		arg.ConnectionExpiresAt,
+		arg.ConnectionRevokedAt,
 		arg.TransportClass,
 		arg.AppRunID,
 		arg.MissionID,

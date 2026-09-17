@@ -92,8 +92,8 @@ func (s *Store) ValidateAuthoritiesAndCreateCommandClaim(ctx context.Context, in
 			hook()
 		}
 
-		connectionDigest := digestJSON(in.ConnectionBinding)
-		n, err := q.InsertCommandAuthorityClaim(ctx, gen.InsertCommandAuthorityClaimParams{ID: claimID, AdapterRequestKey: in.AdapterRequestKey, RequestFingerprint: requestFingerprint, OwnerProofID: string(in.OwnerProofID), HarnessConnectionID: string(connection.ID), ConnectionGeneration: connection.Generation, ConnectionBindingDigest: connectionDigest, TransportClass: string(in.ConnectionBinding.Class), AppRunID: connection.AppRunID, MissionID: connection.MissionID, ContentDigest: contentDigest.String(), TargetDigest: targetDigest.String(), OwnerClass: string(in.Command.Class), CanonicalVersion: in.Command.Version, CanonicalPayload: payload, DestinationType: destinationType, DestinationID: destinationID, State: string(domain.CommandAuthorityClaimPending), CreatedAt: in.Now.UTC(), UpdatedAt: in.Now.UTC()})
+		connectionDigest := digestJSON(connection)
+		n, err := q.InsertCommandAuthorityClaim(ctx, gen.InsertCommandAuthorityClaimParams{ID: claimID, AdapterRequestKey: in.AdapterRequestKey, RequestFingerprint: requestFingerprint, OwnerProofID: string(in.OwnerProofID), HarnessConnectionID: string(connection.ID), ConnectionGeneration: connection.Generation, ConnectionBindingDigest: connectionDigest, ConnectionExpiresAt: connection.ExpiresAt, ConnectionRevokedAt: timeToNull(connection.RevokedAt), TransportClass: string(in.ConnectionBinding.Class), AppRunID: connection.AppRunID, MissionID: connection.MissionID, ContentDigest: contentDigest.String(), TargetDigest: targetDigest.String(), OwnerClass: string(in.Command.Class), CanonicalVersion: in.Command.Version, CanonicalPayload: payload, DestinationType: destinationType, DestinationID: destinationID, State: string(domain.CommandAuthorityClaimPending), CreatedAt: in.Now.UTC(), UpdatedAt: in.Now.UTC()})
 		if err != nil || n != 1 {
 			return domain.ErrHarnessCommandConflict
 		}
@@ -159,7 +159,7 @@ func digestJSON(v any) string {
 	return hex.EncodeToString(sum[:])
 }
 func commandAuthorityClaimFromGen(r gen.CommandAuthorityClaim) domain.CommandAuthorityClaim {
-	return domain.CommandAuthorityClaim{ID: r.ID, AdapterRequestKey: r.AdapterRequestKey, RequestFingerprint: r.RequestFingerprint, OwnerProofID: domain.OwnerProofID(r.OwnerProofID), ConnectionID: domain.HarnessConnectionID(r.HarnessConnectionID), ConnectionGeneration: r.ConnectionGeneration, ConnectionBindingDigest: domain.SHA256Digest(r.ConnectionBindingDigest), TransportClass: domain.HarnessCapabilityClass(r.TransportClass), AppRunID: r.AppRunID, MissionID: r.MissionID, ContentDigest: domain.SHA256Digest(r.ContentDigest), TargetDigest: domain.SHA256Digest(r.TargetDigest), OwnerClass: domain.OwnerCommandClass(r.OwnerClass), CanonicalVersion: r.CanonicalVersion, CanonicalPayload: r.CanonicalPayload, DestinationType: r.DestinationType, DestinationID: r.DestinationID, State: domain.CommandAuthorityClaimState(r.State), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+	return domain.CommandAuthorityClaim{ID: r.ID, AdapterRequestKey: r.AdapterRequestKey, RequestFingerprint: r.RequestFingerprint, OwnerProofID: domain.OwnerProofID(r.OwnerProofID), ConnectionID: domain.HarnessConnectionID(r.HarnessConnectionID), ConnectionGeneration: r.ConnectionGeneration, ConnectionBindingDigest: domain.SHA256Digest(r.ConnectionBindingDigest), ConnectionExpiresAt: r.ConnectionExpiresAt.UTC(), ConnectionRevokedAt: harnessNullTimePtr(r.ConnectionRevokedAt), TransportClass: domain.HarnessCapabilityClass(r.TransportClass), AppRunID: r.AppRunID, MissionID: r.MissionID, ContentDigest: domain.SHA256Digest(r.ContentDigest), TargetDigest: domain.SHA256Digest(r.TargetDigest), OwnerClass: domain.OwnerCommandClass(r.OwnerClass), CanonicalVersion: r.CanonicalVersion, CanonicalPayload: r.CanonicalPayload, DestinationType: r.DestinationType, DestinationID: r.DestinationID, State: domain.CommandAuthorityClaimState(r.State), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
 }
 
 func (s *Store) ListPendingHarnessCommandOutbox(ctx context.Context) ([]domain.HarnessCommandOutboxRecord, error) {
@@ -172,4 +172,18 @@ func (s *Store) ListPendingHarnessCommandOutbox(ctx context.Context) ([]domain.H
 		out = append(out, domain.HarnessCommandOutboxRecord{ClaimID: row.ClaimID, DestinationType: row.DestinationType, DestinationID: row.DestinationID, CanonicalPayload: append([]byte(nil), row.CanonicalPayload...), State: domain.CommandAuthorityClaimState(row.State), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()})
 	}
 	return out, nil
+}
+
+func timeToNull(value *time.Time) sql.NullTime {
+	if value == nil {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+func harnessNullTimePtr(value sql.NullTime) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	t := value.Time.UTC()
+	return &t
 }
