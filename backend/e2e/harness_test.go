@@ -67,26 +67,29 @@ var (
 	buildErr  error
 )
 
-// buildDaemon compiles the binary under test once per `go test` process. Testing
-// the built binary rather than an in-process assembly is the point: wiring bugs
-// live in main and in the daemon's own boot path, which an in-process harness
-// would skip right past.
+// buildDaemon compiles the production command under test once per `go test`
+// process. KENNEL_E2E_DAEMON_OUTPUT may choose the output/cache path, but never
+// supplies the executable: every run remains bound to this checkout's
+// ./cmd/kennel assembly and daemon boot path.
 func buildDaemon(t *testing.T) string {
 	t.Helper()
-	if bin := os.Getenv("KENNEL_E2E_DAEMON_BIN"); bin != "" {
-		resolved, err := exec.LookPath(bin)
-		if err != nil {
-			t.Fatalf("prebuilt daemon %q: %v", bin, err)
-		}
-		return resolved
-	}
 	buildOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "kennel-e2e-bin-")
-		if err != nil {
-			buildErr = err
+		out := os.Getenv("KENNEL_E2E_DAEMON_OUTPUT")
+		if out == "" {
+			dir, err := os.MkdirTemp("", "kennel-e2e-bin-")
+			if err != nil {
+				buildErr = err
+				return
+			}
+			out = filepath.Join(dir, "ao")
+		} else if !filepath.IsAbs(out) {
+			buildErr = fmt.Errorf("KENNEL_E2E_DAEMON_OUTPUT must be an absolute path")
 			return
 		}
-		out := filepath.Join(dir, "ao")
+		if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
+			buildErr = fmt.Errorf("create daemon output directory: %w", err)
+			return
+		}
 		cmd := exec.Command("go", "build", "-o", out, "./cmd/kennel")
 		cmd.Dir = ".."
 		if combined, err := cmd.CombinedOutput(); err != nil {
