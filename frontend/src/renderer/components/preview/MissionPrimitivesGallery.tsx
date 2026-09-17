@@ -70,7 +70,7 @@ export function MissionPrimitivesGallery() {
 				<div className="flex flex-col gap-2">
 					<TaskRow
 						freshnessLabel="2h ago"
-						nextAction={<button className="text-2xs text-primary" type="button">Resume</button>}
+						nextAction={<button className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 text-2xs text-primary" type="button">Resume</button>}
 						statusChip={<MissionStatusChip label="Needs you" tone="warning" />}
 						title="Reconcile fixture (normal, with next action)"
 					/>
@@ -154,8 +154,8 @@ export function MissionPrimitivesGallery() {
 					activityOpen={activityOpen}
 					footer={
 						<>
-							<button className="text-2xs text-error" type="button"><X className="mr-1 inline size-icon-2xs" />Deny</button>
-							<button className="text-2xs text-primary" type="button">Accept</button>
+							<button className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 text-2xs text-error" type="button"><X className="mr-1 inline size-icon-2xs" />Deny</button>
+							<button className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 text-2xs text-primary" type="button">Accept</button>
 						</>
 					}
 					onActivityOpenChange={setActivityOpen}
