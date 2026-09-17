@@ -3,6 +3,8 @@ package cdc_test
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -166,5 +168,29 @@ func TestBroadcasterRecoversPanickingSubscriber(t *testing.T) {
 
 	if good != 2 {
 		t.Fatalf("good subscriber got %d, want 2 (panic was not isolated)", good)
+	}
+}
+
+func TestEventEnvelopeJSONExactKeysAndVersion(t *testing.T) {
+	e := cdc.Event{Version: cdc.EventEnvelopeVersion, Seq: 7, ProjectID: "p", SessionID: "s", Type: cdc.EventSessionUpdated, Payload: json.RawMessage(`{"id":"s"}`), CreatedAt: time.Unix(1, 0).UTC()}
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"createdAt", "payload", "projectId", "seq", "sessionId", "type", "version"}
+	keys := make([]string, 0, len(got))
+	for k := range got {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if !slices.Equal(keys, want) {
+		t.Fatalf("keys=%v want=%v", keys, want)
+	}
+	if string(got["version"]) != `"v1"` {
+		t.Fatalf("version=%s", got["version"])
 	}
 }

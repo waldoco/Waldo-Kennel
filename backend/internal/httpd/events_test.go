@@ -315,3 +315,33 @@ func testCDCEvent(seq int64) cdc.Event {
 		CreatedAt: time.Unix(seq, 0).UTC(),
 	}
 }
+
+func TestWriteSSEEventFreezesVersionedBoundedEnvelope(t *testing.T) {
+	rec := httptest.NewRecorder()
+	e := testCDCEvent(9)
+	var sent int64
+	if err := writeSSEEvent(rec, rec, e, &sent); err != nil {
+		t.Fatal(err)
+	}
+	body := rec.Body.String()
+	for _, field := range []string{`"version":"v1"`, `"seq":9`, `"projectId":"proj_1"`, `"sessionId":"sess_1"`, `"type":"session_updated"`, `"payload":{"status":"running"}`, `"createdAt":`} {
+		if !strings.Contains(body, field) {
+			t.Fatalf("missing %s in %s", field, body)
+		}
+	}
+	e = testCDCEvent(10)
+	e.Payload = json.RawMessage(strings.Repeat("x", cdc.MaxEventPayloadBytes+1))
+	if err := writeSSEEvent(rec, rec, e, &sent); err == nil {
+		t.Fatal("oversized payload accepted")
+	}
+	e = testCDCEvent(10)
+	e.Payload = json.RawMessage(`{"broken":`)
+	if err := writeSSEEvent(rec, rec, e, &sent); err == nil {
+		t.Fatal("invalid JSON accepted")
+	}
+	e = testCDCEvent(10)
+	e.Version = "v2"
+	if err := writeSSEEvent(rec, rec, e, &sent); err == nil {
+		t.Fatal("unknown envelope version accepted")
+	}
+}

@@ -49,7 +49,15 @@ const (
 // events. Payload is the trigger-built JSON, kept raw so a typed transport can
 // narrow it by Type (the discriminated-union decode lives at the transport edge,
 // not here).
+const EventEnvelopeVersion = "v1"
+
+// MaxEventPayloadBytes bounds one durable event before it reaches SSE clients.
+const MaxEventPayloadBytes = 64 << 10
+
+// Event carries the frozen v1 CDC envelope. New envelope fields require a new
+// version; payload evolution remains discriminated by Type.
 type Event struct {
+	Version   string          `json:"version"`
 	Seq       int64           `json:"seq"`
 	ProjectID string          `json:"projectId"`
 	SessionID string          `json:"sessionId,omitempty"`

@@ -33,6 +33,7 @@ func (s *Store) LatestSeq(ctx context.Context) (int64, error) {
 
 func changeLogEventFromGen(r gen.ChangeLog) cdc.Event {
 	e := cdc.Event{
+		Version:   cdc.EventEnvelopeVersion,
 		Seq:       r.Seq,
 		ProjectID: string(r.ProjectID),
 		Type:      r.EventType,

@@ -143,6 +143,15 @@ func parseEventsAfter(r *http.Request) (int64, error) {
 }
 
 func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, e cdc.Event, sentSeq *int64) error {
+	if e.Version == "" {
+		e.Version = cdc.EventEnvelopeVersion
+	}
+	if e.Version != cdc.EventEnvelopeVersion {
+		return fmt.Errorf("unsupported CDC envelope version %q", e.Version)
+	}
+	if len(e.Payload) > cdc.MaxEventPayloadBytes || !json.Valid(e.Payload) {
+		return fmt.Errorf("invalid CDC payload")
+	}
 	if e.Seq <= *sentSeq {
 		return nil
 	}
