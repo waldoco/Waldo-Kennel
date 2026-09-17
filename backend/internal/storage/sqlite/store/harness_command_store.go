@@ -69,6 +69,10 @@ func (s *Store) ValidateAuthoritiesAndCreateCommandClaim(ctx context.Context, in
 			return readErr
 		}
 
+		mappedClass, mapped := domain.OwnerCommandClassForTransport(in.ConnectionBinding.Class)
+		if !mapped || mappedClass != in.Command.Class {
+			return domain.ErrHarnessCommandAuthentication
+		}
 		connectionRow, err := q.GetCommandHarnessConnection(ctx, string(in.ConnectionBinding.ConnectionID))
 		if err != nil {
 			return domain.ErrHarnessCommandAuthentication
@@ -122,12 +126,12 @@ func validateCommandTarget(ctx context.Context, q *gen.Queries, target domain.Ow
 	switch target.Class {
 	case domain.OwnerCommandTurn:
 		s, err := q.GetCommandSessionTarget(ctx, target.SessionID)
-		if err != nil || s.ControllerGeneration != target.ControllerGeneration || s.ExpectedRevision != target.ExpectedRevision {
+		if err != nil || s.ControllerGeneration != target.ControllerGeneration || s.ExpectedRevision != target.ExpectedRevision || s.CapabilityFingerprint != target.CapabilityFingerprint {
 			return domain.ErrHarnessCommandAuthentication
 		}
 	case domain.OwnerCommandSteer, domain.OwnerCommandInterrupt:
 		s, err := q.GetCommandSessionTarget(ctx, target.SessionID)
-		if err != nil || s.ControllerGeneration != target.ControllerGeneration || (target.Class == domain.OwnerCommandSteer && s.ExpectedRevision != target.ExpectedRevision) {
+		if err != nil || s.ControllerGeneration != target.ControllerGeneration || (target.Class == domain.OwnerCommandSteer && s.ExpectedRevision != target.ExpectedRevision) || s.CapabilityFingerprint != target.CapabilityFingerprint {
 			return domain.ErrHarnessCommandAuthentication
 		}
 		turn, err := q.GetCommandActiveTurnTarget(ctx, gen.GetCommandActiveTurnTargetParams{HandledBySessionID: domain.SessionID(target.SessionID), ProviderTurnID: target.ProviderTurnID})

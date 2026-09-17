@@ -7,10 +7,10 @@ import (
 
 func TestOwnerProofTargetsHaveExactVersionedShapes(t *testing.T) {
 	cases := []OwnerProofTarget{
-		{Version: OwnerProofTargetVersion, Class: OwnerCommandTurn, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "rev"},
-		{Version: OwnerProofTargetVersion, Class: OwnerCommandSteer, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "rev", ProviderTurnID: "pt"},
+		{Version: OwnerProofTargetVersion, Class: OwnerCommandTurn, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "rev", CapabilityFingerprint: "caps"},
+		{Version: OwnerProofTargetVersion, Class: OwnerCommandSteer, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "rev", ProviderTurnID: "pt", CapabilityFingerprint: "caps"},
 		{Version: OwnerProofTargetVersion, Class: OwnerCommandAnswer, QuestionID: "q", QuestionGeneration: "qg"},
-		{Version: OwnerProofTargetVersion, Class: OwnerCommandInterrupt, SessionID: "s", ControllerGeneration: "cg", ProviderTurnID: "pt"},
+		{Version: OwnerProofTargetVersion, Class: OwnerCommandInterrupt, SessionID: "s", ControllerGeneration: "cg", ProviderTurnID: "pt", CapabilityFingerprint: "caps"},
 	}
 	for _, target := range cases {
 		b1, err := target.CanonicalBytes()
@@ -30,9 +30,9 @@ func TestOwnerProofTargetsHaveExactVersionedShapes(t *testing.T) {
 
 func TestOwnerProofTargetsRejectMissingExtraAndUnfrozenCancel(t *testing.T) {
 	cases := []OwnerProofTarget{
-		{Version: "v2", Class: OwnerCommandTurn, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "r"},
+		{Version: "v1", Class: OwnerCommandTurn, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "r", CapabilityFingerprint: "caps"},
 		{Version: OwnerProofTargetVersion, Class: OwnerCommandTurn, SessionID: "s", ControllerGeneration: "cg"},
-		{Version: OwnerProofTargetVersion, Class: OwnerCommandTurn, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "r", ProviderTurnID: "extra"},
+		{Version: OwnerProofTargetVersion, Class: OwnerCommandTurn, SessionID: "s", ControllerGeneration: "cg", ExpectedRevision: "r", ProviderTurnID: "extra", CapabilityFingerprint: "caps"},
 		{Version: OwnerProofTargetVersion, Class: OwnerCommandAnswer, QuestionID: "q", QuestionGeneration: "qg", SessionID: "extra"},
 		{Version: OwnerProofTargetVersion, Class: OwnerCommandCancel, SessionID: "s"},
 	}

@@ -222,7 +222,7 @@ func newRoutineCommandFixture(t *testing.T, class domain.OwnerCommandClass) rout
 			t.Fatal(err)
 		}
 	}
-	target := domain.OwnerProofTarget{Version: domain.OwnerProofTargetVersion, Class: class, SessionID: string(session.ID), ControllerGeneration: "gen-1"}
+	target := domain.OwnerProofTarget{Version: domain.OwnerProofTargetVersion, Class: class, SessionID: string(session.ID), ControllerGeneration: "gen-1", CapabilityFingerprint: "chat-v1:test"}
 	command := domain.CanonicalHarnessCommand{Version: "v1", Class: class}
 	capability := domain.HarnessCapabilityTurn
 	switch class {
@@ -248,7 +248,7 @@ func newRoutineCommandFixture(t *testing.T, class domain.OwnerCommandClass) rout
 		t.Fatal(err)
 	}
 	connection := harnessconnection.NewWithRandom(s, bytes.NewReader(bytes.Repeat([]byte{11}, 128)))
-	issued, err := connection.Issue(context.Background(), harnessconnection.IssueRequest{ConnectionID: domain.HarnessConnectionID("hc-" + string(class)), InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "mission", AppRunID: "run", CapabilityClasses: []domain.HarnessCapabilityClass{capability}, ExpiresAt: now.Add(time.Hour), Now: now})
+	issued, err := connection.Issue(context.Background(), harnessconnection.IssueRequest{ConnectionID: domain.HarnessConnectionID("hc-" + string(class)), InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "mission", AppRunID: "run", CapabilityClasses: []domain.HarnessCapabilityClass{domain.HarnessCapabilityTurn, domain.HarnessCapabilitySteer, domain.HarnessCapabilityAnswer, domain.HarnessCapabilityInterrupt}, ExpiresAt: now.Add(time.Hour), Now: now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,5 +435,67 @@ func TestHarnessCommandCanceledBeforeClaimWritesRollsBackAndCanRetry(t *testing.
 	}
 	if _, created, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); err != nil || !created {
 		t.Fatalf("retry created=%v err=%v", created, err)
+	}
+}
+
+func TestHarnessCommandRejectsEveryRoutineTransportOwnerClassMismatch(t *testing.T) {
+	classes := []domain.OwnerCommandClass{domain.OwnerCommandTurn, domain.OwnerCommandSteer, domain.OwnerCommandAnswer, domain.OwnerCommandInterrupt}
+	capability := map[domain.OwnerCommandClass]domain.HarnessCapabilityClass{
+		domain.OwnerCommandTurn:      domain.HarnessCapabilityTurn,
+		domain.OwnerCommandSteer:     domain.HarnessCapabilitySteer,
+		domain.OwnerCommandAnswer:    domain.HarnessCapabilityAnswer,
+		domain.OwnerCommandInterrupt: domain.HarnessCapabilityInterrupt,
+	}
+	for _, ownerClass := range classes {
+		for _, transportOwnerClass := range classes {
+			if ownerClass == transportOwnerClass {
+				continue
+			}
+			t.Run(string(transportOwnerClass)+"_transport_"+string(ownerClass)+"_owner", func(t *testing.T) {
+				var f commandFixture
+				if ownerClass == domain.OwnerCommandAnswer {
+					f = newCommandFixture(t)
+				} else {
+					f = newRoutineCommandFixture(t, ownerClass).commandFixture
+				}
+				f.request.ConnectionBinding.Class = capability[transportOwnerClass]
+				if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); !errors.Is(err, domain.ErrHarnessCommandAuthentication) {
+					t.Fatalf("err=%v", err)
+				}
+				proof, found, err := f.store.GetOwnerProof(context.Background(), f.request.OwnerProofID)
+				if err != nil || !found || proof.ConsumedAt != nil {
+					t.Fatalf("proof=%+v found=%v err=%v", proof, found, err)
+				}
+			})
+		}
+	}
+}
+
+func TestHarnessCommandClaimSerializesCapabilityFingerprintMutation(t *testing.T) {
+	for _, class := range []domain.OwnerCommandClass{domain.OwnerCommandTurn, domain.OwnerCommandSteer, domain.OwnerCommandInterrupt} {
+		t.Run(string(class)+"_claim_first", func(t *testing.T) {
+			f := newRoutineCommandFixture(t, class)
+			testClaimFirstTargetMutation(t, f.commandFixture, func() error {
+				return f.store.ClaimChatControllerGeneration(context.Background(), f.sessionID, f.request.Target.ControllerGeneration, func() string {
+					if f.request.Target.ExpectedRevision != "" {
+						return f.request.Target.ExpectedRevision
+					}
+					return f.alternatePlan.ID.String()
+				}(), "chat-v1:changed", f.request.Now.Add(time.Second))
+			})
+		})
+		t.Run(string(class)+"_mutation_first", func(t *testing.T) {
+			f := newRoutineCommandFixture(t, class)
+			revision := f.request.Target.ExpectedRevision
+			if revision == "" {
+				revision = f.alternatePlan.ID.String()
+			}
+			if err := f.store.ClaimChatControllerGeneration(context.Background(), f.sessionID, f.request.Target.ControllerGeneration, revision, "chat-v1:changed", f.request.Now.Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := f.store.ValidateAuthoritiesAndCreateCommandClaim(context.Background(), f.request); !errors.Is(err, domain.ErrHarnessCommandAuthentication) {
+				t.Fatalf("err=%v", err)
+			}
+		})
 	}
 }

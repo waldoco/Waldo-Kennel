@@ -49,7 +49,7 @@ func (*commandStore) ListPendingHarnessCommandOutbox(context.Context) ([]domain.
 }
 
 func serverRequest() request {
-	return request{Type: "command", ConnectionBearer: "bearer", ConnectionID: "hc", InstallationID: "install", AdapterDigest: string(domain.DigestSHA256([]byte("adapter"))), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: string(domain.DigestSHA256([]byte("protocol"))), MissionID: "mission", AppRunID: "run", ConnectionGeneration: 1, TransportClass: "answer", OwnerProofID: "proof", OwnerProofBearer: "proof-bearer", Target: domain.OwnerProofTarget{Version: "v1", Class: domain.OwnerCommandAnswer, QuestionID: "q", QuestionGeneration: "g"}, Command: domain.CanonicalHarnessCommand{Version: "v1", Class: domain.OwnerCommandAnswer, DecisionJSON: `{"id":"yes"}`}, AdapterRequestKey: "request"}
+	return request{Type: "command", ConnectionBearer: "bearer", ConnectionID: "hc", InstallationID: "install", AdapterDigest: string(domain.DigestSHA256([]byte("adapter"))), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: string(domain.DigestSHA256([]byte("protocol"))), MissionID: "mission", AppRunID: "run", ConnectionGeneration: 1, TransportClass: "answer", OwnerProofID: "proof", OwnerProofBearer: "proof-bearer", Target: domain.OwnerProofTarget{Version: domain.OwnerProofTargetVersion, Class: domain.OwnerCommandAnswer, QuestionID: "q", QuestionGeneration: "g"}, Command: domain.CanonicalHarnessCommand{Version: "v1", Class: domain.OwnerCommandAnswer, DecisionJSON: `{"id":"yes"}`}, AdapterRequestKey: "request"}
 }
 func runHandle(t *testing.T, srv *Server, payload []byte) []byte {
 	t.Helper()

@@ -6,19 +6,20 @@ import (
 	"strings"
 )
 
-const OwnerProofTargetVersion = "v1"
+const OwnerProofTargetVersion = "v2"
 
 // OwnerProofTarget is the closed, versioned authority fence for one routine
 // command. Every command class has an exact shape; unused fields are rejected.
 type OwnerProofTarget struct {
-	Version              string            `json:"version"`
-	Class                OwnerCommandClass `json:"class"`
-	SessionID            string            `json:"sessionId,omitempty"`
-	ControllerGeneration string            `json:"controllerGeneration,omitempty"`
-	ExpectedRevision     string            `json:"expectedRevision,omitempty"`
-	ProviderTurnID       string            `json:"providerTurnId,omitempty"`
-	QuestionID           string            `json:"questionId,omitempty"`
-	QuestionGeneration   string            `json:"questionGeneration,omitempty"`
+	Version               string            `json:"version"`
+	Class                 OwnerCommandClass `json:"class"`
+	SessionID             string            `json:"sessionId,omitempty"`
+	ControllerGeneration  string            `json:"controllerGeneration,omitempty"`
+	ExpectedRevision      string            `json:"expectedRevision,omitempty"`
+	ProviderTurnID        string            `json:"providerTurnId,omitempty"`
+	QuestionID            string            `json:"questionId,omitempty"`
+	QuestionGeneration    string            `json:"questionGeneration,omitempty"`
+	CapabilityFingerprint string            `json:"capabilityFingerprint,omitempty"`
 }
 
 func (t OwnerProofTarget) Validate() error {
@@ -35,19 +36,19 @@ func (t OwnerProofTarget) Validate() error {
 	}
 	switch t.Class {
 	case OwnerCommandTurn:
-		if !required(t.SessionID, t.ControllerGeneration, t.ExpectedRevision) || t.ProviderTurnID != "" || t.QuestionID != "" || t.QuestionGeneration != "" {
+		if !required(t.SessionID, t.ControllerGeneration, t.ExpectedRevision, t.CapabilityFingerprint) || t.ProviderTurnID != "" || t.QuestionID != "" || t.QuestionGeneration != "" {
 			return ErrOwnerProofInvalid
 		}
 	case OwnerCommandSteer:
-		if !required(t.SessionID, t.ControllerGeneration, t.ExpectedRevision, t.ProviderTurnID) || t.QuestionID != "" || t.QuestionGeneration != "" {
+		if !required(t.SessionID, t.ControllerGeneration, t.ExpectedRevision, t.ProviderTurnID, t.CapabilityFingerprint) || t.QuestionID != "" || t.QuestionGeneration != "" {
 			return ErrOwnerProofInvalid
 		}
 	case OwnerCommandAnswer:
-		if !required(t.QuestionID, t.QuestionGeneration) || t.SessionID != "" || t.ControllerGeneration != "" || t.ExpectedRevision != "" || t.ProviderTurnID != "" {
+		if !required(t.QuestionID, t.QuestionGeneration) || t.SessionID != "" || t.ControllerGeneration != "" || t.ExpectedRevision != "" || t.ProviderTurnID != "" || t.CapabilityFingerprint != "" {
 			return ErrOwnerProofInvalid
 		}
 	case OwnerCommandInterrupt:
-		if !required(t.SessionID, t.ControllerGeneration, t.ProviderTurnID) || t.ExpectedRevision != "" || t.QuestionID != "" || t.QuestionGeneration != "" {
+		if !required(t.SessionID, t.ControllerGeneration, t.ProviderTurnID, t.CapabilityFingerprint) || t.ExpectedRevision != "" || t.QuestionID != "" || t.QuestionGeneration != "" {
 			return ErrOwnerProofInvalid
 		}
 	case OwnerCommandCancel:

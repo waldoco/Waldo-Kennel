@@ -5,12 +5,12 @@
 
 ## Formal S3.4 target amendment
 
-The approved S3.4 proof's `targetId + int64 targetGeneration` could not represent the existing governed string fences without loss. Migration 0148 replaces those columns with `target_digest`, the SHA-256 of a closed, versioned `OwnerProofTarget` canonical JSON shape:
+The approved S3.4 proof's `targetId + int64 targetGeneration` could not represent the existing governed string fences without loss. Migration 0148 replaces those columns with `target_digest`, the SHA-256 of a closed, versioned `OwnerProofTarget` v2 canonical JSON shape:
 
-- turn: session ID, controller generation, expected revision;
-- steer: session ID, controller generation, expected revision, provider turn ID;
+- turn: session ID, controller generation, expected revision, expected capability fingerprint;
+- steer: session ID, controller generation, expected revision, provider turn ID, expected capability fingerprint;
 - answer: durable question ID and question generation;
-- interrupt: session ID, controller generation, provider turn ID.
+- interrupt: session ID, controller generation, provider turn ID, expected capability fingerprint.
 
 Unused fields, material classes and unfrozen cancel targets are rejected. Existing short-lived pending proofs are invalidated at upgrade rather than guessed into the new tuple. The authenticated owner mint route accepts the typed target and stores only its digest.
 
@@ -23,6 +23,8 @@ Provider approval and structured-input requests now create an independently name
 ## Command authority transaction
 
 `ValidateAuthoritiesAndCreateCommandClaim` holds `Store.writeMu` and one SQLite transaction. It re-reads and validates the current connection row (complete binding, current generation, bearer, class, expiry and revocation), owner proof (bearer, tuple, pending and expiry), and current command target. It then inserts the immutable authority claim, canonical payload, deterministic destination/outbox and consumes the proof. All commit or none.
+
+The transaction maps the presented transport class through the one closed transport-to-owner mapping and requires exact equality with the command, target, and proof class. The current capability fingerprint is compared to the proof-bound target v2 field in-transaction.
 
 Exact retries converge by connection generation plus adapter request key and request fingerprint. Changed semantics conflict. Material classes remain unavailable.
 
