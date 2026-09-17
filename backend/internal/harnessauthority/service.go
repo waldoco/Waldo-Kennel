@@ -24,6 +24,27 @@ func New(store ports.HarnessAuthorityStore, pairing *harnesspairing.Coordinator,
 	return &Service{store: store, pairing: pairing, connections: connections, now: time.Now}
 }
 
+// Projection reads delegate to the authority store so the HTTP controller and
+// command service share one source of truth.
+func (s *Service) ListHarnessPairingIntents(ctx context.Context, projectID domain.ProjectID, limit int) ([]domain.HarnessPairingIntent, error) {
+	return s.store.ListHarnessPairingIntents(ctx, projectID, limit)
+}
+func (s *Service) GetHarnessPairingIntent(ctx context.Context, id domain.PairingChallengeID) (domain.HarnessPairingIntent, bool, error) {
+	return s.store.GetHarnessPairingIntent(ctx, id)
+}
+func (s *Service) ListHarnessConnections(ctx context.Context, missionID string, limit int) ([]domain.HarnessConnection, error) {
+	return s.store.ListHarnessConnections(ctx, missionID, limit)
+}
+func (s *Service) GetHarnessConnection(ctx context.Context, id domain.HarnessConnectionID) (domain.HarnessConnection, bool, error) {
+	return s.connections.Get(ctx, id)
+}
+func (s *Service) ListHarnessAuthorityReceipts(ctx context.Context, typ, id string) ([]domain.HarnessAuthorityReceipt, error) {
+	return s.store.ListHarnessAuthorityReceipts(ctx, typ, id)
+}
+func (s *Service) CountHarnessCommandConsequences(ctx context.Context, id domain.HarnessConnectionID, generation int64) (int64, error) {
+	return s.store.CountHarnessCommandConsequences(ctx, id, generation)
+}
+
 type CreateIntentRequest struct {
 	ID                               domain.PairingChallengeID
 	ProjectID                        domain.ProjectID

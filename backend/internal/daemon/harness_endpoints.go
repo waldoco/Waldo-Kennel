@@ -43,6 +43,7 @@ func (s *harnessEndpointSet) Close() {
 
 func startHarnessEndpoints(ctx context.Context, dataDir string, store interface {
 	ports.HarnessPairingChallengeStore
+	ports.HarnessPairingActivator
 	ports.HarnessCommandStore
 }, connections *harnessconnection.Kernel, pairing *harnesspairing.Coordinator, log *slog.Logger) (*harnessEndpointSet, error) {
 	if store == nil || connections == nil || pairing == nil {
