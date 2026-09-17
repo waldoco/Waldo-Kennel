@@ -1,5 +1,8 @@
 # Kennel PR Convergence and Architecture Gate Implementation Plan
 
+> **Classification for vNext (2026-09-15):** historical implementation plan, not current order. Use [persistent mission runtime](../../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md).
+
+
 > **Sequencing amendment (2026-08-21):** [ADR 0004](../../adr/0004-parallel-home-personal-agent-and-required-capture.md) permits a separately owned Home/Personal Agent lane to proceed in parallel and makes governed desktop screen/audio capture required product capabilities. The Work PR sequence below remains unchanged, but Work evaluation is no longer a prerequisite for starting Home, and capture is no longer an optional launch+1-only idea. Durable admitted Memory remains separately gated.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

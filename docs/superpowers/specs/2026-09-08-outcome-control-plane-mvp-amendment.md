@@ -1,5 +1,8 @@
 # Outcome Control Plane MVP Amendment to Canonical Flow
 
+> **Superseded for vNext (2026-09-15):** Historical MVP amendment; not current topology or order. Use [persistent mission runtime](../../architecture/persistent-mission-runtime.md) and the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md). Retained for provenance.
+
+
 - **Status:** Accepted amendment
 - **Date:** 2026-09-08
 - **Amends:** `2026-08-25-work-control-plane-canonical-flow-design.md`

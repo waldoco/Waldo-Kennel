@@ -75,7 +75,8 @@ func TestIntakeAnalyzerRefusesSettingsReadFailureBeforeProviderContext(t *testin
 	want := errors.New("settings database unavailable")
 	analyzer := NewIntakeAnalyzer(provider, store, nil).
 		WithRepositoryContextSource(store).
-		WithRepositoryContextLimits(failingRepositoryContextLimits{err: want})
+		WithRepositoryContextLimits(failingRepositoryContextLimits{err: want}).
+		WithAdmissionEvaluator(admissionEvaluatorFake{eligible: true})
 
 	_, err := analyzer.Analyze(ctx, ports.IntakeAnalysisInput{Session: domain.IntakeSession{
 		ID: "intake-limits-error", ProjectID: domain.ProjectID(project.ID), Statement: "Inspect the repository safely",
@@ -85,5 +86,26 @@ func TestIntakeAnalyzerRefusesSettingsReadFailureBeforeProviderContext(t *testin
 	}
 	if provider.analyzeCalls != 0 {
 		t.Fatalf("provider calls = %d, want zero before repository context is sent", provider.analyzeCalls)
+	}
+}
+
+type admissionEvaluatorFake struct{ eligible bool }
+
+func (f admissionEvaluatorFake) EvaluateAdmissionStage(context.Context, ports.AdmissionStageInput) (ports.AdmissionStageResult, error) {
+	return ports.AdmissionStageResult{Eligible: f.eligible, Verdict: domain.AdmissionVerdict{Reasons: []domain.AdmissionReasonCode{domain.AdmissionProviderUnavailable}}}, nil
+}
+
+func TestIntakeAnalyzerRequiresAndEnforcesContractAdmission(t *testing.T) {
+	store := sqlitetest.MustOpen(t)
+	provider := &countingIntelligenceProvider{}
+	input := ports.IntakeAnalysisInput{Session: domain.IntakeSession{ID: "intake", ProjectID: "project", Statement: "inspect"}}
+	if _, err := NewIntakeAnalyzer(provider, store, nil).Analyze(context.Background(), input); err == nil || !strings.Contains(err.Error(), "admission is unavailable") {
+		t.Fatalf("missing evaluator err=%v", err)
+	}
+	if _, err := NewIntakeAnalyzer(provider, store, nil).WithAdmissionEvaluator(admissionEvaluatorFake{}).Analyze(context.Background(), input); err == nil || !strings.Contains(err.Error(), "current verified capabilities") {
+		t.Fatalf("rejection err=%v", err)
+	}
+	if provider.analyzeCalls != 0 {
+		t.Fatalf("provider calls=%d", provider.analyzeCalls)
 	}
 }

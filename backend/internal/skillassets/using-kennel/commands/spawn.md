@@ -1,5 +1,8 @@
 # kennel spawn
 
+> Compatibility command reference. This command does not grant scheduling or Outcome authority; the daemon validates all governed actions.
+
+
 Spawn a worker agent session in a registered project. The session runs the chosen agent in a fresh git worktree. Register the project first with `kennel project add`.
 
 ## Syntax

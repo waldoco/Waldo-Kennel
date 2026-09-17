@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/apierr"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 )
 
@@ -23,7 +24,8 @@ type IntakeAnalyzer struct {
 	projects ProjectSource
 	// limits resolves the owner's configured repository-context bounds.
 	// Optional so historical/unit callers still get DefaultRepositoryContextLimits.
-	limits RepositoryContextLimitsSource
+	limits    RepositoryContextLimitsSource
+	admission ports.AdmissionStageEvaluator
 }
 
 // NewIntakeAnalyzer constructs the Intake intelligence adapter.
@@ -50,6 +52,11 @@ func (a *IntakeAnalyzer) WithRepositoryContextLimits(source RepositoryContextLim
 	return a
 }
 
+func (a *IntakeAnalyzer) WithAdmissionEvaluator(e ports.AdmissionStageEvaluator) *IntakeAnalyzer {
+	a.admission = e
+	return a
+}
+
 func (a *IntakeAnalyzer) repositoryContextLimits(ctx context.Context) (RepositoryContextLimits, error) {
 	if a.limits == nil {
 		return DefaultRepositoryContextLimits, nil
@@ -65,6 +72,18 @@ func (a *IntakeAnalyzer) repositoryContextLimits(ctx context.Context) (Repositor
 func (a *IntakeAnalyzer) Analyze(ctx context.Context, input ports.IntakeAnalysisInput) (ports.IntakeAnalysisTicket, error) {
 	if a == nil || a.provider == nil || a.runs == nil {
 		return ports.IntakeAnalysisTicket{}, fmt.Errorf("intelligence provider is not configured")
+	}
+	if a.admission == nil {
+		return ports.IntakeAnalysisTicket{}, apierr.Internal("CONTRACT_ADMISSION_UNWIRED", "Contract admission is unavailable")
+	}
+	{
+		stage, err := a.admission.EvaluateAdmissionStage(ctx, ports.AdmissionStageInput{Stage: ports.AdmissionStageContract, ProjectID: input.Session.ProjectID})
+		if err != nil {
+			return ports.IntakeAnalysisTicket{}, err
+		}
+		if !stage.Eligible {
+			return ports.IntakeAnalysisTicket{}, apierr.Conflict("CONTRACT_ADMISSION_REJECTED", "Contract analysis cannot run with the current verified capabilities", map[string]any{"reasons": stage.Verdict.Reasons})
+		}
 	}
 	request := ports.ContractIntelligenceRequest{
 		Session:           input.Session,

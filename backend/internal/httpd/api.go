@@ -10,9 +10,12 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/attachmentstore"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/cdc"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/config"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/apispec"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownerproof"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/presence"
 	prsvc "github.com/Pin4sf/Waldo-Kennel/backend/internal/service/pr"
@@ -41,6 +44,7 @@ type APIDeps struct {
 	// routes then answer 501, matching every other optional surface.
 	Attempts       controllers.AttemptManager
 	Proof          controllers.ProofManager
+	NeedsYou       controllers.NeedsYouManager
 	Push           controllers.PushRegistry
 	ShellTerminals controllers.ShellTerminalService
 	// Conversations is nil until a Chat driver is wired; the controller then
@@ -64,6 +68,11 @@ type APIDeps struct {
 	// DeviceRoster and DeviceLive back the desktop-only mobile device roster.
 	DeviceRoster controllers.DeviceRoster
 	DeviceLive   controllers.LiveSet
+
+	OwnerAuthority       *ownercommand.Authority
+	ReplacementDecisions ports.AttemptReplacementDecisionStore
+	PairingCoordinator   *harnesspairing.Coordinator
+	OwnerProofKernel     *ownerproof.Kernel
 }
 
 // normalizeAPIDeps closes the Presence/DeviceLive duplication trap structurally.
@@ -143,7 +152,7 @@ func NewAPI(cfg config.Config, deps APIDeps) *API {
 		prs:           &controllers.PRsController{Svc: deps.PRs},
 		reviews:       &controllers.ReviewsController{Svc: deps.Reviews},
 		notifications: &controllers.NotificationsController{Svc: deps.Notifications, Stream: deps.NotificationStream},
-		outcomes:      &controllers.OutcomesController{Svc: deps.Outcomes, Attempts: deps.Attempts, Proof: deps.Proof},
+		outcomes:      &controllers.OutcomesController{Svc: deps.Outcomes, Attempts: deps.Attempts, Proof: deps.Proof, NeedsYou: deps.NeedsYou},
 		intakes:       &controllers.IntakesController{Svc: deps.Intakes, Links: deps.ResponsibilityLinks},
 		waldo:         &controllers.WaldoConversationsController{Svc: deps.WaldoConversations},
 		push:          &controllers.PushController{Registry: deps.Push},

@@ -1,5 +1,8 @@
 # Outcome Control Plane MVP — post-PR99 execution plan
 
+> **Superseded implementation plan.** Retained as historical execution evidence. Do not use as current work order; use the [persistent-session execution map](../../roadmap/persistent-session-execution-map.md).
+
+
 **Updated:** 2026-09-09. **Source baseline:** `0f5def7ce3823487eeab89401f9cd5fd10d26cc2` (`beta`, merged PR #99).
 **Target:** a usable Outcome Continuity product; Saturday 2026-09-12 is a conditional launch target, not permission to skip gates.
 **Status:** execution-ready plan; product implementation below remains open.

@@ -43,6 +43,10 @@ type Info struct {
 	// selected by the backend for this daemon launch. It is a locator only; the
 	// supervisor connection is liveness, not an authentication boundary.
 	SupervisorAddress string `json:"supervisorAddress,omitempty"`
+	// HarnessPairingAddress and HarnessCommandAddress are protected local socket
+	// locators. Authority remains in peer credentials and command bearers.
+	HarnessPairingAddress string `json:"harnessPairingAddress,omitempty"`
+	HarnessCommandAddress string `json:"harnessCommandAddress,omitempty"`
 }
 
 // Write atomically writes running.json at path, creating parent directories

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="782" viewBox="0 0 1400 782">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker></defs>
+<rect width="100%" height="100%" fill="#0c0f14"/>
+<text x="700" y="36" text-anchor="middle" font-family="Arial" font-size="25" font-weight="700" fill="white">Harness connection: transport authentication is not owner intent</text>
+<line x1="700" y1="107" x2="700" y2="141" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="128" font-family="Arial" font-size="13" fill="#cbd5e1">compatibility manifest</text>
+<line x1="700" y1="191" x2="700" y2="225" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="212" font-family="Arial" font-size="13" fill="#cbd5e1">adapter digest + harness fingerprint</text>
+<line x1="700" y1="275" x2="700" y2="309" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="296" font-family="Arial" font-size="13" fill="#cbd5e1">separate trust domains</text>
+<line x1="700" y1="359" x2="700" y2="393" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="380" font-family="Arial" font-size="13" fill="#cbd5e1">content hash + mission + generation + class + expiry</text>
+<line x1="700" y1="443" x2="700" y2="477" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="464" font-family="Arial" font-size="13" fill="#cbd5e1">two validations</text>
+<line x1="700" y1="527" x2="700" y2="561" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="548" font-family="Arial" font-size="13" fill="#cbd5e1">truthful authority state</text>
+<line x1="700" y1="611" x2="700" y2="645" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="632" font-family="Arial" font-size="13" fill="#cbd5e1">reconcile then resume</text>
+<rect x="210" y="57" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="87" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Discover harness/cloud endpoint; resolve identity and version</text>
+<rect x="210" y="141" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="171" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Install/upgrade matching signed or content-addressed adapter</text>
+<rect x="210" y="225" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="255" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Pair adapter: short-lived transport capability only</text>
+<rect x="210" y="309" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="339" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Authenticated owner surface mints exact, short-lived owner proof</text>
+<rect x="210" y="393" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="423" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Adapter carries content + owner proof; never the owner bearer</text>
+<rect x="210" y="477" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="507" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Daemon validates transport and owner proof separately</text>
+<rect x="210" y="561" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="591" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Connected / degraded / action needed; proposal-only if owner proof absent</text>
+<rect x="210" y="645" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="675" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Reconnect to durable mission; rotate capabilities without healthy-daemon restart</text>
+</svg>

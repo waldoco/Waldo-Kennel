@@ -103,6 +103,8 @@ npm --prefix frontend run package:identity
 
 The assertion must pass before any release work. It verifies Kennel's bundle ID, display name, executable, protocol, updater target/cache, daemon name, state namespace, and release repository.
 
+To prove a real owner journey through the packaged app (Contract creation through Plan approval, stopping at the execution boundary), see [the packaged macOS Outcome journey harness](outcome-journey-harness.md). Owner-run only — it drives a live authenticated Codex session, so it is never part of CI.
+
 ## State safety
 
 Kennel global state belongs under `~/.kennel` or explicit `KENNEL_*` overrides. It must never fall back to `~/.ao` or the operating system's default Electron application-data directory. Use a task-specific temporary directory when a test needs state; do not repurpose `$HOME`.

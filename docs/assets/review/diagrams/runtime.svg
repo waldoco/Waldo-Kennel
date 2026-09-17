@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="782" viewBox="0 0 1400 782">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker></defs>
+<rect width="100%" height="100%" fill="#0c0f14"/>
+<text x="700" y="36" text-anchor="middle" font-family="Arial" font-size="25" font-weight="700" fill="white">Runtime topology: paired transport, separate owner proof, negotiated profiles</text>
+<line x1="700" y1="107" x2="700" y2="141" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="128" font-family="Arial" font-size="13" fill="#cbd5e1">owner proof may travel through adapter; bearer never does</text>
+<line x1="700" y1="191" x2="700" y2="225" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="212" font-family="Arial" font-size="13" fill="#cbd5e1">two trust layers</text>
+<line x1="700" y1="275" x2="700" y2="309" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="296" font-family="Arial" font-size="13" fill="#cbd5e1">owner command or proposal-only</text>
+<line x1="700" y1="359" x2="700" y2="393" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="380" font-family="Arial" font-size="13" fill="#cbd5e1">authorized session command</text>
+<line x1="700" y1="443" x2="700" y2="477" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="464" font-family="Arial" font-size="13" fill="#cbd5e1">profile per Attempt</text>
+<line x1="700" y1="527" x2="700" y2="561" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="548" font-family="Arial" font-size="13" fill="#cbd5e1">pinned identity/capabilities</text>
+<line x1="700" y1="611" x2="700" y2="645" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+<text x="718" y="632" font-family="Arial" font-size="13" fill="#cbd5e1">normalized events through daemon</text>
+<rect x="210" y="57" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="87" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Authenticated owner surface -&gt; exact owner proof + typed content</text>
+<rect x="210" y="141" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="171" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Paired adapter -&gt; adapter-authenticated transport only</text>
+<rect x="210" y="225" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="255" text-anchor="middle" font-family="Arial" font-size="16" fill="white">S1 validates owner proof separately; adapter-only ingress is proposal</text>
+<rect x="210" y="309" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="339" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Daemon + durable store -&gt; capability state and MissionProjection</text>
+<rect x="210" y="393" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="423" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Unified session controller</text>
+<rect x="210" y="477" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="507" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Every Attempt passes through its own negotiated, pinned coding profile</text>
+<rect x="210" y="561" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="591" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Attempt A / Attempt B: exclusive worktree + persistent thread</text>
+<rect x="210" y="645" width="980" height="50" rx="9" fill="#172554" stroke="#60a5fa"/>
+<text x="700" y="675" text-anchor="middle" font-family="Arial" font-size="16" fill="white">Mission Supervisor exchanges typed events/recommendations; daemon remains authority</text>
+</svg>

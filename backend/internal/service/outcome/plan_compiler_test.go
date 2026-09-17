@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,14 @@ type planningFakeStore struct {
 	project      domain.ProjectRecord
 	projectReads int
 	runs         map[domain.IntelligenceRunID]domain.IntelligenceRun
+}
+
+func testAdmissionPolicy() *domain.AdmissionPolicy {
+	b := domain.ExecutionBudget{WallTimeLimit: time.Hour, RetryLimit: 1, TokenAccounting: domain.TokenAccountingUnsupported, Source: domain.ExecutionBudgetPolicyDefault, PolicyID: "test-policy", PolicyVersion: "v1", PolicyDigest: strings.Repeat("a", 64)}
+	policy := &domain.AdmissionPolicy{ID: b.PolicyID, Version: b.PolicyVersion, Default: b, MaxWallTime: 2 * time.Hour, MaxRetries: 2, MaxTokens: 100000}
+	policy.Digest, _ = policy.ComputedDigest()
+	policy.Default.PolicyDigest = policy.Digest
+	return policy
 }
 
 func newPlanningFakeStore() *planningFakeStore {
@@ -121,9 +130,11 @@ func (p *twoUnitPlanIntelligence) DraftPlan(context.Context, ports.PlanIntellige
 }
 
 type routingInventoryFake struct {
-	calls      int
-	preference *domain.RoutingPreference
-	candidates []domain.RoutingCandidate
+	calls         int
+	preference    *domain.RoutingPreference
+	candidates    []domain.RoutingCandidate
+	generationIDs []string
+	snapshotIDs   []string
 }
 
 func (r *routingInventoryFake) RoutingSnapshot(_ context.Context, _ domain.ProjectID, preference *domain.RoutingPreference) (ports.RoutingInventorySnapshot, error) {
@@ -132,7 +143,14 @@ func (r *routingInventoryFake) RoutingSnapshot(_ context.Context, _ domain.Proje
 		preferenceCopy := *preference
 		r.preference = &preferenceCopy
 	}
-	return ports.RoutingInventorySnapshot{SnapshotID: "snapshot-test", Candidates: r.candidates}, nil
+	generationID, snapshotID := "generation-test", "snapshot-test"
+	if len(r.generationIDs) >= r.calls {
+		generationID = r.generationIDs[r.calls-1]
+	}
+	if len(r.snapshotIDs) >= r.calls {
+		snapshotID = r.snapshotIDs[r.calls-1]
+	}
+	return ports.RoutingInventorySnapshot{GenerationID: generationID, SnapshotID: snapshotID, Candidates: r.candidates}, nil
 }
 
 func readyClaudeCandidate() domain.RoutingCandidate {
@@ -157,6 +175,7 @@ func newPlanningTestService(t *testing.T, router *routingInventoryFake) (*outcom
 	store := newPlanningFakeStore()
 	provider := &twoUnitPlanIntelligence{}
 	svc := outcome.New(store, nil).WithPlanning(provider, router)
+	svc.AdmissionPolicy = testAdmissionPolicy()
 
 	store.planFakeStore.mu.Lock()
 	store.spaces["mer"] = domain.ResponsibilitySpace{ID: "rsp-plan-compiler", Kind: domain.ResponsibilitySpaceWorkProject, ProjectID: "mer"}
@@ -223,8 +242,8 @@ func TestProposePlanCompilesIntelligenceGraphAndRoutesEveryWorkUnit(t *testing.T
 	if router.preference == nil || router.preference.Provider != string(domain.HarnessClaudeCode) || router.preference.Model != "sonnet-test" {
 		t.Fatalf("preference = %+v", router.preference)
 	}
-	if router.calls != 2 {
-		t.Fatalf("routing calls = %d, want 2", router.calls)
+	if router.calls != 1 {
+		t.Fatalf("routing calls = %d, want one shared snapshot", router.calls)
 	}
 	var runs []domain.IntelligenceRun
 	for _, run := range store.runs {
@@ -292,8 +311,8 @@ func TestApprovePlanDoesNotRereadMutableProjectPreference(t *testing.T) {
 	if err != nil {
 		t.Fatalf("approve: %v", err)
 	}
-	if store.projectReads != reads {
-		t.Fatalf("approval reread Project: %d -> %d", reads, store.projectReads)
+	if store.projectReads != reads+1 {
+		t.Fatalf("approval project-kind reads = %d -> %d, want one custody-kind read", reads, store.projectReads)
 	}
 	for _, unit := range approved.Plan.WorkUnits {
 		if unit.Provider != domain.HarnessClaudeCode || unit.Model != "sonnet-test" {
@@ -318,5 +337,100 @@ func TestProposePlanNoValidRoutePersistsNothing(t *testing.T) {
 	}
 	if persisted := len(store.plans[outcomeID]); persisted != 0 {
 		t.Fatalf("persisted %d plans", persisted)
+	}
+}
+
+func TestEvaluateAdmissionUsesOneSnapshotAndExplicitModelPreference(t *testing.T) {
+	router := &routingInventoryFake{candidates: []domain.RoutingCandidate{{ID: "codex", Provider: "codex", ModelSelection: domain.ExecutionBindingModelProviderDefault, WorkerEligible: true, Readiness: domain.CapabilitySupported, Capabilities: map[string]domain.CapabilitySupport{domain.CapabilityWorktreeRead: domain.CapabilitySupported, domain.CapabilityWorktreeWrite: domain.CapabilitySupported, domain.CapabilityWorktreeExec: domain.CapabilitySupported}, Models: map[string]domain.CapabilitySupport{"gpt-explicit": domain.CapabilitySupported}}}}
+	svc, _, outcomeID, _ := newPlanningTestService(t, router)
+	view, err := svc.Get(context.Background(), outcomeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := svc.ProposePlan(context.Background(), outcomeID, view.Current.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range plan.Plan.WorkUnits {
+		plan.Plan.WorkUnits[i].Provider = domain.HarnessCodex
+		plan.Plan.WorkUnits[i].ModelSelection = domain.ExecutionBindingModelExplicit
+		plan.Plan.WorkUnits[i].Model = "gpt-explicit"
+		plan.Plan.WorkUnits[i].ExecutionBudget = testAdmissionPolicy().Default
+	}
+	before := router.calls
+	_, err = svc.EvaluateAdmissionStage(context.Background(), ports.AdmissionStageInput{Stage: ports.AdmissionStageApproval, ProjectID: "mer", Outcome: &view.Outcome, Contract: &view.Current, Plan: &plan.Plan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if router.calls-before != 1 {
+		t.Fatalf("snapshots=%d", router.calls-before)
+	}
+	if router.preference == nil || router.preference.Model != "gpt-explicit" {
+		t.Fatalf("preference=%+v", router.preference)
+	}
+}
+
+func TestApprovePlanReplayReturnsPersistedAdmissionWithoutReevaluation(t *testing.T) {
+	router := &routingInventoryFake{candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+	svc, _, outcomeID, _ := newPlanningTestService(t, router)
+	proposal, err := svc.ProposePlan(context.Background(), outcomeID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.ApprovePlan(context.Background(), outcomeID, outcome.ApprovePlanInput{PlanRevisionID: proposal.Plan.ID, ExpectedContractRevision: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := router.calls
+	replay, err := svc.ApprovePlan(context.Background(), outcomeID, outcome.ApprovePlanInput{PlanRevisionID: proposal.Plan.ID, ExpectedContractRevision: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay.Plan.ID != first.Plan.ID || router.calls != calls {
+		t.Fatalf("replay=%s calls=%d->%d", replay.Plan.ID, calls, router.calls)
+	}
+}
+
+func TestEvaluateAdmissionInventoriesDistinctFrozenBindingsOnOneSnapshotVersion(t *testing.T) {
+	router := &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessClaudeCode, "sonnet-test"), executionCandidate(domain.HarnessCodex, "gpt-test")}}
+	svc, _, outcomeID, _ := newPlanningTestService(t, router)
+	view, _ := svc.Get(context.Background(), outcomeID)
+	plan, err := svc.ProposePlan(context.Background(), outcomeID, view.Current.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Plan.WorkUnits[1].Provider = domain.HarnessCodex
+	plan.Plan.WorkUnits[1].ModelSelection = domain.ExecutionBindingModelExplicit
+	plan.Plan.WorkUnits[1].Model = "gpt-test"
+	plan.Plan.RoutingDecisions[1].Decision.RecommendedProvider = string(domain.HarnessCodex)
+	plan.Plan.RoutingDecisions[1].Decision.RecommendedModelSelection = domain.ExecutionBindingModelExplicit
+	plan.Plan.RoutingDecisions[1].Decision.RecommendedModel = "gpt-test"
+	before := router.calls
+	result, err := svc.EvaluateAdmissionStage(context.Background(), ports.AdmissionStageInput{Stage: ports.AdmissionStageApproval, ProjectID: "mer", Outcome: &view.Outcome, Contract: &view.Current, Plan: &plan.Plan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Eligible || router.calls-before != 2 {
+		t.Fatalf("eligible=%v calls=%d", result.Eligible, router.calls-before)
+	}
+}
+
+func TestEvaluateAdmissionRejectsDifferentInventoryGenerations(t *testing.T) {
+	router := &routingInventoryFake{generationIDs: []string{"g1", "g2"}, snapshotIDs: []string{"same", "same"}, candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessClaudeCode, "sonnet-test"), executionCandidate(domain.HarnessCodex, "gpt-test")}}
+	svc, _, outcomeID, _ := newPlanningTestService(t, router)
+	view, _ := svc.Get(context.Background(), outcomeID)
+	plan, err := svc.ProposePlan(context.Background(), outcomeID, view.Current.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Plan.WorkUnits[1].Provider = domain.HarnessCodex
+	plan.Plan.WorkUnits[1].ModelSelection = domain.ExecutionBindingModelExplicit
+	plan.Plan.WorkUnits[1].Model = "gpt-test"
+	result, err := svc.EvaluateAdmissionStage(context.Background(), ports.AdmissionStageInput{Stage: ports.AdmissionStageApproval, ProjectID: "mer", Outcome: &view.Outcome, Contract: &view.Current, Plan: &plan.Plan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Eligible || result.Verdict.Reasons[0] != domain.AdmissionCapabilitySnapshotChanged {
+		t.Fatalf("%+v", result)
 	}
 }

@@ -593,7 +593,7 @@ func (s *Service) finishPlanningProposal(ctx context.Context, outcomeRecord doma
 	if err != nil {
 		return PlanningView{}, err
 	}
-	units, decisions, err := s.compileAndRoutePlan(ctx, projectID, revision, *result.PlanProposal, aliases, routingPreferenceFromExecution(preference, hasPreference))
+	units, decisions, proposalSnapshot, err := s.compileAndRoutePlan(ctx, projectID, revision, *result.PlanProposal, aliases, routingPreferenceFromExecution(preference, hasPreference))
 	if err != nil {
 		return PlanningView{}, err
 	}
@@ -615,6 +615,20 @@ func (s *Service) finishPlanningProposal(ctx context.Context, outcomeRecord doma
 	validation.Number = 1
 	if err := validation.ValidateAgainstContract(revision); err != nil {
 		return PlanningView{}, apierr.Invalid("PLAN_DRAFT_CRITERIA_INVALID", err.Error(), nil)
+	}
+	proposalStage, err := s.EvaluateAdmissionStage(ctx, ports.AdmissionStageInput{Stage: ports.AdmissionStageProposal, ProjectID: projectID, Outcome: &outcomeRecord, Contract: &revision, Plan: &validation, RoutingSnapshot: &proposalSnapshot})
+	if err != nil {
+		return PlanningView{}, err
+	}
+	if !proposalStage.Eligible {
+		if s.admission == nil {
+			return PlanningView{}, apierr.Internal("ADMISSION_STORE_UNWIRED", "Admission persistence is unavailable in this environment")
+		}
+		proposalStage.Verdict.PlanRevisionID = nil
+		if err := s.admission.AppendAdmissionEvaluation(ctx, proposalStage.Verdict); err != nil {
+			return PlanningView{}, fmt.Errorf("persist rejected proposal admission: %w", err)
+		}
+		return PlanningView{}, apierr.New(apierr.KindConflict, "PLAN_PROPOSAL_NOT_ADMITTED", "This proposal cannot be routed under the verified capabilities", map[string]any{"reasons": proposalStage.Verdict.Reasons})
 	}
 	saved, err := s.store.AppendPlanRevision(ctx, outcomeRecord.ID, plan)
 	if err != nil {

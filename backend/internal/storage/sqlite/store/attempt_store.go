@@ -70,6 +70,25 @@ func (s *Store) CreateAttemptWithFence(ctx context.Context, in ports.AttemptAdmi
 	defer func() { _ = tx.Rollback() }()
 	txq := s.qw.WithTx(tx)
 
+	key := sql.NullString{String: strings.TrimSpace(in.RequestKey), Valid: true}
+	if row, findErr := txq.FindAttemptByIdempotencyKey(ctx, key); findErr == nil {
+		winner := attemptFromFindRow(row)
+		if winner.OutcomeID != in.OutcomeID || winner.PlanRevisionID != in.PlanRevisionID || winner.WorkUnitID != in.WorkUnitID || winner.ContractRevisionNumber != in.ContractRevisionNumber {
+			return winner, &ports.AttemptReplayConflictError{Attempt: winner, OutcomeID: in.OutcomeID, PlanRevisionID: in.PlanRevisionID, WorkUnitID: in.WorkUnitID}
+		}
+		return winner, &ports.AttemptReplayError{Attempt: winner}
+	} else if !errors.Is(findErr, sql.ErrNoRows) {
+		return domain.Attempt{}, findErr
+	}
+
+	var priorAttempts int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM attempts WHERE work_unit_id=?`, in.WorkUnitID).Scan(&priorAttempts); err != nil {
+		return domain.Attempt{}, fmt.Errorf("count attempt lineage for %s: %w", in.WorkUnitID, err)
+	}
+	if in.RetryLimit != nil && priorAttempts > *in.RetryLimit {
+		return domain.Attempt{}, &ports.AttemptRetryBudgetExceededError{WorkUnitID: in.WorkUnitID, RetryLimit: *in.RetryLimit, PriorAttempts: priorAttempts}
+	}
+
 	maxNum, err := txq.MaxAttemptNumber(ctx, in.OutcomeID)
 	if err != nil {
 		return domain.Attempt{}, fmt.Errorf("max attempt number for %s: %w", in.OutcomeID, err)
@@ -121,7 +140,6 @@ func (s *Store) CreateAttemptWithFence(ctx context.Context, in ports.AttemptAdmi
 		}
 	}
 
-	key := sql.NullString{String: strings.TrimSpace(in.RequestKey), Valid: true}
 	attempt := domain.Attempt{
 		ID:                     domain.AttemptID("att-" + uuid.NewString()),
 		OutcomeID:              in.OutcomeID,
@@ -248,6 +266,13 @@ func (s *Store) BindAttemptSession(ctx context.Context, ref domain.AttemptSessio
 	}
 	defer func() { _ = tx.Rollback() }()
 	txq := s.qw.WithTx(tx)
+	var status domain.AttemptStatus
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM attempts WHERE id=?`, ref.AttemptID).Scan(&status); err != nil {
+		return domain.AttemptSessionRef{}, fmt.Errorf("read attempt status for session bind: %w", err)
+	}
+	if status == domain.AttemptAwaitingAuthority {
+		return domain.AttemptSessionRef{}, fmt.Errorf("awaiting-authority attempt cannot bind a session")
+	}
 
 	seq, err := latestSessionRefSeq(ctx, txq, ref.AttemptID)
 	if err != nil {
@@ -629,4 +654,73 @@ func attemptFenceFromRow(row gen.AttemptFence) domain.AttemptFence {
 		ID: row.ID, Subject: row.Subject, AttemptID: row.AttemptID, IssuedAt: row.IssuedAt,
 		LastRenewedAt: row.LastRenewedAt, ReleasedAt: row.ReleasedAt.Time, ReleaseReason: row.ReleaseReason,
 	}
+}
+
+// AppendAttemptExecutionUsage stores one cumulative provider sample, derives its delta,
+// and treats an exact sequence replay as idempotent.
+func (s *Store) AppendAttemptExecutionUsage(ctx context.Context, sample domain.ExecutionUsageSample) (domain.ExecutionUsageSample, bool, error) {
+	if err := sample.ValidateCumulative(); err != nil {
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
+	}
+	defer tx.Rollback()
+	var pi, po, ps int64
+	err = tx.QueryRowContext(ctx, `SELECT sequence,cumulative_input_tokens,cumulative_output_tokens FROM attempt_execution_usage WHERE attempt_id=? AND provider=? AND session_id=? ORDER BY sequence DESC LIMIT 1`, sample.AttemptID, sample.Provider, sample.SessionID).Scan(&ps, &pi, &po)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
+	}
+	if err == nil {
+		if sample.Sequence == ps && sample.InputTokens == pi && sample.OutputTokens == po {
+			sample.InputDelta = 0
+			sample.OutputDelta = 0
+			return sample, false, nil
+		}
+		if sample.Sequence <= ps || sample.InputTokens < pi || sample.OutputTokens < po {
+			return domain.ExecutionUsageSample{}, false, fmt.Errorf("execution usage is not monotonic")
+		}
+	} else {
+		pi, po = 0, 0
+	}
+	var status domain.AttemptStatus
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM attempts WHERE id=?`, sample.AttemptID).Scan(&status); err != nil {
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
+	}
+	if status != domain.AttemptRunning {
+		return domain.ExecutionUsageSample{}, false, fmt.Errorf("execution usage attempt is not running")
+	}
+	var claimed int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM attempt_budget_stops WHERE attempt_id=?`, sample.AttemptID).Scan(&claimed); err != nil {
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
+	}
+	if claimed > 0 {
+		return domain.ExecutionUsageSample{}, false, fmt.Errorf("execution usage budget stop already claimed")
+	}
+	sample.InputDelta = sample.InputTokens - pi
+	sample.OutputDelta = sample.OutputTokens - po
+	_, err = tx.ExecContext(ctx, `INSERT INTO attempt_execution_usage(attempt_id,provider,session_id,sequence,cumulative_input_tokens,cumulative_output_tokens,input_delta,output_delta,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, sample.AttemptID, sample.Provider, sample.SessionID, sample.Sequence, sample.InputTokens, sample.OutputTokens, sample.InputDelta, sample.OutputDelta, sample.CreatedAt)
+	if err != nil {
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
+	}
+	if err = tx.Commit(); err != nil {
+		return domain.ExecutionUsageSample{}, false, classifyExecutionUsageError(err)
+	}
+	return sample, true, nil
+}
+
+func classifyExecutionUsageError(err error) error {
+	if isSQLiteBusy(err) {
+		return &ports.ExecutionUsageBusyError{Err: err}
+	}
+	return err
+}
+
+func (s *Store) WorkUnitExecutionUsage(ctx context.Context, unitID domain.WorkUnitID) (domain.ExecutionUsageTotals, error) {
+	var t domain.ExecutionUsageTotals
+	err := s.readDB.QueryRowContext(ctx, `SELECT COALESCE(SUM(u.input_delta),0),COALESCE(SUM(u.output_delta),0) FROM attempt_execution_usage u JOIN attempts a ON a.id=u.attempt_id WHERE a.work_unit_id=?`, unitID).Scan(&t.InputTokens, &t.OutputTokens)
+	return t, err
 }

@@ -1,5 +1,8 @@
 # Natural-language Outcome intake to session execution
 
+> **Historical evidence:** retained for provenance. It is not current architecture or implementation order; use the [canonical documentation map](../../README.md).
+
+
 - **Status:** Approved written specification; implementation planning pending
 - **Date:** 2026-08-24
 - **Scope:** Codex-first Work flow from natural-language intent through contextual contract, orchestration proposal, authorization, and linked session execution

@@ -264,6 +264,7 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 			<div className="flex w-full flex-col gap-3 rounded-group hairline border-border bg-card px-4.5 py-3.5">
 				<textarea
 					id="outcome-statement"
+					data-testid="intake-statement-input"
 					aria-label={projectName ? t("outcome.intake.promptForProjectPlain", { project: projectName }) : t("outcome.intake.prompt")}
 					autoFocus
 					className="min-h-16 w-full resize-y bg-transparent text-sm leading-body text-foreground outline-none placeholder:text-muted-foreground/70"
@@ -289,6 +290,7 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 						<Button
 							aria-label={pending ? t("outcome.intake.saving") : t("outcome.intake.continue")}
 							className="rounded-full"
+							data-testid="intake-capture-submit"
 							disabled={pending || !statement.trim()}
 							size="icon-sm"
 							type="submit"
@@ -381,7 +383,7 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 							))}
 						</ul>
 					) : null}
-					<Button disabled={pending || problems.length > 0} onClick={() => void confirm()}>
+					<Button data-testid="intake-confirm" disabled={pending || problems.length > 0} onClick={() => void confirm()}>
 						{pending ? t("outcome.intake.confirming") : t("outcome.intake.confirm")}
 					</Button>
 					<details className="border-t border-border pt-3">

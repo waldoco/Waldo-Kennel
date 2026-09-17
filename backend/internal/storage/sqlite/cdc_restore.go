@@ -436,6 +436,22 @@ var changeLogWriters = []struct {
 		since: "0133",
 		sql:   "CREATE TRIGGER planning_sessions_cdc_update\nAFTER UPDATE ON planning_sessions\nBEGIN\n    INSERT INTO change_log (project_id, session_id, event_type, payload, created_at)\n    VALUES (NEW.project_id, NULL, 'outcome_updated',\n        json_object('id', NEW.outcome_id, 'type', 'planning_session', 'planningSessionId', NEW.id, 'revision', NEW.revision),\n        NEW.updated_at);\nEND;",
 	},
+	{
+		name: "owner_answer_questions_needs_you_insert", table: "owner_answer_questions", deps: []string{"conversations", "sessions"}, since: "0149",
+		sql: "CREATE TRIGGER owner_answer_questions_needs_you_insert AFTER INSERT ON owner_answer_questions BEGIN INSERT INTO change_log(project_id,session_id,event_type,payload,created_at) SELECT s.project_id,s.id,'session_updated',json_object('id',s.id,'needsYou',json_object('questionId',NEW.id,'generation',NEW.generation,'status','open')),NEW.updated_at FROM conversations c JOIN sessions s ON s.id=c.current_session_id WHERE c.id=NEW.conversation_id; END;",
+	},
+	{
+		name: "owner_answer_questions_needs_you_update", table: "owner_answer_questions", deps: []string{"conversations", "sessions"}, since: "0149",
+		sql: "CREATE TRIGGER owner_answer_questions_needs_you_update AFTER UPDATE ON owner_answer_questions WHEN OLD.status<>NEW.status BEGIN INSERT INTO change_log(project_id,session_id,event_type,payload,created_at) SELECT s.project_id,s.id,'session_updated',json_object('id',s.id,'needsYou',json_object('questionId',NEW.id,'generation',NEW.generation,'status',NEW.status)),NEW.updated_at FROM conversations c JOIN sessions s ON s.id=c.current_session_id WHERE c.id=NEW.conversation_id; END;",
+	},
+	{
+		name: "governed_controls_needs_you_insert", table: "governed_control_commands", deps: []string{"sessions"}, columns: []string{"request_instance_id"}, since: "0149",
+		sql: "CREATE TRIGGER governed_controls_needs_you_insert AFTER INSERT ON governed_control_commands WHEN NEW.command_class='answer' BEGIN INSERT INTO change_log(project_id,session_id,event_type,payload,created_at) SELECT s.project_id,s.id,'session_updated',json_object('id',s.id,'needsYou',json_object('generation',NEW.request_instance_id,'commandId',NEW.id,'status',NEW.state)),NEW.updated_at FROM sessions s WHERE s.id=NEW.session_id; END;",
+	},
+	{
+		name: "governed_controls_needs_you_update", table: "governed_control_commands", deps: []string{"sessions"}, columns: []string{"request_instance_id"}, since: "0149",
+		sql: "CREATE TRIGGER governed_controls_needs_you_update AFTER UPDATE ON governed_control_commands WHEN NEW.command_class='answer' AND OLD.state<>NEW.state BEGIN INSERT INTO change_log(project_id,session_id,event_type,payload,created_at) SELECT s.project_id,s.id,'session_updated',json_object('id',s.id,'needsYou',json_object('generation',NEW.request_instance_id,'commandId',NEW.id,'status',NEW.state)),NEW.updated_at FROM sessions s WHERE s.id=NEW.session_id; END;",
+	},
 }
 
 // restoreChangeLogWriters recreates any missing change_log-writing trigger

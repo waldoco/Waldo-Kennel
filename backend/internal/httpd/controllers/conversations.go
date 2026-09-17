@@ -496,6 +496,22 @@ func (c *ConversationsController) send(w http.ResponseWriter, r *http.Request) {
 		Origin:          domain.MessageOriginHuman,
 	})
 	if err != nil {
+		if errors.Is(err, chatsvc.ErrGovernedDeliveryUnknown) {
+			// The message was durably recorded before the provider call whose
+			// outcome is now unknown -- dispatch() returns that real, queued turn
+			// alongside this error (controller.go), not a zero value. Reporting the
+			// same accepted shape as the success path is correct: the write itself
+			// did not fail, only its delivery receipt is uncertain, and that
+			// uncertainty is surfaced separately via governedTurnBlocks /
+			// governedControlBlocks on the snapshot, not by rejecting this request.
+			envelope.WriteJSON(w, http.StatusAccepted, SendConversationMessageResponse{
+				TurnID:         turn.ID,
+				ProviderTurnID: turn.ProviderTurnID,
+				State:          turn.State,
+				Duplicate:      turn.ID == "",
+			})
+			return
+		}
 		writeConversationError(w, r, err)
 		return
 	}
@@ -795,8 +811,13 @@ func conversationSnapshotResponse(s chatsvc.Snapshot) ConversationSnapshotRespon
 		Capabilities:               capabilityNames(s.Capabilities),
 	}
 
+	dispatchBlockedByTurn := make(map[string]chatsvc.GovernedTurnBlock, len(s.GovernedTurnBlocks))
+	for _, block := range s.GovernedTurnBlocks {
+		dispatchBlockedByTurn[block.TurnID] = block
+	}
+
 	for _, turn := range s.Turns {
-		out.Turns = append(out.Turns, ConversationTurnResponse{
+		response := ConversationTurnResponse{
 			ID:             turn.ID,
 			State:          string(turn.State),
 			ProviderTurnID: turn.ProviderTurnID,
@@ -807,7 +828,13 @@ func conversationSnapshotResponse(s chatsvc.Snapshot) ConversationSnapshotRespon
 			Diff:           turnDiffPayload(turn.Diff),
 			Plan:           turnPlanPayload(turn.Plan),
 			RolledBack:     turn.RolledBackAt != nil,
-		})
+		}
+		if block, ok := dispatchBlockedByTurn[turn.ID]; ok {
+			since := block.UpdatedAt.UTC().Format(time.RFC3339)
+			response.DispatchBlockedSince = &since
+			response.DispatchBlockedState = string(block.State)
+		}
+		out.Turns = append(out.Turns, response)
 	}
 
 	for _, msg := range s.Messages {
@@ -847,6 +874,29 @@ func conversationSnapshotResponse(s chatsvc.Snapshot) ConversationSnapshotRespon
 			RequestID:      activity.RequestID,
 			ProviderItemID: activity.ProviderItemID,
 			CreatedAt:      activity.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	for _, block := range s.GovernedTurnBlocks {
+		out.GovernedTurnBlocks = append(out.GovernedTurnBlocks, GovernedTurnBlockResponse{
+			Kind:                  "turn",
+			TurnID:                block.TurnID,
+			State:                 string(block.State),
+			Quiescence:            string(block.Quiescence),
+			QuiescenceEvidenceRef: block.QuiescenceEvidenceRef,
+			Since:                 block.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	for _, block := range s.GovernedControlBlocks {
+		out.GovernedControlBlocks = append(out.GovernedControlBlocks, GovernedControlBlockResponse{
+			Kind:                  string(block.Class),
+			ID:                    block.ID,
+			State:                 string(block.State),
+			Quiescence:            string(block.Quiescence),
+			QuiescenceEvidenceRef: block.QuiescenceEvidenceRef,
+			ProviderTurnID:        block.ProviderTurnID,
+			RequestInstanceID:     block.RequestInstanceID,
+			Since:                 block.UpdatedAt.UTC().Format(time.RFC3339),
 		})
 	}
 	return out

@@ -21,6 +21,7 @@ func newGatedContributorHarness(t *testing.T) (*outcome.Service, *attemptFakeSto
 	svc := outcome.New(store, nil).
 		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
 		WithExecution(spawner, newFakeHeartbeats())
+	svc.AdmissionPolicy = testAdmissionPolicy()
 
 	ctx := context.Background()
 	in := validCreateInput()

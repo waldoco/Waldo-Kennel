@@ -1,5 +1,8 @@
 # ao orchestrator
 
+> Compatibility command reference. This command does not grant scheduling or Outcome authority; the daemon validates all governed actions.
+
+
 Manage orchestrator sessions.
 
 ## Syntax

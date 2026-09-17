@@ -171,3 +171,21 @@ describe("preload Island bridge", () => {
 		expect(electronMocks.off).toHaveBeenCalledWith(ISLAND_STATE_CHANNEL, wrapped);
 	});
 });
+
+describe("preload owner-command bridge", () => {
+	it("passes only the closed replacement proposal through IPC", async () => {
+		const input = {
+			outcomeId: "out-1",
+			predecessorAttemptId: "attempt-1",
+			planRevisionId: "plan-1",
+			workUnitId: "unit-1",
+			runIntentGeneration: 3,
+			contractRevisionNumber: 2,
+			action: "replace" as const,
+			requestKey: "replace-1",
+		};
+		electronMocks.invoke.mockResolvedValueOnce({ data: { created: true } });
+		await expect(exposedBridge().app.approveAttemptReplacement(input)).resolves.toEqual({ data: { created: true } });
+		expect(electronMocks.invoke).toHaveBeenCalledWith("ownerCommand:approveAttemptReplacement", input);
+	});
+});

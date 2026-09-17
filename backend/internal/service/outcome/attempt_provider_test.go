@@ -36,6 +36,7 @@ func newConfiguredAttemptHarness(t *testing.T, provider domain.AgentHarness, mod
 	svc := outcome.New(store, nil).
 		WithPlanning(intelligencetest.New(), router).
 		WithExecution(spawner, newFakeHeartbeats())
+	svc.AdmissionPolicy = testAdmissionPolicy()
 
 	view, err := svc.Create(context.Background(), outcome.CreateInput{
 		ProjectID: "mer", Title: "Provider admission", Goal: "Execute only the authorized provider and model.",
@@ -68,8 +69,8 @@ func TestStartAttemptUsesFrozenProviderAndModelAfterProjectPreferenceChanges(t *
 	}); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if store.projectReads != readsBeforeStart {
-		t.Fatalf("Attempt reread mutable Project preference: reads %d -> %d", readsBeforeStart, store.projectReads)
+	if store.projectReads != readsBeforeStart+1 {
+		t.Fatalf("Attempt project-kind reads = %d -> %d, want one custody-kind read", readsBeforeStart, store.projectReads)
 	}
 	spawner.mu.Lock()
 	defer spawner.mu.Unlock()

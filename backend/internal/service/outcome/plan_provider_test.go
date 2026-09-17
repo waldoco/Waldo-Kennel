@@ -55,6 +55,7 @@ func seedPlanServiceWithProject(t *testing.T, project domain.ProjectRecord) (*ou
 	}
 	svc := outcome.New(store, nil).
 		WithPlanning(intelligencetest.New(), &routingInventoryFake{candidates: candidates})
+	svc.AdmissionPolicy = testAdmissionPolicy()
 	view, err := svc.Create(context.Background(), outcome.CreateInput{
 		ProjectID:        domain.ProjectID(project.ID),
 		Title:            "Provider-bound work",

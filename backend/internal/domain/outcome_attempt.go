@@ -32,6 +32,8 @@ func (id AttemptID) String() string {
 type AttemptStatus string
 
 const (
+	// AttemptAwaitingAuthority is a prelaunch, custody-free reservation whose typed refusal has an open owner choice.
+	AttemptAwaitingAuthority AttemptStatus = "awaiting_authority"
 	// AttemptQueued marks an admitted-but-not-yet-running attempt: its row and
 	// fence exist, provider admission is in flight.
 	AttemptQueued AttemptStatus = "queued"
@@ -62,7 +64,7 @@ const (
 // Valid reports whether s is a supported attempt status.
 func (s AttemptStatus) Valid() bool {
 	switch s {
-	case AttemptQueued, AttemptRunning, AttemptPaused, AttemptSucceeded,
+	case AttemptAwaitingAuthority, AttemptQueued, AttemptRunning, AttemptPaused, AttemptSucceeded,
 		AttemptFailed, AttemptCancelled, AttemptLost, AttemptReconciled:
 		return true
 	}
@@ -82,6 +84,7 @@ func (s AttemptStatus) Terminal() bool {
 // database triggers accept. Anything outside this map aborts the write at the
 // SQL layer, so no service bug can invent a lifecycle.
 var LegalAttemptTransitions = map[AttemptStatus][]AttemptStatus{
+	AttemptAwaitingAuthority: {AttemptQueued, AttemptCancelled, AttemptFailed},
 	// Queued attempts may be declared lost when reconcile cannot account for
 	// an admission whose outcome is unknown (vanished start): custody must
 	// resolve without dressing the ambiguity up as a clean failure.
@@ -296,7 +299,21 @@ const (
 	// ambiguous start: provisioning precedes any provider process, so this
 	// fact asserts that nothing was launched.
 	ObservationInputProvisioningFailed = "input_provisioning_failed"
+	ObservationExecutionUsage          = "execution_usage"
+	ObservationBudgetExceeded          = "budget_exceeded"
 )
+
+// EmittedAttemptObservationKinds is the canonical recognized observation set
+// for lifecycle projection and exhaustive compatibility. Some kinds are legacy
+// or recovery-only and may not have a current service emitter.
+var EmittedAttemptObservationKinds = []string{
+	ObservationAttemptContained, ObservationAttemptResumed, ObservationProviderExit,
+	ObservationAttemptClassified, ObservationAdmissionFailed, ObservationAdmissionAmbiguous,
+	ObservationActivationAmbiguous, ObservationGovernedCheckTerminationUnknown,
+	ObservationProviderStopFailed, ObservationOwnerContained, ObservationOwnerCancel,
+	ObservationOwnerPause, ObservationOwnerResume, ObservationRecoveryAttention,
+	ObservationInputProvisioningFailed, ObservationExecutionUsage, ObservationBudgetExceeded,
+}
 
 // AttemptFence is the custody lock over one worktree subject. At most ONE
 // open fence per subject may exist (partial unique index on released_at IS

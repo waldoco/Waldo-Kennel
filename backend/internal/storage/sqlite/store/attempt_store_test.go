@@ -41,6 +41,7 @@ func seedApprovedPlan(t *testing.T, s *sqlite.Store, projectID string) (domain.P
 	unit := domain.WorkUnit{
 		ID:                      domain.WorkUnitID("wu-" + projectID),
 		Kind:                    domain.WorkUnitDirect,
+		Intent:                  domain.WorkUnitIntentModifyAndExecute,
 		Title:                   "Deliver Local Focus Ledger",
 		ContractRevisionNumber:  1,
 		OutputSummary:           "Working local feature in the isolated worktree.",
@@ -635,5 +636,100 @@ func TestAttemptStore_FenceLeaseRenewal(t *testing.T) {
 	}
 	if rows, err := s.RenewFenceForAttempt(ctx, at.ID, time.Now()); err != nil || rows != 0 {
 		t.Fatalf("post-release renewal rows=%d err=%v, want 0", rows, err)
+	}
+}
+
+func TestAttemptExecutionUsageIsIdempotentMonotonicAndAggregatesLineage(t *testing.T) {
+	s := newTestStore(t)
+	plan, outcomeID := seedApprovedPlan(t, s, "usage")
+	ctx := context.Background()
+	first, err := s.CreateAttemptWithFence(ctx, ports.AttemptAdmission{OutcomeID: outcomeID, PlanRevisionID: plan.ID, WorkUnitID: plan.WorkUnits[0].ID, ContractRevisionNumber: plan.ContractRevisionNumber, RequestKey: "usage-1", FenceSubject: "project:usage", At: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TransitionAttemptStatus(ctx, outcomeID, first.ID, domain.AttemptQueued, domain.AttemptRunning, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	sample := domain.ExecutionUsageSample{AttemptID: first.ID, Provider: domain.HarnessCodex, SessionID: "session-1", Sequence: 1, InputTokens: 10, OutputTokens: 5, CreatedAt: time.Now()}
+	got, inserted, err := s.AppendAttemptExecutionUsage(ctx, sample)
+	if err != nil || !inserted || got.InputDelta != 10 || got.OutputDelta != 5 {
+		t.Fatalf("first = %+v %v %v", got, inserted, err)
+	}
+	_, inserted, err = s.AppendAttemptExecutionUsage(ctx, sample)
+	if err != nil || inserted {
+		t.Fatalf("replay inserted=%v err=%v", inserted, err)
+	}
+	sample.Sequence = 2
+	sample.InputTokens = 18
+	sample.OutputTokens = 9
+	got, inserted, err = s.AppendAttemptExecutionUsage(ctx, sample)
+	if err != nil || !inserted || got.InputDelta != 8 || got.OutputDelta != 4 {
+		t.Fatalf("second = %+v %v %v", got, inserted, err)
+	}
+	sample.Sequence = 3
+	sample.InputTokens = 17
+	if _, _, err = s.AppendAttemptExecutionUsage(ctx, sample); err == nil {
+		t.Fatal("decreasing counter accepted")
+	}
+	totals, err := s.WorkUnitExecutionUsage(ctx, first.WorkUnitID)
+	if err != nil || totals.InputTokens != 18 || totals.OutputTokens != 9 {
+		t.Fatalf("totals=%+v err=%v", totals, err)
+	}
+}
+
+func TestAttemptRetryBudgetIsCheckedBeforeRowOrFence(t *testing.T) {
+	s := newTestStore(t)
+	plan, outcomeID := seedApprovedPlan(t, s, "retry")
+	ctx := context.Background()
+	limit := 0
+	first, err := s.CreateAttemptWithFence(ctx, ports.AttemptAdmission{OutcomeID: outcomeID, PlanRevisionID: plan.ID, WorkUnitID: plan.WorkUnits[0].ID, ContractRevisionNumber: plan.ContractRevisionNumber, RequestKey: "retry-1", FenceSubject: "project:retry", RetryLimit: &limit, At: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.TransitionAttemptStatus(ctx, outcomeID, first.ID, domain.AttemptQueued, domain.AttemptFailed, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ReleaseFenceForAttempt(ctx, first.ID, "failed", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.CreateAttemptWithFence(ctx, ports.AttemptAdmission{OutcomeID: outcomeID, PlanRevisionID: plan.ID, WorkUnitID: plan.WorkUnits[0].ID, ContractRevisionNumber: plan.ContractRevisionNumber, RequestKey: "retry-2", FenceSubject: "project:retry", RetryLimit: &limit, At: time.Now()})
+	var exhausted *ports.AttemptRetryBudgetExceededError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("got %v", err)
+	}
+	attempts, err := s.ListAttempts(ctx, outcomeID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("attempts=%d err=%v", len(attempts), err)
+	}
+	if fence, ok, err := s.OpenFenceForSubject(ctx, "project:retry"); err != nil || ok {
+		t.Fatalf("fence=%+v ok=%v err=%v", fence, ok, err)
+	}
+}
+
+func TestAttemptExecutionUsageChangedPayloadReplayAndTerminalAreRejected(t *testing.T) {
+	s := newTestStore(t)
+	plan, out := seedApprovedPlan(t, s, "usage-replay")
+	ctx := context.Background()
+	a, err := s.CreateAttemptWithFence(ctx, admissionFor(out, plan, "ur", "ur"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.TransitionAttemptStatus(ctx, out, a.ID, domain.AttemptQueued, domain.AttemptRunning, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	sample := domain.ExecutionUsageSample{AttemptID: a.ID, Provider: domain.HarnessCodex, SessionID: "s", Sequence: 1, InputTokens: 2, OutputTokens: 1, CreatedAt: time.Now()}
+	if _, _, err = s.AppendAttemptExecutionUsage(ctx, sample); err != nil {
+		t.Fatal(err)
+	}
+	sample.InputTokens = 3
+	if _, _, err = s.AppendAttemptExecutionUsage(ctx, sample); err == nil {
+		t.Fatal("changed payload replay accepted")
+	}
+	if _, err = s.TransitionAttemptStatus(ctx, out, a.ID, domain.AttemptRunning, domain.AttemptFailed, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	sample.Sequence = 2
+	if _, _, err = s.AppendAttemptExecutionUsage(ctx, sample); err == nil {
+		t.Fatal("terminal sample accepted")
 	}
 }

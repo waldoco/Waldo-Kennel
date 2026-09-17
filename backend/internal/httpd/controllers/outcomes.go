@@ -45,6 +45,12 @@ type OutcomeService interface {
 
 // AttemptManager is the Act & Observe boundary (#31). A nil field answers 501
 // on the attempt routes, mirroring every other unwired capability.
+type NeedsYouManager interface {
+	CurrentNeedsYou(context.Context, domain.OutcomeID) ([]domain.NeedsYouQuestion, error)
+	AnswerNeedsYou(context.Context, domain.OutcomeID, string, domain.NeedsYouAnswer) (domain.NeedsYouQuestion, error)
+	ReconcileNeedsYou(context.Context, domain.OutcomeID, string, string) (domain.NeedsYouQuestion, error)
+}
+
 type AttemptManager interface {
 	StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, in outcomevc.StartAttemptInput) (outcomevc.AttemptView, error)
 	GetAttempt(ctx context.Context, outcomeID domain.OutcomeID, attemptID domain.AttemptID) (outcomevc.AttemptView, error)
@@ -75,6 +81,7 @@ type OutcomesController struct {
 	Svc      OutcomeService
 	Attempts AttemptManager
 	Proof    ProofManager
+	NeedsYou NeedsYouManager
 }
 
 // Register mounts the Outcome routes on the supplied router.
@@ -82,6 +89,9 @@ func (c *OutcomesController) Register(r chi.Router) {
 	r.Get("/projects/{id}/outcomes", c.list)
 	r.Post("/projects/{id}/outcomes", c.create)
 	r.Get("/outcomes/{outcomeId}", c.get)
+	r.Get("/outcomes/{outcomeId}/needs-you", c.currentNeedsYou)
+	r.Post("/outcomes/{outcomeId}/needs-you/{questionId}/answers", c.answerNeedsYou)
+	r.Post("/outcomes/{outcomeId}/needs-you/{questionId}/reconcile", c.reconcileNeedsYou)
 	r.Get("/projects/{id}/outcome-trash", c.trashedOutcomes)
 	r.Get("/outcomes/{outcomeId}/deletion", c.deletionPreview)
 	r.Post("/outcomes/{outcomeId}/deletion", c.changeDeletion)

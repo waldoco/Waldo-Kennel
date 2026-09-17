@@ -10,8 +10,9 @@ import (
 // deterministic routing. SnapshotID is provenance only; Attempt admission still
 // performs provider-native readiness checks before launch.
 type RoutingInventorySnapshot struct {
-	SnapshotID string
-	Candidates []domain.RoutingCandidate
+	GenerationID string
+	SnapshotID   string
+	Candidates   []domain.RoutingCandidate
 }
 
 // ExecutionRoutingInventory reports provider-neutral candidates. The optional

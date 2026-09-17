@@ -225,3 +225,19 @@ func TestAttemptRecordValidation(t *testing.T) {
 		t.Fatalf("fence subject = %q", subject)
 	}
 }
+
+func TestAwaitingAuthorityIsCustodyFreeLifecycleState(t *testing.T) {
+	if !AttemptAwaitingAuthority.Valid() || AttemptAwaitingAuthority.Terminal() {
+		t.Fatal("awaiting authority must be valid and nonterminal")
+	}
+	for _, to := range []AttemptStatus{AttemptQueued, AttemptCancelled, AttemptFailed} {
+		if !AttemptTransitionLegal(AttemptAwaitingAuthority, to) {
+			t.Fatalf("missing legal transition to %s", to)
+		}
+	}
+	for _, to := range []AttemptStatus{AttemptRunning, AttemptPaused, AttemptSucceeded, AttemptLost, AttemptReconciled} {
+		if AttemptTransitionLegal(AttemptAwaitingAuthority, to) {
+			t.Fatalf("illegal direct transition to %s", to)
+		}
+	}
+}

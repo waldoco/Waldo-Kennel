@@ -29,6 +29,9 @@ type AttemptSpawnRequest struct {
 	// Documents is the approved supplied-document snapshot for a staged
 	// Outcome. Nil for repository work.
 	Documents *AttemptDocumentInputs
+	// BeforeProviderLaunch persists the WorkspaceBoundLaunchPacket after
+	// workspace preparation. A governed launch must fail closed when absent.
+	BeforeProviderLaunch func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy) error
 }
 
 // AttemptSpawnResult reports the spawned subordinate session and, when the

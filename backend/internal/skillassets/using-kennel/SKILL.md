@@ -4,6 +4,8 @@ description: "Catalog of the Kennel `kennel` CLI: spawning workers, managing ses
 trigger: "Using the Kennel CLI in a Kennel workspace: spawning workers, managing sessions or projects, sending messages, controlling or previewing pages."
 ---
 
+> **Compatibility CLI note:** these commands describe the currently shipped session CLI. They do not define vNext Outcome authority or session topology. For repository implementation, use `docs/architecture/persistent-mission-runtime.md`; skills and commands remain thin ingress/provider adapters.
+
 # Kennel CLI Catalog
 
 `kennel` is a thin CLI over the local Kennel daemon. Every command is `kennel <command> --help` for the authoritative flag list.

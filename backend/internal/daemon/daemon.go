@@ -26,11 +26,15 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/daemon/supervisor"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/governedtools"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessconnection"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/mobilebridge"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/notify"
 	usagepipeline "github.com/Pin4sf/Waldo-Kennel/backend/internal/observe/usage"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownerproof"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/presence"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/preview"
@@ -74,7 +78,15 @@ func Run() error {
 
 	log := newLogger()
 	var browserRuntimeToken string
-	if os.Getenv(browserruntime.RuntimeTokenStdinEnv) == "1" {
+	var ownerAuthority *ownercommand.Authority
+	if os.Getenv(ownercommand.StartupSecretsStdinEnv) == "1" {
+		secrets, readErr := ownercommand.ReadStartupSecrets(os.Stdin)
+		if readErr != nil {
+			return readErr
+		}
+		browserRuntimeToken = secrets.BrowserRuntimeToken
+		ownerAuthority = ownercommand.NewAuthority(secrets.OwnerCommandToken, secrets.AppRunID)
+	} else if os.Getenv(browserruntime.RuntimeTokenStdinEnv) == "1" {
 		browserRuntimeToken, err = browserruntime.ReadRuntimeToken(os.Stdin)
 		if err != nil {
 			return err
@@ -447,6 +459,10 @@ func Run() error {
 	} else {
 		log.Info("Waldo reasoning is configured", "provider", reasoning.Provider, "model", reasoning.Model)
 	}
+	admissionPolicy, policyErr := loadAdmissionPolicy(cfg.DataDir)
+	if policyErr != nil {
+		return fmt.Errorf("load admission policy: %w", policyErr)
+	}
 	outcomeSvc := outcomevc.New(store, nil).
 		WithPlanning(intelligenceProvider, agentSvc).
 		WithRepositoryContextLimits(settingsSvc).
@@ -458,7 +474,9 @@ func Run() error {
 		WithDocuments(store, artifactContent).
 		WithProofStore(store).
 		WithDelivery(store, artifactContent).
-		WithAnalystSessionReaper(reaper)
+		WithAnalystSessionReaper(reaper).
+		WithNeedsYou(store, chatSvc)
+	outcomeSvc.AdmissionPolicy = admissionPolicy
 	if recovered, recoveryErr := outcomeSvc.RecoverInterruptedPlanning(ctx); recoveryErr != nil {
 		return fmt.Errorf("recover interrupted Outcome planning: %w", recoveryErr)
 	} else if recovered > 0 {
@@ -497,7 +515,8 @@ func Run() error {
 	// recovery; the canonical analyzer itself never spawns one.
 	intakeAnalyzer := intelligencesvc.NewIntakeAnalyzer(intelligenceProvider, store, nil).
 		WithRepositoryContextSource(store).
-		WithRepositoryContextLimits(settingsSvc)
+		WithRepositoryContextLimits(settingsSvc).
+		WithAdmissionEvaluator(outcomeSvc)
 	intakeSvc := intakevc.New(store, intakeAnalyzer, nil).WithAnalystSessionReaper(reaper)
 	// Order matters. Expiry runs FIRST: it closes asks whose deadline passed
 	// while the daemon was down and returns their intakes to a retryable
@@ -537,6 +556,8 @@ func Run() error {
 	} else if len(receipts) > 0 {
 		log.Warn("recovered interrupted Waldo continuations into durable owner decisions", "count", len(receipts))
 	}
+	connectionKernel := harnessconnection.New(store)
+	pairingCoordinator := harnesspairing.New(store, connectionKernel)
 	srv, err := httpd.NewWithDeps(cfg, log, termMgr, httpd.APIDeps{
 		Projects:            projectSvc,
 		Agents:              agentSvc,
@@ -550,6 +571,7 @@ func Run() error {
 		ResponsibilityLinks: responsibilityLinkSvc,
 		Attempts:            outcomeSvc,
 		Proof:               outcomeSvc,
+		NeedsYou:            outcomeSvc,
 		NotificationStream:  notificationHub,
 		Push:                pushRegistry,
 		Presence:            presenceTracker,
@@ -573,9 +595,13 @@ func Run() error {
 				return sqlite.OpenReadOnly(ctx, dataDir)
 			},
 		}),
-		Browser:             browserService,
-		PreviewServer:       managedPreview,
-		SessionCapabilities: browserAuthority,
+		Browser:              browserService,
+		PreviewServer:        managedPreview,
+		SessionCapabilities:  browserAuthority,
+		OwnerAuthority:       ownerAuthority,
+		ReplacementDecisions: store,
+		PairingCoordinator:   pairingCoordinator,
+		OwnerProofKernel:     ownerproof.New(store),
 	})
 	if err != nil {
 		stop()
@@ -601,6 +627,13 @@ func Run() error {
 			}
 		}()
 	}
+	harnessEndpoints, err := startHarnessEndpoints(ctx, cfg.DataDir, store, connectionKernel, pairingCoordinator, log)
+	if err != nil {
+		return err
+	}
+	defer harnessEndpoints.Close()
+	srv.SetHarnessAddresses(harnessEndpoints.PairingAddress, harnessEndpoints.CommandAddress)
+
 	var usageDone <-chan struct{}
 
 	// Late-bind: the LAN listener shares the exact loopback router instance so
