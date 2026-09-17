@@ -214,6 +214,17 @@ async function ownerPost(
     throw Error(`Codex pairing command rejected (${response.status})`);
   return response.json() as Promise<Record<string, unknown>>;
 }
+const connectionBearers = new Map<
+  string,
+  { generation: number; bearer: string }
+>();
+export function readCodexConnectionBearer(
+  connectionId: string,
+  generation: number,
+): string | null {
+  const current = connectionBearers.get(connectionId);
+  return current?.generation === generation ? current.bearer : null;
+}
 export function createCodexPairingHandler(d: PairingDeps) {
   return async (e: Event, input: unknown): Promise<CodexPairingState> => {
     primary(d, e);
@@ -298,6 +309,10 @@ export function createCodexPairingHandler(d: PairingDeps) {
       );
     // The transport bearer stays in main custody. Product command ingress can
     // consume it in this process; it is never returned over IPC.
+    connectionBearers.set(intent.connectionId, {
+      generation: intent.expectedGeneration,
+      bearer: proved.bearer,
+    });
     return {
       state: "connected",
       connectionId: intent.connectionId,
