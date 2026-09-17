@@ -50,6 +50,12 @@ const approvedLiterals: Record<string, readonly string[]> = {
 // localized as a follow-up. Keep the deferral scoped to the new surface so
 // hardcoded chrome elsewhere in the renderer still fails this test.
 const deferredLocalizationFiles = new Set([
+	// Dev/preview-only fixture gallery for the F1 portable primitives spike
+	// (docs/verification/2026-09-17-react-flow-spike.md). Not reachable from
+	// any production route, and the shared primitives it renders are
+	// deliberately translation-agnostic (labels passed as props) — this file
+	// itself supplies literal English fixture copy on purpose, never i18n keys.
+	"components/preview/MissionPrimitivesGallery.tsx",
 	"components/SessionInterfaceSwitch.tsx",
 	"components/chat/ActivityRun.tsx",
 	"components/chat/ChatComposer.tsx",
