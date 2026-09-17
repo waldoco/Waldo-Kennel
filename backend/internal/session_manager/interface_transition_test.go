@@ -320,7 +320,7 @@ func (c *transitionChat) StartChat(_ context.Context, cfg ChatStart) (ChatStarte
 	}
 	started := ChatStarted{ProviderConversationID: cfg.ProviderConversationID, ControllerGeneration: "chat-generation"}
 	if cfg.ControllerReady != nil {
-		if err := cfg.ControllerReady(started); err != nil {
+		if err := cfg.ControllerReady(context.Background(), started); err != nil {
 			return ChatStarted{}, err
 		}
 	}

@@ -139,7 +139,7 @@ type StartConfig struct {
 	// consumption starts. A controller that exits immediately must report after
 	// the launch has been marked live, so its exited signal cannot be overwritten
 	// by a later launch-completion write.
-	ControllerReady func(StartResult) error
+	ControllerReady func(context.Context, StartResult) error
 }
 
 func controllerStartResult(controller *Controller) StartResult {
@@ -149,11 +149,11 @@ func controllerStartResult(controller *Controller) StartResult {
 	}
 }
 
-func notifyControllerReady(cfg StartConfig, controller *Controller) error {
+func notifyControllerReady(ctx context.Context, cfg StartConfig, controller *Controller) error {
 	if cfg.ControllerReady == nil {
 		return nil
 	}
-	if err := cfg.ControllerReady(controllerStartResult(controller)); err != nil {
+	if err := cfg.ControllerReady(ctx, controllerStartResult(controller)); err != nil {
 		return fmt.Errorf("commit chat controller: %w", err)
 	}
 	return nil
@@ -405,7 +405,7 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 			return nil, err
 		}
 	}
-	if err := notifyControllerReady(cfg, controller); err != nil {
+	if err := notifyControllerReady(ctx, cfg, controller); err != nil {
 		_ = conv.Close()
 		return nil, err
 	}
@@ -1098,7 +1098,7 @@ type StartRequest struct {
 	ProviderConversationID string
 	// ControllerReady runs after the provider and generation exist but before
 	// live event projection starts.
-	ControllerReady func(StartResult) error
+	ControllerReady func(context.Context, StartResult) error
 }
 
 // StartResult is the durable outcome of a launch.

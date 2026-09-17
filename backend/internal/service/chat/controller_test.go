@@ -165,6 +165,13 @@ func (f *fakeConversation) sentMessages() []ports.ChatUserMessage {
 
 func (f *fakeConversation) Interrupt(context.Context, string) error { return nil }
 
+type restartRequiredConversation struct{ *fakeConversation }
+
+func (c *restartRequiredConversation) Interrupt(context.Context, string) error {
+	_ = c.Close()
+	return ports.ErrChatInterruptRestartRequired
+}
+
 func (f *fakeConversation) ResolveRequest(_ context.Context, id string, d ports.ChatDecision) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1072,6 +1079,55 @@ func TestControllerStreamClosureReportsSessionExited(t *testing.T) {
 	t.Fatalf("controller stream ended without an exited lifecycle signal: %+v", h.activity.snapshot())
 }
 
+func TestInterruptRestartUsesCurrentStartContext(t *testing.T) {
+	st := openStore(t)
+	first := &restartRequiredConversation{fakeConversation: newFakeConversation()}
+	replacement := newFakeConversation()
+	driver := &sequenceDriver{conversations: []ports.ChatConversation{first, replacement}}
+	svc := chatsvc.New(chatsvc.Options{
+		Store: st, Sessions: st,
+		Drivers: fakeRegistry{driver: driver},
+		Log:     slog.New(slog.DiscardHandler), NewID: sequentialID("restart-context"),
+	})
+	t.Cleanup(func() { _ = svc.Stop(context.Background(), testSession) })
+
+	startCtx, cancelStart := context.WithCancel(context.Background())
+	var readyContexts []error
+	controller, err := svc.Start(startCtx, chatsvc.StartConfig{
+		SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex,
+		WorkspacePath: t.TempDir(),
+		ControllerReady: func(ctx context.Context, _ chatsvc.StartResult) error {
+			readyContexts = append(readyContexts, ctx.Err())
+			return ctx.Err()
+		},
+	})
+	if err != nil {
+		t.Fatalf("initial Start: %v", err)
+	}
+	cancelStart()
+	if _, err = controller.Send(context.Background(), ports.ChatUserMessage{Text: "work", ClientMessageID: "restart-context-turn"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	first.emit(ports.ChatEvent{Kind: ports.ChatEventTurnStarted, ProviderTurnID: "provider-turn-1"})
+
+	if err = svc.Interrupt(context.Background(), testSession); err != nil {
+		t.Fatalf("interrupt restart: %v", err)
+	}
+	if len(readyContexts) != 2 {
+		t.Fatalf("controller-ready calls = %d, want initial and restart", len(readyContexts))
+	}
+	if readyContexts[0] != nil || readyContexts[1] != nil {
+		t.Fatalf("controller-ready contexts = %v, want live context on both launches", readyContexts)
+	}
+	got, err := svc.Controller(testSession)
+	if err != nil {
+		t.Fatalf("replacement controller: %v", err)
+	}
+	if got == controller || got.ProviderConversationID() != replacement.ProviderConversationID() {
+		t.Fatal("interrupt did not resume the provider conversation in a replacement controller")
+	}
+}
+
 func TestControllerReadyRunsBeforeStreamProjection(t *testing.T) {
 	st := openStore(t)
 	conv := newFakeConversation()
@@ -1091,7 +1147,7 @@ func TestControllerReadyRunsBeforeStreamProjection(t *testing.T) {
 	controller, err := svc.Start(context.Background(), chatsvc.StartConfig{
 		SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex,
 		WorkspacePath: t.TempDir(),
-		ControllerReady: func(started chatsvc.StartResult) error {
+		ControllerReady: func(_ context.Context, started chatsvc.StartResult) error {
 			if signals := activity.snapshot(); len(signals) != 0 {
 				t.Fatalf("provider events projected before controller-ready commit: %+v", signals)
 			}

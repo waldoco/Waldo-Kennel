@@ -85,7 +85,7 @@ type ChatStart struct {
 	// ControllerReady commits the durable controller facts before the provider
 	// event stream is consumed. This prevents an immediate exit from racing a
 	// later MarkSpawned write back to idle.
-	ControllerReady func(ChatStarted) error
+	ControllerReady func(context.Context, ChatStarted) error
 }
 
 // ChatStarted is the durable result of a launch.
@@ -151,7 +151,7 @@ func (m *Manager) launchChatController(ctx context.Context, in chatSpawn) (domai
 		ExecutionPolicy:       in.cfg.ExecutionPolicy,
 		SystemPrompt:          in.systemPrompt,
 		AdditionalDirectories: workspaceProjectDirectories(in.workspace.Path, in.workspaceProject),
-		ControllerReady: func(started ChatStarted) error {
+		ControllerReady: func(readyCtx context.Context, started ChatStarted) error {
 			metadata := domain.SessionMetadata{
 				Branch:                        in.workspace.Branch,
 				WorkspacePath:                 in.workspace.Path,
@@ -166,7 +166,7 @@ func (m *Manager) launchChatController(ctx context.Context, in chatSpawn) (domai
 				ProviderConversationID: started.ProviderConversationID,
 				ControllerGeneration:   started.ControllerGeneration,
 			}
-			completionErr = m.lcm.MarkSpawned(ctx, id, metadata)
+			completionErr = m.lcm.MarkSpawned(readyCtx, id, metadata)
 			controllerCommitted = completionErr == nil
 			return completionErr
 		},
@@ -326,7 +326,7 @@ func (m *Manager) resumeChatController(
 		AdditionalDirectories: additionalDirectories,
 		// The handle that makes this a resume rather than a new conversation.
 		ProviderConversationID: rec.Metadata.ProviderConversationID,
-		ControllerReady: func(started ChatStarted) error {
+		ControllerReady: func(readyCtx context.Context, started ChatStarted) error {
 			metadata := rec.Metadata
 			metadata.WorkspacePath = ws.Path
 			metadata.WorkspaceRepoPath = ws.RepoPath
@@ -338,7 +338,7 @@ func (m *Manager) resumeChatController(
 			// controller this one replaced carry the old one and are rejected.
 			metadata.ControllerGeneration = started.ControllerGeneration
 
-			completionErr = m.lcm.MarkSpawned(ctx, rec.ID, metadata)
+			completionErr = m.lcm.MarkSpawned(readyCtx, rec.ID, metadata)
 			return completionErr
 		},
 	})

@@ -125,7 +125,7 @@ func (l *recordingLauncher) StartChat(_ context.Context, cfg ChatStart) (ChatSta
 		ControllerGeneration:   "gen-1",
 	}
 	if cfg.ControllerReady != nil {
-		if err := cfg.ControllerReady(started); err != nil {
+		if err := cfg.ControllerReady(context.Background(), started); err != nil {
 			return ChatStarted{}, err
 		}
 	}
