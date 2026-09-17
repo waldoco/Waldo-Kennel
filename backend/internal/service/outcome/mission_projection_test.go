@@ -35,7 +35,7 @@ func TestMissionProjectionShapeForkJoinSerialCustody(t *testing.T) {
 	plan := schedulerPlanFixture()
 	plan.WorkUnits = []domain.WorkUnit{
 		plan.WorkUnits[0],
-		{ID: "wu-b", Kind: domain.WorkUnitDirect, Title: "B", ContractRevisionNumber: 1, DependsOn: []domain.WorkUnitID{"wu-a"}, CriterionIDs: []domain.CriterionID{"crit-b"}},
+		{ID: "wu-b", Kind: domain.WorkUnitDirect, Role: domain.WorkUnitRoleImplement, Title: "B", ContractRevisionNumber: 1, DependsOn: []domain.WorkUnitID{"wu-a"}, Inputs: []domain.WorkUnitInput{{FromWorkUnitID: "wu-a", Required: "findings", Position: 1}}, CriterionIDs: []domain.CriterionID{"crit-b"}},
 		{ID: "wu-c", Kind: domain.WorkUnitDirect, Title: "C", ContractRevisionNumber: 1, DependsOn: []domain.WorkUnitID{"wu-a"}, CriterionIDs: []domain.CriterionID{"crit-c"}},
 		{ID: "wu-d", Kind: domain.WorkUnitDirect, Title: "Consolidate", ContractRevisionNumber: 1, DependsOn: []domain.WorkUnitID{"wu-b", "wu-c"}, CriterionIDs: []domain.CriterionID{"crit-d"}},
 	}
@@ -55,6 +55,9 @@ func TestMissionProjectionShapeForkJoinSerialCustody(t *testing.T) {
 	}
 	if view.MissionID != "rsp-project" || view.CustodyHeldBy != "wu-b" {
 		t.Fatalf("scope/custody=%s/%s", view.MissionID, view.CustodyHeldBy)
+	}
+	if view.Nodes[1].Role != string(domain.WorkUnitRoleImplement) || len(view.Nodes[1].Inputs) != 1 || view.Nodes[1].Inputs[0].Required != "findings" {
+		t.Fatalf("role/input projection=%+v", view.Nodes[1])
 	}
 	if view.Nodes[2].NextAction != "" || view.Nodes[2].BlockedReason != string(BlockedCustodyHeld) {
 		t.Fatalf("parallel branch falsely actionable: %+v", view.Nodes[2])
