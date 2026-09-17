@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactFlowInstance } from "@xyflow/react";
 
 import { MissionCanvasSpike } from "./MissionCanvasSpike";
+import { useUiStore } from "../../stores/ui-store";
 import {
 	MISSION_CANVAS_FIXTURE_NODE_COUNT,
 	buildMissionCanvasFixture,
@@ -86,6 +87,24 @@ describe("MissionCanvasSpike — flow renderer (explicit opt-in only)", () => {
 		render(<MissionCanvasSpike config={{ renderer: "flow" }} nodes={FIXTURE} onSelectNode={onSelectNode} revision={1} />);
 		const nodes = screen.getAllByTestId("mission-canvas-flow-node");
 		expect(nodes).toHaveLength(MISSION_CANVAS_FIXTURE_NODE_COUNT);
+	});
+
+	it("rebinds React Flow colorMode when the resolved theme flips under system preference", async () => {
+		const prior = useUiStore.getState();
+		useUiStore.setState({ themePreference: "system", resolvedTheme: "light" });
+		try {
+			const { container } = render(<MissionCanvasSpike config={{ renderer: "flow" }} nodes={FIXTURE} revision={1} />);
+			const flowClass = () => container.querySelector(".react-flow")?.className ?? "";
+			expect(flowClass()).toContain("light");
+			// Simulate an OS theme flip: the store refreshes resolvedTheme while
+			// themePreference stays "system" (ui-store.refreshSystemTheme path).
+			act(() => {
+				useUiStore.setState({ resolvedTheme: "dark" });
+			});
+			await waitFor(() => expect(flowClass()).toContain("dark"));
+		} finally {
+			useUiStore.setState({ themePreference: prior.themePreference, resolvedTheme: prior.resolvedTheme });
+		}
 	});
 
 	it("selects a node on click; nothing in its props can execute it", () => {

@@ -20,7 +20,6 @@ import {
 } from "../../lib/mission-canvas-fixture";
 import { selectMissionCanvasRenderer, type MissionCanvasConfig } from "../../lib/mission-canvas-config";
 import { cn } from "../../lib/utils";
-import { resolveTheme } from "../../lib/theme";
 import { useUiStore } from "../../stores/ui-store";
 
 /**
@@ -226,8 +225,10 @@ function MissionCanvasFlow({
 	// React Flow's own chrome (Controls, attribution) ships a light default
 	// surface; bind it to the resolved app theme so the controls stay visible
 	// in dark mode without breaking light.
-	const themePreference = useUiStore((state) => state.themePreference);
-	const colorMode = resolveTheme(themePreference);
+	// Bind to the store's RESOLVED theme, never the preference: under "system"
+	// an OS theme flip updates resolvedTheme while themePreference stays
+	// "system", and only the former rerenders this component.
+	const colorMode = useUiStore((state) => state.resolvedTheme);
 
 	return (
 		<div data-testid="mission-canvas-flow" style={{ height: 480, width: "100%" }}>
