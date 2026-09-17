@@ -10,12 +10,14 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"io"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Kernel struct {
-	store  ports.OwnerProofStore
-	random io.Reader
+	store    ports.OwnerProofStore
+	random   io.Reader
+	randomMu sync.Mutex
 }
 
 func New(store ports.OwnerProofStore) *Kernel { return &Kernel{store: store, random: rand.Reader} }
@@ -43,8 +45,11 @@ func (k *Kernel) Mint(ctx context.Context, in MintRequest) (Minted, error) {
 		return Minted{}, domain.ErrOwnerProofInvalid
 	}
 	raw := make([]byte, 32)
-	if _, err := io.ReadFull(k.random, raw); err != nil {
-		return Minted{}, err
+	k.randomMu.Lock()
+	_, randomErr := io.ReadFull(k.random, raw)
+	k.randomMu.Unlock()
+	if randomErr != nil {
+		return Minted{}, randomErr
 	}
 	bearer := hex.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(bearer))

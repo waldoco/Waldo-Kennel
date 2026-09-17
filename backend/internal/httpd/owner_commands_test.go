@@ -8,6 +8,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessconnection"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownerproof"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/sqlitetest"
 	"net/http"
 	"net/http/httptest"
@@ -189,4 +190,96 @@ func TestPairingIntentOwnerRouteRejectsLANHostAndUnknownFields(t *testing.T) {
 			t.Fatalf("url=%s code=%d body=%s", tc.url, w.Code, w.Body.String())
 		}
 	}
+}
+
+func ownerProofBody(class string) string {
+	return `{"missionId":"mission","contentDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","targetId":"question-1","targetGeneration":2,"class":"` + class + `"}`
+}
+
+func TestOwnerProofMintRequiresOwnerAndBindsAuthenticatedAppRun(t *testing.T) {
+	store := sqlitetest.MustOpen(t)
+	r := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{}, ControlDeps{
+		OwnerAuthority:   ownercommand.NewAuthority(strings.Repeat("t", 32), "apprun-authenticated"),
+		OwnerProofKernel: ownerproof.New(store),
+	})
+	for _, tc := range []struct {
+		name, auth string
+		want       int
+	}{{"missing", "", 401}, {"wrong", "KennelOwner " + strings.Repeat("x", 32), 401}, {"owner", "KennelOwner " + strings.Repeat("t", 32), 201}} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/internal/owner-commands/owner-proofs", strings.NewReader(ownerProofBody("answer")))
+			req.Header.Set("Authorization", tc.auth)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != tc.want {
+				t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+			}
+			if tc.want != http.StatusCreated {
+				return
+			}
+			var body struct {
+				Data struct {
+					ProofID string `json:"proofId"`
+					Bearer  string `json:"bearer"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Data.ProofID == "" || body.Data.Bearer == "" {
+				t.Fatalf("body=%s err=%v", w.Body.String(), err)
+			}
+			stored, found, err := store.GetOwnerProof(context.Background(), domain.OwnerProofID(body.Data.ProofID))
+			if err != nil || !found || stored.AppRunID != "apprun-authenticated" || stored.Verifier == "" {
+				t.Fatalf("stored=(%+v,%v,%v)", stored, found, err)
+			}
+			if strings.Contains(w.Body.String(), stored.Verifier.String()) {
+				t.Fatal("response exposed verifier")
+			}
+		})
+	}
+}
+
+func TestOwnerProofMintRejectsMaterialAndRequestControlledAuthority(t *testing.T) {
+	store := sqlitetest.MustOpen(t)
+	r := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{}, ControlDeps{
+		OwnerAuthority:   ownercommand.NewAuthority(strings.Repeat("t", 32), "apprun-authenticated"),
+		OwnerProofKernel: ownerproof.New(store),
+	})
+	auth := "KennelOwner " + strings.Repeat("t", 32)
+	for _, body := range []string{
+		ownerProofBody("replace"), ownerProofBody("approval"), ownerProofBody("accept"),
+		strings.TrimSuffix(ownerProofBody("answer"), "}") + `,"confirmationRef":"untrusted"}`,
+		strings.TrimSuffix(ownerProofBody("answer"), "}") + `,"appRunId":"apprun-other"}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/internal/owner-commands/owner-proofs", strings.NewReader(body))
+		req.Header.Set("Authorization", auth)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("code=%d body=%s request=%s", w.Code, w.Body.String(), body)
+		}
+	}
+}
+
+func TestOwnerProofRouteAbsentWithoutKernelAndHiddenFromLAN(t *testing.T) {
+	authority := ownercommand.NewAuthority(strings.Repeat("t", 32), "run")
+	t.Run("absent", func(t *testing.T) {
+		r := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{}, ControlDeps{OwnerAuthority: authority})
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/internal/owner-commands/owner-proofs", strings.NewReader(ownerProofBody("turn")))
+		req.Header.Set("Authorization", "KennelOwner "+strings.Repeat("t", 32))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("code=%d", w.Code)
+		}
+	})
+	t.Run("lan", func(t *testing.T) {
+		store := sqlitetest.MustOpen(t)
+		r := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{}, ControlDeps{OwnerAuthority: authority, OwnerProofKernel: ownerproof.New(store)})
+		req := httptest.NewRequest(http.MethodPost, "http://evil.example/internal/owner-commands/owner-proofs", strings.NewReader(ownerProofBody("turn")))
+		req.Header.Set("Authorization", "KennelOwner "+strings.Repeat("t", 32))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("code=%d", w.Code)
+		}
+	})
 }

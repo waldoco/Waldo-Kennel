@@ -34,6 +34,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/notify"
 	usagepipeline "github.com/Pin4sf/Waldo-Kennel/backend/internal/observe/usage"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownerproof"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/presence"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/preview"
@@ -596,6 +597,7 @@ func Run() error {
 		OwnerAuthority:       ownerAuthority,
 		ReplacementDecisions: store,
 		PairingCoordinator:   harnesspairing.New(store, harnessconnection.New(store)),
+		OwnerProofKernel:     ownerproof.New(store),
 	})
 	if err != nil {
 		stop()

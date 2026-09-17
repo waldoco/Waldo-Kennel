@@ -15,6 +15,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/envelope"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownercommand"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ownerproof"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/presence"
 	prsvc "github.com/Pin4sf/Waldo-Kennel/backend/internal/service/pr"
@@ -70,6 +71,7 @@ type APIDeps struct {
 	OwnerAuthority       *ownercommand.Authority
 	ReplacementDecisions ports.AttemptReplacementDecisionStore
 	PairingCoordinator   *harnesspairing.Coordinator
+	OwnerProofKernel     *ownerproof.Kernel
 }
 
 // normalizeAPIDeps closes the Presence/DeviceLive duplication trap structurally.
