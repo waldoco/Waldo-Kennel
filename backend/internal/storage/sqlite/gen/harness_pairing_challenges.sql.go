@@ -427,7 +427,8 @@ func (q *Queries) InsertHarnessPairingChallenge(ctx context.Context, arg InsertH
 }
 
 const insertHarnessPairingIntent = `-- name: InsertHarnessPairingIntent :execrows
-INSERT INTO harness_pairing_intents(id,project_id,kind,connection_id,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,expected_generation,connection_expires_at,expires_at,digest,status,proposal_request_key,proposal_request_fingerprint,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+INSERT INTO harness_pairing_intents(id,project_id,kind,connection_id,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,expected_generation,connection_expires_at,expires_at,digest,status,proposal_request_key,proposal_request_fingerprint,created_at,updated_at)
+SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=? AND archived_at IS NULL)
 `
 
 type InsertHarnessPairingIntentParams struct {
@@ -477,6 +478,7 @@ func (q *Queries) InsertHarnessPairingIntent(ctx context.Context, arg InsertHarn
 		arg.ProposalRequestFingerprint,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return 0, err
