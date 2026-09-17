@@ -153,6 +153,7 @@ var shippedMigrations = map[int64]string{
 	147: "0147_owner_proofs.sql",
 	148: "0148_owner_proof_target_binding.sql",
 	149: "0149_needs_you_cdc.sql",
+	150: "0150_capability_escalation.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they

@@ -239,6 +239,56 @@ type AttemptSession struct {
 	BoundAt                time.Time
 }
 
+type CapabilityEscalation struct {
+	Digest                 string
+	QuestionID             string
+	Version                string
+	OutcomeID              string
+	ContractRevisionNumber int64
+	PlanRevisionID         string
+	WorkUnitID             string
+	AttemptID              string
+	AttemptGeneration      int64
+	SessionID              string
+	SessionGeneration      int64
+	ExecutorKind           string
+	AttemptSessionRefID    string
+	RuntimeLaunchID        string
+	ControllerGeneration   string
+	PolicyDigest           string
+	ArtifactVersion        string
+	CheckID                string
+	RequestedCapability    string
+	DenialSource           string
+	GrantFingerprint       string
+	OperationID            string
+	RequestFingerprint     string
+	QuestionGeneration     string
+	WithinContractCeiling  int64
+	CreatedAt              time.Time
+	SupersededAt           sql.NullTime
+}
+
+type CapabilityEscalationReceipt struct {
+	ID                   string
+	EscalationDigest     string
+	QuestionID           string
+	QuestionGeneration   string
+	Consequence          string
+	AttemptID            string
+	AttemptGeneration    int64
+	SessionID            string
+	SessionGeneration    int64
+	ControllerGeneration string
+	Capability           string
+	OperationID          string
+	RequestFingerprint   string
+	GrantFingerprint     string
+	AnswerRequestKey     string
+	CreatedAt            time.Time
+	ConsumedAt           sql.NullTime
+}
+
 type CapabilityGrant struct {
 	ID             domain.CapabilityGrantID
 	PlanRevisionID domain.PlanRevisionID

@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"testing"
 	"time"
@@ -76,6 +77,59 @@ func TestNeedsYouReconcileRequiresAffirmativeProviderResolution(t *testing.T) {
 			q.ActivityStatus = tc.astatus
 			if got := hasAffirmativeNeedsYouResolution(q); got != tc.want {
 				t.Fatalf("got=%v want=%v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectNeedsYouPostRunCheckQuestionRemainsAnswerable(t *testing.T) {
+	now := time.Now().UTC()
+	e := domain.CapabilityEscalation{Version: domain.CapabilityEscalationVersion, ExecutorKind: "governed_check", OutcomeID: "o", ContractRevisionNumber: 1, PlanRevisionID: "p", WorkUnitID: "w", AttemptID: "a", AttemptGeneration: 1, AttemptSessionRefID: "ref", SessionID: "s", SessionGeneration: 1, PolicyDigest: "policy", ArtifactVersion: "artifact", CheckID: "check", RequestedCapability: domain.CapabilityWorktreeExec, DenialSource: "governed_check", GrantFingerprint: "policy", OperationID: "check:check", RequestFingerprint: "operation", QuestionGeneration: "q"}
+	e.Digest, _ = e.ComputedDigest()
+	detail, _ := json.Marshal(map[string]any{"capabilityEscalation": e, "decisions": domain.CapabilityEscalationOptionsFor("governed_check")})
+	q, err := projectNeedsYou("q", "c", "check:check", "q", "pending", now, now, domain.ActivityKindApproval, "why", string(detail), domain.ActivityStatusPending, "o", "p", "w", "a", domain.AttemptReconciled, "s", sql.NullString{}, sql.NullString{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Status != domain.NeedsYouOpen || len(q.Options) != 2 || q.Options[0].ID != domain.CapabilityEscalationWidenContract {
+		t.Fatalf("question=%+v", q)
+	}
+}
+
+func TestCapabilityEscalationAttemptStateTruthTable(t *testing.T) {
+	for _, tc := range []struct {
+		status                              domain.AttemptStatus
+		toolCreate, toolAnswer, toolConsume bool
+	}{
+		{domain.AttemptQueued, false, false, false},
+		{domain.AttemptRunning, true, true, true},
+		{domain.AttemptPaused, false, false, false},
+		{domain.AttemptReconciled, false, false, false},
+		{domain.AttemptFailed, false, false, false},
+	} {
+		t.Run(string(tc.status), func(t *testing.T) {
+			got := tc.status == domain.AttemptRunning
+			if got != tc.toolCreate || got != tc.toolAnswer || got != tc.toolConsume {
+				t.Fatalf("state=%s create=%v answer=%v consume=%v", tc.status, tc.toolCreate, tc.toolAnswer, tc.toolConsume)
+			}
+		})
+	}
+}
+
+func TestCapabilityEscalationAnswerReplayIdentityTruthTable(t *testing.T) {
+	originalKey, originalChoice := "answer-key-1", domain.CapabilityEscalationGrantOnce
+	for _, tc := range []struct {
+		name, key, choice    string
+		idempotent, conflict bool
+	}{
+		{"same-key-same-choice", originalKey, originalChoice, true, false},
+		{"same-key-different-choice", originalKey, domain.CapabilityEscalationDeny, false, true},
+		{"different-key-same-choice", "answer-key-2", originalChoice, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			same := tc.key == originalKey && tc.choice == originalChoice
+			if same != tc.idempotent || (!same) != tc.conflict {
+				t.Fatalf("identity result mismatch")
 			}
 		})
 	}

@@ -443,7 +443,7 @@ func Run() error {
 	sessMgr.SetAttemptInputProvisioner(&attemptInputProvisioner{receipts: store, artifacts: artifactContent, contexts: store})
 	// Deterministic checks run under the same frozen policy as the Attempt
 	// that produced the result, in the workspace that produced it.
-	attemptChecks := &attemptCheckRunner{sessions: sessionSvc, refs: store, artifacts: artifactContent}
+	attemptChecks := &attemptCheckRunner{sessions: sessionSvc, refs: store, artifacts: artifactContent, escalations: store}
 	governedCheckUncertainty, uncertaintyErr := governedtools.NewUncertaintyStore(cfg.DataDir)
 	if uncertaintyErr != nil {
 		return fmt.Errorf("governed check uncertainty store: %w", uncertaintyErr)
