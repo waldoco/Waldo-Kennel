@@ -75,6 +75,19 @@ var (
 // weakening HookPATH itself.
 const hookCLIName = "kennel"
 
+// defaultBinDir records the throwaway build directory so TestMain can remove
+// it once at process exit; build state is process-global under sync.Once, so
+// per-test cleanup would be wrong.
+var defaultBinDir string
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if defaultBinDir != "" {
+		_ = os.RemoveAll(defaultBinDir)
+	}
+	os.Exit(code)
+}
+
 // buildDaemon compiles the production command under test once per `go test`
 // process. KENNEL_E2E_DAEMON_OUTPUT may choose the output/cache path, but never
 // supplies the executable: every run remains bound to this checkout's
@@ -94,6 +107,7 @@ func buildDaemon(t *testing.T) string {
 				buildErr = err
 				return
 			}
+			defaultBinDir = dir
 			out = filepath.Join(dir, hookCLIName)
 		} else if !filepath.IsAbs(out) {
 			buildErr = fmt.Errorf("KENNEL_E2E_DAEMON_OUTPUT must be an absolute path")
@@ -929,16 +943,24 @@ func requireReasoningProvider(t *testing.T, d *daemon) {
 		req["effort"] = effort
 	}
 	d.mustCall("PATCH", "/settings/reasoning", http.StatusOK, req, nil)
-	var settings struct {
-		Reasoning struct {
-			Configured bool   `json:"configured"`
-			Ready      bool   `json:"ready"`
-			ErrorCode  string `json:"errorCode"`
-			Error      string `json:"error"`
-		} `json:"reasoning"`
+	// Ready is only "a call can be attempted", and production PlanningCandidates
+	// refuses a Ready-but-unverified codex candidate, so configuring is not
+	// enough: verify through the production probe endpoint and require the
+	// exact provider/model verification the launch-cut path will demand. This
+	// is one real verification call — legitimate spend for a model-backed test.
+	var reasoning struct {
+		Configured bool   `json:"configured"`
+		Ready      bool   `json:"ready"`
+		Verified   bool   `json:"verified"`
+		ErrorCode  string `json:"errorCode"`
+		Error      string `json:"error"`
 	}
-	d.mustCall("GET", "/settings", http.StatusOK, nil, &settings)
-	if !settings.Reasoning.Configured || !settings.Reasoning.Ready {
-		t.Skipf("codex reasoning not ready (errorCode=%q error=%q): sign in with `%s` first (codex app-server sign-in; no API key needed)", settings.Reasoning.ErrorCode, settings.Reasoning.Error, bin)
+	status, err := d.call("POST", "/settings/reasoning/verification", nil, &reasoning)
+	if err != nil || status != http.StatusOK {
+		t.Skipf("codex reasoning verification probe failed (status=%d err=%v): sign in with `%s` first (codex app-server sign-in; no API key needed)", status, err, bin)
+	}
+	if !reasoning.Configured || !reasoning.Ready || !reasoning.Verified {
+		t.Skipf("codex reasoning not verified (configured=%v ready=%v verified=%v errorCode=%q error=%q): sign in with `%s` first (codex app-server sign-in; no API key needed)",
+			reasoning.Configured, reasoning.Ready, reasoning.Verified, reasoning.ErrorCode, reasoning.Error, bin)
 	}
 }
