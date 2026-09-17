@@ -426,3 +426,30 @@ func firstCriterionID(t *testing.T, s *sqlite.Store, outcomeID domain.OutcomeID)
 	}
 	return current.Criteria[0].ID
 }
+
+func TestFrozenAttemptReceiptMeasurementsCannotBeRewritten(t *testing.T) {
+	s := sqlitetest.MustOpen(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	plan, outcomeID := seedApprovedPlan(t, s, "frozen-measurements")
+	attempt, err := s.CreateAttemptWithFence(ctx, admissionFor(outcomeID, plan, "rk-frozen-measurements", domain.FenceSubjectForProject("frozen-measurements")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := receiptFixture(attempt.ID, outcomeID, plan, now)
+	add, del := int64(2), int64(1)
+	receipt.Files[0].Additions, receipt.Files[0].Deletions = &add, &del
+	if err := s.SaveAttemptReceipt(ctx, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FreezeAttemptReceipt(ctx, attempt.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	changed := receipt
+	other := int64(9)
+	changed.Files = append([]domain.ArtifactFile(nil), receipt.Files...)
+	changed.Files[0].Additions = &other
+	if err := s.SaveAttemptReceipt(ctx, changed); !errors.Is(err, ports.ErrAttemptReceiptFrozen) {
+		t.Fatalf("measurement rewrite err=%v", err)
+	}
+}
