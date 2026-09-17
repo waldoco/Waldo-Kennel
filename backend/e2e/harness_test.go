@@ -399,7 +399,10 @@ func setPermissions(t *testing.T, d *daemon, projectID, mode string) {
 	t.Helper()
 	d.mustCall("PUT", "/projects/"+projectID+"/config", http.StatusOK, map[string]any{
 		"config": map[string]any{
-			"agentConfig": map[string]any{"permissions": mode},
+			// Project config PUT replaces the complete config. Retain the branch
+			// this fixture created instead of erasing it while changing permissions.
+			"defaultBranch": "main",
+			"agentConfig":   map[string]any{"permissions": mode},
 		},
 	}, nil)
 }
