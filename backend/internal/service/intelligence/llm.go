@@ -54,7 +54,9 @@ Break the Contract into the smallest set of work units that can actually be exec
 
 Rules:
 - Prefer few units. One unit is correct when the work is genuinely one step. Never split work just to look thorough.
-- Each unit must produce something observable that moves at least one criterion toward proof.
+- Each unit must produce an observable output. A criterion-free enabling unit is valid only when a later unit directly consumes it.
+- role describes orchestration purpose only: investigate, implement, verify, or consolidate. It never grants authority; intent alone determines local capabilities. Verify cannot mutate. Consolidate requires at least two direct predecessors.
+- inputs must contain exactly one semantic handoff requirement for every direct dependsOn key, and no others. Describe what predecessor result is needed, never a path, URI, command, secret, capability, or artifact id.
 - Use dependsOn only for real ordering constraints. Use dependencies only for real ordering constraints. Independent units keep future execution options open, but the current launch executes the canonical Plan order serially. Do not add fake dependencies merely to force display or execution order.
 - intent classifies the work: "inspect" reads only; "modify" edits files; "execute" runs commands; "modify_and_execute" does both. Choose the LEAST intent that can do the unit's job — it decides how much authority the unit is granted.
 - criteriaCovered references the criterion aliases given to you (C1, C2, ...). Every criterion should be covered by at least one unit.
@@ -74,7 +76,7 @@ Rules:
 - Do not ask the owner to perform repository analysis already present in the packet.
 - Do not claim commands ran. Planning authorizes no commands, writes, network access, commits, pull requests, deployment, or external effects.
 - A Contract change is advisory only. Never treat conversational agreement as Contract confirmation.
-- Prefer a small plan. Cover every criterion alias and use the least WorkUnit intent.
+- Prefer a small plan. Cover every criterion alias with proof-bearing units and use the least WorkUnit intent. Roles describe investigate/implement/verify/consolidate purpose but grant no authority. Every dependency must have one matching semantic input requirement.
 - Proposed checks are exact argv arrays and must fail when their criterion is false. Never use a shell or shell operators.
 - The control plane, not you, derives authority, routing, stop policy, verification, approval, and execution.
 

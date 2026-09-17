@@ -67,7 +67,7 @@ func TestAnalyzeContractPropagatesOnlyExplicitRepositoryToolAuthority(t *testing
 }
 
 func TestDraftPlanCarriesExplicitReplanFeedbackAndChecks(t *testing.T) {
-	client := &captureLLMClient{result: `{"summary":"Use the inspected check","workUnits":[{"key":"W1","title":"Implement","intent":"modify_and_execute","outputSummary":"Changed code and verified it","criteriaCovered":["C1"],"dependsOn":[],"evidenceIdeas":["test output"]}],"assumptions":[],"blockers":[]}`}
+	client := &captureLLMClient{result: `{"summary":"Use the inspected check","workUnits":[{"key":"W1","title":"Implement","intent":"modify_and_execute","role":"implement","inputs":[],"outputSummary":"Changed code and verified it","criteriaCovered":["C1"],"dependsOn":[],"evidenceIdeas":["test output"]}],"assumptions":[],"blockers":[]}`}
 	provider := NewLLMProvider(client)
 	_, err := provider.DraftPlan(context.Background(), ports.PlanIntelligenceRequest{
 		Outcome:          domain.Outcome{Title: "Grounded work"},
@@ -105,7 +105,7 @@ func TestPlanSchemaAllowsExecutableCriterionChecks(t *testing.T) {
 }
 
 func TestDraftPlanPreservesExecutableCheckArguments(t *testing.T) {
-	client := &captureLLMClient{result: `{"summary":"Verify greeting","workUnits":[{"key":"W1","title":"Change and check","intent":"modify_and_execute","outputSummary":"Correct greeting","criteriaCovered":["C1"],"checkCommands":[{"criterionAlias":"C1","argv":["python3","-c","import subprocess; assert subprocess.check_output(['python3', 'greet.py']) == b'Hello Kennel\\n'\n"],"timeoutSeconds":12}]}]}`}
+	client := &captureLLMClient{result: `{"summary":"Verify greeting","workUnits":[{"key":"W1","title":"Change and check","intent":"modify_and_execute","role":"implement","inputs":[],"outputSummary":"Correct greeting","criteriaCovered":["C1"],"checkCommands":[{"criterionAlias":"C1","argv":["python3","-c","import subprocess; assert subprocess.check_output(['python3', 'greet.py']) == b'Hello Kennel\\n'\n"],"timeoutSeconds":12}]}]}`}
 	result, err := NewLLMProvider(client).DraftPlan(context.Background(), ports.PlanIntelligenceRequest{CriterionAliases: map[string]domain.CriterionID{"C1": "criterion-1"}})
 	if err != nil {
 		t.Fatal(err)
