@@ -161,6 +161,9 @@ func migrate(db *sql.DB) error {
 	if err := prepareWorkUnitPositionMigration(db); err != nil {
 		return fmt.Errorf("prepare work-unit-position migration: %w", err)
 	}
+	if err := prepareWorkUnitOrchestrationMigration(db); err != nil {
+		return fmt.Errorf("prepare work-unit-orchestration migration: %w", err)
+	}
 	// Builds can advance a database past a migration that is added or
 	// renumbered later (notably across fast-moving Nightly releases). Apply
 	// those embedded migrations instead of permanently wedging daemon startup
@@ -189,6 +192,9 @@ func migrate(db *sql.DB) error {
 	if err := reconcileWorkUnitPositionSchema(db); err != nil {
 		return fmt.Errorf("reconcile work-unit-position schema: %w", err)
 	}
+	if err := reconcileWorkUnitOrchestrationSchema(db); err != nil {
+		return fmt.Errorf("reconcile work-unit-orchestration schema: %w", err)
+	}
 	if err := reconcilePlanReviewSchema(db); err != nil {
 		return fmt.Errorf("reconcile plan-review schema: %w", err)
 	}
@@ -213,6 +219,35 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("install scoped Outcome deletion guards: %w", err)
 	}
 	return nil
+}
+
+func prepareWorkUnitOrchestrationMigration(db *sql.DB) error {
+	var gooseTable, workUnits int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goose_db_version'`).Scan(&gooseTable); err != nil || gooseTable == 0 {
+		return err
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='work_units'`).Scan(&workUnits); err != nil || workUnits != 0 {
+		return err
+	}
+	_, err := db.Exec(`INSERT INTO goose_db_version (version_id, is_applied) VALUES (155, 1)`)
+	return err
+}
+
+func reconcileWorkUnitOrchestrationSchema(db *sql.DB) error {
+	var workUnits, role int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='work_units'`).Scan(&workUnits); err != nil || workUnits == 0 {
+		return err
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('work_units') WHERE name='role'`).Scan(&role); err != nil {
+		return err
+	}
+	if role == 0 {
+		if _, err := db.Exec(`ALTER TABLE work_units ADD COLUMN role TEXT`); err != nil {
+			return err
+		}
+	}
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS work_unit_inputs(work_unit_id TEXT NOT NULL REFERENCES work_units(id),from_work_unit_id TEXT NOT NULL REFERENCES work_units(id),required TEXT NOT NULL CHECK(length(trim(required))>0),position INTEGER NOT NULL CHECK(position>0),PRIMARY KEY(work_unit_id,from_work_unit_id),UNIQUE(work_unit_id,position)); CREATE TRIGGER IF NOT EXISTS work_unit_inputs_immutable_update BEFORE UPDATE ON work_unit_inputs BEGIN SELECT RAISE(ABORT,'work unit inputs are immutable'); END; CREATE TRIGGER IF NOT EXISTS work_unit_inputs_immutable_delete BEFORE DELETE ON work_unit_inputs BEGIN SELECT RAISE(ABORT,'work unit inputs are immutable'); END;`)
+	return err
 }
 
 // prepareWorkUnitPositionMigration lets degraded profiles whose Outcome tables

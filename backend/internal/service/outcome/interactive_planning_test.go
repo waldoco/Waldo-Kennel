@@ -115,7 +115,7 @@ func (f *interactivePlanningFake) DiscussPlan(ctx context.Context, request ports
 		return ports.PlanningDiscussionResponse{Provenance: provenance, Result: ports.PlanningResult{
 			Kind: ports.PlanningResultPlanProposal, Message: "A bounded implementation Plan is ready for review.",
 			PlanProposal: &domain.PlanDraftProposal{Summary: "Make the bounded local change.", WorkUnits: []domain.PlanDraftWorkUnit{{
-				Key: "implement", Title: "Implement the confirmed Outcome", Intent: domain.WorkUnitIntentModify,
+				Key: "implement", Title: "Implement the confirmed Outcome", Intent: domain.WorkUnitIntentModify, Role: domain.WorkUnitRoleImplement,
 				OutputSummary: "The requested local change is ready for review.", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"inspect the retained diff"},
 			}}},
 		}}, nil

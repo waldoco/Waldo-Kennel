@@ -364,6 +364,7 @@ func TestStartAttemptDeliversExactAssignedContractAndApprovedCheckMaterial(t *te
 	unrelated.EvidenceChecks = []string{"Inspect the unrelated result."}
 	unrelated.VerificationRequirement = "Verify only the unrelated criterion."
 	unrelated.DependsOn = []domain.WorkUnitID{unit.ID}
+	unrelated.Inputs = []domain.WorkUnitInput{{FromWorkUnitID: unit.ID, Required: "completed predecessor result", Position: 1}}
 	unrelated.CriterionIDs = []domain.CriterionID{revision.Criteria[1].ID}
 	unrelated.Checks = nil
 	plan.WorkUnits = []domain.WorkUnit{unit, unrelated}

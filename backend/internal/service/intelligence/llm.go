@@ -195,7 +195,7 @@ func planSchema(aliases []string) map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []any{"key", "title", "intent", "outputSummary", "criteriaCovered", "dependsOn", "evidenceIdeas", "checkCommands"},
+					"required":             []any{"key", "title", "intent", "role", "inputs", "outputSummary", "criteriaCovered", "dependsOn", "evidenceIdeas", "checkCommands"},
 					"properties": map[string]any{
 						"key":   map[string]any{"type": "string", "description": "stable short id such as W1"},
 						"title": map[string]any{"type": "string"},
@@ -203,6 +203,8 @@ func planSchema(aliases []string) map[string]any {
 							"type": "string",
 							"enum": []any{"inspect", "modify", "execute", "modify_and_execute"},
 						},
+						"role":            map[string]any{"type": "string", "enum": []any{"investigate", "implement", "verify", "consolidate"}},
+						"inputs":          map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"fromKey", "required"}, "properties": map[string]any{"fromKey": map[string]any{"type": "string"}, "required": map[string]any{"type": "string"}}}},
 						"outputSummary":   map[string]any{"type": "string", "description": "the observable result of this unit"},
 						"criteriaCovered": map[string]any{"type": "array", "items": criterionAlias},
 						"dependsOn":       stringArray("keys of units that must finish first"),
@@ -305,9 +307,14 @@ type contractReply struct {
 type planReply struct {
 	Summary   string `json:"summary"`
 	WorkUnits []struct {
-		Key             string   `json:"key"`
-		Title           string   `json:"title"`
-		Intent          string   `json:"intent"`
+		Key    string `json:"key"`
+		Title  string `json:"title"`
+		Intent string `json:"intent"`
+		Role   string `json:"role"`
+		Inputs []struct {
+			FromKey  string `json:"fromKey"`
+			Required string `json:"required"`
+		} `json:"inputs"`
 		OutputSummary   string   `json:"outputSummary"`
 		CriteriaCovered []string `json:"criteriaCovered"`
 		DependsOn       []string `json:"dependsOn"`
@@ -526,6 +533,8 @@ func (p *LLMProvider) DraftPlan(ctx context.Context, request ports.PlanIntellige
 			Key:             key,
 			Title:           strings.TrimSpace(unit.Title),
 			Intent:          domain.WorkUnitIntent(strings.TrimSpace(unit.Intent)),
+			Role:            domain.WorkUnitRole(strings.TrimSpace(unit.Role)),
+			Inputs:          planDraftInputs(unit.Inputs),
 			OutputSummary:   strings.TrimSpace(unit.OutputSummary),
 			CriteriaCovered: trimAll(unit.CriteriaCovered),
 			DependsOn:       trimAll(unit.DependsOn),
@@ -707,7 +716,7 @@ func planProposalFromReply(reply planReply) domain.PlanDraftProposal {
 			continue
 		}
 		units = append(units, domain.PlanDraftWorkUnit{
-			Key: key, Title: strings.TrimSpace(unit.Title), Intent: domain.WorkUnitIntent(strings.TrimSpace(unit.Intent)),
+			Key: key, Title: strings.TrimSpace(unit.Title), Intent: domain.WorkUnitIntent(strings.TrimSpace(unit.Intent)), Role: domain.WorkUnitRole(strings.TrimSpace(unit.Role)), Inputs: planDraftInputs(unit.Inputs),
 			OutputSummary: strings.TrimSpace(unit.OutputSummary), CriteriaCovered: trimAll(unit.CriteriaCovered),
 			DependsOn: trimAll(unit.DependsOn), EvidenceIdeas: trimAll(unit.EvidenceIdeas), CheckCommands: planDraftChecks(unit.CheckCommands),
 		})
@@ -782,4 +791,15 @@ func facetKind(raw string) domain.ContractFacetKind {
 	default:
 		return domain.ContractFacetSoftware
 	}
+}
+
+func planDraftInputs(values []struct {
+	FromKey  string `json:"fromKey"`
+	Required string `json:"required"`
+}) []domain.PlanDraftDependencyInput {
+	out := make([]domain.PlanDraftDependencyInput, 0, len(values))
+	for _, v := range values {
+		out = append(out, domain.PlanDraftDependencyInput{FromKey: strings.TrimSpace(v.FromKey), Required: strings.TrimSpace(v.Required)})
+	}
+	return out
 }

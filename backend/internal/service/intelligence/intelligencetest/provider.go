@@ -66,6 +66,7 @@ func (Provider) DraftPlan(_ context.Context, request ports.PlanIntelligenceReque
 				Key:             "W1",
 				Title:           "Deliver \"" + request.Outcome.Title + "\"",
 				Intent:          intentWithin(request.Contract.AuthorityCeiling),
+				Role:            roleForIntent(intentWithin(request.Contract.AuthorityCeiling)),
 				OutputSummary:   "The finished result, built and verified inside the isolated project worktree.",
 				CriteriaCovered: covered,
 				EvidenceIdeas:   []string{"A deterministic check demonstrates the result."},
@@ -100,4 +101,14 @@ func sortStrings(values []string) {
 			values[j], values[j-1] = values[j-1], values[j]
 		}
 	}
+}
+
+func roleForIntent(intent domain.WorkUnitIntent) domain.WorkUnitRole {
+	if intent == domain.WorkUnitIntentInspect {
+		return domain.WorkUnitRoleInvestigate
+	}
+	if intent == domain.WorkUnitIntentExecute {
+		return domain.WorkUnitRoleVerify
+	}
+	return domain.WorkUnitRoleImplement
 }

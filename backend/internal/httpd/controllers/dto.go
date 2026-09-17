@@ -3085,25 +3085,33 @@ type ApprovePlanRequest struct {
 
 // PlanWorkUnitResponse is the single planned unit inside a PlanRevision.
 type PlanWorkUnitResponse struct {
-	ID                      string   `json:"id"`
-	Kind                    string   `json:"kind"`
-	Title                   string   `json:"title"`
-	Position                int64    `json:"position"`
-	ContractRevisionNumber  int64    `json:"contractRevisionNumber"`
-	DependsOn               []string `json:"dependsOn"`
-	CriterionIDs            []string `json:"criterionIds"`
-	Provider                string   `json:"provider,omitempty"`
-	ModelSelection          string   `json:"modelSelection,omitempty"`
-	Model                   string   `json:"model,omitempty"`
-	RequiredCapabilities    []string `json:"requiredCapabilities"`
-	OutputSummary           string   `json:"outputSummary"`
-	EvidenceChecks          []string `json:"evidenceChecks"`
-	VerificationRequirement string   `json:"verificationRequirement"`
-	StopConditions          []string `json:"stopConditions"`
+	ID                      string                  `json:"id"`
+	Kind                    string                  `json:"kind"`
+	Title                   string                  `json:"title"`
+	Role                    string                  `json:"role"`
+	Inputs                  []WorkUnitInputResponse `json:"inputs"`
+	Position                int64                   `json:"position"`
+	ContractRevisionNumber  int64                   `json:"contractRevisionNumber"`
+	DependsOn               []string                `json:"dependsOn"`
+	CriterionIDs            []string                `json:"criterionIds"`
+	Provider                string                  `json:"provider,omitempty"`
+	ModelSelection          string                  `json:"modelSelection,omitempty"`
+	Model                   string                  `json:"model,omitempty"`
+	RequiredCapabilities    []string                `json:"requiredCapabilities"`
+	OutputSummary           string                  `json:"outputSummary"`
+	EvidenceChecks          []string                `json:"evidenceChecks"`
+	VerificationRequirement string                  `json:"verificationRequirement"`
+	StopConditions          []string                `json:"stopConditions"`
 	// ApprovedChecks are the deterministic commands Kennel itself will run
 	// and record as independent observation. EvidenceChecks above stay prose
 	// for the provider to read; these are authority frozen at approval.
 	ApprovedChecks []ApprovedCheckResponse `json:"approvedChecks"`
+}
+
+type WorkUnitInputResponse struct {
+	FromWorkUnitID string `json:"fromWorkUnitId"`
+	Required       string `json:"required"`
+	Position       int64  `json:"position"`
 }
 
 // ApprovedCheckResponse is one deterministic check the owner authorized,
@@ -3340,6 +3348,8 @@ func workUnitResponse(unit domain.WorkUnit) PlanWorkUnitResponse {
 		ID:                      string(unit.ID),
 		Kind:                    string(unit.Kind),
 		Title:                   unit.Title,
+		Role:                    string(unit.Role),
+		Inputs:                  workUnitInputResponses(unit.Inputs),
 		Position:                unit.Position,
 		ContractRevisionNumber:  unit.ContractRevisionNumber,
 		DependsOn:               stringWorkUnitIDs(unit.DependsOn),
@@ -3354,6 +3364,14 @@ func workUnitResponse(unit domain.WorkUnit) PlanWorkUnitResponse {
 		StopConditions:          unit.StopConditions,
 		ApprovedChecks:          approvedCheckResponses(unit.Checks),
 	}
+}
+
+func workUnitInputResponses(inputs []domain.WorkUnitInput) []WorkUnitInputResponse {
+	out := make([]WorkUnitInputResponse, 0, len(inputs))
+	for _, in := range inputs {
+		out = append(out, WorkUnitInputResponse{FromWorkUnitID: string(in.FromWorkUnitID), Required: in.Required, Position: in.Position})
+	}
+	return out
 }
 
 func approvedCheckResponses(checks []domain.ApprovedCheck) []ApprovedCheckResponse {
@@ -4282,6 +4300,8 @@ type MissionNodeResponse struct {
 	WorkUnitID           string                    `json:"workUnitId"`
 	PlanRevisionID       string                    `json:"planRevisionId"`
 	Title                string                    `json:"title"`
+	Role                 string                    `json:"role"`
+	Inputs               []WorkUnitInputResponse   `json:"inputs"`
 	DependsOn            []string                  `json:"dependsOn"`
 	ScheduleState        string                    `json:"scheduleState"`
 	BlockingDependencies []string                  `json:"blockingDependencies"`
@@ -4332,7 +4352,7 @@ func missionResponse(view outcomevc.MissionProjection) MissionProjectionResponse
 	out.Nodes = make([]MissionNodeResponse, 0, len(view.Nodes))
 	out.Edges = make([]MissionEdgeResponse, 0, len(view.Edges))
 	for _, n := range view.Nodes {
-		r := MissionNodeResponse{WorkUnitID: n.WorkUnitID, PlanRevisionID: n.PlanRevisionID, Title: n.Title, DependsOn: stringWorkUnitIDs(n.DependsOn), ScheduleState: n.ScheduleState, BlockingDependencies: stringWorkUnitIDs(n.BlockingDependencies), BlockedReason: n.BlockedReason, BlockedDetail: n.BlockedDetail, CriterionIDs: stringCriterionIDs(n.CriterionIDs), CriterionReady: map[string]bool{}, NextAction: n.NextAction, Responsibility: n.Responsibility, UpdatedAt: n.UpdatedAt, Generation: n.Generation}
+		r := MissionNodeResponse{WorkUnitID: n.WorkUnitID, PlanRevisionID: n.PlanRevisionID, Title: n.Title, Role: n.Role, Inputs: workUnitInputResponses(n.Inputs), DependsOn: stringWorkUnitIDs(n.DependsOn), ScheduleState: n.ScheduleState, BlockingDependencies: stringWorkUnitIDs(n.BlockingDependencies), BlockedReason: n.BlockedReason, BlockedDetail: n.BlockedDetail, CriterionIDs: stringCriterionIDs(n.CriterionIDs), CriterionReady: map[string]bool{}, NextAction: n.NextAction, Responsibility: n.Responsibility, UpdatedAt: n.UpdatedAt, Generation: n.Generation}
 		for k, v := range n.CriterionReady {
 			r.CriterionReady[string(k)] = v
 		}

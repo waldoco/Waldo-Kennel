@@ -121,8 +121,8 @@ func (p *twoUnitPlanIntelligence) DraftPlan(context.Context, ports.PlanIntellige
 		Proposal: domain.PlanDraftProposal{
 			Summary: "Edit, then verify the confirmed Contract.",
 			WorkUnits: []domain.PlanDraftWorkUnit{
-				{Key: "verify", Title: "Verify outcome", Intent: domain.WorkUnitIntentExecute, OutputSummary: "Verified result", CriteriaCovered: []string{"C2"}, DependsOn: []string{"edit"}, EvidenceIdeas: []string{"verification output"}},
-				{Key: "edit", Title: "Implement outcome", Intent: domain.WorkUnitIntentModify, OutputSummary: "Implemented result", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"workspace diff"}},
+				{Key: "verify", Title: "Verify outcome", Intent: domain.WorkUnitIntentExecute, Role: domain.WorkUnitRoleVerify, Inputs: []domain.PlanDraftDependencyInput{{FromKey: "edit", Required: "implemented result"}}, OutputSummary: "Verified result", CriteriaCovered: []string{"C2"}, DependsOn: []string{"edit"}, EvidenceIdeas: []string{"verification output"}},
+				{Key: "edit", Title: "Implement outcome", Intent: domain.WorkUnitIntentModify, Role: domain.WorkUnitRoleImplement, OutputSummary: "Implemented result", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"workspace diff"}},
 			},
 		},
 		Provenance: ports.IntelligenceProvenance{EffectiveProvider: "test-plan-intelligence", EffectiveModel: "planner-test"},

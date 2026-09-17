@@ -10,6 +10,9 @@ import (
 // not a law of Outcomes or the scheduler.
 const MaxPlanDraftWorkUnits = 16
 
+// MaxPlanDraftInputRequirementLength bounds untrusted semantic handoff prose.
+const MaxPlanDraftInputRequirementLength = 500
+
 // WorkUnitIntent describes the kind of local work intelligence believes a
 // WorkUnit requires. It is deliberately NOT a capability or grant: the Go
 // control plane maps this bounded intent to the minimum capability set and
@@ -58,6 +61,32 @@ func (i WorkUnitIntent) RequiredCapabilities() ([]string, error) {
 	}
 }
 
+// WorkUnitRole describes orchestration purpose only. It grants no authority.
+type WorkUnitRole string
+
+const (
+	WorkUnitRoleLegacy      WorkUnitRole = "legacy_direct"
+	WorkUnitRoleInvestigate WorkUnitRole = "investigate"
+	WorkUnitRoleImplement   WorkUnitRole = "implement"
+	WorkUnitRoleVerify      WorkUnitRole = "verify"
+	WorkUnitRoleConsolidate WorkUnitRole = "consolidate"
+)
+
+func (r WorkUnitRole) ValidForNewWork() bool {
+	switch r {
+	case WorkUnitRoleInvestigate, WorkUnitRoleImplement, WorkUnitRoleVerify, WorkUnitRoleConsolidate:
+		return true
+	default:
+		return false
+	}
+}
+
+// PlanDraftDependencyInput states why one direct predecessor is consumed.
+type PlanDraftDependencyInput struct {
+	FromKey  string
+	Required string
+}
+
 // PlanDraftProposal is non-authoritative intelligence output. It describes what
 // work probably needs doing; deterministic Kennel compilation derives authority,
 // routing requirements, mandatory stops, and verification obligations.
@@ -77,6 +106,8 @@ type PlanDraftWorkUnit struct {
 	Key             string
 	Title           string
 	Intent          WorkUnitIntent
+	Role            WorkUnitRole
+	Inputs          []PlanDraftDependencyInput
 	OutputSummary   string
 	CriteriaCovered []string
 	DependsOn       []string
@@ -127,11 +158,28 @@ func (p PlanDraftProposal) Validate() error {
 		if !unit.Intent.Valid() {
 			return fmt.Errorf("plan draft work unit %q has unsupported intent %q", key, unit.Intent)
 		}
+		if !unit.Role.ValidForNewWork() {
+			return fmt.Errorf("plan draft work unit %q has unsupported role %q", key, unit.Role)
+		}
+		if err := validateRoleIntent(unit.Role, unit.Intent); err != nil {
+			return fmt.Errorf("plan draft work unit %q: %w", key, err)
+		}
+		seenInputs := map[string]struct{}{}
+		for j, input := range unit.Inputs {
+			from := strings.TrimSpace(input.FromKey)
+			if from == "" {
+				return fmt.Errorf("plan draft work unit %q input %d source is required", key, j+1)
+			}
+			if _, dup := seenInputs[from]; dup {
+				return fmt.Errorf("plan draft work unit %q repeats input source %q", key, from)
+			}
+			seenInputs[from] = struct{}{}
+			if err := validateInputRequirement(input.Required); err != nil {
+				return fmt.Errorf("plan draft work unit %q input from %q: %w", key, from, err)
+			}
+		}
 		if strings.TrimSpace(unit.OutputSummary) == "" {
 			return fmt.Errorf("plan draft work unit %q output summary is required", key)
-		}
-		if len(unit.CriteriaCovered) == 0 {
-			return fmt.Errorf("plan draft work unit %q must cover at least one contract criterion", key)
 		}
 		if err := validateUniqueNonBlankPlanDraftList("criterion alias", unit.CriteriaCovered); err != nil {
 			return fmt.Errorf("plan draft work unit %q: %w", key, err)
@@ -153,6 +201,7 @@ func (p PlanDraftProposal) Validate() error {
 		units[key] = unit
 	}
 
+	consumers := make(map[string]int, len(units))
 	for key, unit := range units {
 		seenDependencies := map[string]struct{}{}
 		for _, raw := range unit.DependsOn {
@@ -170,6 +219,30 @@ func (p PlanDraftProposal) Validate() error {
 				return fmt.Errorf("plan draft work unit %q repeats dependency %q", key, dependency)
 			}
 			seenDependencies[dependency] = struct{}{}
+			consumers[dependency]++
+		}
+		seenInputs := map[string]struct{}{}
+		for _, input := range unit.Inputs {
+			seenInputs[strings.TrimSpace(input.FromKey)] = struct{}{}
+		}
+		if len(seenInputs) != len(seenDependencies) {
+			return fmt.Errorf("plan draft work unit %q inputs must exactly match dependencies", key)
+		}
+		for dependency := range seenDependencies {
+			if _, ok := seenInputs[dependency]; !ok {
+				return fmt.Errorf("plan draft work unit %q has no semantic input for dependency %q", key, dependency)
+			}
+		}
+		if unit.Role == WorkUnitRoleVerify && len(unit.CriteriaCovered) == 0 {
+			return fmt.Errorf("plan draft work unit %q verify role requires criterion coverage", key)
+		}
+		if unit.Role == WorkUnitRoleConsolidate && len(seenDependencies) < 2 {
+			return fmt.Errorf("plan draft work unit %q consolidate role requires at least two dependencies", key)
+		}
+	}
+	for key, unit := range units {
+		if len(unit.CriteriaCovered) == 0 && consumers[key] == 0 {
+			return fmt.Errorf("plan draft enabling work unit %q is unconsumed", key)
 		}
 	}
 	if _, err := p.TopologicalOrder(); err != nil {
@@ -261,6 +334,39 @@ func validateUniqueNonBlankPlanDraftList(kind string, values []string) error {
 			return fmt.Errorf("%s %q is duplicated", kind, trimmed)
 		}
 		seen[trimmed] = struct{}{}
+	}
+	return nil
+}
+
+func validateRoleIntent(role WorkUnitRole, intent WorkUnitIntent) error {
+	switch role {
+	case WorkUnitRoleInvestigate:
+		if intent == WorkUnitIntentModify || intent == WorkUnitIntentModifyAndExecute {
+			return fmt.Errorf("investigate role conflicts with mutating intent %q", intent)
+		}
+	case WorkUnitRoleImplement:
+		if intent == WorkUnitIntentInspect {
+			return fmt.Errorf("implement role conflicts with inspect intent")
+		}
+	case WorkUnitRoleVerify:
+		if intent == WorkUnitIntentModify || intent == WorkUnitIntentModifyAndExecute {
+			return fmt.Errorf("verify role cannot mutate")
+		}
+	}
+	return nil
+}
+
+func validateInputRequirement(value string) error {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return fmt.Errorf("required handoff is blank")
+	}
+	if len(v) > MaxPlanDraftInputRequirementLength {
+		return fmt.Errorf("required handoff exceeds %d bytes", MaxPlanDraftInputRequirementLength)
+	}
+	lower := strings.ToLower(v)
+	if strings.HasPrefix(v, "/") || strings.HasPrefix(v, "./") || strings.HasPrefix(v, "../") || strings.Contains(lower, "://") || strings.HasPrefix(lower, "capability:") || strings.HasPrefix(lower, "secret:") || strings.HasPrefix(lower, "artifact:") || strings.HasPrefix(lower, "command:") {
+		return fmt.Errorf("required handoff must be semantic prose, not an authority-bearing locator")
 	}
 	return nil
 }

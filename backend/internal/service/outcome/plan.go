@@ -247,6 +247,10 @@ func (s *Service) compileAndRoutePlan(
 			}
 			dependencies = append(dependencies, dependencyID)
 		}
+		inputs := make([]domain.WorkUnitInput, 0, len(draftUnit.Inputs))
+		for i, input := range draftUnit.Inputs {
+			inputs = append(inputs, domain.WorkUnitInput{FromWorkUnitID: ids[strings.TrimSpace(input.FromKey)], Required: strings.TrimSpace(input.Required), Position: int64(i + 1)})
+		}
 		requiredCapabilities, err := draftUnit.Intent.RequiredCapabilities()
 		if err != nil {
 			return nil, nil, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_INTENT_INVALID", err.Error(), map[string]any{"workUnitKey": draftUnit.Key})
@@ -259,6 +263,8 @@ func (s *Service) compileAndRoutePlan(
 			ID:                      unitID,
 			Kind:                    domain.WorkUnitDirect,
 			Intent:                  draftUnit.Intent,
+			Role:                    draftUnit.Role,
+			Inputs:                  inputs,
 			Title:                   strings.TrimSpace(draftUnit.Title),
 			Position:                int64(index + 1),
 			ContractRevisionNumber:  revision.Number,

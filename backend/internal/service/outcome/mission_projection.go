@@ -34,6 +34,8 @@ type MissionAttempt struct {
 }
 type MissionNode struct {
 	WorkUnitID, PlanRevisionID, Title string
+	Role                              string
+	Inputs                            []domain.WorkUnitInput
 	DependsOn                         []domain.WorkUnitID
 	ScheduleState                     string
 	BlockingDependencies              []domain.WorkUnitID
@@ -123,7 +125,7 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 	view := MissionProjection{Version: MissionProjectionVersion, OutcomeID: record.ID, MissionID: record.SpaceID, ContractRevisionNumber: record.CurrentRevisionNumber, PlanRevisionID: schedule.Plan.ID, PlanRevisionNumber: schedule.Plan.Number, TopologyGeneration: schedule.Plan.Number, NextRunnableID: schedule.NextRunnableID, CustodyHeldBy: schedule.CustodyHeldBy, NoRunnableReason: string(schedule.NoRunnableReason)}
 	view.TopologyFingerprint = missionTopologyFingerprint(schedule.Plan)
 	for _, entry := range schedule.WorkUnits {
-		n := MissionNode{WorkUnitID: string(entry.WorkUnit.ID), PlanRevisionID: string(schedule.Plan.ID), Title: entry.WorkUnit.Title, DependsOn: append([]domain.WorkUnitID(nil), entry.WorkUnit.DependsOn...), ScheduleState: string(entry.State), BlockingDependencies: append([]domain.WorkUnitID(nil), entry.BlockingDependencies...), BlockedReason: string(entry.BlockedReason), BlockedDetail: entry.BlockedDetail, CriterionIDs: append([]domain.CriterionID(nil), entry.WorkUnit.CriterionIDs...), CriterionReady: entry.CriterionReady, Responsibility: "unconfirmed", UpdatedAt: schedule.Plan.CreatedAt}
+		n := MissionNode{WorkUnitID: string(entry.WorkUnit.ID), PlanRevisionID: string(schedule.Plan.ID), Title: entry.WorkUnit.Title, Role: string(entry.WorkUnit.Role), Inputs: append([]domain.WorkUnitInput(nil), entry.WorkUnit.Inputs...), DependsOn: append([]domain.WorkUnitID(nil), entry.WorkUnit.DependsOn...), ScheduleState: string(entry.State), BlockingDependencies: append([]domain.WorkUnitID(nil), entry.BlockingDependencies...), BlockedReason: string(entry.BlockedReason), BlockedDetail: entry.BlockedDetail, CriterionIDs: append([]domain.CriterionID(nil), entry.WorkUnit.CriterionIDs...), CriterionReady: entry.CriterionReady, Responsibility: "unconfirmed", UpdatedAt: schedule.Plan.CreatedAt}
 		for _, dep := range entry.WorkUnit.DependsOn {
 			view.Edges = append(view.Edges, MissionEdge{From: dep, To: entry.WorkUnit.ID})
 		}

@@ -116,7 +116,7 @@ WHERE outcome_id = ? AND number = ?`, plan.OutcomeID, plan.ContractRevisionNumbe
 		if err != nil {
 			return domain.PlanRevision{}, fmt.Errorf("plan %s work unit %s budget: %w", plan.ID, unit.ID, err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO work_units (id,plan_revision_id,kind,title,position,contract_revision_number,output_summary,evidence_checks,verification_requirement,stop_conditions,execution_budget_json,intent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, unit.ID, plan.ID, string(unit.Kind), unit.Title, unit.Position, unit.ContractRevisionNumber, unit.OutputSummary, checks, unit.VerificationRequirement, stops, string(budgetJSON), string(unit.Intent)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO work_units (id,plan_revision_id,kind,title,position,contract_revision_number,output_summary,evidence_checks,verification_requirement,stop_conditions,execution_budget_json,intent,role) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, unit.ID, plan.ID, string(unit.Kind), unit.Title, unit.Position, unit.ContractRevisionNumber, unit.OutputSummary, checks, unit.VerificationRequirement, stops, string(budgetJSON), string(unit.Intent), string(unit.Role)); err != nil {
 			return domain.PlanRevision{}, fmt.Errorf("create work unit %s: %w", unit.ID, err)
 		}
 
@@ -161,6 +161,14 @@ VALUES (?, ?)`, unit.ID, capability); err != nil {
 				Position: int64(position), Argv: argv, TimeoutSeconds: check.TimeoutSeconds,
 			}); err != nil {
 				return domain.PlanRevision{}, fmt.Errorf("persist work unit %s approved check %s: %w", unit.ID, check.ID, err)
+			}
+		}
+	}
+
+	for _, unit := range plan.WorkUnits {
+		for _, input := range unit.Inputs {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO work_unit_inputs(work_unit_id,from_work_unit_id,required,position) VALUES (?,?,?,?)`, unit.ID, input.FromWorkUnitID, input.Required, input.Position); err != nil {
+				return domain.PlanRevision{}, fmt.Errorf("persist work unit %s input from %s: %w", unit.ID, input.FromWorkUnitID, err)
 			}
 		}
 	}
@@ -434,10 +442,16 @@ SELECT routing_decisions_json FROM plan_revisions WHERE id = ?`, plan.ID).Scan(&
 
 		var budgetJSON sql.NullString
 		var intent string
-		if err := s.readDB.QueryRowContext(ctx, `SELECT execution_budget_json, intent, COALESCE(position, 0) FROM work_units WHERE id=? AND plan_revision_id=?`, unit.ID, plan.ID).Scan(&budgetJSON, &intent, &unit.Position); err != nil {
+		var role sql.NullString
+		if err := s.readDB.QueryRowContext(ctx, `SELECT execution_budget_json, intent, COALESCE(position, 0), role FROM work_units WHERE id=? AND plan_revision_id=?`, unit.ID, plan.ID).Scan(&budgetJSON, &intent, &unit.Position, &role); err != nil {
 			return fmt.Errorf("get execution budget for work unit %s: %w", unit.ID, err)
 		}
 		unit.Intent = domain.WorkUnitIntent(intent)
+		if role.Valid {
+			unit.Role = domain.WorkUnitRole(role.String)
+		} else {
+			unit.Role = domain.WorkUnitRoleLegacy
+		}
 		if budgetJSON.Valid && budgetJSON.String != "" {
 			if err := json.Unmarshal([]byte(budgetJSON.String), &unit.ExecutionBudget); err != nil {
 				return fmt.Errorf("decode execution budget for work unit %s: %w", unit.ID, err)
@@ -476,6 +490,22 @@ WHERE work_unit_id = ?
 		}
 		for _, dependency := range dependencies {
 			unit.DependsOn = append(unit.DependsOn, domain.WorkUnitID(dependency))
+		}
+
+		inputRows, err := s.readDB.QueryContext(ctx, `SELECT from_work_unit_id,required,position FROM work_unit_inputs WHERE work_unit_id=? ORDER BY position`, unit.ID)
+		if err != nil {
+			return fmt.Errorf("list inputs for work unit %s: %w", unit.ID, err)
+		}
+		for inputRows.Next() {
+			var in domain.WorkUnitInput
+			if err := inputRows.Scan(&in.FromWorkUnitID, &in.Required, &in.Position); err != nil {
+				inputRows.Close()
+				return err
+			}
+			unit.Inputs = append(unit.Inputs, in)
+		}
+		if err := inputRows.Close(); err != nil {
+			return err
 		}
 
 		criteria, err := queryWorkUnitStrings(ctx, s.readDB, `

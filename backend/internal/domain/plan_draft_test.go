@@ -10,6 +10,7 @@ func validPlanDraftWorkUnit(key string) PlanDraftWorkUnit {
 		Key:             key,
 		Title:           "Do " + key,
 		Intent:          WorkUnitIntentInspect,
+		Role:            WorkUnitRoleInvestigate,
 		OutputSummary:   "A reviewable result for " + key,
 		CriteriaCovered: []string{"C1"},
 		EvidenceIdeas:   []string{"inspect the resulting repository state"},
@@ -49,7 +50,9 @@ func TestPlanDraftProposalRejectsMissingIntent(t *testing.T) {
 func TestPlanDraftProposalDependenciesAreGraphTruthNotListOrder(t *testing.T) {
 	change := validPlanDraftWorkUnit("change")
 	change.Intent = WorkUnitIntentModify
+	change.Role = WorkUnitRoleImplement
 	change.DependsOn = []string{"inspect"}
+	change.Inputs = []PlanDraftDependencyInput{{FromKey: "inspect", Required: "reviewed findings"}}
 	inspect := validPlanDraftWorkUnit("inspect")
 	proposal := PlanDraftProposal{
 		Summary:   "Inspect first, then make the bounded change.",
@@ -132,5 +135,50 @@ func TestPlanDraftTopologicalOrderUsesProposalOrderForIndependentBranches(t *tes
 	want := []string{"root", "second", "first", "join"}
 	if !reflect.DeepEqual(order, want) {
 		t.Fatalf("order = %v, want proposal-order tie break %v", order, want)
+	}
+}
+
+func TestPlanDraftRolesInputsAndEnablingUnits(t *testing.T) {
+	root := validPlanDraftWorkUnit("root")
+	root.CriteriaCovered = nil
+	leaf := validPlanDraftWorkUnit("leaf")
+	leaf.Role = WorkUnitRoleVerify
+	leaf.Intent = WorkUnitIntentExecute
+	leaf.DependsOn = []string{"root"}
+	leaf.Inputs = []PlanDraftDependencyInput{{FromKey: "root", Required: "reviewed findings"}}
+	if err := (PlanDraftProposal{Summary: "handoff", WorkUnits: []PlanDraftWorkUnit{leaf, root}}).Validate(); err != nil {
+		t.Fatalf("valid enabling handoff: %v", err)
+	}
+	leaf.Inputs = nil
+	if err := (PlanDraftProposal{Summary: "missing", WorkUnits: []PlanDraftWorkUnit{leaf, root}}).Validate(); err == nil {
+		t.Fatal("missing exact input should fail")
+	}
+}
+func TestPlanDraftRoleDoesNotGrantCapability(t *testing.T) {
+	for _, role := range []WorkUnitRole{WorkUnitRoleInvestigate, WorkUnitRoleVerify} {
+		u := validPlanDraftWorkUnit(string(role))
+		u.Role = role
+		u.Intent = WorkUnitIntentExecute
+		got, err := u.Intent.RequiredCapabilities()
+		if err != nil || !reflect.DeepEqual(got, []string{CapabilityWorktreeRead, CapabilityWorktreeExec}) {
+			t.Fatalf("%s widened capability: %v %v", role, got, err)
+		}
+	}
+}
+func TestPlanDraftRejectsRoleConflictsAndFakeInputLocators(t *testing.T) {
+	u := validPlanDraftWorkUnit("verify")
+	u.Role = WorkUnitRoleVerify
+	u.Intent = WorkUnitIntentModify
+	if err := (PlanDraftProposal{Summary: "bad", WorkUnits: []PlanDraftWorkUnit{u}}).Validate(); err == nil {
+		t.Fatal("mutating verify should fail")
+	}
+	root := validPlanDraftWorkUnit("root")
+	child := validPlanDraftWorkUnit("child")
+	child.Role = WorkUnitRoleImplement
+	child.Intent = WorkUnitIntentModify
+	child.DependsOn = []string{"root"}
+	child.Inputs = []PlanDraftDependencyInput{{FromKey: "root", Required: "artifact://forged"}}
+	if err := (PlanDraftProposal{Summary: "bad locator", WorkUnits: []PlanDraftWorkUnit{root, child}}).Validate(); err == nil {
+		t.Fatal("authority-bearing input locator should fail")
 	}
 }

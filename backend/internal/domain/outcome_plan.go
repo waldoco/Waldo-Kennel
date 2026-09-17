@@ -70,6 +70,13 @@ const WorkUnitDirect WorkUnitKind = "direct"
 // Valid reports whether the work unit kind is supported.
 func (k WorkUnitKind) Valid() bool { return k == WorkUnitDirect }
 
+// WorkUnitInput is one canonical semantic dependency handoff.
+type WorkUnitInput struct {
+	FromWorkUnitID WorkUnitID
+	Required       string
+	Position       int64
+}
+
 // WorkUnit is immutable unit-level execution authority once its Plan is approved.
 // Dependencies and criterion coverage are canonical graph/proof identity; routing
 // recommendation is stored separately and must agree with this exact binding.
@@ -77,6 +84,8 @@ type WorkUnit struct {
 	ID WorkUnitID
 	// Intent is immutable user-meaning; capabilities are derived execution requirements.
 	Intent WorkUnitIntent
+	Role   WorkUnitRole
+	Inputs []WorkUnitInput
 	Kind   WorkUnitKind
 	Title  string
 	// Position is the immutable, one-based serial order frozen at compilation.
@@ -108,6 +117,14 @@ func (w WorkUnit) Validate() error {
 	}
 	if !w.Kind.Valid() {
 		return fmt.Errorf("unsupported work unit kind %q", w.Kind)
+	}
+	if w.Role != "" && w.Role != WorkUnitRoleLegacy && !w.Role.ValidForNewWork() {
+		return fmt.Errorf("unsupported work unit role %q", w.Role)
+	}
+	if w.Role.ValidForNewWork() {
+		if err := validateCanonicalInputs(w.ID, w.DependsOn, w.Inputs); err != nil {
+			return err
+		}
 	}
 	if w.Intent != "" && w.Intent != WorkUnitIntentLegacy && !w.Intent.Valid() {
 		return fmt.Errorf("unsupported work unit intent %q", w.Intent)
@@ -656,21 +673,29 @@ func MissingCapabilitiesForWorkUnit(grants []CapabilityGrant, unit WorkUnit) []s
 	return missing
 }
 
+type runBriefWorkUnitInput struct {
+	FromWorkUnitID string `json:"fromWorkUnitId"`
+	Required       string `json:"required"`
+	Position       int64  `json:"position"`
+}
+
 type runBriefWorkUnit struct {
-	ID                      string         `json:"id"`
-	Title                   string         `json:"title"`
-	Intent                  WorkUnitIntent `json:"intent,omitempty"`
-	Provider                string         `json:"provider,omitempty"`
-	ModelSelection          string         `json:"modelSelection,omitempty"`
-	Model                   string         `json:"model,omitempty"`
-	Output                  string         `json:"output"`
-	EvidenceChecks          []string       `json:"evidenceChecks"`
-	VerificationRequirement string         `json:"verificationRequirement"`
-	StopConditions          []string       `json:"stopConditions"`
-	DependsOn               []string       `json:"dependsOn,omitempty"`
-	CriterionIDs            []string       `json:"criterionIds,omitempty"`
-	RequiredCapabilities    []string       `json:"requiredCapabilities,omitempty"`
-	Checks                  []string       `json:"approvedChecks,omitempty"`
+	ID                      string                  `json:"id"`
+	Title                   string                  `json:"title"`
+	Intent                  WorkUnitIntent          `json:"intent,omitempty"`
+	Role                    WorkUnitRole            `json:"role,omitempty"`
+	Inputs                  []runBriefWorkUnitInput `json:"inputs,omitempty"`
+	Provider                string                  `json:"provider,omitempty"`
+	ModelSelection          string                  `json:"modelSelection,omitempty"`
+	Model                   string                  `json:"model,omitempty"`
+	Output                  string                  `json:"output"`
+	EvidenceChecks          []string                `json:"evidenceChecks"`
+	VerificationRequirement string                  `json:"verificationRequirement"`
+	StopConditions          []string                `json:"stopConditions"`
+	DependsOn               []string                `json:"dependsOn,omitempty"`
+	CriterionIDs            []string                `json:"criterionIds,omitempty"`
+	RequiredCapabilities    []string                `json:"requiredCapabilities,omitempty"`
+	Checks                  []string                `json:"approvedChecks,omitempty"`
 }
 
 type runBriefCore struct {
@@ -713,7 +738,7 @@ func ComputePlanRunBriefCoreDigest(revision ContractRevision, units []WorkUnit, 
 		}
 		sort.Strings(criteria)
 		briefUnits = append(briefUnits, runBriefWorkUnit{
-			ID: unit.ID.String(), Title: unit.Title, Intent: unit.Intent, Provider: string(unit.Provider),
+			ID: unit.ID.String(), Title: unit.Title, Intent: unit.Intent, Role: unit.Role, Inputs: runBriefInputs(unit.Inputs), Provider: string(unit.Provider),
 			ModelSelection: string(unit.ModelSelection), Model: unit.Model, Output: unit.OutputSummary,
 			EvidenceChecks: sortedTrimmed(unit.EvidenceChecks), VerificationRequirement: unit.VerificationRequirement,
 			StopConditions: sortedTrimmed(unit.StopConditions), DependsOn: dependencies, CriterionIDs: criteria,
@@ -773,4 +798,41 @@ func equalStringSets(left, right []string) bool {
 	a := uniqueSortedStrings(append([]string(nil), left...))
 	b := uniqueSortedStrings(append([]string(nil), right...))
 	return equalStrings(a, b)
+}
+
+func validateCanonicalInputs(self WorkUnitID, dependencies []WorkUnitID, inputs []WorkUnitInput) error {
+	deps := map[WorkUnitID]struct{}{}
+	for _, id := range dependencies {
+		deps[id] = struct{}{}
+	}
+	seen := map[WorkUnitID]struct{}{}
+	for i, in := range inputs {
+		if in.FromWorkUnitID.IsZero() || in.FromWorkUnitID == self {
+			return fmt.Errorf("work unit input has invalid source")
+		}
+		if _, ok := deps[in.FromWorkUnitID]; !ok {
+			return fmt.Errorf("work unit input source %q is not a dependency", in.FromWorkUnitID)
+		}
+		if _, ok := seen[in.FromWorkUnitID]; ok {
+			return fmt.Errorf("work unit repeats input source %q", in.FromWorkUnitID)
+		}
+		seen[in.FromWorkUnitID] = struct{}{}
+		if strings.TrimSpace(in.Required) == "" {
+			return fmt.Errorf("work unit input requirement is blank")
+		}
+		if in.Position != int64(i+1) {
+			return fmt.Errorf("work unit input positions must be contiguous")
+		}
+	}
+	if len(seen) != len(deps) {
+		return fmt.Errorf("work unit inputs must exactly match dependencies")
+	}
+	return nil
+}
+func runBriefInputs(inputs []WorkUnitInput) []runBriefWorkUnitInput {
+	out := make([]runBriefWorkUnitInput, 0, len(inputs))
+	for _, in := range inputs {
+		out = append(out, runBriefWorkUnitInput{FromWorkUnitID: string(in.FromWorkUnitID), Required: strings.TrimSpace(in.Required), Position: in.Position})
+	}
+	return out
 }
