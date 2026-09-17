@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -87,16 +89,77 @@ func TestHarnessAuthorityAllRoutesForbidPrivateFields(t *testing.T) {
 	c := &HarnessAuthorityController{Svc: harnessAuthorityStub{intent: intent, connection: conn, receipts: []domain.HarnessAuthorityReceipt{r}}, Now: func() time.Time { return now }}
 	router := chi.NewRouter()
 	c.Register(router)
+	expected := map[string]map[string][]string{
+		"/harness-pairing-intents":          {"intent": {"id", "version", "digest", "kind", "connectionId", "installationId", "harnessIdentity", "providerVersion", "adapterDigest", "protocolFingerprint", "missionId", "capabilities", "expectedGeneration", "connectionExpiresAt", "expiresAt", "status", "proofState", "updatedAt"}},
+		"/harness-pairing-intents/intent-1": {"intent": {"id", "version", "digest", "kind", "connectionId", "installationId", "harnessIdentity", "providerVersion", "adapterDigest", "protocolFingerprint", "missionId", "capabilities", "expectedGeneration", "connectionExpiresAt", "expiresAt", "status", "proofState", "updatedAt"}, "receipt": {"id", "action", "targetType", "targetId", "targetDigest", "expectedGeneration", "confirmed", "createdAt"}},
+		"/harness-connections":              {"connection": {"id", "version", "digest", "installationId", "harnessIdentity", "providerVersion", "adapterDigest", "protocolFingerprint", "missionId", "capabilities", "generation", "expiresAt", "state", "reason", "repair", "actionNeededCommands", "updatedAt"}},
+		"/harness-connections/connection-1": {"connection": {"id", "version", "digest", "installationId", "harnessIdentity", "providerVersion", "adapterDigest", "protocolFingerprint", "missionId", "capabilities", "generation", "expiresAt", "state", "reason", "repair", "actionNeededCommands", "updatedAt"}, "receipt": {"id", "action", "targetType", "targetId", "targetDigest", "expectedGeneration", "confirmed", "createdAt"}},
+	}
 	for _, path := range []string{"/harness-pairing-intents", "/harness-pairing-intents/intent-1", "/harness-connections", "/harness-connections/connection-1"} {
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != 200 {
 			t.Fatalf("%s status=%d body=%s", path, rec.Code, rec.Body.String())
 		}
+		assertRouteKeys(t, path, rec.Body.Bytes(), expected[path])
 		for _, canary := range []string{"PRIVATE_APP_RUN", "PRIVATE_REQUEST_KEY", "PRIVATE_REQUEST_FINGERPRINT", "PRIVATE_CONNECTION_APP_RUN", "PRIVATE_RECEIPT_KEY", "PRIVATE_RECEIPT_FP", "PRIVATE_OWNER", "PRIVATE_CONFIRMATION", "proofVerifier", "pairingSecret"} {
 			if strings.Contains(rec.Body.String(), canary) {
 				t.Fatalf("%s leaked %q: %s", path, canary, rec.Body.String())
 			}
+		}
+	}
+}
+
+func assertRouteKeys(t *testing.T, path string, body []byte, expected map[string][]string) {
+	t.Helper()
+	var root struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &root); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range expected {
+		var raw json.RawMessage
+		switch name {
+		case "intent":
+			if strings.HasSuffix(path, "intent-1") {
+				raw = root.Data["intent"]
+			} else {
+				var xs []json.RawMessage
+				if err := json.Unmarshal(root.Data["intents"], &xs); err != nil || len(xs) != 1 {
+					t.Fatalf("%s intents: %v", path, err)
+				}
+				raw = xs[0]
+			}
+		case "connection":
+			if strings.HasSuffix(path, "connection-1") {
+				raw = root.Data["connection"]
+			} else {
+				var xs []json.RawMessage
+				if err := json.Unmarshal(root.Data["connections"], &xs); err != nil || len(xs) != 1 {
+					t.Fatalf("%s connections: %v", path, err)
+				}
+				raw = xs[0]
+			}
+		case "receipt":
+			var xs []json.RawMessage
+			if err := json.Unmarshal(root.Data["receipts"], &xs); err != nil || len(xs) != 1 {
+				t.Fatalf("%s receipts: %v", path, err)
+			}
+			raw = xs[0]
+		}
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			t.Fatal(err)
+		}
+		got := make([]string, 0, len(obj))
+		for k := range obj {
+			got = append(got, k)
+		}
+		sort.Strings(got)
+		sort.Strings(want)
+		if !slices.Equal(got, want) {
+			t.Fatalf("%s %s keys=%v want=%v", path, name, got, want)
 		}
 	}
 }

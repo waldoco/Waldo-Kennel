@@ -10252,6 +10252,8 @@ components:
         actionNeededCommands:
           format: int64
           type: integer
+        adapterDigest:
+          type: string
         capabilities:
           items:
             $ref: '#/components/schemas/ControllersCapabilityView'
@@ -10264,13 +10266,29 @@ components:
         generation:
           format: int64
           type: integer
+        harnessIdentity:
+          type: string
         id:
+          type: string
+        installationId:
+          type: string
+        missionId:
+          type: string
+        protocolFingerprint:
+          type: string
+        providerVersion:
+          type: string
+        reason:
+          type: string
+        repair:
           type: string
         revokedAt:
           format: date-time
           type:
           - "null"
           - string
+        state:
+          type: string
         updatedAt:
           format: date-time
           type: string
@@ -10280,9 +10298,18 @@ components:
       - id
       - version
       - digest
+      - installationId
+      - harnessIdentity
+      - providerVersion
+      - adapterDigest
+      - protocolFingerprint
+      - missionId
       - capabilities
       - generation
       - expiresAt
+      - state
+      - reason
+      - repair
       - actionNeededCommands
       - updatedAt
       type: object
@@ -11075,10 +11102,15 @@ components:
       type: object
     ControllersPairingIntentView:
       properties:
+        adapterDigest:
+          type: string
         capabilities:
           items:
             $ref: '#/components/schemas/ControllersCapabilityView'
           type: array
+        connectionExpiresAt:
+          format: date-time
+          type: string
         connectionId:
           type: string
         digest:
@@ -11086,11 +11118,24 @@ components:
         expectedGeneration:
           format: int64
           type: integer
+        expiresAt:
+          format: date-time
+          type: string
+        harnessIdentity:
+          type: string
         id:
+          type: string
+        installationId:
           type: string
         kind:
           type: string
+        missionId:
+          type: string
         proofState:
+          type: string
+        protocolFingerprint:
+          type: string
+        providerVersion:
           type: string
         status:
           type: string
@@ -11105,8 +11150,16 @@ components:
       - digest
       - kind
       - connectionId
+      - installationId
+      - harnessIdentity
+      - providerVersion
+      - adapterDigest
+      - protocolFingerprint
+      - missionId
       - capabilities
       - expectedGeneration
+      - connectionExpiresAt
+      - expiresAt
       - status
       - proofState
       - updatedAt

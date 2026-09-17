@@ -3340,15 +3340,24 @@ export interface components {
         ControllersConnectionView: {
             /** Format: int64 */
             actionNeededCommands: number;
+            adapterDigest: string;
             capabilities: components["schemas"]["ControllersCapabilityView"][];
             digest: string;
             /** Format: date-time */
             expiresAt: string;
             /** Format: int64 */
             generation: number;
+            harnessIdentity: string;
             id: string;
+            installationId: string;
+            missionId: string;
+            protocolFingerprint: string;
+            providerVersion: string;
+            reason: string;
+            repair: string;
             /** Format: date-time */
             revokedAt?: null | string;
+            state: string;
             /** Format: date-time */
             updatedAt: string;
             version: string;
@@ -3646,14 +3655,24 @@ export interface components {
             workUnitId: string;
         };
         ControllersPairingIntentView: {
+            adapterDigest: string;
             capabilities: components["schemas"]["ControllersCapabilityView"][];
+            /** Format: date-time */
+            connectionExpiresAt: string;
             connectionId: string;
             digest: string;
             /** Format: int64 */
             expectedGeneration: number;
+            /** Format: date-time */
+            expiresAt: string;
+            harnessIdentity: string;
             id: string;
+            installationId: string;
             kind: string;
+            missionId: string;
             proofState: string;
+            protocolFingerprint: string;
+            providerVersion: string;
             status: string;
             /** Format: date-time */
             updatedAt: string;

@@ -136,20 +136,24 @@ func capabilities(v []domain.HarnessCapabilityClass) []CapabilityView {
 }
 
 type PairingIntentView struct {
-	ID                                               domain.PairingChallengeID  `json:"id"`
-	Version                                          string                     `json:"version"`
-	Digest                                           domain.SHA256Digest        `json:"digest"`
-	Kind                                             domain.HarnessPairingKind  `json:"kind"`
-	ConnectionID                                     domain.HarnessConnectionID `json:"connectionId"`
-	InstallationID, HarnessIdentity, ProviderVersion string
-	AdapterDigest, ProtocolFingerprint               domain.SHA256Digest
-	MissionID                                        string
-	Capabilities                                     []CapabilityView `json:"capabilities"`
-	ExpectedGeneration                               int64            `json:"expectedGeneration"`
-	ConnectionExpiresAt, ExpiresAt                   time.Time
-	Status                                           string    `json:"status"`
-	ProofState                                       string    `json:"proofState"`
-	UpdatedAt                                        time.Time `json:"updatedAt"`
+	ID                  domain.PairingChallengeID  `json:"id"`
+	Version             string                     `json:"version"`
+	Digest              domain.SHA256Digest        `json:"digest"`
+	Kind                domain.HarnessPairingKind  `json:"kind"`
+	ConnectionID        domain.HarnessConnectionID `json:"connectionId"`
+	InstallationID      string                     `json:"installationId"`
+	HarnessIdentity     string                     `json:"harnessIdentity"`
+	ProviderVersion     string                     `json:"providerVersion"`
+	AdapterDigest       domain.SHA256Digest        `json:"adapterDigest"`
+	ProtocolFingerprint domain.SHA256Digest        `json:"protocolFingerprint"`
+	MissionID           string                     `json:"missionId"`
+	Capabilities        []CapabilityView           `json:"capabilities"`
+	ExpectedGeneration  int64                      `json:"expectedGeneration"`
+	ConnectionExpiresAt time.Time                  `json:"connectionExpiresAt"`
+	ExpiresAt           time.Time                  `json:"expiresAt"`
+	Status              string                     `json:"status"`
+	ProofState          string                     `json:"proofState"`
+	UpdatedAt           time.Time                  `json:"updatedAt"`
 }
 
 type harnessChallengeReader interface {
@@ -191,19 +195,24 @@ func (c *HarnessAuthorityController) intentView(ctx context.Context, v domain.Ha
 }
 
 type ConnectionView struct {
-	ID                                               domain.HarnessConnectionID `json:"id"`
-	Version                                          string                     `json:"version"`
-	Digest                                           domain.SHA256Digest        `json:"digest"`
-	InstallationID, HarnessIdentity, ProviderVersion string
-	AdapterDigest, ProtocolFingerprint               domain.SHA256Digest
-	MissionID                                        string
-	Capabilities                                     []CapabilityView `json:"capabilities"`
-	Generation                                       int64            `json:"generation"`
-	ExpiresAt                                        time.Time        `json:"expiresAt"`
-	RevokedAt                                        *time.Time       `json:"revokedAt,omitempty"`
-	State, Reason, Repair                            string
-	ActionNeededCommands                             int64     `json:"actionNeededCommands"`
-	UpdatedAt                                        time.Time `json:"updatedAt"`
+	ID                   domain.HarnessConnectionID `json:"id"`
+	Version              string                     `json:"version"`
+	Digest               domain.SHA256Digest        `json:"digest"`
+	InstallationID       string                     `json:"installationId"`
+	HarnessIdentity      string                     `json:"harnessIdentity"`
+	ProviderVersion      string                     `json:"providerVersion"`
+	AdapterDigest        domain.SHA256Digest        `json:"adapterDigest"`
+	ProtocolFingerprint  domain.SHA256Digest        `json:"protocolFingerprint"`
+	MissionID            string                     `json:"missionId"`
+	Capabilities         []CapabilityView           `json:"capabilities"`
+	Generation           int64                      `json:"generation"`
+	ExpiresAt            time.Time                  `json:"expiresAt"`
+	RevokedAt            *time.Time                 `json:"revokedAt,omitempty"`
+	State                string                     `json:"state"`
+	Reason               string                     `json:"reason"`
+	Repair               string                     `json:"repair"`
+	ActionNeededCommands int64                      `json:"actionNeededCommands"`
+	UpdatedAt            time.Time                  `json:"updatedAt"`
 }
 
 func (c *HarnessAuthorityController) connection(r *http.Request, v domain.HarnessConnection) ConnectionView {
