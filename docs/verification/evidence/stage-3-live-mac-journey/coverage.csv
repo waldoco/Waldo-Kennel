@@ -1,0 +1,26 @@
+surface_id,surface,scenario,status,evidence_class,input_modes,evidence_paths,notes
+ENV-01,Target and launch integrity,Exact SHA and daemon identity,PASS,electron-real-daemon,none,logs/04-health.log,Health and ready endpoints returned requested build revision.
+ENTRY-01,First launch and Work-first entry,Installed app initial paint,PASS,electron-real-daemon,mouse,evidence/ui-observations.md,Initial unavailable state then daemon-backed Scratch board observed; profile was not pristine.
+PROJ-01,Add/select/configure Project,Project setup,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+WORK-01,Project Board and List,Board,PARTIAL,electron-real-daemon,mouse,evidence/ui-observations.md,Board rendered but full journey not run.
+WALDO-01,Project/Outcome Waldo,Scope and drafts,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+OUTCOME-01,New Outcome and intake,Outcome creation,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+CONTRACT-01,Contract proposal/revision,Contract workflow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+AUTH-01,Mission/Plan authorization,Authorization workflow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+MISSION-01,Mission Control,Mission flow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+SESSION-01,Work Unit/Attempt/Session Inspector,Session flow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+TERMINAL-01,Terminal surfaces,Terminal flow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+BROWSER-01,Browser/preview surfaces,Browser flow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+FILES-01,Files artifacts diffs reviews,Artifact flow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+EVIDENCE-01,Evidence Verification Acceptance,Verification flow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+ATTENTION-01,Needs You and notifications,Attention flow,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+HOME-01,Home destinations,Home routes,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+SETTINGS-01,Global and Project Settings,Find adapter install path,FAIL,electron-real-daemon,mouse,evidence/ui-observations.md,No adapter or pairing control visible.
+ISLAND-01,Kennel Island/window,Island appeared after main window closed,PARTIAL,packaged-app,mouse,evidence/ui-observations.md,Not part of requested journey and no interaction run.
+NAV-01,Global navigation and re-entry,Search for adapter,PASS,electron-real-daemon,mouse,evidence/ui-observations.md,Search control was clicked and did not expose a visible surface.
+INPUT-01,Pointer keyboard and gesture coverage,Primary route input,PARTIAL,electron-real-daemon,mouse,evidence/ui-observations.md,Mouse path exercised; keyboard path not run after blocker.
+A11Y-01,Accessibility,Accessible Settings labels,PARTIAL,electron-real-daemon,mouse,evidence/ui-observations.md,Accessibility tree exposed labels; no full audit.
+MOTION-01,Motion and micro-interactions,Rendered motion,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+RESPONSIVE-01,Window and content resizing,Resizing,NOT_TESTED,not-observed,none,,Stopped at adapter journey blocker.
+RECOVERY-01,Failure restart concurrency,Pairing durability restart,NOT_TESTED,not-observed,none,,Blocked before pairing.
+PACKAGE-01,Packaged build boundary,Package install launch quit,PASS,packaged-app,mouse,logs/02-package-after-bootstrap.log;logs/03-package-identity.log;logs/04-health.log;logs/05-cleanup.log,Package and identity passed; installed app launched and exact processes exited.
