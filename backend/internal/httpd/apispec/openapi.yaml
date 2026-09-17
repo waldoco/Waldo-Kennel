@@ -10768,16 +10768,17 @@ components:
           type: string
         kind:
           enum:
+          - needs_approval
           - needs_choice
           - needs_input
           type: string
         questionId:
           type: string
-        reasonCode:
+        summary:
           type: string
       required:
       - kind
-      - reasonCode
+      - summary
       - generation
       type: object
     ControllersMissionEdgeResponse:

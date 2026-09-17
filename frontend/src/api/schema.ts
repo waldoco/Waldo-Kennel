@@ -3533,9 +3533,9 @@ export interface components {
         ControllersMissionAttentionResponse: {
             generation: string;
             /** @enum {string} */
-            kind: "needs_choice" | "needs_input";
+            kind: "needs_approval" | "needs_choice" | "needs_input";
             questionId?: string;
-            reasonCode: string;
+            summary: string;
         };
         ControllersMissionEdgeResponse: {
             from: string;

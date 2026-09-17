@@ -3,7 +3,9 @@ package outcome
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -15,7 +17,7 @@ import (
 const MissionProjectionVersion = 1
 
 type MissionAttention struct {
-	Kind, ReasonCode, QuestionID, Generation string
+	Kind, Summary, QuestionID, Generation string
 }
 type MissionSession struct {
 	RefID                            string
@@ -151,6 +153,9 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 		}
 		if q, ok := attention[entry.WorkUnit.ID]; ok {
 			kind := ""
+			if q.Kind == domain.NeedsYouApproval {
+				kind = "needs_approval"
+			}
 			if q.Kind == domain.NeedsYouChoice {
 				kind = "needs_choice"
 			}
@@ -158,21 +163,43 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 				kind = "needs_input"
 			}
 			if kind != "" {
-				n.Attention = &MissionAttention{Kind: kind, ReasonCode: q.Reason, QuestionID: q.ID, Generation: q.Generation}
+				n.Attention = &MissionAttention{Kind: kind, Summary: q.Reason, QuestionID: q.ID, Generation: q.Generation}
 			}
 			if q.UpdatedAt.After(n.UpdatedAt) {
 				n.UpdatedAt = q.UpdatedAt
 			}
 		}
-		if entry.WorkUnit.ID == schedule.NextRunnableID && entry.State == WorkUnitScheduleRunnable {
+		if entry.WorkUnit.ID == schedule.NextRunnableID && (entry.State == WorkUnitScheduleRunnable || entry.State == WorkUnitScheduleRetryable) {
 			n.NextAction = "start"
 		}
-		n.Generation = n.UpdatedAt.UnixMilli()
 		if n.UpdatedAt.After(view.UpdatedAt) {
 			view.UpdatedAt = n.UpdatedAt
 		}
 		view.Nodes = append(view.Nodes, n)
 	}
-	view.Generation = view.UpdatedAt.UnixMilli()
+	view.Generation = missionProjectionGeneration(view)
+	for i := range view.Nodes {
+		view.Nodes[i].Generation = missionNodeGeneration(view.Nodes[i])
+	}
 	return view, nil
+}
+
+func missionNodeGeneration(node MissionNode) int64 { return digestGeneration(node) }
+func missionProjectionGeneration(view MissionProjection) int64 {
+	copy := view
+	copy.Generation = 0
+	copy.UpdatedAt = time.Time{}
+	for i := range copy.Nodes {
+		copy.Nodes[i].Generation = 0
+		copy.Nodes[i].UpdatedAt = time.Time{}
+	}
+	return digestGeneration(copy)
+}
+func digestGeneration(value any) int64 {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	sum := sha256.Sum256(encoded)
+	return int64(binary.BigEndian.Uint64(sum[:8]) & ((1 << 63) - 1))
 }

@@ -4312,8 +4312,8 @@ type MissionSessionResponse struct {
 	BoundAt   time.Time `json:"boundAt"`
 }
 type MissionAttentionResponse struct {
-	Kind       string `json:"kind" enum:"needs_choice,needs_input"`
-	ReasonCode string `json:"reasonCode"`
+	Kind       string `json:"kind" enum:"needs_approval,needs_choice,needs_input"`
+	Summary    string `json:"summary"`
 	QuestionID string `json:"questionId,omitempty"`
 	Generation string `json:"generation"`
 }
@@ -4344,7 +4344,7 @@ func missionResponse(view outcomevc.MissionProjection) MissionProjectionResponse
 		}
 		if n.Attention != nil {
 			q := n.Attention
-			r.Attention = &MissionAttentionResponse{Kind: q.Kind, ReasonCode: q.ReasonCode, QuestionID: q.QuestionID, Generation: q.Generation}
+			r.Attention = &MissionAttentionResponse{Kind: q.Kind, Summary: q.Summary, QuestionID: q.QuestionID, Generation: q.Generation}
 		}
 		out.Nodes = append(out.Nodes, r)
 	}
