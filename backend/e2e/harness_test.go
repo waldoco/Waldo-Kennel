@@ -383,6 +383,12 @@ func seedProject(t *testing.T, d *daemon, name string) string {
 	if out.Project.ID == "" {
 		t.Fatalf("project registration returned no id for %s", dir)
 	}
+	// This fixture knows the branch it created. Production automatic resolution
+	// intentionally refuses to guess a default from a lone local HEAD, so record
+	// the explicit test-project setting through the same supported API an owner uses.
+	d.mustCall("PUT", "/projects/"+out.Project.ID+"/config", http.StatusOK, map[string]any{
+		"config": map[string]any{"defaultBranch": "main"},
+	}, nil)
 	return out.Project.ID
 }
 
