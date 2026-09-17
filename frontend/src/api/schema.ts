@@ -3302,6 +3302,23 @@ export interface components {
             requests: null | number;
             totals: components["schemas"]["UsageTotalsResponse"];
         };
+        ControllersAuthorityReceiptView: {
+            action: string;
+            confirmed: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            expectedGeneration: number;
+            id: string;
+            targetDigest: string;
+            targetId: string;
+            targetType: string;
+        };
+        ControllersCapabilityView: {
+            class: string;
+            effect: string;
+            material: boolean;
+        };
         ControllersChangeOutcomeDeletionRequest: {
             action: string;
             confirmation: string;
@@ -3319,6 +3336,22 @@ export interface components {
             negotiatedAt: string;
             protocolDigest: string;
             provider: string;
+        };
+        ControllersConnectionView: {
+            /** Format: int64 */
+            actionNeededCommands: number;
+            capabilities: components["schemas"]["ControllersCapabilityView"][];
+            digest: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: int64 */
+            generation: number;
+            id: string;
+            /** Format: date-time */
+            revokedAt?: null | string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: string;
         };
         ControllersDocumentSourceResponse: {
             contentDigest: string;
@@ -3352,6 +3385,32 @@ export interface components {
             /** @enum {string} */
             state: "claimed" | "dispatching" | "delivery_unknown";
             turnId: string;
+        };
+        ControllersHarnessConnectionDetailData: {
+            connection: components["schemas"]["ControllersConnectionView"];
+            receipts: components["schemas"]["ControllersAuthorityReceiptView"][];
+        };
+        ControllersHarnessConnectionDetailResponse: {
+            data: components["schemas"]["ControllersHarnessConnectionDetailData"];
+        };
+        ControllersHarnessConnectionListData: {
+            connections: components["schemas"]["ControllersConnectionView"][];
+        };
+        ControllersHarnessConnectionListResponse: {
+            data: components["schemas"]["ControllersHarnessConnectionListData"];
+        };
+        ControllersHarnessPairingIntentDetailData: {
+            intent: components["schemas"]["ControllersPairingIntentView"];
+            receipts: components["schemas"]["ControllersAuthorityReceiptView"][];
+        };
+        ControllersHarnessPairingIntentDetailResponse: {
+            data: components["schemas"]["ControllersHarnessPairingIntentDetailData"];
+        };
+        ControllersHarnessPairingIntentListData: {
+            intents: components["schemas"]["ControllersPairingIntentView"][];
+        };
+        ControllersHarnessPairingIntentListResponse: {
+            data: components["schemas"]["ControllersHarnessPairingIntentListData"];
         };
         ControllersIntakeAnalysisRequestEnvelope: {
             request: components["schemas"]["ControllersIntakeAnalysisRequestResponse"];
@@ -3585,6 +3644,20 @@ export interface components {
         ControllersOutcomeUsageWorkUnitResponse: {
             usage: components["schemas"]["ControllersAttributedUsageResponse"];
             workUnitId: string;
+        };
+        ControllersPairingIntentView: {
+            capabilities: components["schemas"]["ControllersCapabilityView"][];
+            connectionId: string;
+            digest: string;
+            /** Format: int64 */
+            expectedGeneration: number;
+            id: string;
+            kind: string;
+            proofState: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: string;
         };
         ControllersRepositoryContextLimitsResponse: {
             /** Format: int64 */
@@ -5400,11 +5473,6 @@ export interface components {
             session: components["schemas"]["ControllersSessionView"];
             systemPromptBytes: number;
         };
-        SpecgenHarnessListResponse: {
-            data: {
-                [key: string]: unknown;
-            } | null;
-        };
         StageSessionAttachmentsRequest: {
             attachments: components["schemas"]["AttachmentInput"][];
         };
@@ -6387,7 +6455,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SpecgenHarnessListResponse"];
+                    "application/json": components["schemas"]["ControllersHarnessConnectionListResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -6427,7 +6495,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SpecgenHarnessListResponse"];
+                    "application/json": components["schemas"]["ControllersHarnessConnectionDetailResponse"];
                 };
             };
             /** @description Not Found */
@@ -6477,7 +6545,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SpecgenHarnessListResponse"];
+                    "application/json": components["schemas"]["ControllersHarnessPairingIntentListResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -6517,7 +6585,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SpecgenHarnessListResponse"];
+                    "application/json": components["schemas"]["ControllersHarnessPairingIntentDetailResponse"];
                 };
             };
             /** @description Not Found */

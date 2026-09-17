@@ -209,6 +209,7 @@ type harnessIntentCreateRequest struct {
 	ExpectedGeneration  int64                           `json:"expectedGeneration"`
 	ConnectionExpiresAt time.Time                       `json:"connectionExpiresAt"`
 	ExpiresAt           time.Time                       `json:"expiresAt"`
+	RequestKey          string                          `json:"requestKey"`
 }
 type harnessDecisionRequest struct {
 	Digest     domain.SHA256Digest `json:"digest"`
@@ -253,7 +254,11 @@ func mountHarnessAuthorityCommands(r chi.Router, authority *ownercommand.Authori
 		if !decode(w, req, &in) {
 			return
 		}
-		v, created, err := svc.CreateIntent(req.Context(), harnessauthority.CreateIntentRequest{ProjectID: in.ProjectID, Kind: in.Kind, ConnectionID: in.ConnectionID, InstallationID: in.InstallationID, AdapterDigest: in.AdapterDigest, HarnessIdentity: in.HarnessIdentity, ProviderVersion: in.ProviderVersion, ProtocolFingerprint: in.ProtocolFingerprint, MissionID: in.MissionID, AppRunID: a.AppRunID, CapabilityClasses: in.CapabilityClasses, ExpectedGeneration: in.ExpectedGeneration, ConnectionExpiresAt: in.ConnectionExpiresAt, ExpiresAt: in.ExpiresAt})
+		fingerprint, _ := ownercommand.Fingerprint(struct {
+			AppRunID, RequestKey string
+			Body                 harnessIntentCreateRequest
+		}{a.AppRunID, strings.TrimSpace(in.RequestKey), in})
+		v, created, err := svc.CreateIntent(req.Context(), harnessauthority.CreateIntentRequest{ProjectID: in.ProjectID, Kind: in.Kind, ConnectionID: in.ConnectionID, InstallationID: in.InstallationID, AdapterDigest: in.AdapterDigest, HarnessIdentity: in.HarnessIdentity, ProviderVersion: in.ProviderVersion, ProtocolFingerprint: in.ProtocolFingerprint, MissionID: in.MissionID, AppRunID: a.AppRunID, CapabilityClasses: in.CapabilityClasses, ExpectedGeneration: in.ExpectedGeneration, ConnectionExpiresAt: in.ConnectionExpiresAt, ExpiresAt: in.ExpiresAt, RequestKey: in.RequestKey, RequestFingerprint: fingerprint})
 		if err != nil {
 			envelope.WriteJSON(w, 400, map[string]any{"error": map[string]any{"code": "PAIRING_INTENT_INVALID", "message": "Pairing intent proposal is invalid"}})
 			return

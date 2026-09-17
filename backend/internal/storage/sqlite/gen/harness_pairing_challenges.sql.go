@@ -144,7 +144,7 @@ func (q *Queries) FailHarnessPairingIntentActivation(ctx context.Context, arg Fa
 }
 
 const getApprovedHarnessPairingIntentForActivation = `-- name: GetApprovedHarnessPairingIntentForActivation :one
-SELECT id, project_id, kind, connection_id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, expected_generation, connection_expires_at, expires_at, digest, status, challenge_id, decision_id, decision, decision_request_key, owner_principal, confirmation_ref, decided_at, created_at, updated_at FROM harness_pairing_intents WHERE id=? AND digest=? AND status='approved' AND expires_at>?
+SELECT id, project_id, kind, connection_id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, expected_generation, connection_expires_at, expires_at, digest, status, proposal_request_key, proposal_request_fingerprint, challenge_id, decision_id, decision, decision_request_key, owner_principal, confirmation_ref, decided_at, created_at, updated_at FROM harness_pairing_intents WHERE id=? AND digest=? AND status='approved' AND expires_at>?
 `
 
 type GetApprovedHarnessPairingIntentForActivationParams struct {
@@ -174,6 +174,8 @@ func (q *Queries) GetApprovedHarnessPairingIntentForActivation(ctx context.Conte
 		&i.ExpiresAt,
 		&i.Digest,
 		&i.Status,
+		&i.ProposalRequestKey,
+		&i.ProposalRequestFingerprint,
 		&i.ChallengeID,
 		&i.DecisionID,
 		&i.Decision,
@@ -247,7 +249,7 @@ func (q *Queries) GetHarnessPairingChallenge(ctx context.Context, id string) (Ha
 }
 
 const getHarnessPairingIntent = `-- name: GetHarnessPairingIntent :one
-SELECT id, project_id, kind, connection_id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, expected_generation, connection_expires_at, expires_at, digest, status, challenge_id, decision_id, decision, decision_request_key, owner_principal, confirmation_ref, decided_at, created_at, updated_at FROM harness_pairing_intents WHERE id=?
+SELECT id, project_id, kind, connection_id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, expected_generation, connection_expires_at, expires_at, digest, status, proposal_request_key, proposal_request_fingerprint, challenge_id, decision_id, decision, decision_request_key, owner_principal, confirmation_ref, decided_at, created_at, updated_at FROM harness_pairing_intents WHERE id=?
 `
 
 func (q *Queries) GetHarnessPairingIntent(ctx context.Context, id string) (HarnessPairingIntent, error) {
@@ -271,6 +273,53 @@ func (q *Queries) GetHarnessPairingIntent(ctx context.Context, id string) (Harne
 		&i.ExpiresAt,
 		&i.Digest,
 		&i.Status,
+		&i.ProposalRequestKey,
+		&i.ProposalRequestFingerprint,
+		&i.ChallengeID,
+		&i.DecisionID,
+		&i.Decision,
+		&i.DecisionRequestKey,
+		&i.OwnerPrincipal,
+		&i.ConfirmationRef,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getHarnessPairingIntentByProposalRequest = `-- name: GetHarnessPairingIntentByProposalRequest :one
+SELECT id, project_id, kind, connection_id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, expected_generation, connection_expires_at, expires_at, digest, status, proposal_request_key, proposal_request_fingerprint, challenge_id, decision_id, decision, decision_request_key, owner_principal, confirmation_ref, decided_at, created_at, updated_at FROM harness_pairing_intents WHERE app_run_id=? AND proposal_request_key=?
+`
+
+type GetHarnessPairingIntentByProposalRequestParams struct {
+	AppRunID           string
+	ProposalRequestKey string
+}
+
+func (q *Queries) GetHarnessPairingIntentByProposalRequest(ctx context.Context, arg GetHarnessPairingIntentByProposalRequestParams) (HarnessPairingIntent, error) {
+	row := q.db.QueryRowContext(ctx, getHarnessPairingIntentByProposalRequest, arg.AppRunID, arg.ProposalRequestKey)
+	var i HarnessPairingIntent
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Kind,
+		&i.ConnectionID,
+		&i.InstallationID,
+		&i.AdapterDigest,
+		&i.HarnessIdentity,
+		&i.ProviderVersion,
+		&i.ProtocolFingerprint,
+		&i.MissionID,
+		&i.AppRunID,
+		&i.CapabilityClasses,
+		&i.ExpectedGeneration,
+		&i.ConnectionExpiresAt,
+		&i.ExpiresAt,
+		&i.Digest,
+		&i.Status,
+		&i.ProposalRequestKey,
+		&i.ProposalRequestFingerprint,
 		&i.ChallengeID,
 		&i.DecisionID,
 		&i.Decision,
@@ -378,29 +427,31 @@ func (q *Queries) InsertHarnessPairingChallenge(ctx context.Context, arg InsertH
 }
 
 const insertHarnessPairingIntent = `-- name: InsertHarnessPairingIntent :execrows
-INSERT INTO harness_pairing_intents(id,project_id,kind,connection_id,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,expected_generation,connection_expires_at,expires_at,digest,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+INSERT INTO harness_pairing_intents(id,project_id,kind,connection_id,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,expected_generation,connection_expires_at,expires_at,digest,status,proposal_request_key,proposal_request_fingerprint,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 `
 
 type InsertHarnessPairingIntentParams struct {
-	ID                  string
-	ProjectID           string
-	Kind                string
-	ConnectionID        string
-	InstallationID      string
-	AdapterDigest       string
-	HarnessIdentity     string
-	ProviderVersion     string
-	ProtocolFingerprint string
-	MissionID           string
-	AppRunID            string
-	CapabilityClasses   string
-	ExpectedGeneration  int64
-	ConnectionExpiresAt time.Time
-	ExpiresAt           time.Time
-	Digest              string
-	Status              string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                         string
+	ProjectID                  string
+	Kind                       string
+	ConnectionID               string
+	InstallationID             string
+	AdapterDigest              string
+	HarnessIdentity            string
+	ProviderVersion            string
+	ProtocolFingerprint        string
+	MissionID                  string
+	AppRunID                   string
+	CapabilityClasses          string
+	ExpectedGeneration         int64
+	ConnectionExpiresAt        time.Time
+	ExpiresAt                  time.Time
+	Digest                     string
+	Status                     string
+	ProposalRequestKey         string
+	ProposalRequestFingerprint string
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
 }
 
 func (q *Queries) InsertHarnessPairingIntent(ctx context.Context, arg InsertHarnessPairingIntentParams) (int64, error) {
@@ -422,6 +473,8 @@ func (q *Queries) InsertHarnessPairingIntent(ctx context.Context, arg InsertHarn
 		arg.ExpiresAt,
 		arg.Digest,
 		arg.Status,
+		arg.ProposalRequestKey,
+		arg.ProposalRequestFingerprint,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -525,7 +578,7 @@ func (q *Queries) ListHarnessConnections(ctx context.Context, arg ListHarnessCon
 }
 
 const listHarnessPairingIntents = `-- name: ListHarnessPairingIntents :many
-SELECT id, project_id, kind, connection_id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, expected_generation, connection_expires_at, expires_at, digest, status, challenge_id, decision_id, decision, decision_request_key, owner_principal, confirmation_ref, decided_at, created_at, updated_at FROM harness_pairing_intents WHERE (?='' OR project_id=?) ORDER BY updated_at DESC,id LIMIT ?
+SELECT id, project_id, kind, connection_id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, expected_generation, connection_expires_at, expires_at, digest, status, proposal_request_key, proposal_request_fingerprint, challenge_id, decision_id, decision, decision_request_key, owner_principal, confirmation_ref, decided_at, created_at, updated_at FROM harness_pairing_intents WHERE (?='' OR project_id=?) ORDER BY updated_at DESC,id LIMIT ?
 `
 
 type ListHarnessPairingIntentsParams struct {
@@ -561,6 +614,8 @@ func (q *Queries) ListHarnessPairingIntents(ctx context.Context, arg ListHarness
 			&i.ExpiresAt,
 			&i.Digest,
 			&i.Status,
+			&i.ProposalRequestKey,
+			&i.ProposalRequestFingerprint,
 			&i.ChallengeID,
 			&i.DecisionID,
 			&i.Decision,
@@ -639,6 +694,24 @@ type RecordHarnessPairingResultParams struct {
 
 func (q *Queries) RecordHarnessPairingResult(ctx context.Context, arg RecordHarnessPairingResultParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, recordHarnessPairingResult, arg.ResultCode, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const supersedeLiveHarnessPairingIntents = `-- name: SupersedeLiveHarnessPairingIntents :execrows
+UPDATE harness_pairing_intents SET status='superseded',updated_at=? WHERE connection_id=? AND expected_generation=? AND status IN ('requested','approved')
+`
+
+type SupersedeLiveHarnessPairingIntentsParams struct {
+	UpdatedAt          time.Time
+	ConnectionID       string
+	ExpectedGeneration int64
+}
+
+func (q *Queries) SupersedeLiveHarnessPairingIntents(ctx context.Context, arg SupersedeLiveHarnessPairingIntentsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, supersedeLiveHarnessPairingIntents, arg.UpdatedAt, arg.ConnectionID, arg.ExpectedGeneration)
 	if err != nil {
 		return 0, err
 	}

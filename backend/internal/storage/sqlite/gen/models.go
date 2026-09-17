@@ -654,32 +654,34 @@ type HarnessPairingChallenge struct {
 }
 
 type HarnessPairingIntent struct {
-	ID                  string
-	ProjectID           string
-	Kind                string
-	ConnectionID        string
-	InstallationID      string
-	AdapterDigest       string
-	HarnessIdentity     string
-	ProviderVersion     string
-	ProtocolFingerprint string
-	MissionID           string
-	AppRunID            string
-	CapabilityClasses   string
-	ExpectedGeneration  int64
-	ConnectionExpiresAt time.Time
-	ExpiresAt           time.Time
-	Digest              string
-	Status              string
-	ChallengeID         sql.NullString
-	DecisionID          string
-	Decision            string
-	DecisionRequestKey  string
-	OwnerPrincipal      string
-	ConfirmationRef     string
-	DecidedAt           sql.NullTime
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                         string
+	ProjectID                  string
+	Kind                       string
+	ConnectionID               string
+	InstallationID             string
+	AdapterDigest              string
+	HarnessIdentity            string
+	ProviderVersion            string
+	ProtocolFingerprint        string
+	MissionID                  string
+	AppRunID                   string
+	CapabilityClasses          string
+	ExpectedGeneration         int64
+	ConnectionExpiresAt        time.Time
+	ExpiresAt                  time.Time
+	Digest                     string
+	Status                     string
+	ProposalRequestKey         string
+	ProposalRequestFingerprint string
+	ChallengeID                sql.NullString
+	DecisionID                 string
+	Decision                   string
+	DecisionRequestKey         string
+	OwnerPrincipal             string
+	ConfirmationRef            string
+	DecidedAt                  sql.NullTime
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
 }
 
 type IntakeAnalysisRequest struct {

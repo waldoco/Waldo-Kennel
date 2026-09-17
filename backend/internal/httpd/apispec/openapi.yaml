@@ -490,7 +490,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+                $ref: '#/components/schemas/ControllersHarnessConnectionListResponse'
           description: OK
         "500":
           content:
@@ -521,7 +521,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+                $ref: '#/components/schemas/ControllersHarnessConnectionDetailResponse'
           description: OK
         "404":
           content:
@@ -563,7 +563,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+                $ref: '#/components/schemas/ControllersHarnessPairingIntentListResponse'
           description: OK
         "500":
           content:
@@ -594,7 +594,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SpecgenHarnessListResponse'
+                $ref: '#/components/schemas/ControllersHarnessPairingIntentDetailResponse'
           description: OK
         "404":
           content:
@@ -10159,6 +10159,49 @@ components:
       - costUsd
       - costEstimated
       type: object
+    ControllersAuthorityReceiptView:
+      properties:
+        action:
+          type: string
+        confirmed:
+          type: boolean
+        createdAt:
+          format: date-time
+          type: string
+        expectedGeneration:
+          format: int64
+          type: integer
+        id:
+          type: string
+        targetDigest:
+          type: string
+        targetId:
+          type: string
+        targetType:
+          type: string
+      required:
+      - id
+      - action
+      - targetType
+      - targetId
+      - targetDigest
+      - expectedGeneration
+      - confirmed
+      - createdAt
+      type: object
+    ControllersCapabilityView:
+      properties:
+        class:
+          type: string
+        effect:
+          type: string
+        material:
+          type: boolean
+      required:
+      - class
+      - effect
+      - material
+      type: object
     ControllersChangeOutcomeDeletionRequest:
       properties:
         action:
@@ -10203,6 +10246,45 @@ components:
       - protocolDigest
       - matchesGenerated
       - negotiatedAt
+      type: object
+    ControllersConnectionView:
+      properties:
+        actionNeededCommands:
+          format: int64
+          type: integer
+        capabilities:
+          items:
+            $ref: '#/components/schemas/ControllersCapabilityView'
+          type: array
+        digest:
+          type: string
+        expiresAt:
+          format: date-time
+          type: string
+        generation:
+          format: int64
+          type: integer
+        id:
+          type: string
+        revokedAt:
+          format: date-time
+          type:
+          - "null"
+          - string
+        updatedAt:
+          format: date-time
+          type: string
+        version:
+          type: string
+      required:
+      - id
+      - version
+      - digest
+      - capabilities
+      - generation
+      - expiresAt
+      - actionNeededCommands
+      - updatedAt
       type: object
     ControllersDocumentSourceResponse:
       properties:
@@ -10294,6 +10376,76 @@ components:
       - state
       - quiescence
       - since
+      type: object
+    ControllersHarnessConnectionDetailData:
+      properties:
+        connection:
+          $ref: '#/components/schemas/ControllersConnectionView'
+        receipts:
+          items:
+            $ref: '#/components/schemas/ControllersAuthorityReceiptView'
+          type: array
+      required:
+      - connection
+      - receipts
+      type: object
+    ControllersHarnessConnectionDetailResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessConnectionDetailData'
+      required:
+      - data
+      type: object
+    ControllersHarnessConnectionListData:
+      properties:
+        connections:
+          items:
+            $ref: '#/components/schemas/ControllersConnectionView'
+          type: array
+      required:
+      - connections
+      type: object
+    ControllersHarnessConnectionListResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessConnectionListData'
+      required:
+      - data
+      type: object
+    ControllersHarnessPairingIntentDetailData:
+      properties:
+        intent:
+          $ref: '#/components/schemas/ControllersPairingIntentView'
+        receipts:
+          items:
+            $ref: '#/components/schemas/ControllersAuthorityReceiptView'
+          type: array
+      required:
+      - intent
+      - receipts
+      type: object
+    ControllersHarnessPairingIntentDetailResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessPairingIntentDetailData'
+      required:
+      - data
+      type: object
+    ControllersHarnessPairingIntentListData:
+      properties:
+        intents:
+          items:
+            $ref: '#/components/schemas/ControllersPairingIntentView'
+          type: array
+      required:
+      - intents
+      type: object
+    ControllersHarnessPairingIntentListResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ControllersHarnessPairingIntentListData'
+      required:
+      - data
       type: object
     ControllersIntakeAnalysisRequestEnvelope:
       properties:
@@ -10920,6 +11072,44 @@ components:
       required:
       - workUnitId
       - usage
+      type: object
+    ControllersPairingIntentView:
+      properties:
+        capabilities:
+          items:
+            $ref: '#/components/schemas/ControllersCapabilityView'
+          type: array
+        connectionId:
+          type: string
+        digest:
+          type: string
+        expectedGeneration:
+          format: int64
+          type: integer
+        id:
+          type: string
+        kind:
+          type: string
+        proofState:
+          type: string
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        version:
+          type: string
+      required:
+      - id
+      - version
+      - digest
+      - kind
+      - connectionId
+      - capabilities
+      - expectedGeneration
+      - status
+      - proofState
+      - updatedAt
       type: object
     ControllersRepositoryContextLimitsResponse:
       properties:
@@ -15699,16 +15889,6 @@ components:
       - session
       - promptBytes
       - systemPromptBytes
-      type: object
-    SpecgenHarnessListResponse:
-      properties:
-        data:
-          additionalProperties: {}
-          type:
-          - object
-          - "null"
-      required:
-      - data
       type: object
     StageSessionAttachmentsRequest:
       properties:

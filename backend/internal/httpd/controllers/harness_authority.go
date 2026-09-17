@@ -47,11 +47,11 @@ func (c *HarnessAuthorityController) listIntents(w http.ResponseWriter, r *http.
 		internalHarnessError(w, r)
 		return
 	}
-	out := make([]pairingIntentView, len(v))
+	out := make([]PairingIntentView, len(v))
 	for i, x := range v {
-		out[i] = intentView(x, c.now())
+		out[i] = c.intentView(r.Context(), x)
 	}
-	envelope.WriteJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"intents": out}})
+	envelope.WriteJSON(w, http.StatusOK, HarnessPairingIntentListResponse{Data: HarnessPairingIntentListData{Intents: out}})
 }
 func (c *HarnessAuthorityController) getIntent(w http.ResponseWriter, r *http.Request) {
 	if c.unavailable(w, r, "GET", "/api/v1/harness-pairing-intents/{intentId}") {
@@ -67,7 +67,7 @@ func (c *HarnessAuthorityController) getIntent(w http.ResponseWriter, r *http.Re
 		return
 	}
 	receipts, _ := c.Svc.ListHarnessAuthorityReceipts(r.Context(), "pairing_intent", string(v.ID))
-	envelope.WriteJSON(w, 200, map[string]any{"data": map[string]any{"intent": intentView(v, c.now()), "receipts": receiptViews(receipts)}})
+	envelope.WriteJSON(w, 200, HarnessPairingIntentDetailResponse{Data: HarnessPairingIntentDetailData{Intent: c.intentView(r.Context(), v), Receipts: receiptViews(receipts)}})
 }
 func (c *HarnessAuthorityController) listConnections(w http.ResponseWriter, r *http.Request) {
 	if c.unavailable(w, r, "GET", "/api/v1/harness-connections") {
@@ -78,11 +78,11 @@ func (c *HarnessAuthorityController) listConnections(w http.ResponseWriter, r *h
 		internalHarnessError(w, r)
 		return
 	}
-	out := make([]connectionView, 0, len(v))
+	out := make([]ConnectionView, 0, len(v))
 	for _, x := range v {
 		out = append(out, c.connection(r, x))
 	}
-	envelope.WriteJSON(w, 200, map[string]any{"data": map[string]any{"connections": out}})
+	envelope.WriteJSON(w, 200, HarnessConnectionListResponse{Data: HarnessConnectionListData{Connections: out}})
 }
 func (c *HarnessAuthorityController) getConnection(w http.ResponseWriter, r *http.Request) {
 	if c.unavailable(w, r, "GET", "/api/v1/harness-connections/{connectionId}") {
@@ -98,10 +98,10 @@ func (c *HarnessAuthorityController) getConnection(w http.ResponseWriter, r *htt
 		return
 	}
 	receipts, _ := c.Svc.ListHarnessAuthorityReceipts(r.Context(), "harness_connection", string(v.ID))
-	envelope.WriteJSON(w, 200, map[string]any{"data": map[string]any{"connection": c.connection(r, v), "receipts": receiptViews(receipts)}})
+	envelope.WriteJSON(w, 200, HarnessConnectionDetailResponse{Data: HarnessConnectionDetailData{Connection: c.connection(r, v), Receipts: receiptViews(receipts)}})
 }
 
-type authorityReceiptView struct {
+type AuthorityReceiptView struct {
 	ID                 string              `json:"id"`
 	Action             string              `json:"action"`
 	TargetType         string              `json:"targetType"`
@@ -112,30 +112,30 @@ type authorityReceiptView struct {
 	CreatedAt          time.Time           `json:"createdAt"`
 }
 
-func receiptViews(in []domain.HarnessAuthorityReceipt) []authorityReceiptView {
-	out := make([]authorityReceiptView, len(in))
+func receiptViews(in []domain.HarnessAuthorityReceipt) []AuthorityReceiptView {
+	out := make([]AuthorityReceiptView, len(in))
 	for i, r := range in {
-		out[i] = authorityReceiptView{ID: r.ID, Action: r.Action, TargetType: r.TargetType, TargetID: r.TargetID, TargetDigest: r.TargetDigest, ExpectedGeneration: r.ExpectedGeneration, Confirmed: r.ConfirmationRef != "", CreatedAt: r.CreatedAt}
+		out[i] = AuthorityReceiptView{ID: r.ID, Action: r.Action, TargetType: r.TargetType, TargetID: r.TargetID, TargetDigest: r.TargetDigest, ExpectedGeneration: r.ExpectedGeneration, Confirmed: r.ConfirmationRef != "", CreatedAt: r.CreatedAt}
 	}
 	return out
 }
 
-type capabilityView struct {
+type CapabilityView struct {
 	Class    domain.HarnessCapabilityClass `json:"class"`
 	Effect   string                        `json:"effect"`
 	Material bool                          `json:"material"`
 }
 
-func capabilities(v []domain.HarnessCapabilityClass) []capabilityView {
-	out := make([]capabilityView, len(v))
+func capabilities(v []domain.HarnessCapabilityClass) []CapabilityView {
+	out := make([]CapabilityView, len(v))
 	for i, x := range v {
 		owner, mapped := domain.OwnerCommandClassForTransport(x)
-		out[i] = capabilityView{x, string(x), mapped && owner.Material()}
+		out[i] = CapabilityView{x, string(x), mapped && owner.Material()}
 	}
 	return out
 }
 
-type pairingIntentView struct {
+type PairingIntentView struct {
 	ID                                               domain.PairingChallengeID  `json:"id"`
 	Version                                          string                     `json:"version"`
 	Digest                                           domain.SHA256Digest        `json:"digest"`
@@ -144,7 +144,7 @@ type pairingIntentView struct {
 	InstallationID, HarnessIdentity, ProviderVersion string
 	AdapterDigest, ProtocolFingerprint               domain.SHA256Digest
 	MissionID                                        string
-	Capabilities                                     []capabilityView `json:"capabilities"`
+	Capabilities                                     []CapabilityView `json:"capabilities"`
 	ExpectedGeneration                               int64            `json:"expectedGeneration"`
 	ConnectionExpiresAt, ExpiresAt                   time.Time
 	Status                                           string    `json:"status"`
@@ -152,29 +152,52 @@ type pairingIntentView struct {
 	UpdatedAt                                        time.Time `json:"updatedAt"`
 }
 
-func intentView(v domain.HarnessPairingIntent, now time.Time) pairingIntentView {
+type harnessChallengeReader interface {
+	GetHarnessPairingChallenge(context.Context, domain.PairingChallengeID) (domain.HarnessPairingChallenge, bool, error)
+}
+
+func (c *HarnessAuthorityController) intentView(ctx context.Context, v domain.HarnessPairingIntent) PairingIntentView {
 	status := string(v.Status)
-	if now.IsZero() {
-		now = time.Now()
-	}
-	if !now.UTC().Before(v.ExpiresAt) && v.Status != domain.HarnessPairingIntentDenied && v.Status != domain.HarnessPairingIntentActive {
+	now := c.now()
+	if !now.Before(v.ExpiresAt) && v.Status != domain.HarnessPairingIntentDenied && v.Status != domain.HarnessPairingIntentActive {
 		status = "expired"
 	}
 	proof := "not_started"
-	if v.Status == domain.HarnessPairingIntentActive {
+	if v.Status == domain.HarnessPairingIntentSuperseded {
+		proof = "superseded"
+	} else if status == "expired" {
+		proof = "expired"
+	} else if v.ChallengeID != nil {
 		proof = "pending"
+		if cr, ok := c.Svc.(harnessChallengeReader); ok {
+			if ch, found, err := cr.GetHarnessPairingChallenge(ctx, *v.ChallengeID); err == nil && found {
+				switch {
+				case ch.Status == domain.HarnessPairingSuperseded || (ch.ResultCode != nil && *ch.ResultCode == domain.HarnessPairingResultSuperseded):
+					proof = "superseded"
+				case ch.ResultCode != nil && *ch.ResultCode == domain.HarnessPairingResultExpired:
+					proof = "expired"
+				case ch.ResultCode != nil && *ch.ResultCode == domain.HarnessPairingResultSucceeded:
+					proof = "succeeded"
+					if conn, found, err := c.Svc.GetHarnessConnection(ctx, v.ConnectionID); err != nil || !found || conn.Generation != v.ExpectedGeneration {
+						proof = "superseded"
+					}
+				case ch.ResultCode != nil:
+					proof = "failed"
+				}
+			}
+		}
 	}
-	return pairingIntentView{v.ID, "v1", v.Digest, v.Kind, v.ConnectionID, v.InstallationID, v.HarnessIdentity, v.ProviderVersion, v.AdapterDigest, v.ProtocolFingerprint, v.MissionID, capabilities(v.CapabilityClasses), v.ExpectedGeneration, v.ConnectionExpiresAt, v.ExpiresAt, status, proof, v.UpdatedAt}
+	return PairingIntentView{v.ID, "v1", v.Digest, v.Kind, v.ConnectionID, v.InstallationID, v.HarnessIdentity, v.ProviderVersion, v.AdapterDigest, v.ProtocolFingerprint, v.MissionID, capabilities(v.CapabilityClasses), v.ExpectedGeneration, v.ConnectionExpiresAt, v.ExpiresAt, status, proof, v.UpdatedAt}
 }
 
-type connectionView struct {
+type ConnectionView struct {
 	ID                                               domain.HarnessConnectionID `json:"id"`
 	Version                                          string                     `json:"version"`
 	Digest                                           domain.SHA256Digest        `json:"digest"`
 	InstallationID, HarnessIdentity, ProviderVersion string
 	AdapterDigest, ProtocolFingerprint               domain.SHA256Digest
 	MissionID                                        string
-	Capabilities                                     []capabilityView `json:"capabilities"`
+	Capabilities                                     []CapabilityView `json:"capabilities"`
 	Generation                                       int64            `json:"generation"`
 	ExpiresAt                                        time.Time        `json:"expiresAt"`
 	RevokedAt                                        *time.Time       `json:"revokedAt,omitempty"`
@@ -183,12 +206,12 @@ type connectionView struct {
 	UpdatedAt                                        time.Time `json:"updatedAt"`
 }
 
-func (c *HarnessAuthorityController) connection(r *http.Request, v domain.HarnessConnection) connectionView {
+func (c *HarnessAuthorityController) connection(r *http.Request, v domain.HarnessConnection) ConnectionView {
 	d, _ := v.AuthorityDigest()
 	now := c.now()
 	eval := domain.EvaluateHarnessConnection(&v, domain.HarnessConnectionFacts{InstallationID: v.InstallationID, HarnessIdentity: v.HarnessIdentity, MissionID: v.MissionID, AppRunID: v.AppRunID, AdapterDigest: v.AdapterDigest, ProtocolFingerprint: v.ProtocolFingerprint, Generation: v.Generation, RequiredCapabilities: v.CapabilityClasses, Now: now})
 	n, _ := c.Svc.CountHarnessCommandConsequences(r.Context(), v.ID, v.Generation)
-	return connectionView{v.ID, "v1", d, v.InstallationID, v.HarnessIdentity, v.ProviderVersion, v.AdapterDigest, v.ProtocolFingerprint, v.MissionID, capabilities(v.CapabilityClasses), v.Generation, v.ExpiresAt, v.RevokedAt, string(eval.State), string(eval.Reason), string(eval.Repair), n, v.UpdatedAt}
+	return ConnectionView{v.ID, "v1", d, v.InstallationID, v.HarnessIdentity, v.ProviderVersion, v.AdapterDigest, v.ProtocolFingerprint, v.MissionID, capabilities(v.CapabilityClasses), v.Generation, v.ExpiresAt, v.RevokedAt, string(eval.State), string(eval.Reason), string(eval.Repair), n, v.UpdatedAt}
 }
 func (c *HarnessAuthorityController) now() time.Time {
 	if c.Now != nil {
@@ -205,4 +228,32 @@ func limit(r *http.Request) int {
 }
 func internalHarnessError(w http.ResponseWriter, r *http.Request) {
 	envelope.WriteAPIError(w, r, 500, "internal", "HARNESS_AUTHORITY_FAILED", "Harness authority state could not be read", nil)
+}
+
+// Typed harness-authority response envelopes are shared with the generated API spec.
+type HarnessPairingIntentListData struct {
+	Intents []PairingIntentView `json:"intents"`
+}
+type HarnessPairingIntentListResponse struct {
+	Data HarnessPairingIntentListData `json:"data"`
+}
+type HarnessPairingIntentDetailData struct {
+	Intent   PairingIntentView      `json:"intent"`
+	Receipts []AuthorityReceiptView `json:"receipts"`
+}
+type HarnessPairingIntentDetailResponse struct {
+	Data HarnessPairingIntentDetailData `json:"data"`
+}
+type HarnessConnectionListData struct {
+	Connections []ConnectionView `json:"connections"`
+}
+type HarnessConnectionListResponse struct {
+	Data HarnessConnectionListData `json:"data"`
+}
+type HarnessConnectionDetailData struct {
+	Connection ConnectionView         `json:"connection"`
+	Receipts   []AuthorityReceiptView `json:"receipts"`
+}
+type HarnessConnectionDetailResponse struct {
+	Data HarnessConnectionDetailData `json:"data"`
 }

@@ -17,11 +17,12 @@ const (
 	HarnessPairingIntentActive           HarnessPairingIntentStatus = "challenge_active"
 	HarnessPairingIntentDenied           HarnessPairingIntentStatus = "denied"
 	HarnessPairingIntentActivationFailed HarnessPairingIntentStatus = "activation_failed"
+	HarnessPairingIntentSuperseded       HarnessPairingIntentStatus = "superseded"
 )
 
 func (s HarnessPairingIntentStatus) Valid() bool {
 	switch s {
-	case HarnessPairingIntentRequested, HarnessPairingIntentApproved, HarnessPairingIntentActivating, HarnessPairingIntentActive, HarnessPairingIntentDenied, HarnessPairingIntentActivationFailed:
+	case HarnessPairingIntentRequested, HarnessPairingIntentApproved, HarnessPairingIntentActivating, HarnessPairingIntentActive, HarnessPairingIntentDenied, HarnessPairingIntentActivationFailed, HarnessPairingIntentSuperseded:
 		return true
 	}
 	return false
@@ -46,6 +47,8 @@ type HarnessPairingIntent struct {
 	Digest                                                                    SHA256Digest               `json:"digest"`
 	Status                                                                    HarnessPairingIntentStatus `json:"status"`
 	ChallengeID                                                               *PairingChallengeID        `json:"challengeId,omitempty"`
+	ProposalRequestKey                                                        string
+	ProposalRequestFingerprint                                                SHA256Digest
 	DecisionID, Decision, DecisionRequestKey, OwnerPrincipal, ConfirmationRef string
 	DecidedAt                                                                 *time.Time
 	CreatedAt, UpdatedAt                                                      time.Time
@@ -77,7 +80,7 @@ func (i HarnessPairingIntent) ComputedDigest() (SHA256Digest, error) {
 	return DigestSHA256(b), nil
 }
 func (i HarnessPairingIntent) Validate() error {
-	if strings.TrimSpace(string(i.ID)) == "" || strings.TrimSpace(string(i.ProjectID)) == "" || !i.Kind.Valid() || strings.TrimSpace(string(i.ConnectionID)) == "" || strings.TrimSpace(i.InstallationID) == "" || !i.AdapterDigest.Valid() || strings.TrimSpace(i.HarnessIdentity) == "" || strings.TrimSpace(i.ProviderVersion) == "" || !i.ProtocolFingerprint.Valid() || strings.TrimSpace(i.MissionID) == "" || strings.TrimSpace(i.AppRunID) == "" || i.ExpectedGeneration < 1 || i.CreatedAt.IsZero() || i.UpdatedAt.Before(i.CreatedAt) || !i.ExpiresAt.After(i.CreatedAt) || !i.ConnectionExpiresAt.After(i.CreatedAt) || !i.Status.Valid() {
+	if strings.TrimSpace(string(i.ID)) == "" || strings.TrimSpace(string(i.ProjectID)) == "" || !i.Kind.Valid() || strings.TrimSpace(string(i.ConnectionID)) == "" || strings.TrimSpace(i.InstallationID) == "" || !i.AdapterDigest.Valid() || strings.TrimSpace(i.HarnessIdentity) == "" || strings.TrimSpace(i.ProviderVersion) == "" || !i.ProtocolFingerprint.Valid() || strings.TrimSpace(i.MissionID) == "" || strings.TrimSpace(i.AppRunID) == "" || i.ExpectedGeneration < 1 || i.CreatedAt.IsZero() || i.UpdatedAt.Before(i.CreatedAt) || !i.ExpiresAt.After(i.CreatedAt) || !i.ConnectionExpiresAt.After(i.CreatedAt) || !i.Status.Valid() || strings.TrimSpace(i.ProposalRequestKey) == "" || !i.ProposalRequestFingerprint.Valid() {
 		return ErrHarnessPairingIntentInvalid
 	}
 	classes, e := NormalizeHarnessCapabilities(i.CapabilityClasses)

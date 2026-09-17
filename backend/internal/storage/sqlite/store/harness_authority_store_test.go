@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func seedIntent(t *testing.T) (*harnesspairing.Coordinator, *harnessconnection.K
 	}
 	k := harnessconnection.New(s)
 	c := harnesspairing.New(s, k)
-	v := domain.HarnessPairingIntent{ID: "intent-1", ProjectID: "project-1", Kind: domain.HarnessPairingKindPair, ConnectionID: "connection-1", InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "mission", AppRunID: "run", CapabilityClasses: []domain.HarnessCapabilityClass{domain.HarnessCapabilityTurn}, ExpectedGeneration: 1, ConnectionExpiresAt: now.Add(24 * time.Hour), ExpiresAt: now.Add(time.Hour), Status: domain.HarnessPairingIntentRequested, CreatedAt: now, UpdatedAt: now}
+	v := domain.HarnessPairingIntent{ID: "intent-1", ProposalRequestKey: "proposal-key", ProposalRequestFingerprint: domain.DigestSHA256([]byte("proposal-request")), ProjectID: "project-1", Kind: domain.HarnessPairingKindPair, ConnectionID: "connection-1", InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "mission", AppRunID: "run", CapabilityClasses: []domain.HarnessCapabilityClass{domain.HarnessCapabilityTurn}, ExpectedGeneration: 1, ConnectionExpiresAt: now.Add(24 * time.Hour), ExpiresAt: now.Add(time.Hour), Status: domain.HarnessPairingIntentRequested, CreatedAt: now, UpdatedAt: now}
 	v.Digest, _ = v.ComputedDigest()
 	if _, _, e := s.CreateHarnessPairingIntent(context.Background(), v); e != nil {
 		t.Fatal(e)
@@ -181,5 +182,67 @@ func TestHarnessAuthorityRevokeAtomicallyMarksCommandConsequences(t *testing.T) 
 	got, changed, consequences, err = f.store.RevokeHarnessConnectionWithReceipt(context.Background(), connection.ID, digest, connection.Generation, r, f.request.Now.Add(time.Second))
 	if err != nil || changed || got.RevokedAt == nil || consequences != 1 {
 		t.Fatalf("replay revoked=%+v changed=%v consequences=%d err=%v", got, changed, consequences, err)
+	}
+}
+
+func TestHarnessPairingProposalReplayAndCompetingSupersede(t *testing.T) {
+	_, _, raw, first := seedIntent(t)
+	s := raw.(interface {
+		CreateHarnessPairingIntent(context.Context, domain.HarnessPairingIntent) (domain.HarnessPairingIntent, bool, error)
+		GetHarnessPairingIntent(context.Context, domain.PairingChallengeID) (domain.HarnessPairingIntent, bool, error)
+	})
+	got, created, err := s.CreateHarnessPairingIntent(context.Background(), first)
+	if err != nil || created || got.ID != first.ID {
+		t.Fatalf("replay got=%s created=%v err=%v", got.ID, created, err)
+	}
+	changed := first
+	changed.ID = "intent-conflict"
+	changed.ProposalRequestFingerprint = domain.DigestSHA256([]byte("different-request"))
+	if _, _, err = s.CreateHarnessPairingIntent(context.Background(), changed); !errors.Is(err, domain.ErrHarnessAuthorityConflict) {
+		t.Fatalf("changed replay=%v", err)
+	}
+	next := first
+	next.ID = "intent-next"
+	next.ProposalRequestKey = "proposal-next"
+	next.ProposalRequestFingerprint = domain.DigestSHA256([]byte("proposal-next"))
+	next.CreatedAt = first.CreatedAt.Add(time.Second)
+	next.UpdatedAt = next.CreatedAt
+	next.Digest, _ = next.ComputedDigest()
+	if got, created, err = s.CreateHarnessPairingIntent(context.Background(), next); err != nil || !created || got.ID != next.ID {
+		t.Fatalf("next=%s created=%v err=%v", got.ID, created, err)
+	}
+	old, found, err := s.GetHarnessPairingIntent(context.Background(), first.ID)
+	if err != nil || !found || old.Status != domain.HarnessPairingIntentSuperseded {
+		t.Fatalf("old=%+v found=%v err=%v", old, found, err)
+	}
+}
+
+func TestHarnessPairingProposalConcurrentSingleLiveIntent(t *testing.T) {
+	_, _, raw, base := seedIntent(t)
+	s := raw.(interface {
+		CreateHarnessPairingIntent(context.Context, domain.HarnessPairingIntent) (domain.HarnessPairingIntent, bool, error)
+	})
+	const contenders = 12
+	start := make(chan struct{})
+	results := make(chan error, contenders)
+	for i := 0; i < contenders; i++ {
+		go func(i int) {
+			<-start
+			v := base
+			v.ID = domain.PairingChallengeID(fmt.Sprintf("race-%02d", i))
+			v.ProposalRequestKey = fmt.Sprintf("race-key-%02d", i)
+			v.ProposalRequestFingerprint = domain.DigestSHA256([]byte(v.ProposalRequestKey))
+			v.CreatedAt = base.CreatedAt.Add(time.Duration(i+1) * time.Second)
+			v.UpdatedAt = v.CreatedAt
+			v.Digest, _ = v.ComputedDigest()
+			_, _, err := s.CreateHarnessPairingIntent(context.Background(), v)
+			results <- err
+		}(i)
+	}
+	close(start)
+	for i := 0; i < contenders; i++ {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
 	}
 }

@@ -2,10 +2,12 @@ package harnesspairing
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"time"
@@ -15,7 +17,10 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 )
 
-const connectionDeadline = 10 * time.Second
+const (
+	connectionDeadline = 10 * time.Second
+	maxFrameBytes      = 64 << 10
+)
 
 // ServerConfig configures Server. Coordinator is required; every other field
 // has a fail-safe default.
@@ -132,15 +137,16 @@ func (s *Server) handle(conn net.Conn) {
 	// independent of s.now (which only times challenge/bearer business logic
 	// and may be an injected fixed clock in tests).
 	_ = conn.SetDeadline(time.Now().Add(connectionDeadline))
-	reader := bufio.NewReader(conn)
+	reader := bufio.NewReaderSize(io.LimitReader(conn, maxFrameBytes+1), maxFrameBytes+1)
 	line, err := reader.ReadBytes('\n')
-	if err != nil && len(line) == 0 {
+	if (err != nil && len(line) == 0) || len(line) > maxFrameBytes || len(line) == 0 || line[len(line)-1] != '\n' {
+		s.writeFailure(conn)
 		return
 	}
 	var probe struct {
 		Type string `json:"type"`
 	}
-	if jsonErr := json.Unmarshal(line, &probe); jsonErr != nil {
+	if jsonErr := decodeExactFrame(line, &probe, false); jsonErr != nil {
 		s.writeFailure(conn)
 		return
 	}
@@ -158,13 +164,36 @@ func (s *Server) handle(conn net.Conn) {
 // it always writes the same package-level byte slice. This is what makes
 // "every failure produces byte-identical bytes" a structural property of the
 // code, not a claim to verify by inspection.
+func decodeExactFrame(line []byte, out any, strict bool) error {
+	dec := json.NewDecoder(bytes.NewReader(line))
+	if strict {
+		dec.DisallowUnknownFields()
+	}
+	if err := dec.Decode(out); err != nil {
+		return err
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Server) writeFailure(conn net.Conn) {
 	_, _ = conn.Write(genericFailure)
 }
 
+// handleRequestChallenge is authenticated only to the daemon owner's local OS
+// account, not to an exact Kennel-launched harness process. A same-UID process
+// that learns the intent ID and digest can race activation and secret delivery.
+// This accepted early-build limitation is tracked in
+// docs/architecture/harness-pairing-security-debt.md and closes in B2.1.
 func (s *Server) handleRequestChallenge(conn net.Conn, line []byte) {
 	var req wireRequestChallenge
-	if json.Unmarshal(line, &req) != nil {
+	if decodeExactFrame(line, &req, true) != nil {
 		s.writeFailure(conn)
 		return
 	}
@@ -191,7 +220,7 @@ func (s *Server) handleRequestChallenge(conn net.Conn, line []byte) {
 
 func (s *Server) handleProve(conn net.Conn, line []byte) {
 	var req wireProve
-	if err := json.Unmarshal(line, &req); err != nil {
+	if err := decodeExactFrame(line, &req, true); err != nil {
 		s.writeFailure(conn)
 		return
 	}

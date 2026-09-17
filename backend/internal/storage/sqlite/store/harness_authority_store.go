@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -17,25 +16,34 @@ func (s *Store) CreateHarnessPairingIntent(ctx context.Context, in domain.Harnes
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	n, err := s.qw.InsertHarnessPairingIntent(ctx, harnessPairingIntentInsert(in))
-	if err != nil {
-		return domain.HarnessPairingIntent{}, false, fmt.Errorf("create harness pairing intent: %w", err)
-	}
-	if n == 1 {
-		return in, true, nil
-	}
-	row, e := s.qw.GetHarnessPairingIntent(ctx, string(in.ID))
-	if e != nil {
-		return domain.HarnessPairingIntent{}, false, e
-	}
-	got, e := harnessPairingIntentFromGen(row)
-	if e != nil {
-		return got, false, e
-	}
-	if got.Digest != in.Digest {
-		return got, false, domain.ErrHarnessAuthorityConflict
-	}
-	return got, false, nil
+	var out domain.HarnessPairingIntent
+	created := false
+	err := s.inTx(ctx, "replace live harness pairing intent", func(q *gen.Queries) error {
+		row, err := q.GetHarnessPairingIntentByProposalRequest(ctx, gen.GetHarnessPairingIntentByProposalRequestParams{AppRunID: in.AppRunID, ProposalRequestKey: in.ProposalRequestKey})
+		if err == nil {
+			out, err = harnessPairingIntentFromGen(row)
+			if err != nil {
+				return err
+			}
+			if out.ProposalRequestFingerprint != in.ProposalRequestFingerprint {
+				return domain.ErrHarnessAuthorityConflict
+			}
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if _, err = q.SupersedeLiveHarnessPairingIntents(ctx, gen.SupersedeLiveHarnessPairingIntentsParams{UpdatedAt: in.UpdatedAt, ConnectionID: string(in.ConnectionID), ExpectedGeneration: in.ExpectedGeneration}); err != nil {
+			return err
+		}
+		n, err := q.InsertHarnessPairingIntent(ctx, harnessPairingIntentInsert(in))
+		if err != nil || n != 1 {
+			return domain.ErrHarnessAuthorityConflict
+		}
+		out, created = in, true
+		return nil
+	})
+	return out, created, err
 }
 func (s *Store) GetHarnessPairingIntent(ctx context.Context, id domain.PairingChallengeID) (domain.HarnessPairingIntent, bool, error) {
 	row, e := s.qr.GetHarnessPairingIntent(ctx, string(id))
@@ -219,14 +227,14 @@ func (s *Store) CountHarnessCommandConsequences(ctx context.Context, id domain.H
 	return s.qr.CountHarnessCommandConsequences(ctx, gen.CountHarnessCommandConsequencesParams{HarnessConnectionID: string(id), ConnectionGeneration: g})
 }
 func harnessPairingIntentInsert(v domain.HarnessPairingIntent) gen.InsertHarnessPairingIntentParams {
-	return gen.InsertHarnessPairingIntentParams{ID: string(v.ID), ProjectID: string(v.ProjectID), Kind: string(v.Kind), ConnectionID: string(v.ConnectionID), InstallationID: v.InstallationID, AdapterDigest: v.AdapterDigest.String(), HarnessIdentity: v.HarnessIdentity, ProviderVersion: v.ProviderVersion, ProtocolFingerprint: v.ProtocolFingerprint.String(), MissionID: v.MissionID, AppRunID: v.AppRunID, CapabilityClasses: encodeHarnessCapabilities(v.CapabilityClasses), ExpectedGeneration: v.ExpectedGeneration, ConnectionExpiresAt: v.ConnectionExpiresAt.UTC(), ExpiresAt: v.ExpiresAt.UTC(), Digest: v.Digest.String(), Status: string(v.Status), CreatedAt: v.CreatedAt.UTC(), UpdatedAt: v.UpdatedAt.UTC()}
+	return gen.InsertHarnessPairingIntentParams{ID: string(v.ID), ProjectID: string(v.ProjectID), Kind: string(v.Kind), ConnectionID: string(v.ConnectionID), InstallationID: v.InstallationID, AdapterDigest: v.AdapterDigest.String(), HarnessIdentity: v.HarnessIdentity, ProviderVersion: v.ProviderVersion, ProtocolFingerprint: v.ProtocolFingerprint.String(), MissionID: v.MissionID, AppRunID: v.AppRunID, CapabilityClasses: encodeHarnessCapabilities(v.CapabilityClasses), ExpectedGeneration: v.ExpectedGeneration, ConnectionExpiresAt: v.ConnectionExpiresAt.UTC(), ExpiresAt: v.ExpiresAt.UTC(), Digest: v.Digest.String(), Status: string(v.Status), ProposalRequestKey: v.ProposalRequestKey, ProposalRequestFingerprint: v.ProposalRequestFingerprint.String(), CreatedAt: v.CreatedAt.UTC(), UpdatedAt: v.UpdatedAt.UTC()}
 }
 func harnessPairingIntentFromGen(r gen.HarnessPairingIntent) (domain.HarnessPairingIntent, error) {
 	classes, e := decodeHarnessCapabilities(r.CapabilityClasses)
 	if e != nil {
 		return domain.HarnessPairingIntent{}, e
 	}
-	v := domain.HarnessPairingIntent{ID: domain.PairingChallengeID(r.ID), ProjectID: domain.ProjectID(r.ProjectID), Kind: domain.HarnessPairingKind(r.Kind), ConnectionID: domain.HarnessConnectionID(r.ConnectionID), InstallationID: r.InstallationID, AdapterDigest: domain.SHA256Digest(r.AdapterDigest), HarnessIdentity: r.HarnessIdentity, ProviderVersion: r.ProviderVersion, ProtocolFingerprint: domain.SHA256Digest(r.ProtocolFingerprint), MissionID: r.MissionID, AppRunID: r.AppRunID, CapabilityClasses: classes, ExpectedGeneration: r.ExpectedGeneration, ConnectionExpiresAt: r.ConnectionExpiresAt.UTC(), ExpiresAt: r.ExpiresAt.UTC(), Digest: domain.SHA256Digest(r.Digest), Status: domain.HarnessPairingIntentStatus(r.Status), DecisionID: r.DecisionID, Decision: r.Decision, DecisionRequestKey: r.DecisionRequestKey, OwnerPrincipal: r.OwnerPrincipal, ConfirmationRef: r.ConfirmationRef, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+	v := domain.HarnessPairingIntent{ID: domain.PairingChallengeID(r.ID), ProjectID: domain.ProjectID(r.ProjectID), Kind: domain.HarnessPairingKind(r.Kind), ConnectionID: domain.HarnessConnectionID(r.ConnectionID), InstallationID: r.InstallationID, AdapterDigest: domain.SHA256Digest(r.AdapterDigest), HarnessIdentity: r.HarnessIdentity, ProviderVersion: r.ProviderVersion, ProtocolFingerprint: domain.SHA256Digest(r.ProtocolFingerprint), MissionID: r.MissionID, AppRunID: r.AppRunID, CapabilityClasses: classes, ExpectedGeneration: r.ExpectedGeneration, ConnectionExpiresAt: r.ConnectionExpiresAt.UTC(), ExpiresAt: r.ExpiresAt.UTC(), Digest: domain.SHA256Digest(r.Digest), Status: domain.HarnessPairingIntentStatus(r.Status), ProposalRequestKey: r.ProposalRequestKey, ProposalRequestFingerprint: domain.SHA256Digest(r.ProposalRequestFingerprint), DecisionID: r.DecisionID, Decision: r.Decision, DecisionRequestKey: r.DecisionRequestKey, OwnerPrincipal: r.OwnerPrincipal, ConfirmationRef: r.ConfirmationRef, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
 	if r.ChallengeID.Valid {
 		x := domain.PairingChallengeID(r.ChallengeID.String)
 		v.ChallengeID = &x

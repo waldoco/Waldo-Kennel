@@ -5,7 +5,8 @@ CREATE TABLE harness_pairing_intents (
  harness_identity TEXT NOT NULL, provider_version TEXT NOT NULL, protocol_fingerprint TEXT NOT NULL CHECK(length(protocol_fingerprint)=64),
  mission_id TEXT NOT NULL, app_run_id TEXT NOT NULL, capability_classes TEXT NOT NULL, expected_generation INTEGER NOT NULL CHECK(expected_generation>=1),
  connection_expires_at TIMESTAMP NOT NULL, expires_at TIMESTAMP NOT NULL, digest TEXT NOT NULL CHECK(length(digest)=64),
- status TEXT NOT NULL CHECK(status IN ('requested','approved','activating','challenge_active','denied','activation_failed')),
+ status TEXT NOT NULL CHECK(status IN ('requested','approved','activating','challenge_active','denied','activation_failed','superseded')),
+ proposal_request_key TEXT NOT NULL, proposal_request_fingerprint TEXT NOT NULL CHECK(length(proposal_request_fingerprint)=64),
  challenge_id TEXT REFERENCES harness_pairing_challenges(id), decision_id TEXT NOT NULL DEFAULT '', decision TEXT NOT NULL DEFAULT '',
  decision_request_key TEXT NOT NULL DEFAULT '', owner_principal TEXT NOT NULL DEFAULT '', confirmation_ref TEXT NOT NULL DEFAULT '', decided_at TIMESTAMP,
  created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL
@@ -14,6 +15,8 @@ DROP TRIGGER IF EXISTS command_authority_claims_immutable;
 CREATE TRIGGER command_authority_claims_immutable BEFORE UPDATE ON command_authority_claims
 WHEN NEW.id<>OLD.id OR NEW.adapter_request_key<>OLD.adapter_request_key OR NEW.request_fingerprint<>OLD.request_fingerprint OR NEW.owner_proof_id<>OLD.owner_proof_id OR NEW.harness_connection_id<>OLD.harness_connection_id OR NEW.connection_generation<>OLD.connection_generation OR NEW.connection_binding_digest<>OLD.connection_binding_digest OR NEW.connection_expires_at<>OLD.connection_expires_at OR NEW.transport_class<>OLD.transport_class OR NEW.app_run_id<>OLD.app_run_id OR NEW.mission_id<>OLD.mission_id OR NEW.content_digest<>OLD.content_digest OR NEW.target_digest<>OLD.target_digest OR NEW.owner_class<>OLD.owner_class OR NEW.canonical_version<>OLD.canonical_version OR NEW.canonical_payload<>OLD.canonical_payload OR NEW.destination_type<>OLD.destination_type OR NEW.destination_id<>OLD.destination_id OR NEW.created_at<>OLD.created_at
 BEGIN SELECT RAISE(ABORT,'command authority claim identity is immutable'); END;
+CREATE UNIQUE INDEX harness_pairing_intents_proposal_request ON harness_pairing_intents(app_run_id,proposal_request_key);
+CREATE UNIQUE INDEX harness_pairing_intents_live_generation ON harness_pairing_intents(connection_id,expected_generation) WHERE status IN ('requested','approved','activating','challenge_active');
 CREATE INDEX harness_pairing_intents_project_updated ON harness_pairing_intents(project_id,updated_at DESC,id);
 CREATE INDEX harness_pairing_intents_connection_updated ON harness_pairing_intents(connection_id,updated_at DESC,id);
 CREATE UNIQUE INDEX harness_pairing_intents_decision_request ON harness_pairing_intents(owner_principal,decision_request_key) WHERE decision_request_key<>'';
@@ -40,6 +43,8 @@ DROP TRIGGER IF EXISTS harness_authority_receipts_immutable;
 DROP TABLE IF EXISTS harness_authority_receipts;
 DROP TRIGGER IF EXISTS harness_pairing_intents_identity_immutable;
 DROP INDEX IF EXISTS harness_pairing_intents_decision_request;
+DROP INDEX IF EXISTS harness_pairing_intents_live_generation;
+DROP INDEX IF EXISTS harness_pairing_intents_proposal_request;
 DROP INDEX IF EXISTS harness_pairing_intents_connection_updated;
 DROP INDEX IF EXISTS harness_pairing_intents_project_updated;
 DROP TABLE IF EXISTS harness_pairing_intents;

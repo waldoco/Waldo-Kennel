@@ -37,6 +37,7 @@ type CreateIntentRequest struct {
 	CapabilityClasses                []domain.HarnessCapabilityClass
 	ExpectedGeneration               int64
 	ConnectionExpiresAt, ExpiresAt   time.Time
+	RequestKey, RequestFingerprint   string
 }
 
 func (s *Service) CreateIntent(ctx context.Context, r CreateIntentRequest) (domain.HarnessPairingIntent, bool, error) {
@@ -47,7 +48,7 @@ func (s *Service) CreateIntent(ctx context.Context, r CreateIntentRequest) (doma
 		r.ID = domain.PairingChallengeID("pair-intent-" + uuid.NewString())
 	}
 	now := s.now().UTC()
-	v := domain.HarnessPairingIntent{ID: r.ID, ProjectID: r.ProjectID, Kind: r.Kind, ConnectionID: r.ConnectionID, InstallationID: strings.TrimSpace(r.InstallationID), AdapterDigest: r.AdapterDigest, HarnessIdentity: strings.TrimSpace(r.HarnessIdentity), ProviderVersion: strings.TrimSpace(r.ProviderVersion), ProtocolFingerprint: r.ProtocolFingerprint, MissionID: strings.TrimSpace(r.MissionID), AppRunID: strings.TrimSpace(r.AppRunID), CapabilityClasses: r.CapabilityClasses, ExpectedGeneration: r.ExpectedGeneration, ConnectionExpiresAt: r.ConnectionExpiresAt.UTC(), ExpiresAt: r.ExpiresAt.UTC(), Status: domain.HarnessPairingIntentRequested, CreatedAt: now, UpdatedAt: now}
+	v := domain.HarnessPairingIntent{ID: r.ID, ProjectID: r.ProjectID, Kind: r.Kind, ConnectionID: r.ConnectionID, InstallationID: strings.TrimSpace(r.InstallationID), AdapterDigest: r.AdapterDigest, HarnessIdentity: strings.TrimSpace(r.HarnessIdentity), ProviderVersion: strings.TrimSpace(r.ProviderVersion), ProtocolFingerprint: r.ProtocolFingerprint, MissionID: strings.TrimSpace(r.MissionID), AppRunID: strings.TrimSpace(r.AppRunID), CapabilityClasses: r.CapabilityClasses, ExpectedGeneration: r.ExpectedGeneration, ConnectionExpiresAt: r.ConnectionExpiresAt.UTC(), ExpiresAt: r.ExpiresAt.UTC(), Status: domain.HarnessPairingIntentRequested, ProposalRequestKey: strings.TrimSpace(r.RequestKey), ProposalRequestFingerprint: domain.SHA256Digest(r.RequestFingerprint), CreatedAt: now, UpdatedAt: now}
 	var e error
 	v.Digest, e = v.ComputedDigest()
 	if e != nil {

@@ -2015,18 +2015,16 @@ type harnessConnectionQuery struct {
 	MissionID string `query:"missionId,omitempty"`
 	Limit     int    `query:"limit,omitempty" minimum:"1" maximum:"200"`
 }
-type harnessListResponse struct {
-	Data map[string]any `json:"data"`
-}
 
 func harnessAuthorityOperations() []operation {
-	ok := []respUnit{{http.StatusOK, harnessListResponse{}}, {http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}}
-	detail := []respUnit{{http.StatusOK, harnessListResponse{}}, {http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}}
+	common := []respUnit{{http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}}}
+	detailErrors := append(append([]respUnit(nil), common...), respUnit{http.StatusNotFound, envelope.APIError{}})
 	return []operation{
-		{method: http.MethodGet, path: "/api/v1/harness-pairing-intents", id: "listHarnessPairingIntents", tag: "harness-authority", summary: "List pairing intents", pathParams: []any{harnessIntentQuery{}}, resps: ok},
-		{method: http.MethodGet, path: "/api/v1/harness-pairing-intents/{intentId}", id: "getHarnessPairingIntent", tag: "harness-authority", summary: "Get pairing intent", pathParams: []any{harnessIntentParam{}}, resps: detail},
-		{method: http.MethodGet, path: "/api/v1/harness-connections", id: "listHarnessConnections", tag: "harness-authority", summary: "List harness connections", pathParams: []any{harnessConnectionQuery{}}, resps: ok},
-		{method: http.MethodGet, path: "/api/v1/harness-connections/{connectionId}", id: "getHarnessConnection", tag: "harness-authority", summary: "Get harness connection", pathParams: []any{harnessConnectionParam{}}, resps: detail}}
+		{method: http.MethodGet, path: "/api/v1/harness-pairing-intents", id: "listHarnessPairingIntents", tag: "harness-authority", summary: "List pairing intents", pathParams: []any{harnessIntentQuery{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessPairingIntentListResponse{}}}, common...)},
+		{method: http.MethodGet, path: "/api/v1/harness-pairing-intents/{intentId}", id: "getHarnessPairingIntent", tag: "harness-authority", summary: "Get pairing intent", pathParams: []any{harnessIntentParam{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessPairingIntentDetailResponse{}}}, detailErrors...)},
+		{method: http.MethodGet, path: "/api/v1/harness-connections", id: "listHarnessConnections", tag: "harness-authority", summary: "List harness connections", pathParams: []any{harnessConnectionQuery{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessConnectionListResponse{}}}, common...)},
+		{method: http.MethodGet, path: "/api/v1/harness-connections/{connectionId}", id: "getHarnessConnection", tag: "harness-authority", summary: "Get harness connection", pathParams: []any{harnessConnectionParam{}}, resps: append([]respUnit{{http.StatusOK, controllers.HarnessConnectionDetailResponse{}}}, detailErrors...)},
+	}
 }
 
 func eventOperations() []operation {

@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -382,5 +383,29 @@ func TestRequestChallengeWireCarriesOnlyIntentID(t *testing.T) {
 		if bytes.Contains(line, forbidden) {
 			t.Fatalf("wire leaked tuple field %q: %s", forbidden, line)
 		}
+	}
+}
+
+func TestServerRejectsOversizedUnknownAndSecondObjectFrames(t *testing.T) {
+	store := sqlitetest.MustOpen(t)
+	kernel := harnessconnection.New(store)
+	srv := &Server{coordinator: harnesspairing.New(store, kernel), intents: store, peerVerifier: allowPeerVerifier{}, now: time.Now, challengeTTL: time.Minute, connectionTTL: time.Hour, logger: nopLogger()}
+	cases := map[string][]byte{
+		"oversized":     append(bytes.Repeat([]byte("x"), maxFrameBytes), '\n'),
+		"unknown_field": []byte(`{"type":"prove","unknown":true}` + "\n"),
+		"second_object": []byte(`{"type":"request_challenge","intent_id":"x","intent_digest":"` + strings.Repeat("a", 64) + `"} {}` + "\n"),
+	}
+	for name, frame := range cases {
+		t.Run(name, func(t *testing.T) {
+			client, server := pipeClientServer(t, srv)
+			defer client.Close()
+			defer server.Close()
+			if _, err := client.Write(frame); err != nil {
+				t.Fatal(err)
+			}
+			if got := readLine(t, client); !bytes.Equal(got, genericFailure) {
+				t.Fatalf("response=%q", got)
+			}
+		})
 	}
 }
