@@ -26,7 +26,11 @@ finish() {
 		printf 'host=%s architecture=%s\n' "$(uname -s)" "$(uname -m)"
 		printf 'node=%s\n' "$(node --version 2>/dev/null || printf unavailable)"
 		printf 'go=%s\n' "$(go version 2>/dev/null || printf unavailable)"
-		printf 'proof=DMG contains exactly one Kennel.app; packaged CLI executes; CLI binary carries arm64; package identity checks pass\n'
+		if [[ "$status" -eq 0 ]]; then
+			printf 'proof=passed: DMG contains exactly one Kennel.app; mounted-image identity checks pass; packaged CLI executes; CLI binary carries arm64\n'
+		else
+			printf 'proof=failed: package claims were not established\n'
+		fi
 		printf 'limit=No Electron GUI/window-server launch or rendered UI is tested\n'
 		printf '\nLast 350 build/proof lines:\n'
 		tail -n 350 "$raw_log"
@@ -72,11 +76,21 @@ if [[ "$app_count" -ne 1 ]]; then
 	exit 1
 fi
 app="$(find "$mount_point" -maxdepth 2 -type d -name 'Kennel.app' -print)"
+# Re-run identity validation against the delivered app inside the mounted DMG,
+# not only Forge's unpacked pre-image.
+run_logged node ./frontend/scripts/assert-package-identity.mjs "$app"
+
 bundled_cli="$app/Contents/Resources/daemon/kennel"
-if [[ ! -x "$bundled_cli" ]]; then
-	echo "DMG packaged CLI is missing or not executable: $bundled_cli" >> "$raw_log"
+if [[ ! -f "$bundled_cli" || -L "$bundled_cli" || ! -x "$bundled_cli" ]]; then
+	echo "DMG packaged CLI must be a regular, non-symlink executable: $bundled_cli" >> "$raw_log"
 	exit 1
 fi
+mount_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$mount_point")"
+cli_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$bundled_cli")"
+case "$cli_real" in
+	"$mount_real"/*) ;;
+	*) echo "DMG packaged CLI resolves outside the mounted image: $cli_real" >> "$raw_log"; exit 1 ;;
+esac
 run_logged "$bundled_cli" --version
 archs="$(lipo -archs "$bundled_cli")"
 printf 'packaged CLI architectures: %s\n' "$archs" >> "$raw_log"
