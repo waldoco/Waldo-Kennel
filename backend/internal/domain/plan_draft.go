@@ -87,6 +87,32 @@ type PlanDraftDependencyInput struct {
 	Required string
 }
 
+type PlanDraftValidationCode string
+
+const (
+	PlanDraftRoleInvalid              PlanDraftValidationCode = "PLAN_WORK_UNIT_ROLE_INVALID"
+	PlanDraftRoleIntentConflict       PlanDraftValidationCode = "PLAN_WORK_UNIT_ROLE_INTENT_CONFLICT"
+	PlanDraftInputMismatch            PlanDraftValidationCode = "PLAN_WORK_UNIT_INPUT_MISMATCH"
+	PlanDraftEnablingUnconsumed       PlanDraftValidationCode = "PLAN_ENABLING_UNIT_UNCONSUMED"
+	PlanDraftVerifyRequiresCriterion  PlanDraftValidationCode = "PLAN_VERIFY_REQUIRES_CRITERION"
+	PlanDraftConsolidateRequiresFanIn PlanDraftValidationCode = "PLAN_CONSOLIDATE_REQUIRES_FAN_IN"
+)
+
+type PlanDraftValidationError struct {
+	Code    PlanDraftValidationCode
+	Message string
+}
+
+func (e *PlanDraftValidationError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+func planDraftValidation(code PlanDraftValidationCode, format string, args ...any) error {
+	return &PlanDraftValidationError{Code: code, Message: fmt.Sprintf(format, args...)}
+}
+
 // PlanDraftProposal is non-authoritative intelligence output. It describes what
 // work probably needs doing; deterministic Kennel compilation derives authority,
 // routing requirements, mandatory stops, and verification obligations.
@@ -159,33 +185,33 @@ func (p PlanDraftProposal) Validate() error {
 			return fmt.Errorf("plan draft work unit %q has unsupported intent %q", key, unit.Intent)
 		}
 		if !unit.Role.ValidForNewWork() {
-			return fmt.Errorf("plan draft work unit %q has unsupported role %q", key, unit.Role)
+			return planDraftValidation(PlanDraftRoleInvalid, "plan draft work unit %q has unsupported role %q", key, unit.Role)
 		}
 		if err := validateRoleIntent(unit.Role, unit.Intent); err != nil {
-			return fmt.Errorf("plan draft work unit %q: %w", key, err)
+			return planDraftValidation(PlanDraftRoleIntentConflict, "plan draft work unit %q: %v", key, err)
 		}
 		seenInputs := map[string]struct{}{}
 		for j, input := range unit.Inputs {
 			from := strings.TrimSpace(input.FromKey)
 			if from == "" {
-				return fmt.Errorf("plan draft work unit %q input %d source is required", key, j+1)
+				return planDraftValidation(PlanDraftInputMismatch, "plan draft work unit %q input %d source is required", key, j+1)
 			}
 			if _, dup := seenInputs[from]; dup {
-				return fmt.Errorf("plan draft work unit %q repeats input source %q", key, from)
+				return planDraftValidation(PlanDraftInputMismatch, "plan draft work unit %q repeats input source %q", key, from)
 			}
 			seenInputs[from] = struct{}{}
 			if err := ValidateWorkUnitInputRequirement(input.Required); err != nil {
-				return fmt.Errorf("plan draft work unit %q input from %q: %w", key, from, err)
+				return planDraftValidation(PlanDraftInputMismatch, "plan draft work unit %q input from %q: %v", key, from, err)
 			}
 		}
 		if strings.TrimSpace(unit.OutputSummary) == "" {
 			return fmt.Errorf("plan draft work unit %q output summary is required", key)
 		}
 		if err := validateUniqueNonBlankPlanDraftList("criterion alias", unit.CriteriaCovered); err != nil {
-			return fmt.Errorf("plan draft work unit %q: %w", key, err)
+			return planDraftValidation(PlanDraftRoleIntentConflict, "plan draft work unit %q: %v", key, err)
 		}
 		if err := validateUniqueNonBlankPlanDraftList("evidence idea", unit.EvidenceIdeas); err != nil {
-			return fmt.Errorf("plan draft work unit %q: %w", key, err)
+			return planDraftValidation(PlanDraftRoleIntentConflict, "plan draft work unit %q: %v", key, err)
 		}
 		if len(unit.CheckCommands) > MaxPlanDraftChecksPerWorkUnit {
 			return fmt.Errorf("plan draft work unit %q proposes %d checks; maximum is %d", key, len(unit.CheckCommands), MaxPlanDraftChecksPerWorkUnit)
@@ -226,23 +252,23 @@ func (p PlanDraftProposal) Validate() error {
 			seenInputs[strings.TrimSpace(input.FromKey)] = struct{}{}
 		}
 		if len(seenInputs) != len(seenDependencies) {
-			return fmt.Errorf("plan draft work unit %q inputs must exactly match dependencies", key)
+			return planDraftValidation(PlanDraftInputMismatch, "plan draft work unit %q inputs must exactly match dependencies", key)
 		}
 		for dependency := range seenDependencies {
 			if _, ok := seenInputs[dependency]; !ok {
-				return fmt.Errorf("plan draft work unit %q has no semantic input for dependency %q", key, dependency)
+				return planDraftValidation(PlanDraftInputMismatch, "plan draft work unit %q has no semantic input for dependency %q", key, dependency)
 			}
 		}
 		if unit.Role == WorkUnitRoleVerify && len(unit.CriteriaCovered) == 0 {
-			return fmt.Errorf("plan draft work unit %q verify role requires criterion coverage", key)
+			return planDraftValidation(PlanDraftVerifyRequiresCriterion, "plan draft work unit %q verify role requires criterion coverage", key)
 		}
 		if unit.Role == WorkUnitRoleConsolidate && len(seenDependencies) < 2 {
-			return fmt.Errorf("plan draft work unit %q consolidate role requires at least two dependencies", key)
+			return planDraftValidation(PlanDraftConsolidateRequiresFanIn, "plan draft work unit %q consolidate role requires at least two dependencies", key)
 		}
 	}
 	for key, unit := range units {
 		if len(unit.CriteriaCovered) == 0 && consumers[key] == 0 {
-			return fmt.Errorf("plan draft enabling work unit %q is unconsumed", key)
+			return planDraftValidation(PlanDraftEnablingUnconsumed, "plan draft enabling work unit %q is unconsumed", key)
 		}
 	}
 	if _, err := p.TopologicalOrder(); err != nil {
@@ -340,10 +366,6 @@ func validateUniqueNonBlankPlanDraftList(kind string, values []string) error {
 
 func validateRoleIntent(role WorkUnitRole, intent WorkUnitIntent) error {
 	switch role {
-	case WorkUnitRoleInvestigate:
-		if intent == WorkUnitIntentModify || intent == WorkUnitIntentModifyAndExecute {
-			return fmt.Errorf("investigate role conflicts with mutating intent %q", intent)
-		}
 	case WorkUnitRoleImplement:
 		if intent == WorkUnitIntentInspect {
 			return fmt.Errorf("implement role conflicts with inspect intent")
@@ -369,7 +391,7 @@ func ValidateWorkUnitInputRequirement(value string) error {
 	command := false
 	if len(first) > 0 {
 		switch first[0] {
-		case "rm", "git", "sh", "bash", "zsh", "cmd", "powershell", "curl", "wget", "python", "python3", "node", "npm", "pnpm", "go", "make":
+		case "rm", "git", "sh", "bash", "zsh", "cmd", "powershell", "curl", "wget", "python", "python3", "node", "npm", "pnpm", "go", "make", "echo", "cat", "cp", "mv", "mkdir", "ruby", "perl", "sed", "awk", "grep", "find", "xargs", "chmod", "chown", "tar", "zip", "unzip":
 			command = true
 		}
 	}

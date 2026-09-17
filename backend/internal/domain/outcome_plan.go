@@ -567,6 +567,12 @@ func (p PlanRevision) ValidateAgainstContract(revision ContractRevision) error {
 // execution authority: complete criterion coverage, exact routing/binding
 // agreement, executable model semantics, and least-privilege grants.
 func (p PlanRevision) ValidateForApproval(revision ContractRevision) error {
+	return p.validateExecutable(revision, false)
+}
+func (p PlanRevision) ValidateForExecution(revision ContractRevision) error {
+	return p.validateExecutable(revision, true)
+}
+func (p PlanRevision) validateExecutable(revision ContractRevision, allowApprovedLegacy bool) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
@@ -582,7 +588,7 @@ func (p PlanRevision) ValidateForApproval(revision ContractRevision) error {
 		routing[record.WorkUnitID] = record
 	}
 	for _, unit := range p.WorkUnits {
-		if !unit.Role.ValidForNewWork() {
+		if !unit.Role.ValidForNewWork() && !(allowApprovedLegacy && p.Status == PlanStatusApproved && unit.Role == WorkUnitRoleLegacy) {
 			return fmt.Errorf("work unit %s has legacy or unknown role and must be re-planned", unit.ID)
 		}
 		if !unit.Intent.Valid() {

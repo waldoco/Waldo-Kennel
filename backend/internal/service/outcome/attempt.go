@@ -240,7 +240,7 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 	if err != nil {
 		return AttemptView{}, err
 	}
-	if err := plan.ValidateForApproval(revision); err != nil {
+	if err := plan.ValidateForExecution(revision); err != nil {
 		return AttemptView{}, apierr.Conflict(CodePlanBriefInvalidated, "The approved Plan no longer satisfies its Contract binding", map[string]any{"detail": err.Error()})
 	}
 	if err := s.authorizeAttemptCapabilities(revision, plan); err != nil {

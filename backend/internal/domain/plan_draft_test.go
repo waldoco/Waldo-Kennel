@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -184,7 +185,7 @@ func TestPlanDraftRejectsRoleConflictsAndFakeInputLocators(t *testing.T) {
 }
 
 func TestInputRequirementRejectsObviousPathsCommandsAndMetacharacters(t *testing.T) {
-	for _, value := range []string{"rm -rf build", "git checkout main", "echo ok | tee x", "C:\\tmp\\x", "~/secret", "file:/tmp/x", "relative/path.txt", "$(whoami)"} {
+	for _, value := range []string{"rm -rf build", "git checkout main", "echo ok | tee x", "cat file", "cp a b", "ruby script.rb", "perl script.pl", "C:\\tmp\\x", "~/secret", "file:/tmp/x", "relative/path.txt", "$(whoami)"} {
 		err := ValidateWorkUnitInputRequirement(value)
 		if value == "relative/path.txt" {
 			if err == nil {
@@ -235,9 +236,70 @@ func TestLegacyRoleCannotBeNewlyApproved(t *testing.T) {
 	p.WorkUnits[0].Intent = WorkUnitIntentModifyAndExecute
 	p.WorkUnits[0].RequiredCapabilities = []string{CapabilityWorktreeRead, CapabilityWorktreeWrite, CapabilityWorktreeExec}
 	p.WorkUnits[0].Role = WorkUnitRoleLegacy
+	p.WorkUnits[0].Provider = HarnessCodex
+	p.WorkUnits[0].ModelSelection = ExecutionBindingModelProviderDefault
+	p.RoutingDecisions = []WorkUnitRoutingDecision{{WorkUnitID: p.WorkUnits[0].ID, Decision: RoutingDecision{Status: RoutingDecisionRecommended, PolicyVersion: RoutingPolicyVersion, Role: RoutingRoleWorker, RecommendedCandidateID: "candidate", RecommendedProvider: string(HarnessCodex), RecommendedModelSelection: ExecutionBindingModelProviderDefault}}}
 	rev := ContractRevision{ID: "cr", OutcomeID: p.OutcomeID, Number: 1, Goal: "g", SuccessCriteria: []string{"c"}, Criteria: []ContractCriterion{{ID: "c", ContractRevisionID: "cr", Position: 1, Text: "c"}}, Review: "r", AuthorityCeiling: ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true, ExecuteLocal: true}}
 	p.WorkUnits[0].CriterionIDs = []CriterionID{"c"}
 	if err := p.ValidateForApproval(rev); err == nil {
 		t.Fatal("legacy role approved")
+	}
+}
+
+func TestInvestigateRoleMayUseBoundedMutatingIntent(t *testing.T) {
+	unit := validPlanDraftWorkUnit("investigate")
+	unit.Role = WorkUnitRoleInvestigate
+	unit.Intent = WorkUnitIntentModifyAndExecute
+	if err := (PlanDraftProposal{Summary: "investigate and reproduce", WorkUnits: []PlanDraftWorkUnit{unit}}).Validate(); err != nil {
+		t.Fatalf("investigate bounded intent rejected: %v", err)
+	}
+}
+
+func TestPlanDraftValidationFamiliesAreTyped(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*PlanDraftProposal)
+		want   PlanDraftValidationCode
+	}{
+		{"role", func(p *PlanDraftProposal) { p.WorkUnits[0].Role = "bogus" }, PlanDraftRoleInvalid},
+		{"role intent", func(p *PlanDraftProposal) {
+			p.WorkUnits[0].Role = WorkUnitRoleVerify
+			p.WorkUnits[0].Intent = WorkUnitIntentModify
+		}, PlanDraftRoleIntentConflict},
+		{"input blank source", func(p *PlanDraftProposal) { p.WorkUnits[0].Inputs = []PlanDraftDependencyInput{{Required: "findings"}} }, PlanDraftInputMismatch},
+		{"verify criterion", func(p *PlanDraftProposal) {
+			p.WorkUnits[0].Role = WorkUnitRoleVerify
+			p.WorkUnits[0].Intent = WorkUnitIntentExecute
+			p.WorkUnits[0].CriteriaCovered = nil
+		}, PlanDraftVerifyRequiresCriterion},
+		{"consolidate fan in", func(p *PlanDraftProposal) { p.WorkUnits[0].Role = WorkUnitRoleConsolidate }, PlanDraftConsolidateRequiresFanIn},
+		{"enabling", func(p *PlanDraftProposal) { p.WorkUnits[0].CriteriaCovered = nil }, PlanDraftEnablingUnconsumed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := PlanDraftProposal{Summary: "typed", WorkUnits: []PlanDraftWorkUnit{validPlanDraftWorkUnit("u")}}
+			tc.mutate(&p)
+			err := p.Validate()
+			var typed *PlanDraftValidationError
+			if !errors.As(err, &typed) || typed.Code != tc.want {
+				t.Fatalf("err=%v typed=%+v want=%s", err, typed, tc.want)
+			}
+		})
+	}
+}
+
+func TestApprovedLegacyExecutionCompatibilityIsExplicit(t *testing.T) {
+	p := validPlanRevision()
+	p.Status = PlanStatusApproved
+	p.WorkUnits[0].Intent = WorkUnitIntentModifyAndExecute
+	p.WorkUnits[0].RequiredCapabilities = []string{CapabilityWorktreeRead, CapabilityWorktreeWrite, CapabilityWorktreeExec}
+	p.WorkUnits[0].Role = WorkUnitRoleLegacy
+	p.WorkUnits[0].Provider = HarnessCodex
+	p.WorkUnits[0].ModelSelection = ExecutionBindingModelProviderDefault
+	p.RoutingDecisions = []WorkUnitRoutingDecision{{WorkUnitID: p.WorkUnits[0].ID, Decision: RoutingDecision{Status: RoutingDecisionRecommended, PolicyVersion: RoutingPolicyVersion, Role: RoutingRoleWorker, RecommendedCandidateID: "candidate", RecommendedProvider: string(HarnessCodex), RecommendedModelSelection: ExecutionBindingModelProviderDefault}}}
+	rev := ContractRevision{ID: "cr", OutcomeID: p.OutcomeID, Number: 1, Goal: "g", SuccessCriteria: []string{"c"}, Criteria: []ContractCriterion{{ID: "c", ContractRevisionID: "cr", Position: 1, Text: "c"}}, Review: "r", AuthorityCeiling: ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true, ExecuteLocal: true}}
+	p.WorkUnits[0].CriterionIDs = []CriterionID{"c"}
+	if err := p.ValidateForExecution(rev); err != nil {
+		t.Fatalf("approved legacy execution rejected: %v", err)
 	}
 }

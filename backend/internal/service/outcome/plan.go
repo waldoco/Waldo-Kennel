@@ -2,6 +2,7 @@ package outcome
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -618,21 +619,9 @@ func (s *Service) authorizeCapabilities(revision domain.ContractRevision, grants
 func formatI64(v int64) string { return strconv.FormatInt(v, 10) }
 
 func planDraftRefusalCode(err error) string {
-	message := err.Error()
-	switch {
-	case strings.Contains(message, "unsupported role"):
-		return "PLAN_WORK_UNIT_ROLE_INVALID"
-	case strings.Contains(message, "role conflicts") || strings.Contains(message, "verify role cannot mutate"):
-		return "PLAN_WORK_UNIT_ROLE_INTENT_CONFLICT"
-	case strings.Contains(message, "inputs must exactly match") || strings.Contains(message, "semantic input"):
-		return "PLAN_WORK_UNIT_INPUT_MISMATCH"
-	case strings.Contains(message, "enabling work unit") || strings.Contains(message, "unconsumed"):
-		return "PLAN_ENABLING_UNIT_UNCONSUMED"
-	case strings.Contains(message, "verify role requires criterion"):
-		return "PLAN_VERIFY_REQUIRES_CRITERION"
-	case strings.Contains(message, "consolidate role requires"):
-		return "PLAN_CONSOLIDATE_REQUIRES_FAN_IN"
-	default:
-		return "PLAN_DRAFT_INVALID"
+	var typed *domain.PlanDraftValidationError
+	if errors.As(err, &typed) {
+		return string(typed.Code)
 	}
+	return "PLAN_DRAFT_INVALID"
 }
