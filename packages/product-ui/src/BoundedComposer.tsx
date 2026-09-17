@@ -5,6 +5,9 @@ export type BoundedComposerProps = {
 	value: string;
 	onChange: (value: string) => void;
 	onSubmit: () => void;
+	/** Accessible name of the text field. Required: placeholder text is not an
+	 * accessible name, and an unnamed composer is invisible to the AX tree. */
+	inputLabel: string;
 	placeholder?: string;
 	disabled?: boolean;
 	/** A submit is in flight — distinct from `disabled`, which is a host policy, not activity. */
@@ -27,6 +30,7 @@ export function BoundedComposer({
 	value,
 	onChange,
 	onSubmit,
+	inputLabel,
 	placeholder,
 	disabled = false,
 	pending = false,
@@ -58,6 +62,7 @@ export function BoundedComposer({
 				</div>
 			) : null}
 			<textarea
+				aria-label={inputLabel}
 				className={cn(
 					"min-h-16 w-full resize-none bg-transparent text-xs text-foreground placeholder:text-passive",
 					"focus-visible:outline-none disabled:opacity-60",
