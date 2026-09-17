@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 )
 
 const beginHarnessPairingIntentActivation = `-- name: BeginHarnessPairingIntentActivation :execrows
@@ -428,7 +430,7 @@ func (q *Queries) InsertHarnessPairingChallenge(ctx context.Context, arg InsertH
 
 const insertHarnessPairingIntent = `-- name: InsertHarnessPairingIntent :execrows
 INSERT INTO harness_pairing_intents(id,project_id,kind,connection_id,installation_id,adapter_digest,harness_identity,provider_version,protocol_fingerprint,mission_id,app_run_id,capability_classes,expected_generation,connection_expires_at,expires_at,digest,status,proposal_request_key,proposal_request_fingerprint,created_at,updated_at)
-SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=? AND archived_at IS NULL)
+SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM projects p WHERE p.id=? AND p.archived_at IS NULL LIMIT 1
 `
 
 type InsertHarnessPairingIntentParams struct {
@@ -453,6 +455,7 @@ type InsertHarnessPairingIntentParams struct {
 	ProposalRequestFingerprint string
 	CreatedAt                  time.Time
 	UpdatedAt                  time.Time
+	ID_2                       domain.ProjectID
 }
 
 func (q *Queries) InsertHarnessPairingIntent(ctx context.Context, arg InsertHarnessPairingIntentParams) (int64, error) {
@@ -478,7 +481,7 @@ func (q *Queries) InsertHarnessPairingIntent(ctx context.Context, arg InsertHarn
 		arg.ProposalRequestFingerprint,
 		arg.CreatedAt,
 		arg.UpdatedAt,
-		arg.ProjectID,
+		arg.ID_2,
 	)
 	if err != nil {
 		return 0, err
