@@ -149,6 +149,9 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, e cdc.Event, sen
 	if e.Version != cdc.EventEnvelopeVersion {
 		return fmt.Errorf("unsupported CDC envelope version %q", e.Version)
 	}
+	if !e.Type.Valid() {
+		return fmt.Errorf("unsupported CDC event type %q", e.Type)
+	}
 	if len(e.Payload) > cdc.MaxEventPayloadBytes || !json.Valid(e.Payload) {
 		return fmt.Errorf("invalid CDC payload")
 	}

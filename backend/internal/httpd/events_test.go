@@ -344,4 +344,9 @@ func TestWriteSSEEventFreezesVersionedBoundedEnvelope(t *testing.T) {
 	if err := writeSSEEvent(rec, rec, e, &sent); err == nil {
 		t.Fatal("unknown envelope version accepted")
 	}
+	e = testCDCEvent(10)
+	e.Type = cdc.EventType("unknown")
+	if err := writeSSEEvent(rec, rec, e, &sent); err == nil {
+		t.Fatal("unknown event type accepted")
+	}
 }

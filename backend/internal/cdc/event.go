@@ -42,7 +42,21 @@ const (
 	EventOutcomeVerificationRecorded EventType = "outcome_verification_recorded"
 	EventOutcomeAcceptanceDecided    EventType = "outcome_acceptance_decided"
 	EventOutcomeCorrectionRecorded   EventType = "outcome_correction_recorded"
+	EventOutcomeRunIntentChanged     EventType = "outcome_run_intent_changed"
+	EventOutcomeAttemptRetained      EventType = "outcome_attempt_retained"
+	EventOutcomeDeliveryChanged      EventType = "outcome_delivery_changed"
+	EventHarnessPairingIntentChanged EventType = "harness_pairing_intent_changed"
+	EventHarnessConnectionChanged    EventType = "harness_connection_changed"
 )
+
+var eventTypes = map[EventType]struct{}{
+	EventSessionCreated: {}, EventSessionUpdated: {}, EventPRCreated: {}, EventPRUpdated: {}, EventPRCheckRecorded: {}, EventPRSessionChanged: {}, EventPRReviewThreadAdded: {}, EventPRReviewThreadResolved: {},
+	EventOutcomeCreated: {}, EventOutcomeUpdated: {}, EventOutcomeContractRevised: {}, EventOutcomePlanProposed: {}, EventOutcomePlanApproved: {}, EventOutcomeAttemptStarted: {}, EventOutcomeAttemptUpdated: {}, EventOutcomeAttemptBound: {}, EventOutcomeAttemptObserved: {}, EventOutcomeAttemptRecovered: {}, EventOutcomeEvidenceRecorded: {}, EventOutcomeVerificationRecorded: {}, EventOutcomeAcceptanceDecided: {}, EventOutcomeCorrectionRecorded: {}, EventOutcomeRunIntentChanged: {}, EventOutcomeAttemptRetained: {}, EventOutcomeDeliveryChanged: {},
+	EventHarnessPairingIntentChanged: {}, EventHarnessConnectionChanged: {},
+}
+
+// Valid reports whether t belongs to the frozen v1 event registry.
+func (t EventType) Valid() bool { _, ok := eventTypes[t]; return ok }
 
 // Event is one CDC change read from change_log. Seq is the monotonic ordering +
 // idempotency key (consumers dedup by it). SessionID is empty for project-level
