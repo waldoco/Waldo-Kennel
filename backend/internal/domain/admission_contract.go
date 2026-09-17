@@ -400,12 +400,82 @@ func equalChecks(a, b []ApprovedCheck) bool {
 	return true
 }
 
+type AdmissionDenialSource string
+
+const (
+	AdmissionDenialRoutingCandidate AdmissionDenialSource = "routing_candidate"
+	AdmissionDenialRoutingAggregate AdmissionDenialSource = "routing_aggregate"
+)
+
+func (s AdmissionDenialSource) Valid() bool {
+	return s == AdmissionDenialRoutingCandidate || s == AdmissionDenialRoutingAggregate
+}
+
+// CapabilityDenialDetail freezes the typed routing evidence for one capability
+// refusal. It contains no mutable prose, provider credentials, or owner bearer.
+type CapabilityDenialDetail struct {
+	WorkUnitID           WorkUnitID            `json:"workUnitId"`
+	MissingCapabilities  []string              `json:"missingCapabilities"`
+	Source               AdmissionDenialSource `json:"source"`
+	RoutingSnapshotID    string                `json:"routingSnapshotId"`
+	RoutingGenerationID  string                `json:"routingGenerationId"`
+	Binding              ExecutionBinding      `json:"binding"`
+	EvaluatedCandidateID string                `json:"evaluatedCandidateId,omitempty"`
+	EvaluatedProvider    AgentHarness          `json:"evaluatedProvider,omitempty"`
+}
+
+// NewCapabilityDenialDetail normalizes exact capability names into a stable,
+// sorted, duplicate-free representation before persistence.
+func NewCapabilityDenialDetail(workUnitID WorkUnitID, missing []string, source AdmissionDenialSource, snapshotID, generationID string, binding ExecutionBinding, candidateID string, provider AgentHarness) (CapabilityDenialDetail, error) {
+	set := make(map[string]struct{}, len(missing))
+	for _, raw := range missing {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			return CapabilityDenialDetail{}, fmt.Errorf("missing capability name is blank")
+		}
+		set[name] = struct{}{}
+	}
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	d := CapabilityDenialDetail{WorkUnitID: workUnitID, MissingCapabilities: names, Source: source, RoutingSnapshotID: strings.TrimSpace(snapshotID), RoutingGenerationID: strings.TrimSpace(generationID), Binding: binding, EvaluatedCandidateID: strings.TrimSpace(candidateID), EvaluatedProvider: provider}
+	return d, d.Validate()
+}
+
+func (d CapabilityDenialDetail) Validate() error {
+	if d.WorkUnitID.IsZero() || len(d.MissingCapabilities) == 0 || !d.Source.Valid() || strings.TrimSpace(d.RoutingSnapshotID) == "" || strings.TrimSpace(d.RoutingGenerationID) == "" {
+		return fmt.Errorf("capability denial detail identity is incomplete")
+	}
+	if err := d.Binding.ValidateForNewWork(); err != nil {
+		return fmt.Errorf("capability denial binding: %w", err)
+	}
+	for i, name := range d.MissingCapabilities {
+		if strings.TrimSpace(name) == "" || name != strings.TrimSpace(name) {
+			return fmt.Errorf("missing capabilities must be normalized")
+		}
+		if i > 0 && d.MissingCapabilities[i-1] >= name {
+			return fmt.Errorf("missing capabilities must be sorted and unique")
+		}
+	}
+	if d.Source == AdmissionDenialRoutingCandidate {
+		if strings.TrimSpace(d.EvaluatedCandidateID) == "" || strings.TrimSpace(string(d.EvaluatedProvider)) == "" {
+			return fmt.Errorf("candidate denial requires candidate and provider")
+		}
+	} else if d.EvaluatedCandidateID != "" || d.EvaluatedProvider != "" {
+		return fmt.Errorf("aggregate denial cannot carry candidate identity")
+	}
+	return nil
+}
+
 type WorkUnitAdmissionVerdict struct {
-	WorkUnitID   WorkUnitID              `json:"workUnitId"`
-	Status       AdmissionStatus         `json:"status"`
-	Reasons      []AdmissionReasonCode   `json:"reasons,omitempty"`
-	OwnerActions []AdmissionOwnerAction  `json:"ownerActions,omitempty"`
-	Executable   *ApprovedExecutableSpec `json:"executable,omitempty"`
+	WorkUnitID       WorkUnitID              `json:"workUnitId"`
+	Status           AdmissionStatus         `json:"status"`
+	Reasons          []AdmissionReasonCode   `json:"reasons,omitempty"`
+	OwnerActions     []AdmissionOwnerAction  `json:"ownerActions,omitempty"`
+	Executable       *ApprovedExecutableSpec `json:"executable,omitempty"`
+	CapabilityDenial *CapabilityDenialDetail `json:"capabilityDenial,omitempty"`
 }
 
 func (v WorkUnitAdmissionVerdict) Validate() error {
@@ -418,6 +488,18 @@ func (v WorkUnitAdmissionVerdict) Validate() error {
 	if err := validateAdmissionMeta(v.Status, v.Reasons, v.OwnerActions); err != nil {
 		return err
 	}
+	_, capabilityMissing := admissionReasonPresent(v.Reasons, AdmissionCapabilityMissing)
+	if capabilityMissing != (v.CapabilityDenial != nil) {
+		return fmt.Errorf("capability_missing requires exactly one typed denial detail")
+	}
+	if v.CapabilityDenial != nil {
+		if v.CapabilityDenial.WorkUnitID != v.WorkUnitID {
+			return fmt.Errorf("capability denial work unit attribution mismatch")
+		}
+		if err := v.CapabilityDenial.Validate(); err != nil {
+			return err
+		}
+	}
 	if v.Status == AdmissionRejected {
 		if v.Executable != nil {
 			return fmt.Errorf("rejected work unit cannot carry executable packet")
@@ -426,6 +508,9 @@ func (v WorkUnitAdmissionVerdict) Validate() error {
 	}
 	if v.Executable == nil {
 		return fmt.Errorf("admitted work unit requires executable packet")
+	}
+	if v.CapabilityDenial != nil {
+		return fmt.Errorf("admitted work unit cannot carry capability denial")
 	}
 	if v.Executable.WorkUnitID != v.WorkUnitID {
 		return fmt.Errorf("work unit attribution mismatch")
@@ -496,6 +581,15 @@ func (v AdmissionVerdict) Validate() error {
 	}
 	return nil
 }
+func admissionReasonPresent(reasons []AdmissionReasonCode, wanted AdmissionReasonCode) (int, bool) {
+	for i, reason := range reasons {
+		if reason == wanted {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
 func validateAdmissionMeta(s AdmissionStatus, reasons []AdmissionReasonCode, actions []AdmissionOwnerAction) error {
 	seen := map[AdmissionReasonCode]struct{}{}
 	for _, r := range reasons {

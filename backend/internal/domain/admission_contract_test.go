@@ -219,3 +219,37 @@ func TestRoutingReceiptValidationDoesNotReorderCaller(t *testing.T) {
 		t.Fatal("validation mutated candidate order")
 	}
 }
+
+func TestCapabilityDenialDetailCanonicalAndClosed(t *testing.T) {
+	binding := ExecutionBinding{Provider: HarnessCodex, ModelSelection: ExecutionBindingModelProviderDefault}
+	d, err := NewCapabilityDenialDetail("wu", []string{" worktree.write ", "worktree.read", "worktree.write"}, AdmissionDenialRoutingCandidate, "snap", "gen", binding, "codex-local", HarnessCodex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(d.MissingCapabilities, []string{"worktree.read", "worktree.write"}) {
+		t.Fatalf("capabilities=%v", d.MissingCapabilities)
+	}
+	v := WorkUnitAdmissionVerdict{WorkUnitID: "wu", Status: AdmissionRejected, Reasons: []AdmissionReasonCode{AdmissionCapabilityMissing}, CapabilityDenial: &d}
+	if err := v.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	without := v
+	without.CapabilityDenial = nil
+	if without.Validate() == nil {
+		t.Fatal("capability reason without typed detail passed")
+	}
+	stray := v
+	stray.Reasons = []AdmissionReasonCode{AdmissionProviderUnavailable}
+	if stray.Validate() == nil {
+		t.Fatal("stray capability detail passed")
+	}
+	admitted := v
+	admitted.Status = AdmissionAdmitted
+	if admitted.Validate() == nil {
+		t.Fatal("admitted capability denial passed")
+	}
+	d.Source = AdmissionDenialRoutingAggregate
+	if d.Validate() == nil {
+		t.Fatal("aggregate source with candidate identity passed")
+	}
+}
