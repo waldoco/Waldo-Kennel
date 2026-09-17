@@ -17,6 +17,7 @@ type Request struct {
 }
 type Evaluator struct {
 	Daemon      ports.HarnessDaemonAttacher
+	Missions    ports.HarnessMissionReader
 	Profiles    ports.HarnessMissionProfileReader
 	Connections ports.HarnessConnectionStore
 	Delivery    ports.HarnessDeliveryBlockReader
@@ -48,6 +49,16 @@ func (e Evaluator) Evaluate(ctx context.Context, r Request) (domain.HarnessRecon
 		return set(result, domain.ReconnectReasonObservationStale, domain.ReconnectRepairRefreshObservation), nil
 	}
 	result.DaemonInstanceID = daemon.InstanceID
+	if e.Missions == nil {
+		return set(result, domain.ReconnectReasonMissionNotFound, domain.ReconnectRepairChooseMission), nil
+	}
+	missionExists, err := e.Missions.HarnessMissionExists(ctx, r.MissionID)
+	if err != nil {
+		return result, err
+	}
+	if !missionExists {
+		return set(result, domain.ReconnectReasonMissionNotFound, domain.ReconnectRepairChooseMission), nil
+	}
 	if e.Profiles == nil {
 		return set(result, domain.ReconnectReasonMissionProfileMissing, domain.ReconnectRepairMissionProfile), nil
 	}
@@ -56,7 +67,7 @@ func (e Evaluator) Evaluate(ctx context.Context, r Request) (domain.HarnessRecon
 		return result, err
 	}
 	if !ok {
-		return set(result, domain.ReconnectReasonMissionNotFound, domain.ReconnectRepairChooseMission), nil
+		return set(result, domain.ReconnectReasonMissionProfileMissing, domain.ReconnectRepairMissionProfile), nil
 	}
 	if profile.Validate() != nil || profile.MissionID != r.MissionID {
 		return set(result, domain.ReconnectReasonMissionProfileMissing, domain.ReconnectRepairMissionProfile), nil
@@ -100,7 +111,10 @@ func (e Evaluator) Evaluate(ctx context.Context, r Request) (domain.HarnessRecon
 		return fromConnection(result, domain.EvaluateHarnessConnection(nil, domain.HarnessConnectionFacts{})), nil
 	}
 	facts := domain.HarnessConnectionFacts{InstallationID: observed.InstallationID, AdapterDigest: observed.AdapterDigest, HarnessIdentity: observed.HarnessIdentity, MissionID: observed.MissionID, AppRunID: observed.AppRunID, ProtocolFingerprint: observed.ProtocolFingerprint, Generation: observed.Generation, RequiredCapabilities: profile.RequiredCapabilities, OptionalCapabilities: profile.OptionalCapabilities, Now: r.Now.UTC()}
-	if observed.ProviderVersion != profile.ProviderVersion || profile.InstallationID != observed.InstallationID || profile.AdapterDigest != observed.AdapterDigest || profile.ProtocolFingerprint != observed.ProtocolFingerprint || profile.Generation != observed.Generation {
+	if observed.AppRunID != r.AppRunID || observed.ProviderVersion != profile.ProviderVersion || profile.InstallationID != observed.InstallationID || profile.AdapterDigest != observed.AdapterDigest || profile.ProtocolFingerprint != observed.ProtocolFingerprint || profile.Generation != observed.Generation {
+		return fromConnection(result, domain.HarnessConnectionEvaluation{State: domain.HarnessActionNeeded, Reason: domain.HarnessReasonBindingMismatch, Repair: domain.HarnessRepairPairing}), nil
+	}
+	if connection.ProviderVersion != profile.ProviderVersion || connection.Generation != profile.Generation {
 		return fromConnection(result, domain.HarnessConnectionEvaluation{State: domain.HarnessActionNeeded, Reason: domain.HarnessReasonBindingMismatch, Repair: domain.HarnessRepairPairing}), nil
 	}
 	result.ConnectionGeneration = connection.Generation

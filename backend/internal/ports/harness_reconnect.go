@@ -8,6 +8,9 @@ import (
 type HarnessDaemonAttacher interface {
 	AttachHarnessDaemon(context.Context) (domain.HarnessDaemonReadiness, error)
 }
+type HarnessMissionReader interface {
+	HarnessMissionExists(context.Context, string) (bool, error)
+}
 type HarnessMissionProfileReader interface {
 	ReadHarnessMissionProfile(context.Context, string) (domain.HarnessMissionProfile, bool, error)
 }
