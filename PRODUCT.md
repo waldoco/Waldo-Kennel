@@ -17,7 +17,7 @@ Kennel starts with founder-engineers, staff-level builders, and small technical 
 The owner experiences one timeline:
 
 1. **Ask:** clarify intent in a Contract conversation and freeze a Contract revision.
-2. **Approve:** a fresh `/mission` planning conversation proposes a Plan and WorkUnit DAG; the owner approves an exact revision.
+2. **Approve:** a fresh planning conversation proposes a Plan and WorkUnit DAG; the owner approves an exact revision.
 3. **Watch:** the daemon and Mission Supervisor coordinate persistent WorkUnit sessions, attention, checks, rework, and recovery.
 4. **Decide:** verified WorkUnits form a Result; the owner Accepts, requests rework, or revises the Plan.
 

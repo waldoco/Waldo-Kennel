@@ -4,7 +4,7 @@ The canonical topology and diagrams are in [docs/architecture/persistent-mission
 
 - **Outcome:** durable owner goal and completion boundary.
 - **Contract:** frozen, versioned statement of desired result, constraints, authority, and acceptance criteria.
-- **Planning conversation:** fresh `/mission` Codex thread that receives a frozen Contract and proposes a Plan.
+- **Planning conversation:** fresh planning session that receives a frozen Contract and proposes a Plan.
 - **Plan:** approved, versioned WorkUnit DAG, edges, checks, profiles, and effect limits.
 - **WorkUnit:** bounded unit of execution and verification.
 - **Attempt:** one execution lineage for one WorkUnit. In vNext it owns one exclusive worktree lease, one Kennel Session, and one persistent primary Codex thread.

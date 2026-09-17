@@ -1,50 +1,43 @@
 # Current implementation status
 
-- Baseline: `outcome-loop` at `f31cdca4ea55fb25903f7af55ec45c7abccdcc04`
-- Target architecture: [persistent mission runtime](architecture/persistent-mission-runtime.md)
-- Active order: [persistent-session execution map](roadmap/persistent-session-execution-map.md)
+- Current promoted head: `outcome-loop` at `2c469cb11681da14a1abfb62f6171b2b7c4b5d44`
+- Target: [persistent mission runtime](architecture/persistent-mission-runtime.md)
+- Build order: [persistent-session execution map](roadmap/persistent-session-execution-map.md)
 
-This file separates implemented truth from accepted target behavior.
+This file separates promoted implementation from partial and target behavior.
 
-## Implemented and retained
+## Stage status
 
-- Durable Outcome/Contract/Plan/WorkUnit/Attempt/Result and event foundations from W1.0.
-- Scheduler, workspace lease/fence, launch ownership, recovery, and effect boundaries from W1.1.
-- Durable budget/idempotency and cross-process race protections from W1.2.
-- S1 local owner-command source implementation and compatibility ingress are source-accepted; independent packaged macOS/runtime proof remains open.
-- Existing Chat driver/controller contracts with stored provider conversation IDs, serialized turns, interrupt, request resolution, and normalized events.
-- Codex app-server adapter support for `thread/start`, `thread/resume`, `turn/start`, and `turn/interrupt`; live evidence shows a fresh process can resume a thread.
-- Current Outcome admission/execution and Mission Control surfaces documented by the historical verification set.
+| Stage | Status | Promoted evidence and remaining work |
+|---|---|---|
+| 0 Contract freeze | Done | Canonical lineage from `f31cdca4ea55fb25903f7af55ec45c7abccdcc04`. |
+| 1 Native Codex persistent substrate | Done | Through `643e955c16b7b8907d2ce4c7c285bedaa148d4b6`: persistent thread, steer, typed answer, interrupt/quiescence, fresh-process resume and Linux live proof. |
+| 2 Codex compatibility negotiation / unified controller | Done | Through `6bf0e39c`: S2.1-S2.4, including crash/restart/concurrency/adoption matrix and honest delivery-unknown. |
+| 3 Durable owner-command authority | Done | `2c469cb1`: pairing, owner-proof target v2 and transactional post-pair command ingress/recovery. Production listener composition is reviewed separately at candidate `18a77408`, not promoted. |
+| 4 Harness installation and connection | Partial | Trusted install/drift, pairing, connection kernel and reconnect exist. Public approval/revocation UI API, truthful connection projection, packaged journey, listener promotion and Mac live proof remain. |
+| 5 Contract intake | Partial | Durable versioned Contracts, adaptive intake, context and one clarification boundary exist. Multi-question rounds and packaged first-run completion remain. |
+| 6 Mission planning | Partial | Durable PlanningSession, multi-turn UI/service, typed proposal and approval exist. The literal installed/provider-verified `/mission` command, automatic first turn through it and packaged proof do not. |
+| 7 Serial WorkUnit execution | Partial | Scheduler, exact admission, custody fence and session spawn exist. Typed Needs-You Q&A and clean-machine three-unit serial proof remain. |
+| 8 Verification custody and artifact lineage | Partial | Retention, digests, receipts and proof ledgers exist. Complete manifests and integrated-result immutable-tree proof remain. |
+| 9 Integration and Result | Partial | Result/proof APIs and UI exist. Canonical MissionProjection, typed next action/freshness and renderer-friendly Result helpers remain. |
+| 10 Mission Supervisor | Not started | Persistent per-Plan supervisor protocol, typed events/commands, budgets and degraded rebuild remain target behavior. OS process supervision is not this stage. |
+| 11 Recovery/correction packaged proof | Not started | Lower-layer recovery tests exist; the full clean-machine cross-stage matrix does not. |
+| 12 Expansion | Not started | Parallel units, broader harness expansion and cleanup wait for Stage 11. |
 
-## Implemented behavior that is not the vNext target
+## Current P0 backend gaps
 
-- Governed Codex TUI execution sets one-shot mode and launches `codex exec`.
-- Historical completion/replacement/attention paths were built around that execution model.
-- Some legacy AO/session CLI and repository skill language remains as compatibility documentation.
-- Existing one-shot Attempts have no right to resume through the persistent runtime.
+1. A generation-safe typed Needs-You question/choice projection and answer command with queued, acknowledged, refused and delivery-unknown states.
+2. A public renderer-safe harness pairing, connection, authority and revocation API with durable receipts.
+3. A server-owned WorkUnit MissionProjection mapping current Attempt/session, attention, proof, next action and freshness onto each WorkUnit.
 
-These facts remain readable and testable. They are not design authority for new execution.
+Transition-triggered cached summaries, typed freshness/next-action vocabulary and Result helpers are Stage 9 production-clarity work. They remain non-authoritative.
 
-## Accepted target, not yet implemented
+## Honest boundaries
 
-- Separate Contract and fresh `/mission` planning threads in one UI timeline.
-- One Mission Supervisor thread per active Plan revision.
-- One WorkUnit Attempt = one exclusive worktree lease = one Kennel Session = one persistent primary Codex thread with many turns.
-- Typed daemon/Supervisor event and command protocol with bounded automatic steering and failure isolation.
-- Paired, capability-negotiated harness adapters with install/upgrade, reconnect, and connected/degraded/action-needed states.
-- Multi-round Contract intake and a verified installed mission command with automatic first planning turn.
-- A named native coding profile proving inspect/edit/fail/repair/rerun/steer with explicit filesystem/network/effect limits.
-- Versioned, hashed input/output manifests, verified predecessor-tree handoff, explicit integration, immutable verification snapshots, and mechanical stale-lineage invalidation.
-- Nonterminal `needs_you` with same-thread answer/resume.
-- Acknowledged/reconciled answer, steer, cancel, and hard-stop effects.
-- Explicit readiness claim, daemon checks, same-thread rework, and owner Accept.
-- Unified MissionProjection and full UI integration.
-- Serial packaged proof and subsequent independent-worktree concurrency.
+- Orchestration logic is substantial: deterministic scheduling, admission, fences, spawn, handoff and recovery exist. Final serial/integration proof remains.
+- Planning service and UI exist. An installed `/mission` command does not.
+- Skill materialization and adapter install machinery exist; general plugin lifecycle and installed mission-command verification remain partial.
+- Loop mechanics exist, but the governed Mission Supervisor loop is Stage 10 and not implemented.
+- Frozen repository/supplied-document context, grant digests, snapshots and predecessor artifacts exist; mission-command visibility, Supervisor packets and final lineage proof remain.
 
-## Compatibility promise
-
-W1.0-W1.2 remain accepted foundations. S1 is source-accepted, with its packaged macOS/runtime gate still pending. Migrations and historical events are not deleted or reinterpreted. Legacy one-shot Attempts stay visible as `legacy_one_shot`. vNext uses a distinct `persistent_codex_v1` generation and no dual-write. Full policy: [compatibility and migration](architecture/compatibility-and-migration.md).
-
-## Current gate
-
-Architecture and authority contracts are frozen at `f31cdca4ea55fb25903f7af55ec45c7abccdcc04`. Stage 1 implementation is authorized. Its first Mac proof established protocol compatibility but exposed a proof-launcher runtime-companion path defect before coding began. The runtime repair reached source acceptance; the fresh Mac rerun proved the canonical app-bundle runtime canary and then exposed two proof-design defects: model/shell quoting corrupted fixture creation, and the steer test incorrectly treated guidance as command cancellation. A bounded source repair now writes the fixture from harness-owned bytes and tests same-turn steer incorporation while leaving cancellation to interrupt. Fresh authenticated Mac evidence remains required. No Outcome cutover or stage 2+ work has occurred. The preserved W1.3 nonterminal contract patch remains evidence/input, not an accepted patch or active implementation order.
+Legacy one-shot records stay readable and labeled. They gain no right to resume through the persistent runtime.

@@ -4,6 +4,15 @@
 - Architecture: [persistent mission runtime](../architecture/persistent-mission-runtime.md)
 - Connection contract: [harness connection and authority](../architecture/harness-connection-and-authority.md)
 - Rule: architecture and documentation freeze first; no production cutover before independent review
+- Current promoted head: `2c469cb11681da14a1abfb62f6171b2b7c4b5d44`
+
+## Current accounting (2026-09-17)
+
+Stages 0-3 are promoted complete: Contract freeze (`f31cdca4`), native Codex substrate (`643e955c`), compatibility/unified controller including S2.4 crash matrix (`6bf0e39c`), and durable owner-command authority (`2c469cb1`). The production listener composition is candidate `18a77408`, not promoted.
+
+Stages 4-9 are partial. Their open exits are respectively: public pairing/revocation projection and packaged connection proof; multi-question intake; installed/provider-verified `/mission` command and automatic first turn; typed Needs-You transaction plus serial three-unit proof; complete immutable manifests/integrated tree proof; and canonical MissionProjection/typed next action/freshness/Result helpers. Stages 10-12 are not started. Planning service/UI exist today; references below to installed or automatic `/mission` describe an exit criterion, not current behavior.
+
+P0 product/backend seams are the typed Needs-You Q&A transaction, public renderer-safe harness authority API, and server-owned WorkUnit MissionProjection.
 
 ```mermaid
 flowchart LR
@@ -95,7 +104,7 @@ Exit: desktop and plugin show the same projection and authority; reconnect, keyb
 
 ## 11. Serial packaged proof
 
-Run a clean-machine three-WorkUnit Codex Outcome serially. Prove install/discovery/pairing, compatibility state, multi-round intake, automatic `/mission`, Plan approval, native coding loop, exact predecessor-tree handoff, conflict behavior, immutable checks, bounded supervision, `needs_you`, steering, desktop/daemon/app-server restart and reconnect, failed-check rework with stale-descendant invalidation, Supervisor failure, checked integrated Result, owner Accept, adapter/harness upgrade and rollback.
+Run a clean-machine three-WorkUnit Codex Outcome serially. Prove install/discovery/pairing, compatibility state, multi-round intake, automatic first planning turn through the then-installed `/mission` command, Plan approval, native coding loop, exact predecessor-tree handoff, conflict behavior, immutable checks, bounded supervision, `needs_you`, steering, desktop/daemon/app-server restart and reconnect, failed-check rework with stale-descendant invalidation, Supervisor failure, checked integrated Result, owner Accept, adapter/harness upgrade and rollback.
 
 Exit: complete dogfood evidence and independent review pass with no skip and every falsifier exercised.
 

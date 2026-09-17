@@ -30,7 +30,7 @@ flowchart TB
 The UI is one timeline. Its internal conversations have distinct authority:
 
 - The Contract conversation clarifies intent and freezes a Contract artifact.
-- A fresh `/mission` planning conversation receives that artifact and proposes a Plan and WorkUnit DAG.
+- A fresh planning conversation receives that artifact and proposes a Plan and WorkUnit DAG. The service and UI exist; the literal installed `/mission` command is still an implementation exit, not current behavior.
 - The owner approves a specific Plan revision before execution is released.
 - The Mission Supervisor provides mission-level intelligence during execution.
 - WorkUnit threads execute bounded work.
@@ -260,7 +260,7 @@ Filesystem writes are confined to the leased worktree and declared temporary/cac
 
 ## Intake and mission entry
 
-Contract intake supports multiple clarification questions in one request and repeated follow-up rounds until the owner freezes a Contract revision. Starting `/mission` automatically opens a fresh planning thread and sends the first planning turn with the frozen Contract and project context. The installed mission skill/command is a tested runtime artifact, not documentation: Kennel verifies its digest, provider visibility, command registration, and capability handshake before it offers mission start.
+Contract intake supports multiple clarification questions in one request and repeated follow-up rounds until the owner freezes a Contract revision. Target behavior: starting the installed `/mission` command automatically opens a fresh planning thread and sends the first planning turn with the frozen Contract and project context. The installed mission skill/command is a tested runtime artifact, not documentation: Kennel verifies its digest, provider visibility, command registration, and capability handshake before it offers mission start.
 
 Planning shows explicit pending, delivered, approval-required, approved, and error states. Provider output is schema-validated and source-attributed consistently; an empty composer, one-question cap, missing command, or unverified provider response blocks the gate rather than degrading silently.
 
