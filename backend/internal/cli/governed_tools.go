@@ -9,6 +9,7 @@ import (
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/governedtools"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite"
 )
 
 func newGovernedToolsCommand(ctx *commandContext) *cobra.Command {
@@ -22,9 +23,14 @@ func newGovernedToolsCommand(ctx *commandContext) *cobra.Command {
 		if err := json.Unmarshal(raw, &policy); err != nil {
 			return fmt.Errorf("decode governed policy: %w", err)
 		}
+		store, err := sqlite.Open(dataDir)
+		if err != nil {
+			return fmt.Errorf("open governed capability store: %w", err)
+		}
+		defer store.Close()
 		return (governedtools.Server{
 			Policy: policy, WorkspaceRoot: workspace, SessionID: domain.SessionID(sessionID),
-			In: ctx.deps.In, Out: ctx.deps.Out,
+			In: ctx.deps.In, Out: ctx.deps.Out, Escalations: store,
 		}).Serve(cmd.Context())
 	}}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "leased workspace root")

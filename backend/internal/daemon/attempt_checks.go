@@ -2,6 +2,9 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,10 +26,11 @@ import (
 // The cost is that a check can mutate what it checks, so the workspace is
 // re-measured afterwards and a mismatch is reported rather than ignored.
 type attemptCheckRunner struct {
-	sessions  attemptSessionControl
-	refs      attemptRetentionSource
-	artifacts *artifactstore.Store
-	clock     func() time.Time
+	sessions    attemptSessionControl
+	refs        attemptRetentionSource
+	artifacts   *artifactstore.Store
+	clock       func() time.Time
+	escalations ports.CapabilityEscalationStore
 }
 
 var _ ports.AttemptCheckRunner = (*attemptCheckRunner)(nil)
@@ -148,8 +152,11 @@ func (r *attemptCheckRunner) runOne(ctx context.Context, req ports.AttemptCheckR
 	observation.ExitCode = run.ExitCode
 
 	switch {
+	case errors.Is(err, governedcheck.ErrCapabilityDenied):
+		observation.Unavailable = err.Error()
+		r.recordCapabilityDenial(ctx, req, check)
+		return observation
 	case errors.Is(err, governedcheck.ErrEnforcementUnavailable),
-		errors.Is(err, governedcheck.ErrCapabilityDenied),
 		errors.Is(err, governedcheck.ErrInvalidCommand):
 		// The check never launched. That is not a failing check, and calling
 		// it one would let a host without a sandbox look like a host whose
@@ -196,4 +203,44 @@ func (r *attemptCheckRunner) attemptWorkspace(ctx context.Context, attempt domai
 		return "", "", fmt.Errorf("attempt %s has no workspace to check", attempt.ID)
 	}
 	return session.Metadata.WorkspacePath, kind, nil
+}
+
+func (r *attemptCheckRunner) recordCapabilityDenial(ctx context.Context, req ports.AttemptCheckRequest, check domain.ApprovedCheck) {
+	if r.escalations == nil {
+		return
+	}
+	ref, found, err := r.refs.LatestAttemptSessionRef(ctx, req.Attempt.ID)
+	if err != nil || !found {
+		return
+	}
+	policyDigest, err := req.Policy.Digest()
+	if err != nil {
+		return
+	}
+	raw, err := json.Marshal(struct {
+		CheckID domain.ApprovedCheckID `json:"checkId"`
+		Argv    []string               `json:"argv"`
+	}{check.ID, check.Argv})
+	if err != nil {
+		return
+	}
+	sum := sha256.Sum256(raw)
+	operationDigest := hex.EncodeToString(sum[:])
+	qsum := sha256.Sum256([]byte("capability-question\x00" + operationDigest + "\x00" + string(req.Attempt.ID) + "\x00" + fmt.Sprint(req.Attempt.Number)))
+	questionGeneration := "ceq-" + hex.EncodeToString(qsum[:16])
+	within := false
+	if revisions, readErr := r.escalations.ListContractRevisions(ctx, req.Attempt.OutcomeID); readErr == nil {
+		for _, revision := range revisions {
+			if revision.Number == req.Attempt.ContractRevisionNumber {
+				within = domain.ContractAllowsCapability(revision, domain.CapabilityWorktreeExec)
+				break
+			}
+		}
+	}
+	e := domain.CapabilityEscalation{Version: domain.CapabilityEscalationVersion, ExecutorKind: "governed_check", OutcomeID: req.Attempt.OutcomeID, ContractRevisionNumber: req.Attempt.ContractRevisionNumber, PlanRevisionID: req.Attempt.PlanRevisionID, WorkUnitID: req.Attempt.WorkUnitID, AttemptID: req.Attempt.ID, AttemptGeneration: req.Attempt.Number, AttemptSessionRefID: ref.ID, SessionID: domain.SessionID(ref.SessionID), SessionGeneration: ref.Seq, PolicyDigest: policyDigest, ArtifactVersion: req.Receipt.ArtifactVersion, CheckID: check.ID, RequestedCapability: domain.CapabilityWorktreeExec, DenialSource: "governed_check", GrantFingerprint: policyDigest, OperationID: "check:" + string(check.ID), RequestFingerprint: operationDigest, QuestionGeneration: questionGeneration, WithinContractCeiling: within}
+	e.Digest, err = e.ComputedDigest()
+	if err != nil {
+		return
+	}
+	_, _, _ = r.escalations.CreateCapabilityEscalation(ctx, e)
 }

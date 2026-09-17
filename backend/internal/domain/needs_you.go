@@ -31,29 +31,30 @@ type NeedsYouOption struct {
 }
 
 type NeedsYouQuestion struct {
-	ID             string               `json:"id"`
-	OutcomeID      OutcomeID            `json:"outcomeId"`
-	PlanRevisionID PlanRevisionID       `json:"planRevisionId"`
-	WorkUnitID     WorkUnitID           `json:"workUnitId"`
-	AttemptID      AttemptID            `json:"attemptId"`
-	SessionID      SessionID            `json:"sessionId"`
-	ConversationID string               `json:"conversationId"`
-	RequestID      string               `json:"requestId"`
-	Generation     string               `json:"generation"`
-	Kind           NeedsYouKind         `json:"kind"`
-	Reason         string               `json:"reason"`
-	Recommendation string               `json:"recommendation,omitempty"`
-	Options        []NeedsYouOption     `json:"options,omitempty"`
-	InputMode      string               `json:"inputMode,omitempty"`
-	InputSchema    map[string]any       `json:"inputSchema,omitempty"`
-	URL            string               `json:"url,omitempty"`
-	Status         NeedsYouStatus       `json:"status"`
-	CommandID      string               `json:"commandId,omitempty"`
-	CreatedAt      time.Time            `json:"createdAt"`
-	UpdatedAt      time.Time            `json:"updatedAt"`
-	QuestionStatus string               `json:"-"`
-	ActivityStatus ActivityStatus       `json:"-"`
-	CommandState   GovernedCommandState `json:"-"`
+	ID                   string                `json:"id"`
+	OutcomeID            OutcomeID             `json:"outcomeId"`
+	PlanRevisionID       PlanRevisionID        `json:"planRevisionId"`
+	WorkUnitID           WorkUnitID            `json:"workUnitId"`
+	AttemptID            AttemptID             `json:"attemptId"`
+	SessionID            SessionID             `json:"sessionId"`
+	ConversationID       string                `json:"conversationId"`
+	RequestID            string                `json:"requestId"`
+	Generation           string                `json:"generation"`
+	Kind                 NeedsYouKind          `json:"kind"`
+	Reason               string                `json:"reason"`
+	Recommendation       string                `json:"recommendation,omitempty"`
+	Options              []NeedsYouOption      `json:"options,omitempty"`
+	InputMode            string                `json:"inputMode,omitempty"`
+	InputSchema          map[string]any        `json:"inputSchema,omitempty"`
+	URL                  string                `json:"url,omitempty"`
+	Status               NeedsYouStatus        `json:"status"`
+	CommandID            string                `json:"commandId,omitempty"`
+	CreatedAt            time.Time             `json:"createdAt"`
+	UpdatedAt            time.Time             `json:"updatedAt"`
+	QuestionStatus       string                `json:"-"`
+	ActivityStatus       ActivityStatus        `json:"-"`
+	CommandState         GovernedCommandState  `json:"-"`
+	CapabilityEscalation *CapabilityEscalation `json:"capabilityEscalation,omitempty"`
 }
 
 type NeedsYouAnswer struct {

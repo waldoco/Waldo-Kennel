@@ -5,6 +5,8 @@ package governedtools
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,9 +20,14 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 )
 
 const maxTextBytes = 1 << 20
+
+type capabilityDeniedError struct{ capability string }
+
+func (e capabilityDeniedError) Error() string { return e.capability + " capability denied" }
 
 type request struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -38,12 +45,14 @@ type response struct {
 
 // Server serves only the repository tools represented by one frozen policy.
 type Server struct {
-	Policy        domain.AttemptExecutionPolicy
-	WorkspaceRoot string
-	SessionID     domain.SessionID
-	In            io.Reader
-	Out           io.Writer
-	root          *os.Root
+	Policy              domain.AttemptExecutionPolicy
+	WorkspaceRoot       string
+	SessionID           domain.SessionID
+	In                  io.Reader
+	Out                 io.Writer
+	root                *os.Root
+	Escalations         ports.CapabilityEscalationStore
+	grantOnceCapability string
 }
 
 // Serve runs the bounded MCP server until its stdio input closes.
@@ -115,7 +124,22 @@ func (s *Server) handle(req request) (interface{}, error) {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return nil, err
 		}
+		capability := s.requiredCapability(p.Name)
+		if capability != "" && !s.Policy.Has(capability) && s.Escalations != nil {
+			if escalation, escalationErr := s.capabilityEscalation(context.Background(), p.Name, p.Arguments, capability); escalationErr == nil {
+				if _, won, consumeErr := s.Escalations.ConsumeCapabilityGrantOnce(context.Background(), escalation, escalation.RequestFingerprint); consumeErr == nil && won {
+					s.grantOnceCapability = capability
+				}
+			}
+		}
 		text, err := s.call(p.Name, p.Arguments)
+		s.grantOnceCapability = ""
+		var denied capabilityDeniedError
+		if errors.As(err, &denied) {
+			if escalationErr := s.recordCapabilityDenial(context.Background(), p.Name, p.Arguments, denied.capability); escalationErr != nil {
+				err = fmt.Errorf("%w; capability escalation unavailable: %v", err, escalationErr)
+			}
+		}
 		if err != nil {
 			message := err.Error()
 			if text != "" {
@@ -163,8 +187,8 @@ func stringArg(args map[string]interface{}, key string) (string, error) {
 func (s *Server) call(name string, args map[string]interface{}) (string, error) {
 	switch name {
 	case "list_repository":
-		if !s.Policy.Has(domain.CapabilityWorktreeRead) {
-			return "", errors.New("repository read capability denied")
+		if !s.Policy.Has(domain.CapabilityWorktreeRead) && s.grantOnceCapability != domain.CapabilityWorktreeRead {
+			return "", capabilityDeniedError{domain.CapabilityWorktreeRead}
 		}
 		raw, _ := args["path"].(string)
 		path, err := repositoryPath(raw, true)
@@ -206,8 +230,8 @@ func (s *Server) call(name string, args map[string]interface{}) (string, error) 
 		sort.Strings(files)
 		return strings.Join(files, "\n"), err
 	case "read_text_file":
-		if !s.Policy.Has(domain.CapabilityWorktreeRead) {
-			return "", errors.New("repository read capability denied")
+		if !s.Policy.Has(domain.CapabilityWorktreeRead) && s.grantOnceCapability != domain.CapabilityWorktreeRead {
+			return "", capabilityDeniedError{domain.CapabilityWorktreeRead}
 		}
 		raw, err := stringArg(args, "path")
 		if err != nil {
@@ -233,8 +257,8 @@ func (s *Server) call(name string, args map[string]interface{}) (string, error) 
 		}
 		return string(b), nil
 	case "write_text_file":
-		if !s.Policy.Has(domain.CapabilityWorktreeWrite) {
-			return "", errors.New("worktree.write was not granted")
+		if !s.Policy.Has(domain.CapabilityWorktreeWrite) && s.grantOnceCapability != domain.CapabilityWorktreeWrite {
+			return "", capabilityDeniedError{domain.CapabilityWorktreeWrite}
 		}
 		raw, err := stringArg(args, "path")
 		if err != nil {
@@ -311,4 +335,74 @@ func repositoryPath(raw string, allowRoot bool) (string, error) {
 		}
 	}
 	return path, nil
+}
+
+func (s *Server) capabilityEscalation(ctx context.Context, name string, args map[string]interface{}, capability string) (domain.CapabilityEscalation, error) {
+	if s.Escalations == nil {
+		return domain.CapabilityEscalation{}, fmt.Errorf("capability escalation store unavailable")
+	}
+	policyDigest, err := s.Policy.Digest()
+	if err != nil {
+		return domain.CapabilityEscalation{}, err
+	}
+	ref, found, err := s.Escalations.LatestAttemptSessionRefForSession(ctx, string(s.SessionID))
+	if err != nil || !found {
+		return domain.CapabilityEscalation{}, fmt.Errorf("resolve governed tool attempt session: %w", err)
+	}
+	attempt, found, err := s.Escalations.GetAttempt(ctx, s.Policy.OutcomeID, ref.AttemptID)
+	if err != nil || !found {
+		return domain.CapabilityEscalation{}, fmt.Errorf("resolve governed tool attempt: %w", err)
+	}
+	session, found, err := s.Escalations.GetSession(ctx, s.SessionID)
+	if err != nil || !found {
+		return domain.CapabilityEscalation{}, fmt.Errorf("resolve governed tool session: %w", err)
+	}
+	if session.Metadata.GovernedExecutionPolicyDigest != policyDigest {
+		return domain.CapabilityEscalation{}, fmt.Errorf("governed tool policy digest mismatch")
+	}
+	canonical, err := json.Marshal(struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}{name, args})
+	if err != nil {
+		return domain.CapabilityEscalation{}, err
+	}
+	sum := sha256.Sum256(canonical)
+	operationDigest := hex.EncodeToString(sum[:])
+	qsum := sha256.Sum256([]byte("capability-question\x00" + operationDigest + "\x00" + string(attempt.ID)))
+	questionGeneration := "ceq-" + hex.EncodeToString(qsum[:16])
+	revisions, err := s.Escalations.ListContractRevisions(ctx, attempt.OutcomeID)
+	if err != nil {
+		return domain.CapabilityEscalation{}, err
+	}
+	within := false
+	for _, revision := range revisions {
+		if revision.Number == attempt.ContractRevisionNumber {
+			within = domain.ContractAllowsCapability(revision, capability)
+			break
+		}
+	}
+	e := domain.CapabilityEscalation{Version: domain.CapabilityEscalationVersion, ExecutorKind: "governed_tool", OutcomeID: attempt.OutcomeID, ContractRevisionNumber: attempt.ContractRevisionNumber, PlanRevisionID: attempt.PlanRevisionID, WorkUnitID: attempt.WorkUnitID, AttemptID: attempt.ID, AttemptGeneration: attempt.Number, AttemptSessionRefID: ref.ID, SessionID: s.SessionID, SessionGeneration: ref.Seq, RuntimeLaunchID: session.Metadata.RuntimeLaunchID, PolicyDigest: policyDigest, RequestedCapability: capability, DenialSource: "governed_tool", GrantFingerprint: policyDigest, OperationID: "tool:" + name, RequestFingerprint: operationDigest, QuestionGeneration: questionGeneration, WithinContractCeiling: within}
+	e.Digest, err = e.ComputedDigest()
+	if err != nil {
+		return domain.CapabilityEscalation{}, err
+	}
+	return e, nil
+}
+func (s *Server) recordCapabilityDenial(ctx context.Context, name string, args map[string]interface{}, capability string) error {
+	e, err := s.capabilityEscalation(ctx, name, args, capability)
+	if err != nil {
+		return err
+	}
+	_, _, err = s.Escalations.CreateCapabilityEscalation(ctx, e)
+	return err
+}
+func (s *Server) requiredCapability(name string) string {
+	switch name {
+	case "list_repository", "read_text_file":
+		return domain.CapabilityWorktreeRead
+	case "write_text_file":
+		return domain.CapabilityWorktreeWrite
+	}
+	return ""
 }

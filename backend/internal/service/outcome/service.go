@@ -156,8 +156,9 @@ type Service struct {
 	documents     ports.DocumentContextStore
 	documentBytes ports.DocumentSnapshotStore
 
-	needsYou           ports.NeedsYouStore
-	needsYouDispatcher NeedsYouDispatcher
+	needsYou              ports.NeedsYouStore
+	capabilityEscalations ports.CapabilityEscalationStore
+	needsYouDispatcher    NeedsYouDispatcher
 
 	staleHeartbeat time.Duration
 }

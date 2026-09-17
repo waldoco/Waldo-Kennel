@@ -33,7 +33,7 @@ func (s *Service) CurrentNeedsYou(ctx context.Context, id domain.OutcomeID) ([]d
 	return s.needsYou.ListCurrentNeedsYouQuestions(ctx, id)
 }
 func (s *Service) AnswerNeedsYou(ctx context.Context, outcomeID domain.OutcomeID, questionID string, in domain.NeedsYouAnswer) (domain.NeedsYouQuestion, error) {
-	if s.needsYou == nil || s.needsYouDispatcher == nil {
+	if s.needsYou == nil {
 		return domain.NeedsYouQuestion{}, ErrNeedsYouUnavailable
 	}
 	q, ok, err := s.needsYou.GetNeedsYouQuestion(ctx, outcomeID, questionID)
@@ -51,6 +51,15 @@ func (s *Service) AnswerNeedsYou(ctx context.Context, outcomeID domain.OutcomeID
 	}
 	if strings.TrimSpace(in.RequestKey) == "" {
 		return q, ErrNeedsYouAnswerInvalid
+	}
+	if q.CapabilityEscalation != nil {
+		if in.Decision == nil || in.Input != nil || strings.TrimSpace(in.Decision.ID) == "" {
+			return q, ErrNeedsYouAnswerInvalid
+		}
+		return s.answerCapabilityEscalation(ctx, q, in)
+	}
+	if s.needsYouDispatcher == nil {
+		return q, ErrNeedsYouUnavailable
 	}
 	// The controller's key is the immutable generation. Keep requestKey at this facade as a required client retry identity;
 	// the underlying claim fingerprint still rejects a different payload for the same generation.

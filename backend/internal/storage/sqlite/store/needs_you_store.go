@@ -54,6 +54,14 @@ func projectNeedsYou(id, conversationID, requestID, generation, questionStatus s
 	if rec, ok := d["recommendation"].(string); ok {
 		q.Recommendation = rec
 	}
+	if raw, ok := d["capabilityEscalation"]; ok {
+		b, _ := json.Marshal(raw)
+		var escalation domain.CapabilityEscalation
+		if err := json.Unmarshal(b, &escalation); err != nil || escalation.Validate() != nil {
+			return q, fmt.Errorf("decode typed capability escalation %s", id)
+		}
+		q.CapabilityEscalation = &escalation
+	}
 	switch kind {
 	case domain.ActivityKindApproval:
 		q.Kind = domain.NeedsYouApproval
@@ -83,7 +91,8 @@ func projectNeedsYou(id, conversationID, requestID, generation, questionStatus s
 		return q, fmt.Errorf("question %s has unsupported activity kind %s", id, kind)
 	}
 	q.Status = domain.NeedsYouOpen
-	if attemptStatus.Terminal() || questionStatus != "pending" || activityStatus != domain.ActivityStatusPending {
+	terminalStales := attemptStatus.Terminal() && (q.CapabilityEscalation == nil || q.CapabilityEscalation.ExecutorKind != "governed_check")
+	if terminalStales || questionStatus != "pending" || activityStatus != domain.ActivityStatusPending {
 		q.Status = domain.NeedsYouSuperseded
 		return q, nil
 	}
