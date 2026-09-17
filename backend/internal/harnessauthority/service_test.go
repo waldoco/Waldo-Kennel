@@ -31,6 +31,15 @@ func TestCreateIntentBindsProjectWorkSpaceBeforeOutcome(t *testing.T) {
 	if err != nil || intent.MissionID != string(space.ID) || intent.MissionID == "renderer-controlled" {
 		t.Fatalf("mission=%q space=%q err=%v", intent.MissionID, space.ID, err)
 	}
+	outcome := domain.Outcome{ID: "outcome-1", SpaceID: space.ID, Title: "Later outcome", CreatedAt: now, UpdatedAt: now}
+	contract := domain.ContractRevision{ID: "contract-1", OutcomeID: outcome.ID, Goal: "Prove the same mission scope", SuccessCriteria: []string{"Pairing and Outcome agree"}, Review: "test", CreatedAt: now}
+	if err := store.CreateOutcomeWithContract(context.Background(), outcome, contract, "outcome-key"); err != nil {
+		t.Fatal(err)
+	}
+	stored, found, err := store.GetOutcome(context.Background(), outcome.ID)
+	if err != nil || !found || string(stored.SpaceID) != intent.MissionID {
+		t.Fatalf("outcome mission=%q pairing=%q found=%v err=%v", stored.SpaceID, intent.MissionID, found, err)
+	}
 }
 
 func TestCreateIntentConcurrentProjectScopeConverges(t *testing.T) {
