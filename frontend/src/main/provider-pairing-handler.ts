@@ -241,7 +241,7 @@ type PairingDeps = Deps & {
   getPairingAddress: () => string | null;
   exchange: (
     address: string,
-    frame: object,
+    frame: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
 };
 function ownerHeaders(d: PairingDeps) {
