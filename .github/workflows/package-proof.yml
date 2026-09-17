@@ -1,0 +1,65 @@
+# Maintainer-dispatched, fixed macOS package proof on the self-hosted runner.
+# No input becomes a command or prompt; this workflow runs only the reviewed
+# scripts/ci/package-proof.sh from the selected ref.
+name: macOS package proof on self-hosted runner
+run-name: "package proof @ ${{ inputs.ref }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Reviewed Git ref to package"
+        required: true
+        default: outcome-loop
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-package-proof-single-runner
+  cancel-in-progress: false
+
+jobs:
+  package-proof:
+    name: fixed packaged-DMG proof
+    runs-on: [self-hosted, macOS, ARM64, codex]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Build DMG and run fixed headless smoke proof
+        shell: bash
+        env:
+          KENNEL_RELEASE_REPO: ${{ github.repository }}
+        run: ./scripts/ci/package-proof.sh
+
+      - name: Upload bounded package diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-proof-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/package-proof/diagnostic.log
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload DMG and SHA-256
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kennel-dmg-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/package-proof/*.dmg
+            artifacts/package-proof/*.dmg.sha256
+          if-no-files-found: error
+          retention-days: 2
