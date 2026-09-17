@@ -4226,6 +4226,35 @@ export interface components {
             lastActivityAt: string;
             state: string;
         };
+        DomainCapabilityEscalation: {
+            artifactVersion?: string;
+            /** Format: int64 */
+            attemptGeneration: number;
+            attemptId: string;
+            attemptSessionRefId: string;
+            checkId?: string;
+            /** Format: int64 */
+            contractRevisionNumber: number;
+            controllerGeneration?: string;
+            denialSource: string;
+            digest: string;
+            executorKind: string;
+            grantFingerprint: string;
+            operationId: string;
+            outcomeId: string;
+            planRevisionId: string;
+            policyDigest: string;
+            questionGeneration: string;
+            requestFingerprint: string;
+            requestedCapability: string;
+            runtimeLaunchId?: string;
+            /** Format: int64 */
+            sessionGeneration: number;
+            sessionId: string;
+            version: string;
+            withinContractCeiling: boolean;
+            workUnitId: string;
+        };
         DomainReviewerConfig: {
             harness: string;
         };
@@ -4472,6 +4501,7 @@ export interface components {
         };
         NeedsYouQuestion: {
             attemptId: string;
+            capabilityEscalation?: components["schemas"]["DomainCapabilityEscalation"];
             commandId?: string;
             conversationId: string;
             /** Format: date-time */
