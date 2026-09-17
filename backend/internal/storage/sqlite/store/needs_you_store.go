@@ -46,7 +46,7 @@ func (s *Store) GetNeedsYouQuestion(ctx context.Context, outcomeID domain.Outcom
 	return q, true, err
 }
 func projectNeedsYou(id, conversationID, requestID, generation, questionStatus string, createdAt, updatedAt time.Time, kind domain.ActivityKind, summary, detail string, activityStatus domain.ActivityStatus, outcomeID domain.OutcomeID, planID domain.PlanRevisionID, workID domain.WorkUnitID, attemptID domain.AttemptID, attemptStatus domain.AttemptStatus, session string, commandID, commandState sql.NullString) (domain.NeedsYouQuestion, error) {
-	q := domain.NeedsYouQuestion{ID: id, ConversationID: conversationID, RequestID: requestID, Generation: generation, Reason: summary, OutcomeID: outcomeID, PlanRevisionID: planID, WorkUnitID: workID, AttemptID: attemptID, SessionID: domain.SessionID(session), CreatedAt: createdAt, UpdatedAt: updatedAt, CommandID: commandID.String, QuestionPending: questionStatus == "pending"}
+	q := domain.NeedsYouQuestion{ID: id, ConversationID: conversationID, RequestID: requestID, Generation: generation, Reason: summary, OutcomeID: outcomeID, PlanRevisionID: planID, WorkUnitID: workID, AttemptID: attemptID, SessionID: domain.SessionID(session), CreatedAt: createdAt, UpdatedAt: updatedAt, CommandID: commandID.String, QuestionStatus: questionStatus, ActivityStatus: activityStatus, CommandState: domain.GovernedCommandState(commandState.String)}
 	var d map[string]any
 	if err := json.Unmarshal([]byte(detail), &d); err != nil {
 		return q, fmt.Errorf("decode needs-you question %s: %w", id, err)
@@ -85,6 +85,7 @@ func projectNeedsYou(id, conversationID, requestID, generation, questionStatus s
 	q.Status = domain.NeedsYouOpen
 	if attemptStatus.Terminal() || questionStatus != "pending" || activityStatus != domain.ActivityStatusPending {
 		q.Status = domain.NeedsYouSuperseded
+		return q, nil
 	}
 	if commandState.Valid {
 		switch domain.GovernedCommandState(commandState.String) {
@@ -114,11 +115,11 @@ func (s *Store) ReconcileNeedsYouAnswer(ctx context.Context, outcomeID domain.Ou
 	if q.Generation != generation {
 		return q, fmt.Errorf("needs-you generation is stale")
 	}
-	if q.Status != domain.NeedsYouDeliveryUnknown {
+	if q.CommandState != domain.GovernedCommandDeliveryUnknown {
 		return q, fmt.Errorf("needs-you command is not delivery_unknown")
 	}
-	if q.QuestionPending {
-		return q, fmt.Errorf("needs-you delivery remains unknown: provider supplied no reconciliation evidence")
+	if !hasAffirmativeNeedsYouResolution(q) {
+		return q, fmt.Errorf("needs-you delivery remains unknown: no affirmative matching provider resolution")
 	}
 	rec, found, err := s.GetGovernedControlCommand(ctx, q.CommandID)
 	if err != nil || !found {
@@ -141,4 +142,8 @@ func (s *Store) mustNeedsYou(ctx context.Context, outcomeID domain.OutcomeID, id
 		err = fmt.Errorf("needs-you question vanished")
 	}
 	return q, err
+}
+
+func hasAffirmativeNeedsYouResolution(q domain.NeedsYouQuestion) bool {
+	return q.CommandState == domain.GovernedCommandDeliveryUnknown && q.QuestionStatus == "resolved" && q.ActivityStatus == domain.ActivityStatusResolved
 }

@@ -81,3 +81,16 @@ func TestAnswerNeedsYouTypedInputDoesNotUseApprovalPath(t *testing.T) {
 		t.Fatalf("calls=%d", d.calls)
 	}
 }
+
+func TestAnswerNeedsYouSupersededNeverDispatches(t *testing.T) {
+	st := &needsStoreFake{q: domain.NeedsYouQuestion{ID: "q", OutcomeID: "o", SessionID: "s", RequestID: "r", Generation: "g", Kind: domain.NeedsYouChoice, Status: domain.NeedsYouSuperseded, Options: []domain.NeedsYouOption{{ID: "yes"}}}}
+	d := &needsDispatchFake{}
+	svc := New(nil, nil).WithNeedsYou(st, d)
+	_, err := svc.AnswerNeedsYou(context.Background(), "o", "q", domain.NeedsYouAnswer{RequestKey: "k", Generation: "g", Decision: &domain.ChatDecisionAnswer{ID: "yes"}})
+	if !errors.Is(err, ErrNeedsYouStale) {
+		t.Fatalf("err=%v", err)
+	}
+	if d.calls != 0 {
+		t.Fatal("superseded answer crossed provider boundary")
+	}
+}

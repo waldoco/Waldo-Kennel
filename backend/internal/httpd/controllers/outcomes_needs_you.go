@@ -32,6 +32,23 @@ type NeedsYouReconcileRequest struct {
 	Generation string `json:"generation"`
 }
 
+const maxNeedsYouBody = 1 << 20
+
+func decodeNeedsYouBody(w http.ResponseWriter, r *http.Request, into any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxNeedsYouBody)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(into); err != nil {
+		envelope.WriteAPIError(w, r, http.StatusBadRequest, "validation", "INVALID_BODY", "request body is not valid JSON", nil)
+		return false
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		envelope.WriteAPIError(w, r, http.StatusBadRequest, "validation", "INVALID_BODY", "request body must contain exactly one JSON value", nil)
+		return false
+	}
+	return true
+}
+
 func (c *OutcomesController) currentNeedsYou(w http.ResponseWriter, r *http.Request) {
 	if c.NeedsYou == nil {
 		writeNeedsYouUnavailable(w, r)
@@ -50,8 +67,7 @@ func (c *OutcomesController) answerNeedsYou(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var req NeedsYouAnswerRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		envelope.WriteAPIError(w, r, 400, "validation", "INVALID_BODY", "request body is not valid JSON", nil)
+	if !decodeNeedsYouBody(w, r, &req) {
 		return
 	}
 	q, err := c.NeedsYou.AnswerNeedsYou(r.Context(), domain.OutcomeID(chi.URLParam(r, "outcomeId")), chi.URLParam(r, "questionId"), domain.NeedsYouAnswer{RequestKey: req.RequestKey, Generation: req.Generation, Decision: req.Decision, Input: req.Input})
@@ -67,8 +83,7 @@ func (c *OutcomesController) reconcileNeedsYou(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var in NeedsYouReconcileRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
-		envelope.WriteAPIError(w, r, 400, "validation", "INVALID_BODY", "request body is not valid JSON", nil)
+	if !decodeNeedsYouBody(w, r, &in) {
 		return
 	}
 	q, err := c.NeedsYou.ReconcileNeedsYou(r.Context(), domain.OutcomeID(chi.URLParam(r, "outcomeId")), chi.URLParam(r, "questionId"), in.Generation)
