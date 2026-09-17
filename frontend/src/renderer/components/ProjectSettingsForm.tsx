@@ -33,6 +33,7 @@ import { RequiredAgentField } from "./CreateProjectAgentSheet";
 import { buildIntake, deriveGitHubRepo, IntakeFields, type IntakeForm } from "./IntakeFields";
 import { ProductExternalLink } from "./ProductExternalLink";
 import { ReviewerSelect, reviewerTrustWarning } from "./ReviewerSelect";
+import { CodexPairingSection } from "./settings/CodexPairingSection";
 import { AgentModelCombobox } from "./settings/AgentModelCombobox";
 import { SettingsOptionMenu } from "./settings/SettingsOptionMenu";
 import { SettingsRow } from "./settings/SettingsRow";
@@ -440,6 +441,7 @@ function SettingsBody({
 
 			{section === "agents" && (
 				<>
+					<CodexPairingSection projectId={projectId} />
 					<ProjectAgentsSettingsView
 						title={t("settings.project.agents")}
 						workerArea={

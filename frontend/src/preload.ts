@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { CLOSE_SHELL_TERMINAL_SHORTCUT_CHANNEL, FOCUS_TERMINAL_SHORTCUT_CHANNEL, KEYBOARD_SHORTCUTS_HELP_CHANNEL, NEXT_SESSION_SHORTCUT_CHANNEL, NEXT_TAB_SHORTCUT_CHANNEL, NEW_SESSION_SHORTCUT_CHANNEL, NEW_SHELL_TERMINAL_SHORTCUT_CHANNEL, OPEN_SETTINGS_SHORTCUT_CHANNEL, PREVIOUS_SESSION_SHORTCUT_CHANNEL, PREVIOUS_TAB_SHORTCUT_CHANNEL, SET_CLOSE_SHELL_TERMINAL_SHORTCUT_ENABLED_CHANNEL, SET_TERMINAL_FOCUSED_CHANNEL, TERMINAL_FONT_SIZE_SHORTCUT_CHANNEL, type KeybindingOverrides } from "./shared/shortcuts";
+import type { CodexDiscoveryState, CodexPairingProposal, CodexPairingState } from "./shared/provider-pairing";
 import type {
 	BrowserAgentActivityState,
 	BrowserDevToolsInput,
@@ -103,6 +104,9 @@ const api = {
 		}) => ipcRenderer.invoke("ownerCommand:approveAttemptReplacement", input) as Promise<unknown>,
 		approveHarnessAuthority: (input: { action: "approve"|"deny"; intentId: string; digest: string; requestKey: string } | { action: "revoke"; connectionId: string; digest: string; expectedGeneration: number; requestKey: string }) =>
 			ipcRenderer.invoke("ownerCommand:harnessAuthority", input) as Promise<unknown>,
+		discoverCodex: (input: { projectId: string }) => ipcRenderer.invoke("providerPairing:discoverCodex", input) as Promise<CodexDiscoveryState>,
+		getCodexPairing: (input: { projectId: string }) => ipcRenderer.invoke("providerPairing:getCodex", input) as Promise<CodexPairingState>,
+		pairCodex: (input: CodexPairingProposal) => ipcRenderer.invoke("providerPairing:pairCodex", input) as Promise<CodexPairingState>,
 		// Fired by the main process when the app-level new-session shortcut
 		// (⌘N / Ctrl+Shift+N) is pressed in any web contents.
 		onNewSessionShortcut: (listener: () => void) => {
