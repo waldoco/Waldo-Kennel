@@ -19,8 +19,8 @@ func TestStartupSecretsAndAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := NewAuthority(s.OwnerCommandToken, s.AppRunID)
-	if p, ok := a.Authenticate("KennelOwner " + s.OwnerCommandToken); !ok || p != "local-owner:apprun-1" {
-		t.Fatalf("auth=(%q,%v)", p, ok)
+	if authentication, ok := a.Authenticate("KennelOwner " + s.OwnerCommandToken); !ok || authentication.Principal != "local-owner:apprun-1" || authentication.AppRunID != "apprun-1" {
+		t.Fatalf("auth=(%+v,%v)", authentication, ok)
 	}
 	if _, ok := a.Authenticate("KennelOwner wrong"); ok {
 		t.Fatal("accepted wrong token")

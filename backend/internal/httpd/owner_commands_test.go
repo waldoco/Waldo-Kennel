@@ -113,7 +113,7 @@ func TestOwnerCommandOriginAndLoopbackHostMatrix(t *testing.T) {
 }
 
 func pairingIntentBody() string {
-	return `{"kind":"pair","connectionId":"hc-owner","installationId":"install","adapterDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","harnessIdentity":"codex","providerVersion":"0.154.0","protocolFingerprint":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","missionId":"mission","appRunId":"apprun-test","capabilityClasses":["turn"],"expectedGeneration":1}`
+	return `{"kind":"pair","connectionId":"hc-owner","installationId":"install","adapterDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","harnessIdentity":"codex","providerVersion":"0.154.0","protocolFingerprint":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","missionId":"mission","capabilityClasses":["turn"],"expectedGeneration":1}`
 }
 func TestPairingIntentRequiresOwnerCapabilityAndNeverExposesAdapterIssue(t *testing.T) {
 	store := sqlitetest.MustOpen(t)
@@ -142,6 +142,10 @@ func TestPairingIntentRequiresOwnerCapabilityAndNeverExposesAdapterIssue(t *test
 				if json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Data.IntentID == "" || body.Data.Secret == "" {
 					t.Fatalf("body=%s", w.Body.String())
 				}
+				stored, found, err := store.GetHarnessPairingChallenge(context.Background(), domain.PairingChallengeID(body.Data.IntentID))
+				if err != nil || !found || stored.AppRunID != "apprun-test" {
+					t.Fatalf("stored app run=(%q,%v,%v)", stored.AppRunID, found, err)
+				}
 			}
 		})
 	}
@@ -153,6 +157,21 @@ func TestPairingIntentRequiresOwnerCapabilityAndNeverExposesAdapterIssue(t *test
 		t.Fatalf("adapter Issue route code=%d", w.Code)
 	}
 }
+
+func TestPairingIntentRejectsRequestControlledAppRunID(t *testing.T) {
+	store := sqlitetest.MustOpen(t)
+	coordinator := harnesspairing.New(store, harnessconnection.New(store))
+	r := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{}, ControlDeps{OwnerAuthority: ownercommand.NewAuthority(strings.Repeat("t", 32), "apprun-authenticated"), PairingCoordinator: coordinator})
+	body := strings.TrimSuffix(pairingIntentBody(), "}") + `,"appRunId":"apprun-other"}`
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/internal/owner-commands/harness-pairing-intents", strings.NewReader(body))
+	req.Header.Set("Authorization", "KennelOwner "+strings.Repeat("t", 32))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestPairingIntentOwnerRouteRejectsLANHostAndUnknownFields(t *testing.T) {
 	store := sqlitetest.MustOpen(t)
 	c := harnesspairing.New(store, harnessconnection.New(store))

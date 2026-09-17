@@ -41,7 +41,7 @@ func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store p
 				notFoundJSON(w, req)
 				return
 			}
-			principal, ok := authority.Authenticate(req.Header.Get("Authorization"))
+			authentication, ok := authority.Authenticate(req.Header.Get("Authorization"))
 			if !ok {
 				envelope.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "OWNER_COMMAND_UNAUTHORIZED", "message": "Trusted local-owner command authentication failed"}})
 				return
@@ -61,12 +61,12 @@ func mountOwnerCommands(r chi.Router, authority *ownercommand.Authority, store p
 				envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_COMMAND_INVALID", "message": "Replacement decision action must be replace"}})
 				return
 			}
-			fp, err := ownercommand.Fingerprint(replacementDecisionFingerprint{OwnerPrincipal: principal, replacementDecisionRequest: in})
+			fp, err := ownercommand.Fingerprint(replacementDecisionFingerprint{OwnerPrincipal: authentication.Principal, replacementDecisionRequest: in})
 			if err != nil {
 				envelope.WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"code": "OWNER_COMMAND_FAILED", "message": "Replacement decision could not be bound"}})
 				return
 			}
-			d := domain.AttemptReplacementDecision{ID: domain.AttemptReplacementDecisionID("replacement-decision-" + uuid.NewString()), OutcomeID: in.OutcomeID, PredecessorAttemptID: in.PredecessorAttemptID, PlanRevisionID: in.PlanRevisionID, WorkUnitID: in.WorkUnitID, RunIntentGeneration: in.RunIntentGeneration, ContractRevisionNumber: in.ContractRevisionNumber, Action: "replace", RequestKey: strings.TrimSpace(in.RequestKey), RequestFingerprint: fp, OwnerPrincipal: principal, CreatedAt: time.Now().UTC()}
+			d := domain.AttemptReplacementDecision{ID: domain.AttemptReplacementDecisionID("replacement-decision-" + uuid.NewString()), OutcomeID: in.OutcomeID, PredecessorAttemptID: in.PredecessorAttemptID, PlanRevisionID: in.PlanRevisionID, WorkUnitID: in.WorkUnitID, RunIntentGeneration: in.RunIntentGeneration, ContractRevisionNumber: in.ContractRevisionNumber, Action: "replace", RequestKey: strings.TrimSpace(in.RequestKey), RequestFingerprint: fp, OwnerPrincipal: authentication.Principal, CreatedAt: time.Now().UTC()}
 			if err := d.Validate(); err != nil {
 				envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_COMMAND_INVALID", "message": "Replacement decision body is invalid"}})
 				return
@@ -102,7 +102,6 @@ type pairingIntentRequest struct {
 	ProviderVersion     string                          `json:"providerVersion"`
 	ProtocolFingerprint domain.SHA256Digest             `json:"protocolFingerprint"`
 	MissionID           string                          `json:"missionId"`
-	AppRunID            string                          `json:"appRunId"`
 	CapabilityClasses   []domain.HarnessCapabilityClass `json:"capabilityClasses"`
 	ExpectedGeneration  int64                           `json:"expectedGeneration"`
 }
@@ -116,7 +115,8 @@ func mountPairingIntentOwnerCommand(r chi.Router, authority *ownercommand.Author
 			notFoundJSON(w, req)
 			return
 		}
-		if _, ok := authority.Authenticate(req.Header.Get("Authorization")); !ok {
+		authentication, ok := authority.Authenticate(req.Header.Get("Authorization"))
+		if !ok {
 			envelope.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "OWNER_COMMAND_UNAUTHORIZED", "message": "Trusted local-owner command authentication failed"}})
 			return
 		}
@@ -128,7 +128,7 @@ func mountPairingIntentOwnerCommand(r chi.Router, authority *ownercommand.Author
 			return
 		}
 		now := time.Now().UTC()
-		issued, err := coordinator.Issue(req.Context(), harnesspairing.IssueChallengeRequest{Kind: in.Kind, ConnectionID: in.ConnectionID, InstallationID: in.InstallationID, AdapterDigest: in.AdapterDigest, HarnessIdentity: in.HarnessIdentity, ProviderVersion: in.ProviderVersion, ProtocolFingerprint: in.ProtocolFingerprint, MissionID: in.MissionID, AppRunID: in.AppRunID, CapabilityClasses: in.CapabilityClasses, ExpectedGeneration: in.ExpectedGeneration, ConnectionExpiresAt: now.Add(24 * time.Hour), TTL: 2 * time.Minute, Now: now})
+		issued, err := coordinator.Issue(req.Context(), harnesspairing.IssueChallengeRequest{Kind: in.Kind, ConnectionID: in.ConnectionID, InstallationID: in.InstallationID, AdapterDigest: in.AdapterDigest, HarnessIdentity: in.HarnessIdentity, ProviderVersion: in.ProviderVersion, ProtocolFingerprint: in.ProtocolFingerprint, MissionID: in.MissionID, AppRunID: authentication.AppRunID, CapabilityClasses: in.CapabilityClasses, ExpectedGeneration: in.ExpectedGeneration, ConnectionExpiresAt: now.Add(24 * time.Hour), TTL: 2 * time.Minute, Now: now})
 		if err != nil {
 			envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "PAIRING_INTENT_INVALID", "message": "Pairing intent could not be opened"}})
 			return

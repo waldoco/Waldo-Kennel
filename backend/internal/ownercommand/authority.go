@@ -12,21 +12,27 @@ const AuthorizationScheme = "KennelOwner"
 
 type Authority struct{ token, appRunID string }
 
+// Authentication is the typed identity bound to a valid owner-command token.
+type Authentication struct {
+	Principal string
+	AppRunID  string
+}
+
 func NewAuthority(token, appRunID string) *Authority {
 	if token == "" || appRunID == "" {
 		return nil
 	}
 	return &Authority{token: token, appRunID: appRunID}
 }
-func (a *Authority) Authenticate(header string) (string, bool) {
+func (a *Authority) Authenticate(header string) (Authentication, bool) {
 	if a == nil {
-		return "", false
+		return Authentication{}, false
 	}
 	scheme, token, ok := strings.Cut(strings.TrimSpace(header), " ")
 	if !ok || scheme != AuthorizationScheme || !TokenMatches(token, a.token) {
-		return "", false
+		return Authentication{}, false
 	}
-	return "local-owner:" + a.appRunID, true
+	return Authentication{Principal: "local-owner:" + a.appRunID, AppRunID: a.appRunID}, true
 }
 func Fingerprint(v any) (string, error) {
 	b, err := json.Marshal(v)
