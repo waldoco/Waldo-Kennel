@@ -152,3 +152,31 @@ func TestAdmissionRejectsTokenCapWithoutProviderAccounting(t *testing.T) {
 		t.Fatalf("verdict=%+v", got)
 	}
 }
+
+func TestAdmissionPolicyMissingAndInvalidAreDistinctOperatorErrors(t *testing.T) {
+	in := admissionFixture()
+	got := (admissionEvaluator{policy: nil, now: time.Now}).evaluate(in)
+	if got.Status != domain.AdmissionRejected || len(got.Reasons) != 1 || got.Reasons[0] != domain.AdmissionPolicyMissing {
+		t.Fatalf("nil policy: %+v", got)
+	}
+	invalid := admissionTestPolicy()
+	invalid.Digest = "corrupted"
+	got = (admissionEvaluator{policy: invalid, now: time.Now}).evaluate(in)
+	if got.Status != domain.AdmissionRejected || len(got.Reasons) != 1 || got.Reasons[0] != domain.AdmissionPolicyInvalid {
+		t.Fatalf("invalid policy: %+v", got)
+	}
+}
+
+func TestAdmissionMalformedBudgetIdentityIsNotTimeBudgetMissing(t *testing.T) {
+	in := admissionFixture()
+	// Wall-time, retry, and token pieces are all present; the policy identity
+	// is blank. ExecutionBudget.Validate rejects this, and it must surface as
+	// malformed budget, never as a missing wall-time budget.
+	in.plan.WorkUnits[0].ExecutionBudget.PolicyID = ""
+	in.plan.WorkUnits[0].ExecutionBudget.PolicyVersion = ""
+	in.plan.WorkUnits[0].ExecutionBudget.PolicyDigest = ""
+	got := (admissionEvaluator{policy: admissionTestPolicy(), now: time.Now}).evaluate(in)
+	if got.Status != domain.AdmissionRejected || len(got.Reasons) != 1 || got.Reasons[0] != domain.AdmissionBudgetInvalid {
+		t.Fatalf("%+v", got)
+	}
+}

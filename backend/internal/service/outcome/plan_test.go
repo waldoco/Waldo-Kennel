@@ -358,3 +358,58 @@ func TestApproveUnknownPlanIsNotFound(t *testing.T) {
 		t.Fatal("plans for unknown outcomes must 404")
 	}
 }
+
+func TestProposePlanWithoutAdmissionPolicySkipsModelCall(t *testing.T) {
+	router := &routingInventoryFake{candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+	svc, store, outcomeID, provider := newPlanningTestService(t, router)
+	svc.AdmissionPolicy = nil
+
+	_, err := svc.ProposePlan(context.Background(), outcomeID, 2)
+	if err == nil {
+		t.Fatal("propose without admission policy must fail closed")
+	}
+	if code := apiCode(t, err); code != "PLAN_PROPOSAL_NOT_ADMITTED" {
+		t.Fatalf("code = %s, want PLAN_PROPOSAL_NOT_ADMITTED", code)
+	}
+	var apiErr *apierr.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error type %T, want *apierr.Error", err)
+	}
+	reasons, ok := apiErr.Details["reasons"].([]domain.AdmissionReasonCode)
+	if !ok || len(reasons) != 1 || reasons[0] != domain.AdmissionPolicyMissing {
+		t.Fatalf("reasons = %v, want [admission_policy_missing]", apiErr.Details["reasons"])
+	}
+	if provider.calls != 0 {
+		t.Fatalf("plan intelligence calls = %d, want zero (no model spend without policy)", provider.calls)
+	}
+	if got := len(store.plans[outcomeID]); got != 0 {
+		t.Fatalf("persisted plans = %d, want zero", got)
+	}
+}
+
+func TestProposePlanWithInvalidAdmissionPolicySkipsModelCall(t *testing.T) {
+	router := &routingInventoryFake{candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+	svc, _, outcomeID, provider := newPlanningTestService(t, router)
+	policy := testAdmissionPolicy()
+	policy.Digest = "corrupted"
+	svc.AdmissionPolicy = policy
+
+	_, err := svc.ProposePlan(context.Background(), outcomeID, 2)
+	if err == nil {
+		t.Fatal("propose with invalid admission policy must fail closed")
+	}
+	if code := apiCode(t, err); code != "PLAN_PROPOSAL_NOT_ADMITTED" {
+		t.Fatalf("code = %s, want PLAN_PROPOSAL_NOT_ADMITTED", code)
+	}
+	var apiErr *apierr.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error type %T, want *apierr.Error", err)
+	}
+	reasons, ok := apiErr.Details["reasons"].([]domain.AdmissionReasonCode)
+	if !ok || len(reasons) != 1 || reasons[0] != domain.AdmissionPolicyInvalid {
+		t.Fatalf("reasons = %v, want [admission_policy_invalid]", apiErr.Details["reasons"])
+	}
+	if provider.calls != 0 {
+		t.Fatalf("plan intelligence calls = %d, want zero (no model spend with invalid policy)", provider.calls)
+	}
+}

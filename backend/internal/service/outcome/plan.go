@@ -109,6 +109,19 @@ func (s *Service) proposePlan(ctx context.Context, outcomeID domain.OutcomeID, e
 	if err != nil {
 		return PlanView{}, err
 	}
+	// Fail fast before spending a model call: without a valid admission
+	// policy no proposal can ever be admitted, and the operator error must
+	// not surface later as a missing WorkUnit budget. Fail-closed.
+	if s.AdmissionPolicy == nil {
+		return PlanView{}, apierr.New(apierr.KindConflict, "PLAN_PROPOSAL_NOT_ADMITTED",
+			"Planning cannot start: the daemon has no admission policy configured",
+			map[string]any{"reasons": []domain.AdmissionReasonCode{domain.AdmissionPolicyMissing}})
+	}
+	if s.AdmissionPolicy.Validate() != nil {
+		return PlanView{}, apierr.New(apierr.KindConflict, "PLAN_PROPOSAL_NOT_ADMITTED",
+			"Planning cannot start: the configured admission policy is invalid",
+			map[string]any{"reasons": []domain.AdmissionReasonCode{domain.AdmissionPolicyInvalid}})
+	}
 	draft, err := s.draftPlanWithProvenance(ctx, projectID, outcomeRecord, revision, aliases, replanFeedback)
 	if err != nil {
 		return PlanView{}, err

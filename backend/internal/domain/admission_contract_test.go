@@ -168,7 +168,7 @@ func TestBudgetAndMetadataDefenses(t *testing.T) {
 	if b.Validate() == nil {
 		t.Fatal("negative token passed")
 	}
-	if len(SortedAdmissionReasonCodes()) != 28 {
+	if len(SortedAdmissionReasonCodes()) != 31 {
 		t.Fatal("reason count")
 	}
 }

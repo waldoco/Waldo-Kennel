@@ -101,8 +101,11 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 		if !ok || binding != frozen {
 			return reject(domain.AdmissionCapabilityMissing)
 		}
-		if e.policy == nil || e.policy.Validate() != nil {
-			return reject(domain.AdmissionTimeBudgetMissing)
+		if e.policy == nil {
+			return reject(domain.AdmissionPolicyMissing)
+		}
+		if e.policy.Validate() != nil {
+			return reject(domain.AdmissionPolicyInvalid)
 		}
 		if unit.ExecutionBudget.WallTimeLimit <= 0 {
 			return reject(domain.AdmissionTimeBudgetMissing)
@@ -125,8 +128,12 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 				return reject(domain.AdmissionPlatformUnsupported)
 			}
 		}
+		// The wall-time, retry, and token checks above name the genuinely
+		// missing pieces. Anything ExecutionBudget.Validate still rejects past
+		// them is malformed budget identity or accounting state, not a missing
+		// wall-time budget, and must not collapse into time_budget_missing.
 		if unit.ExecutionBudget.Validate() != nil {
-			return reject(domain.AdmissionTimeBudgetMissing)
+			return reject(domain.AdmissionBudgetInvalid)
 		}
 		if unit.ExecutionBudget.PolicyID != e.policy.ID || unit.ExecutionBudget.PolicyVersion != e.policy.Version || unit.ExecutionBudget.PolicyDigest != e.policy.Digest {
 			return reject(domain.AdmissionBudgetExceedsPolicy)

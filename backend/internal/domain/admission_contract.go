@@ -46,6 +46,9 @@ const (
 	AdmissionWorkspaceRequirementUnsupported AdmissionReasonCode = "workspace_requirement_unsupported"
 	AdmissionAuthorityExceeded               AdmissionReasonCode = "authority_exceeded"
 	AdmissionExternalEffectUnapproved        AdmissionReasonCode = "external_effect_unapproved"
+	AdmissionPolicyMissing                 AdmissionReasonCode = "admission_policy_missing"
+	AdmissionPolicyInvalid                 AdmissionReasonCode = "admission_policy_invalid"
+	AdmissionBudgetInvalid                 AdmissionReasonCode = "budget_invalid"
 	AdmissionTimeBudgetMissing               AdmissionReasonCode = "time_budget_missing"
 	AdmissionTokenBudgetMissing              AdmissionReasonCode = "token_budget_missing"
 	AdmissionRetryBudgetMissing              AdmissionReasonCode = "retry_budget_missing"
@@ -56,7 +59,7 @@ const (
 	AdmissionFenceConflict                   AdmissionReasonCode = "fence_conflict"
 )
 
-var allAdmissionReasonCodes = []AdmissionReasonCode{AdmissionContractRevisionMissing, AdmissionPlanRevisionMissing, AdmissionWorkUnitMissing, AdmissionVerdictStale, AdmissionRevisionSuperseded, AdmissionProviderUnverified, AdmissionProviderUnavailable, AdmissionProviderProfileMissing, AdmissionCapabilityMissing, AdmissionSandboxUnrepresentable, AdmissionPlatformUnsupported, AdmissionIntentPermissionConflict, AdmissionOutputPermissionConflict, AdmissionCheckPermissionConflict, AdmissionCheckUncompilable, AdmissionDependencyMissing, AdmissionDependencyCycle, AdmissionWorkspaceRequirementUnsupported, AdmissionAuthorityExceeded, AdmissionExternalEffectUnapproved, AdmissionTimeBudgetMissing, AdmissionTokenBudgetMissing, AdmissionRetryBudgetMissing, AdmissionBudgetExceedsPolicy, AdmissionBindingChanged, AdmissionCapabilitySnapshotChanged, AdmissionWorkspaceUnavailable, AdmissionFenceConflict}
+var allAdmissionReasonCodes = []AdmissionReasonCode{AdmissionContractRevisionMissing, AdmissionPlanRevisionMissing, AdmissionWorkUnitMissing, AdmissionVerdictStale, AdmissionRevisionSuperseded, AdmissionProviderUnverified, AdmissionProviderUnavailable, AdmissionProviderProfileMissing, AdmissionCapabilityMissing, AdmissionSandboxUnrepresentable, AdmissionPlatformUnsupported, AdmissionIntentPermissionConflict, AdmissionOutputPermissionConflict, AdmissionCheckPermissionConflict, AdmissionCheckUncompilable, AdmissionDependencyMissing, AdmissionDependencyCycle, AdmissionWorkspaceRequirementUnsupported, AdmissionAuthorityExceeded, AdmissionExternalEffectUnapproved, AdmissionPolicyMissing, AdmissionPolicyInvalid, AdmissionBudgetInvalid, AdmissionTimeBudgetMissing, AdmissionTokenBudgetMissing, AdmissionRetryBudgetMissing, AdmissionBudgetExceedsPolicy, AdmissionBindingChanged, AdmissionCapabilitySnapshotChanged, AdmissionWorkspaceUnavailable, AdmissionFenceConflict}
 
 func (c AdmissionReasonCode) Valid() bool {
 	for _, v := range allAdmissionReasonCodes {
