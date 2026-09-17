@@ -140,11 +140,10 @@ func mountPairingIntentOwnerCommand(r chi.Router, authority *ownercommand.Author
 }
 
 type ownerProofRequest struct {
-	MissionID        string                   `json:"missionId"`
-	ContentDigest    domain.SHA256Digest      `json:"contentDigest"`
-	TargetID         string                   `json:"targetId"`
-	TargetGeneration int64                    `json:"targetGeneration"`
-	Class            domain.OwnerCommandClass `json:"class"`
+	MissionID     string                   `json:"missionId"`
+	ContentDigest domain.SHA256Digest      `json:"contentDigest"`
+	Target        domain.OwnerProofTarget  `json:"target"`
+	Class         domain.OwnerCommandClass `json:"class"`
 }
 
 func mountOwnerProofCommand(r chi.Router, authority *ownercommand.Authority, kernel *ownerproof.Kernel) {
@@ -168,11 +167,20 @@ func mountOwnerProofCommand(r chi.Router, authority *ownercommand.Authority, ker
 			envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_PROOF_INVALID", "message": "Routine owner proof body is invalid"}})
 			return
 		}
+		if in.Target.Class != in.Class {
+			envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_PROOF_INVALID", "message": "Routine owner proof body is invalid"}})
+			return
+		}
+		targetDigest, err := in.Target.Digest()
+		if err != nil {
+			envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_PROOF_INVALID", "message": "Routine owner proof body is invalid"}})
+			return
+		}
 		now := time.Now().UTC()
 		minted, err := kernel.Mint(req.Context(), ownerproof.MintRequest{
 			ID: domain.OwnerProofID("owner-proof-" + uuid.NewString()), AppRunID: authentication.AppRunID,
-			MissionID: in.MissionID, ContentDigest: in.ContentDigest, TargetID: in.TargetID,
-			TargetGeneration: in.TargetGeneration, Class: in.Class, ExpiresAt: now.Add(2 * time.Minute), Now: now,
+			MissionID: in.MissionID, ContentDigest: in.ContentDigest, TargetDigest: targetDigest,
+			Class: in.Class, ExpiresAt: now.Add(2 * time.Minute), Now: now,
 		})
 		if err != nil || minted.Bearer == "" {
 			envelope.WriteJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "OWNER_PROOF_INVALID", "message": "Routine owner proof could not be minted"}})

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -1391,6 +1392,14 @@ func (s *Store) UpsertActivity(
 		if seqErr != nil {
 			return fmt.Errorf("allocate sequence: %w", seqErr)
 		}
+		if (activity.Kind == domain.ActivityKindApproval || activity.Kind == domain.ActivityKindUserInput) && activity.Status == domain.ActivityStatusPending {
+			if strings.TrimSpace(activity.ID) == "" || strings.TrimSpace(activity.RequestID) == "" {
+				return domain.ErrOwnerProofInvalid
+			}
+			if _, err := q.InsertOwnerAnswerQuestion(ctx, gen.InsertOwnerAnswerQuestionParams{ID: activity.ID, ConversationID: conversationID, RequestID: activity.RequestID, Generation: activity.ID, Status: "pending", CreatedAt: now, UpdatedAt: now}); err != nil {
+				return fmt.Errorf("insert durable owner answer question: %w", err)
+			}
+		}
 		return q.InsertConversationActivity(ctx, gen.InsertConversationActivityParams{
 			ID:             activity.ID,
 			ConversationID: conversationID,
@@ -1504,6 +1513,9 @@ func (s *Store) ResolveApproval(
 ) error {
 	q, unlock := s.conversationWriter(ctx)
 	defer unlock()
+	if _, err := q.ResolveOwnerAnswerQuestion(ctx, gen.ResolveOwnerAnswerQuestionParams{UpdatedAt: now, ConversationID: conversationID, RequestID: requestID}); err != nil {
+		return fmt.Errorf("resolve durable owner answer question %s: %w", requestID, err)
+	}
 	if err := q.ResolveConversationApproval(ctx, gen.ResolveConversationApprovalParams{
 		DetailJson:     detailJSON,
 		UpdatedAt:      now,
@@ -1520,6 +1532,9 @@ func (s *Store) ResolveApproval(
 func (s *Store) FailPendingApprovals(ctx context.Context, conversationID string, now time.Time) error {
 	q, unlock := s.conversationWriter(ctx)
 	defer unlock()
+	if _, err := q.FailOwnerAnswerQuestions(ctx, gen.FailOwnerAnswerQuestionsParams{UpdatedAt: now, ConversationID: conversationID}); err != nil {
+		return fmt.Errorf("fail durable owner answer questions: %w", err)
+	}
 	if err := q.FailPendingConversationApprovals(ctx,
 		gen.FailPendingConversationApprovalsParams{
 			UpdatedAt:      now,
@@ -1537,6 +1552,9 @@ func (s *Store) FailPendingApprovals(ctx context.Context, conversationID string,
 func (s *Store) FailPendingInputs(ctx context.Context, conversationID string, now time.Time) error {
 	q, unlock := s.conversationWriter(ctx)
 	defer unlock()
+	if _, err := q.FailOwnerAnswerQuestions(ctx, gen.FailOwnerAnswerQuestionsParams{UpdatedAt: now, ConversationID: conversationID}); err != nil {
+		return fmt.Errorf("fail durable owner answer questions: %w", err)
+	}
 	if err := q.FailPendingConversationInputs(ctx,
 		gen.FailPendingConversationInputsParams{
 			UpdatedAt:      now,

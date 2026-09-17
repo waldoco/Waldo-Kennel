@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 )
 
 const consumeOwnerProof = `-- name: ConsumeOwnerProof :execrows
@@ -28,8 +30,189 @@ func (q *Queries) ConsumeOwnerProof(ctx context.Context, arg ConsumeOwnerProofPa
 	return result.RowsAffected()
 }
 
+const failOwnerAnswerQuestions = `-- name: FailOwnerAnswerQuestions :execrows
+UPDATE owner_answer_questions SET status='failed',updated_at=? WHERE conversation_id=? AND status='pending'
+`
+
+type FailOwnerAnswerQuestionsParams struct {
+	UpdatedAt      time.Time
+	ConversationID string
+}
+
+func (q *Queries) FailOwnerAnswerQuestions(ctx context.Context, arg FailOwnerAnswerQuestionsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failOwnerAnswerQuestions, arg.UpdatedAt, arg.ConversationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const getCommandActiveTurnTarget = `-- name: GetCommandActiveTurnTarget :one
+SELECT provider_turn_id,state FROM conversation_turns WHERE handled_by_session_id=? AND provider_turn_id=? ORDER BY requested_at DESC LIMIT 1
+`
+
+type GetCommandActiveTurnTargetParams struct {
+	HandledBySessionID domain.SessionID
+	ProviderTurnID     string
+}
+
+type GetCommandActiveTurnTargetRow struct {
+	ProviderTurnID string
+	State          domain.TurnState
+}
+
+func (q *Queries) GetCommandActiveTurnTarget(ctx context.Context, arg GetCommandActiveTurnTargetParams) (GetCommandActiveTurnTargetRow, error) {
+	row := q.db.QueryRowContext(ctx, getCommandActiveTurnTarget, arg.HandledBySessionID, arg.ProviderTurnID)
+	var i GetCommandActiveTurnTargetRow
+	err := row.Scan(&i.ProviderTurnID, &i.State)
+	return i, err
+}
+
+const getCommandAnswerQuestionTarget = `-- name: GetCommandAnswerQuestionTarget :one
+SELECT id, conversation_id, request_id, generation, status, created_at, updated_at FROM owner_answer_questions WHERE id=?
+`
+
+func (q *Queries) GetCommandAnswerQuestionTarget(ctx context.Context, id string) (OwnerAnswerQuestion, error) {
+	row := q.db.QueryRowContext(ctx, getCommandAnswerQuestionTarget, id)
+	var i OwnerAnswerQuestion
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.RequestID,
+		&i.Generation,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCommandAuthorityClaimByRequest = `-- name: GetCommandAuthorityClaimByRequest :one
+SELECT id, adapter_request_key, request_fingerprint, owner_proof_id, harness_connection_id, connection_generation, connection_binding_digest, transport_class, app_run_id, mission_id, content_digest, target_digest, owner_class, canonical_version, canonical_payload, destination_type, destination_id, state, created_at, updated_at FROM command_authority_claims WHERE harness_connection_id=? AND connection_generation=? AND adapter_request_key=?
+`
+
+type GetCommandAuthorityClaimByRequestParams struct {
+	HarnessConnectionID  string
+	ConnectionGeneration int64
+	AdapterRequestKey    string
+}
+
+func (q *Queries) GetCommandAuthorityClaimByRequest(ctx context.Context, arg GetCommandAuthorityClaimByRequestParams) (CommandAuthorityClaim, error) {
+	row := q.db.QueryRowContext(ctx, getCommandAuthorityClaimByRequest, arg.HarnessConnectionID, arg.ConnectionGeneration, arg.AdapterRequestKey)
+	var i CommandAuthorityClaim
+	err := row.Scan(
+		&i.ID,
+		&i.AdapterRequestKey,
+		&i.RequestFingerprint,
+		&i.OwnerProofID,
+		&i.HarnessConnectionID,
+		&i.ConnectionGeneration,
+		&i.ConnectionBindingDigest,
+		&i.TransportClass,
+		&i.AppRunID,
+		&i.MissionID,
+		&i.ContentDigest,
+		&i.TargetDigest,
+		&i.OwnerClass,
+		&i.CanonicalVersion,
+		&i.CanonicalPayload,
+		&i.DestinationType,
+		&i.DestinationID,
+		&i.State,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCommandHarnessConnection = `-- name: GetCommandHarnessConnection :one
+SELECT id, installation_id, adapter_digest, harness_identity, provider_version, protocol_fingerprint, mission_id, app_run_id, capability_classes, capability_verifier, generation, expires_at, revoked_at, created_at, updated_at FROM harness_connections WHERE id=?
+`
+
+func (q *Queries) GetCommandHarnessConnection(ctx context.Context, id string) (HarnessConnection, error) {
+	row := q.db.QueryRowContext(ctx, getCommandHarnessConnection, id)
+	var i HarnessConnection
+	err := row.Scan(
+		&i.ID,
+		&i.InstallationID,
+		&i.AdapterDigest,
+		&i.HarnessIdentity,
+		&i.ProviderVersion,
+		&i.ProtocolFingerprint,
+		&i.MissionID,
+		&i.AppRunID,
+		&i.CapabilityClasses,
+		&i.CapabilityVerifier,
+		&i.Generation,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCommandOwnerProof = `-- name: GetCommandOwnerProof :one
+SELECT id, verifier, app_run_id, mission_id, content_digest, target_digest, command_class, confirmation_ref, expires_at, created_at, consumed_at FROM owner_proofs WHERE id=?
+`
+
+func (q *Queries) GetCommandOwnerProof(ctx context.Context, id string) (OwnerProof, error) {
+	row := q.db.QueryRowContext(ctx, getCommandOwnerProof, id)
+	var i OwnerProof
+	err := row.Scan(
+		&i.ID,
+		&i.Verifier,
+		&i.AppRunID,
+		&i.MissionID,
+		&i.ContentDigest,
+		&i.TargetDigest,
+		&i.CommandClass,
+		&i.ConfirmationRef,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.ConsumedAt,
+	)
+	return i, err
+}
+
+const getCommandSessionTarget = `-- name: GetCommandSessionTarget :one
+SELECT s.id,s.controller_generation,CAST(COALESCE((SELECT a.plan_revision_id FROM attempt_sessions ar JOIN attempts a ON a.id=ar.attempt_id WHERE ar.session_id=s.id ORDER BY ar.bound_at DESC,ar.seq DESC LIMIT 1),'') AS TEXT) AS expected_revision FROM sessions s WHERE s.id=?
+`
+
+type GetCommandSessionTargetRow struct {
+	ID                   domain.SessionID
+	ControllerGeneration string
+	ExpectedRevision     string
+}
+
+func (q *Queries) GetCommandSessionTarget(ctx context.Context, id domain.SessionID) (GetCommandSessionTargetRow, error) {
+	row := q.db.QueryRowContext(ctx, getCommandSessionTarget, id)
+	var i GetCommandSessionTargetRow
+	err := row.Scan(&i.ID, &i.ControllerGeneration, &i.ExpectedRevision)
+	return i, err
+}
+
+const getOwnerAnswerQuestion = `-- name: GetOwnerAnswerQuestion :one
+SELECT id, conversation_id, request_id, generation, status, created_at, updated_at FROM owner_answer_questions WHERE id=?
+`
+
+func (q *Queries) GetOwnerAnswerQuestion(ctx context.Context, id string) (OwnerAnswerQuestion, error) {
+	row := q.db.QueryRowContext(ctx, getOwnerAnswerQuestion, id)
+	var i OwnerAnswerQuestion
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.RequestID,
+		&i.Generation,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getOwnerProof = `-- name: GetOwnerProof :one
-SELECT id, verifier, app_run_id, mission_id, content_digest, target_id, target_generation, command_class, confirmation_ref, expires_at, created_at, consumed_at FROM owner_proofs WHERE id=?
+SELECT id, verifier, app_run_id, mission_id, content_digest, target_digest, command_class, confirmation_ref, expires_at, created_at, consumed_at FROM owner_proofs WHERE id=?
 `
 
 func (q *Queries) GetOwnerProof(ctx context.Context, id string) (OwnerProof, error) {
@@ -41,8 +224,7 @@ func (q *Queries) GetOwnerProof(ctx context.Context, id string) (OwnerProof, err
 		&i.AppRunID,
 		&i.MissionID,
 		&i.ContentDigest,
-		&i.TargetID,
-		&i.TargetGeneration,
+		&i.TargetDigest,
 		&i.CommandClass,
 		&i.ConfirmationRef,
 		&i.ExpiresAt,
@@ -52,23 +234,138 @@ func (q *Queries) GetOwnerProof(ctx context.Context, id string) (OwnerProof, err
 	return i, err
 }
 
+const insertCommandAuthorityClaim = `-- name: InsertCommandAuthorityClaim :execrows
+INSERT INTO command_authority_claims(id,adapter_request_key,request_fingerprint,owner_proof_id,harness_connection_id,connection_generation,connection_binding_digest,transport_class,app_run_id,mission_id,content_digest,target_digest,owner_class,canonical_version,canonical_payload,destination_type,destination_id,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
+`
+
+type InsertCommandAuthorityClaimParams struct {
+	ID                      string
+	AdapterRequestKey       string
+	RequestFingerprint      string
+	OwnerProofID            string
+	HarnessConnectionID     string
+	ConnectionGeneration    int64
+	ConnectionBindingDigest string
+	TransportClass          string
+	AppRunID                string
+	MissionID               string
+	ContentDigest           string
+	TargetDigest            string
+	OwnerClass              string
+	CanonicalVersion        string
+	CanonicalPayload        []byte
+	DestinationType         string
+	DestinationID           string
+	State                   string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+}
+
+func (q *Queries) InsertCommandAuthorityClaim(ctx context.Context, arg InsertCommandAuthorityClaimParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertCommandAuthorityClaim,
+		arg.ID,
+		arg.AdapterRequestKey,
+		arg.RequestFingerprint,
+		arg.OwnerProofID,
+		arg.HarnessConnectionID,
+		arg.ConnectionGeneration,
+		arg.ConnectionBindingDigest,
+		arg.TransportClass,
+		arg.AppRunID,
+		arg.MissionID,
+		arg.ContentDigest,
+		arg.TargetDigest,
+		arg.OwnerClass,
+		arg.CanonicalVersion,
+		arg.CanonicalPayload,
+		arg.DestinationType,
+		arg.DestinationID,
+		arg.State,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const insertHarnessCommandOutbox = `-- name: InsertHarnessCommandOutbox :execrows
+INSERT INTO harness_command_outbox(claim_id,destination_type,destination_id,canonical_payload,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
+`
+
+type InsertHarnessCommandOutboxParams struct {
+	ClaimID          string
+	DestinationType  string
+	DestinationID    string
+	CanonicalPayload []byte
+	State            string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+func (q *Queries) InsertHarnessCommandOutbox(ctx context.Context, arg InsertHarnessCommandOutboxParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertHarnessCommandOutbox,
+		arg.ClaimID,
+		arg.DestinationType,
+		arg.DestinationID,
+		arg.CanonicalPayload,
+		arg.State,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const insertOwnerAnswerQuestion = `-- name: InsertOwnerAnswerQuestion :execrows
+INSERT INTO owner_answer_questions(id,conversation_id,request_id,generation,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING
+`
+
+type InsertOwnerAnswerQuestionParams struct {
+	ID             string
+	ConversationID string
+	RequestID      string
+	Generation     string
+	Status         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+func (q *Queries) InsertOwnerAnswerQuestion(ctx context.Context, arg InsertOwnerAnswerQuestionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertOwnerAnswerQuestion,
+		arg.ID,
+		arg.ConversationID,
+		arg.RequestID,
+		arg.Generation,
+		arg.Status,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const insertOwnerProof = `-- name: InsertOwnerProof :execrows
-INSERT INTO owner_proofs(id,verifier,app_run_id,mission_id,content_digest,target_id,target_generation,command_class,confirmation_ref,expires_at,created_at,consumed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
+INSERT INTO owner_proofs(id,verifier,app_run_id,mission_id,content_digest,target_digest,command_class,confirmation_ref,expires_at,created_at,consumed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
 `
 
 type InsertOwnerProofParams struct {
-	ID               string
-	Verifier         string
-	AppRunID         string
-	MissionID        string
-	ContentDigest    string
-	TargetID         string
-	TargetGeneration int64
-	CommandClass     string
-	ConfirmationRef  string
-	ExpiresAt        time.Time
-	CreatedAt        time.Time
-	ConsumedAt       sql.NullTime
+	ID              string
+	Verifier        string
+	AppRunID        string
+	MissionID       string
+	ContentDigest   string
+	TargetDigest    string
+	CommandClass    string
+	ConfirmationRef string
+	ExpiresAt       time.Time
+	CreatedAt       time.Time
+	ConsumedAt      sql.NullTime
 }
 
 func (q *Queries) InsertOwnerProof(ctx context.Context, arg InsertOwnerProofParams) (int64, error) {
@@ -78,14 +375,31 @@ func (q *Queries) InsertOwnerProof(ctx context.Context, arg InsertOwnerProofPara
 		arg.AppRunID,
 		arg.MissionID,
 		arg.ContentDigest,
-		arg.TargetID,
-		arg.TargetGeneration,
+		arg.TargetDigest,
 		arg.CommandClass,
 		arg.ConfirmationRef,
 		arg.ExpiresAt,
 		arg.CreatedAt,
 		arg.ConsumedAt,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const resolveOwnerAnswerQuestion = `-- name: ResolveOwnerAnswerQuestion :execrows
+UPDATE owner_answer_questions SET status='resolved',updated_at=? WHERE conversation_id=? AND request_id=? AND status='pending'
+`
+
+type ResolveOwnerAnswerQuestionParams struct {
+	UpdatedAt      time.Time
+	ConversationID string
+	RequestID      string
+}
+
+func (q *Queries) ResolveOwnerAnswerQuestion(ctx context.Context, arg ResolveOwnerAnswerQuestionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, resolveOwnerAnswerQuestion, arg.UpdatedAt, arg.ConversationID, arg.RequestID)
 	if err != nil {
 		return 0, err
 	}

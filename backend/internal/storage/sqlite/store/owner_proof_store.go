@@ -71,7 +71,7 @@ func (s *Store) ConsumeOwnerProof(ctx context.Context, id domain.OwnerProofID, a
 	return p, true, err
 }
 func ownerProofInsert(p domain.OwnerProof) gen.InsertOwnerProofParams {
-	return gen.InsertOwnerProofParams{ID: string(p.ID), Verifier: p.Verifier.String(), AppRunID: p.AppRunID, MissionID: p.MissionID, ContentDigest: p.ContentDigest.String(), TargetID: p.TargetID, TargetGeneration: p.TargetGeneration, CommandClass: string(p.Class), ConfirmationRef: p.ConfirmationRef, ExpiresAt: p.ExpiresAt.UTC(), CreatedAt: p.CreatedAt.UTC()}
+	return gen.InsertOwnerProofParams{ID: string(p.ID), Verifier: p.Verifier.String(), AppRunID: p.AppRunID, MissionID: p.MissionID, ContentDigest: p.ContentDigest.String(), TargetDigest: p.TargetDigest.String(), CommandClass: string(p.Class), ConfirmationRef: p.ConfirmationRef, ExpiresAt: p.ExpiresAt.UTC(), CreatedAt: p.CreatedAt.UTC()}
 }
 func ownerProofFromGen(r gen.OwnerProof) (domain.OwnerProof, error) {
 	var consumed *time.Time
@@ -79,9 +79,9 @@ func ownerProofFromGen(r gen.OwnerProof) (domain.OwnerProof, error) {
 		x := r.ConsumedAt.Time.UTC()
 		consumed = &x
 	}
-	p := domain.OwnerProof{ID: domain.OwnerProofID(r.ID), Verifier: domain.SHA256Digest(r.Verifier), AppRunID: r.AppRunID, MissionID: r.MissionID, ContentDigest: domain.SHA256Digest(r.ContentDigest), TargetID: r.TargetID, TargetGeneration: r.TargetGeneration, Class: domain.OwnerCommandClass(r.CommandClass), ConfirmationRef: r.ConfirmationRef, ExpiresAt: r.ExpiresAt.UTC(), CreatedAt: r.CreatedAt.UTC(), ConsumedAt: consumed}
+	p := domain.OwnerProof{ID: domain.OwnerProofID(r.ID), Verifier: domain.SHA256Digest(r.Verifier), AppRunID: r.AppRunID, MissionID: r.MissionID, ContentDigest: domain.SHA256Digest(r.ContentDigest), TargetDigest: domain.SHA256Digest(r.TargetDigest), Class: domain.OwnerCommandClass(r.CommandClass), ConfirmationRef: r.ConfirmationRef, ExpiresAt: r.ExpiresAt.UTC(), CreatedAt: r.CreatedAt.UTC(), ConsumedAt: consumed}
 	return p, p.Validate()
 }
 func sameOwnerProof(a, b domain.OwnerProof) bool {
-	return a.ID == b.ID && a.AppRunID == b.AppRunID && a.MissionID == b.MissionID && a.ContentDigest == b.ContentDigest && a.TargetID == b.TargetID && a.TargetGeneration == b.TargetGeneration && a.Class == b.Class && a.ConfirmationRef == b.ConfirmationRef && a.ExpiresAt.Equal(b.ExpiresAt) && a.CreatedAt.Equal(b.CreatedAt)
+	return a.ID == b.ID && a.AppRunID == b.AppRunID && a.MissionID == b.MissionID && a.ContentDigest == b.ContentDigest && a.TargetDigest == b.TargetDigest && a.Class == b.Class && a.ConfirmationRef == b.ConfirmationRef && a.ExpiresAt.Equal(b.ExpiresAt) && a.CreatedAt.Equal(b.CreatedAt)
 }

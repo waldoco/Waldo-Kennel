@@ -181,3 +181,15 @@ func EvaluateHarnessConnection(connection *HarnessConnection, facts HarnessConne
 	}
 	return HarnessConnectionEvaluation{State: HarnessConnected}
 }
+
+// HarnessConnectionBinding is the complete adapter-presented tuple revalidated
+// inside command claim transactions.
+type HarnessConnectionBinding struct {
+	ConnectionID                                          HarnessConnectionID
+	InstallationID                                        string
+	AdapterDigest                                         SHA256Digest
+	HarnessIdentity, ProviderVersion, MissionID, AppRunID string
+	ProtocolFingerprint                                   SHA256Digest
+	Generation                                            int64
+	Class                                                 HarnessCapabilityClass
+}

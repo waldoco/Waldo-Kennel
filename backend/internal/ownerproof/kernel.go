@@ -29,8 +29,7 @@ type MintRequest struct {
 	ID                  domain.OwnerProofID
 	AppRunID, MissionID string
 	ContentDigest       domain.SHA256Digest
-	TargetID            string
-	TargetGeneration    int64
+	TargetDigest        domain.SHA256Digest
 	Class               domain.OwnerCommandClass
 	ConfirmationRef     string
 	ExpiresAt, Now      time.Time
@@ -53,7 +52,7 @@ func (k *Kernel) Mint(ctx context.Context, in MintRequest) (Minted, error) {
 	}
 	bearer := hex.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(bearer))
-	p := domain.OwnerProof{ID: in.ID, Verifier: domain.SHA256Digest(hex.EncodeToString(sum[:])), AppRunID: strings.TrimSpace(in.AppRunID), MissionID: strings.TrimSpace(in.MissionID), ContentDigest: in.ContentDigest, TargetID: strings.TrimSpace(in.TargetID), TargetGeneration: in.TargetGeneration, Class: in.Class, ConfirmationRef: strings.TrimSpace(in.ConfirmationRef), ExpiresAt: in.ExpiresAt.UTC(), CreatedAt: in.Now.UTC()}
+	p := domain.OwnerProof{ID: in.ID, Verifier: domain.SHA256Digest(hex.EncodeToString(sum[:])), AppRunID: strings.TrimSpace(in.AppRunID), MissionID: strings.TrimSpace(in.MissionID), ContentDigest: in.ContentDigest, TargetDigest: in.TargetDigest, Class: in.Class, ConfirmationRef: strings.TrimSpace(in.ConfirmationRef), ExpiresAt: in.ExpiresAt.UTC(), CreatedAt: in.Now.UTC()}
 	if err := p.Validate(); err != nil {
 		return Minted{}, err
 	}
@@ -71,8 +70,7 @@ type Binding struct {
 	ID                  domain.OwnerProofID
 	AppRunID, MissionID string
 	ContentDigest       domain.SHA256Digest
-	TargetID            string
-	TargetGeneration    int64
+	TargetDigest        domain.SHA256Digest
 	Class               domain.OwnerCommandClass
 	ConfirmationRef     string
 }
@@ -96,10 +94,9 @@ func (k *Kernel) VerifyAndConsume(ctx context.Context, bearer string, b Binding,
 		valid = 0
 	}
 	valid &= subtle.ConstantTimeCompare(sum[:], stored)
-	for _, pair := range [][2]string{{p.AppRunID, b.AppRunID}, {p.MissionID, b.MissionID}, {p.ContentDigest.String(), b.ContentDigest.String()}, {p.TargetID, b.TargetID}, {string(p.Class), string(b.Class)}, {p.ConfirmationRef, b.ConfirmationRef}} {
+	for _, pair := range [][2]string{{p.AppRunID, b.AppRunID}, {p.MissionID, b.MissionID}, {p.ContentDigest.String(), b.ContentDigest.String()}, {p.TargetDigest.String(), b.TargetDigest.String()}, {string(p.Class), string(b.Class)}, {p.ConfirmationRef, b.ConfirmationRef}} {
 		valid &= equal(pair[0], pair[1])
 	}
-	valid &= equalInt(p.TargetGeneration, b.TargetGeneration)
 	if p.ConsumedAt != nil || !now.UTC().Before(p.ExpiresAt) {
 		valid = 0
 	}

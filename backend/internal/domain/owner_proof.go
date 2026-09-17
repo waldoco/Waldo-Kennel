@@ -37,8 +37,7 @@ type OwnerProof struct {
 	Verifier             SHA256Digest `json:"-"`
 	AppRunID, MissionID  string
 	ContentDigest        SHA256Digest
-	TargetID             string
-	TargetGeneration     int64
+	TargetDigest         SHA256Digest
 	Class                OwnerCommandClass
 	ConfirmationRef      string
 	ExpiresAt, CreatedAt time.Time
@@ -47,7 +46,7 @@ type OwnerProof struct {
 
 func (p OwnerProof) String() string { return fmt.Sprintf("OwnerProof(%s,class=%s)", p.ID, p.Class) }
 func (p OwnerProof) Validate() error {
-	if strings.TrimSpace(string(p.ID)) == "" || !p.Verifier.Valid() || strings.TrimSpace(p.AppRunID) == "" || strings.TrimSpace(p.MissionID) == "" || !p.ContentDigest.Valid() || strings.TrimSpace(p.TargetID) == "" || p.TargetGeneration < 1 || !p.Class.Valid() || p.CreatedAt.IsZero() || !p.ExpiresAt.After(p.CreatedAt) || (p.ConsumedAt != nil && p.ConsumedAt.Before(p.CreatedAt)) || (p.Class.Material() && strings.TrimSpace(p.ConfirmationRef) == "") || (!p.Class.Material() && p.ConfirmationRef != "") {
+	if strings.TrimSpace(string(p.ID)) == "" || !p.Verifier.Valid() || strings.TrimSpace(p.AppRunID) == "" || strings.TrimSpace(p.MissionID) == "" || !p.ContentDigest.Valid() || !p.TargetDigest.Valid() || !p.Class.Valid() || p.CreatedAt.IsZero() || !p.ExpiresAt.After(p.CreatedAt) || (p.ConsumedAt != nil && p.ConsumedAt.Before(p.CreatedAt)) || (p.Class.Material() && strings.TrimSpace(p.ConfirmationRef) == "") || (!p.Class.Material() && p.ConfirmationRef != "") {
 		return ErrOwnerProofInvalid
 	}
 	return nil

@@ -27,7 +27,7 @@ func TestOwnerCommandClassesMaterialityAndTransportMapping(t *testing.T) {
 }
 func TestOwnerProofNoVerifierInStringOrJSON(t *testing.T) {
 	now := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
-	p := OwnerProof{ID: "p", Verifier: DigestSHA256([]byte("secret")), AppRunID: "run", MissionID: "mission", ContentDigest: DigestSHA256([]byte("content")), TargetID: "target", TargetGeneration: 1, Class: OwnerCommandTurn, ExpiresAt: now.Add(time.Minute), CreatedAt: now}
+	p := OwnerProof{ID: "p", Verifier: DigestSHA256([]byte("secret")), AppRunID: "run", MissionID: "mission", ContentDigest: DigestSHA256([]byte("content")), TargetDigest: DigestSHA256([]byte("target")), Class: OwnerCommandTurn, ExpiresAt: now.Add(time.Minute), CreatedAt: now}
 	if strings.Contains(p.String(), p.Verifier.String()) {
 		t.Fatal("String leak")
 	}

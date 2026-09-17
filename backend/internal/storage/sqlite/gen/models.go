@@ -270,6 +270,29 @@ type ChatProtocolProvenance struct {
 	NegotiatedAt         time.Time
 }
 
+type CommandAuthorityClaim struct {
+	ID                      string
+	AdapterRequestKey       string
+	RequestFingerprint      string
+	OwnerProofID            string
+	HarnessConnectionID     string
+	ConnectionGeneration    int64
+	ConnectionBindingDigest string
+	TransportClass          string
+	AppRunID                string
+	MissionID               string
+	ContentDigest           string
+	TargetDigest            string
+	OwnerClass              string
+	CanonicalVersion        string
+	CanonicalPayload        []byte
+	DestinationType         string
+	DestinationID           string
+	State                   string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+}
+
 type ContractCriterium struct {
 	ID                 string
 	ContractRevisionID string
@@ -556,6 +579,16 @@ type GovernedControlCommand struct {
 	RequestInstanceID      string
 }
 
+type HarnessCommandOutbox struct {
+	ClaimID          string
+	DestinationType  string
+	DestinationID    string
+	CanonicalPayload []byte
+	State            string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type HarnessConnection struct {
 	ID                  string
 	InstallationID      string
@@ -829,19 +862,28 @@ type OutcomeTrash struct {
 	DeletedAt   time.Time
 }
 
+type OwnerAnswerQuestion struct {
+	ID             string
+	ConversationID string
+	RequestID      string
+	Generation     string
+	Status         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type OwnerProof struct {
-	ID               string
-	Verifier         string
-	AppRunID         string
-	MissionID        string
-	ContentDigest    string
-	TargetID         string
-	TargetGeneration int64
-	CommandClass     string
-	ConfirmationRef  string
-	ExpiresAt        time.Time
-	CreatedAt        time.Time
-	ConsumedAt       sql.NullTime
+	ID              string
+	Verifier        string
+	AppRunID        string
+	MissionID       string
+	ContentDigest   string
+	TargetDigest    string
+	CommandClass    string
+	ConfirmationRef string
+	ExpiresAt       time.Time
+	CreatedAt       time.Time
+	ConsumedAt      sql.NullTime
 }
 
 type PR struct {

@@ -19,12 +19,12 @@ func mintFixture(t *testing.T, k *Kernel, class domain.OwnerCommandClass) (Minte
 	if class.Material() {
 		confirm = "native-confirmation-1"
 	}
-	req := MintRequest{ID: "proof-1", AppRunID: "apprun-1", MissionID: "mission-1", ContentDigest: domain.DigestSHA256([]byte("content")), TargetID: "target-1", TargetGeneration: 2, Class: class, ConfirmationRef: confirm, ExpiresAt: now.Add(time.Minute), Now: now}
+	req := MintRequest{ID: "proof-1", AppRunID: "apprun-1", MissionID: "mission-1", ContentDigest: domain.DigestSHA256([]byte("content")), TargetDigest: domain.DigestSHA256([]byte("target")), Class: class, ConfirmationRef: confirm, ExpiresAt: now.Add(time.Minute), Now: now}
 	minted, err := k.Mint(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return minted, Binding{ID: req.ID, AppRunID: req.AppRunID, MissionID: req.MissionID, ContentDigest: req.ContentDigest, TargetID: req.TargetID, TargetGeneration: req.TargetGeneration, Class: req.Class, ConfirmationRef: req.ConfirmationRef}, now
+	return minted, Binding{ID: req.ID, AppRunID: req.AppRunID, MissionID: req.MissionID, ContentDigest: req.ContentDigest, TargetDigest: req.TargetDigest, Class: req.Class, ConfirmationRef: req.ConfirmationRef}, now
 }
 func TestMintVerifyConsumeRestartAndNoSecretShape(t *testing.T) {
 	store := sqlitetest.MustOpen(t)
@@ -46,7 +46,7 @@ func TestMintVerifyConsumeRestartAndNoSecretShape(t *testing.T) {
 func TestWrongTupleExpiryAndMaterialConfirmation(t *testing.T) {
 	store := sqlitetest.MustOpen(t)
 	minted, b, now := mintFixture(t, NewWithRandom(store, bytes.NewReader(bytes.Repeat([]byte{1}, 64))), domain.OwnerCommandAccept)
-	mutations := []func(*Binding){func(x *Binding) { x.AppRunID = "other" }, func(x *Binding) { x.MissionID = "other" }, func(x *Binding) { x.ContentDigest = domain.DigestSHA256([]byte("other")) }, func(x *Binding) { x.TargetID = "other" }, func(x *Binding) { x.TargetGeneration++ }, func(x *Binding) { x.Class = domain.OwnerCommandTurn }, func(x *Binding) { x.ConfirmationRef = "other" }}
+	mutations := []func(*Binding){func(x *Binding) { x.AppRunID = "other" }, func(x *Binding) { x.MissionID = "other" }, func(x *Binding) { x.ContentDigest = domain.DigestSHA256([]byte("other")) }, func(x *Binding) { x.TargetDigest = domain.DigestSHA256([]byte("other-target")) }, func(x *Binding) { x.Class = domain.OwnerCommandTurn }, func(x *Binding) { x.ConfirmationRef = "other" }}
 	for i, mutate := range mutations {
 		x := b
 		mutate(&x)
@@ -57,7 +57,7 @@ func TestWrongTupleExpiryAndMaterialConfirmation(t *testing.T) {
 	if _, err := New(store).VerifyAndConsume(context.Background(), minted.Bearer, b, now.Add(time.Minute)); err == nil {
 		t.Fatal("expired accepted")
 	}
-	if _, err := NewWithRandom(store, bytes.NewReader(bytes.Repeat([]byte{2}, 64))).Mint(context.Background(), MintRequest{ID: "bad", AppRunID: "a", MissionID: "m", ContentDigest: domain.DigestSHA256([]byte("c")), TargetID: "t", TargetGeneration: 1, Class: domain.OwnerCommandReplace, ExpiresAt: now.Add(time.Minute), Now: now}); err == nil {
+	if _, err := NewWithRandom(store, bytes.NewReader(bytes.Repeat([]byte{2}, 64))).Mint(context.Background(), MintRequest{ID: "bad", AppRunID: "a", MissionID: "m", ContentDigest: domain.DigestSHA256([]byte("c")), TargetDigest: domain.DigestSHA256([]byte("target")), Class: domain.OwnerCommandReplace, ExpiresAt: now.Add(time.Minute), Now: now}); err == nil {
 		t.Fatal("material proof without confirmation accepted")
 	}
 }
@@ -87,7 +87,7 @@ func TestExactMintReplayConvergesWithoutBearer(t *testing.T) {
 	store := sqlitetest.MustOpen(t)
 	k := NewWithRandom(store, bytes.NewReader(bytes.Repeat([]byte{4}, 128)))
 	first, b, now := mintFixture(t, k, domain.OwnerCommandSteer)
-	second, err := k.Mint(context.Background(), MintRequest{ID: first.Proof.ID, AppRunID: b.AppRunID, MissionID: b.MissionID, ContentDigest: b.ContentDigest, TargetID: b.TargetID, TargetGeneration: b.TargetGeneration, Class: b.Class, ExpiresAt: first.Proof.ExpiresAt, Now: now})
+	second, err := k.Mint(context.Background(), MintRequest{ID: first.Proof.ID, AppRunID: b.AppRunID, MissionID: b.MissionID, ContentDigest: b.ContentDigest, TargetDigest: b.TargetDigest, Class: b.Class, ExpiresAt: first.Proof.ExpiresAt, Now: now})
 	if err != nil {
 		t.Fatal(err)
 	}
