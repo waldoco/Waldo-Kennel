@@ -78,6 +78,15 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 	if validationErr != nil {
 		return reject(domain.AdmissionIntentPermissionConflict)
 	}
+	// Policy validity is plan-wide and runtime-independent, so it is checked
+	// once here, before any per-WorkUnit routing evidence: a missing or
+	// invalid operator policy must not be masked by a runtime routing failure.
+	if e.policy == nil {
+		return reject(domain.AdmissionPolicyMissing)
+	}
+	if e.policy.Validate() != nil {
+		return reject(domain.AdmissionPolicyInvalid)
+	}
 	kind := in.workspaceKind
 	if !kind.Valid() {
 		kind = domain.WorkspaceGitWorktree
@@ -100,12 +109,6 @@ func (e admissionEvaluator) evaluate(in admissionInput) domain.AdmissionVerdict 
 		binding, ok := decision.RecommendedBinding()
 		if !ok || binding != frozen {
 			return reject(domain.AdmissionCapabilityMissing)
-		}
-		if e.policy == nil {
-			return reject(domain.AdmissionPolicyMissing)
-		}
-		if e.policy.Validate() != nil {
-			return reject(domain.AdmissionPolicyInvalid)
 		}
 		if unit.ExecutionBudget.WallTimeLimit <= 0 {
 			return reject(domain.AdmissionTimeBudgetMissing)

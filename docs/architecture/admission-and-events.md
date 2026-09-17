@@ -99,6 +99,11 @@ Reason codes are stable machine values. More than one may apply.
 - `dependency_cycle`
 - `workspace_requirement_unsupported`
 
+### Admission policy
+
+- `admission_policy_missing`
+- `admission_policy_invalid`
+
 ### Authority and limits
 
 - `authority_exceeded`
@@ -106,6 +111,7 @@ Reason codes are stable machine values. More than one may apply.
 - `time_budget_missing`
 - `token_budget_missing`
 - `retry_budget_missing`
+- `budget_invalid`
 - `budget_exceeds_policy`
 
 ### Runtime revalidation

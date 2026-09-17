@@ -180,3 +180,25 @@ func TestAdmissionMalformedBudgetIdentityIsNotTimeBudgetMissing(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+func TestAdmissionPolicyPrecedenceOverRuntimeRoutingFailures(t *testing.T) {
+	// Nil policy plus a missing routing snapshot: the plan-wide operator error
+	// wins over the runtime routing failure.
+	in := admissionFixture()
+	in.snapshots = map[domain.WorkUnitID]ports.RoutingInventorySnapshot{}
+	got := (admissionEvaluator{policy: nil, now: time.Now}).evaluate(in)
+	if got.Status != domain.AdmissionRejected || len(got.Reasons) != 1 || got.Reasons[0] != domain.AdmissionPolicyMissing {
+		t.Fatalf("nil policy + missing snapshot: %+v", got)
+	}
+	// Invalid policy plus a binding that no longer routes: same precedence.
+	in = admissionFixture()
+	snap := in.snapshots["wu"]
+	snap.Candidates = nil
+	in.snapshots["wu"] = snap
+	invalid := admissionTestPolicy()
+	invalid.Digest = "corrupted"
+	got = (admissionEvaluator{policy: invalid, now: time.Now}).evaluate(in)
+	if got.Status != domain.AdmissionRejected || len(got.Reasons) != 1 || got.Reasons[0] != domain.AdmissionPolicyInvalid {
+		t.Fatalf("invalid policy + changed binding: %+v", got)
+	}
+}
