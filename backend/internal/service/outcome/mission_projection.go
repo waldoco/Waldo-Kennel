@@ -150,11 +150,7 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 				return MissionProjection{}, err
 			}
 			if found && doc.OutcomeID == outcomeID && doc.Revision == spec.DocumentContextRevision && doc.Digest == spec.DocumentContextDigest && doc.Approved() {
-				label := fmt.Sprintf("%d approved documents", len(doc.Sources))
-				if len(doc.Sources) == 1 {
-					label = doc.Sources[0].Name
-				}
-				view.Nodes[i].Links = append(view.Nodes[i].Links, MissionLink{Kind: "document_context", ID: string(doc.ID), Label: label, State: "available"})
+				view.Nodes[i].Links = append(view.Nodes[i].Links, MissionLink{Kind: "document_context", ID: string(doc.ID), Label: missionDocumentLabel(), State: "available"})
 			}
 		}
 	}
@@ -203,7 +199,7 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 					continue
 				}
 				if item.SubjectType == domain.ProofSubjectAttempt && item.SubjectID == string(receipt.AttemptID) && item.SubjectRevision == receipt.ArtifactVersion {
-					n.Links = append(n.Links, MissionLink{Kind: "evidence", ID: string(item.ID), Label: item.Summary, State: "available"})
+					n.Links = append(n.Links, MissionLink{Kind: "evidence", ID: string(item.ID), Label: missionEvidenceLabel(item), State: "available"})
 				}
 			}
 		}
@@ -294,6 +290,25 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 		view.Nodes[i].Generation = missionNodeGeneration(view.Nodes[i])
 	}
 	return view, nil
+}
+
+func missionDocumentLabel() string { return "Approved documents" }
+
+func missionEvidenceLabel(item domain.EvidenceItem) string {
+	// Labels are daemon-owned controlled copy. Evidence Summary and SourceRef
+	// are arbitrary provenance-bearing text and must never cross this surface.
+	switch item.SourceType {
+	case domain.EvidenceSourceArtifact:
+		return "Artifact evidence"
+	case domain.EvidenceSourceDeterministicCheck:
+		return "Check evidence"
+	case domain.EvidenceSourceProviderOutput:
+		return "Provider evidence"
+	case domain.EvidenceSourceOwnerWalkthrough:
+		return "Owner walkthrough evidence"
+	default:
+		return "Evidence"
+	}
 }
 
 func measuredMissionChanges(receipt domain.AttemptReceipt) *MissionChangeSummary {

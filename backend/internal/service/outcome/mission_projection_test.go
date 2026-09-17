@@ -212,3 +212,33 @@ func TestMissionNodeGenerationIsIdempotentAfterEnrichment(t *testing.T) {
 		t.Fatalf("generation drifted on recompute: %d -> %d", first, second)
 	}
 }
+
+func TestMissionEvidenceLabelsNeverProjectFreeText(t *testing.T) {
+	unsafe := "private/client/brief.txt https://example.test/?token=secret raw prompt"
+	cases := []struct {
+		source domain.EvidenceSourceType
+		want   string
+	}{
+		{domain.EvidenceSourceArtifact, "Artifact evidence"},
+		{domain.EvidenceSourceDeterministicCheck, "Check evidence"},
+		{domain.EvidenceSourceProviderOutput, "Provider evidence"},
+		{domain.EvidenceSourceOwnerWalkthrough, "Owner walkthrough evidence"},
+		{domain.EvidenceSourceType("future"), "Evidence"},
+	}
+	for _, tc := range cases {
+		item := domain.EvidenceItem{SourceType: tc.source, Summary: unsafe, SourceRef: unsafe}
+		got := missionEvidenceLabel(item)
+		if got != tc.want {
+			t.Fatalf("source=%q label=%q want %q", tc.source, got, tc.want)
+		}
+		if strings.Contains(got, "private") || strings.Contains(got, "https") || strings.Contains(got, "secret") {
+			t.Fatalf("unsafe provenance leaked: %q", got)
+		}
+	}
+}
+
+func TestMissionDocumentLabelIsControlledCopy(t *testing.T) {
+	if got := missionDocumentLabel(); got != "Approved documents" {
+		t.Fatalf("label=%q", got)
+	}
+}
