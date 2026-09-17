@@ -82,6 +82,20 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 	if schedule.Plan.OutcomeID != record.ID || schedule.Plan.ContractRevisionNumber != record.CurrentRevisionNumber {
 		return MissionProjection{}, fmt.Errorf("mission projection lineage does not bind the current Outcome")
 	}
+	projectID, ok, err := s.store.GetOutcomeProjectID(ctx, outcomeID)
+	if err != nil {
+		return MissionProjection{}, err
+	}
+	if !ok {
+		return MissionProjection{}, fmt.Errorf("mission projection Outcome has no Project lineage")
+	}
+	space, err := s.store.EnsureWorkResponsibilitySpace(ctx, projectID)
+	if err != nil {
+		return MissionProjection{}, err
+	}
+	if space.ID != record.SpaceID {
+		return MissionProjection{}, fmt.Errorf("mission projection responsibility space does not match Project lineage")
+	}
 	attention := map[domain.WorkUnitID]domain.NeedsYouQuestion{}
 	if s.needsYou != nil {
 		questions, err := s.needsYou.ListCurrentNeedsYouQuestions(ctx, outcomeID)
@@ -145,18 +159,21 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 			}
 		}
 		if q, ok := attention[entry.WorkUnit.ID]; ok {
-			kind := string(q.Kind)
-			if kind == "choice" {
+			kind := ""
+			if q.Kind == domain.NeedsYouChoice {
 				kind = "needs_choice"
-			} else if kind == "input" {
+			}
+			if q.Kind == domain.NeedsYouInput {
 				kind = "needs_input"
 			}
-			n.Attention = &MissionAttention{Kind: kind, ReasonCode: q.Reason, QuestionID: q.ID, Generation: q.Generation}
+			if kind != "" {
+				n.Attention = &MissionAttention{Kind: kind, ReasonCode: q.Reason, QuestionID: q.ID, Generation: q.Generation}
+			}
 			if q.UpdatedAt.After(n.UpdatedAt) {
 				n.UpdatedAt = q.UpdatedAt
 			}
 		}
-		if entry.WorkUnit.ID == schedule.NextRunnableID {
+		if entry.WorkUnit.ID == schedule.NextRunnableID && entry.State == WorkUnitScheduleRunnable {
 			n.NextAction = "start"
 		}
 		n.Generation = n.UpdatedAt.UnixMilli()
