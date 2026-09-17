@@ -9,3 +9,6 @@
 /GOVERNANCE.md @Pin4sf
 /SECURITY.md @Pin4sf
 
+
+# Workflow changes always require owner review.
+.github/workflows/** @Pin4sf
