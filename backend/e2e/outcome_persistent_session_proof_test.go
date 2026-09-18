@@ -48,55 +48,33 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 			} `json:"currentRevision"`
 		} `json:"outcome"`
 	}
-	// Verification is the manual owner journey this test exists to exercise:
-	// the owner inspects the result and posts criterion proof through the
-	// review API. The Contract deliberately names no executable check and
-	// forbids proposing one, so the planner has no approved context to ground
-	// a checkCommand in; an approved auto-check would let the daemon prove
-	// the criterion itself against the retained bytes and short-circuit the
-	// manual journey.
+	// The review line names the fixture's natural executable check and the
+	// planner is expected to attach it: governed Codex admission fails closed
+	// without an approved check vector, so this journey cannot launch
+	// checkless. That check is also the only truthful success path after the
+	// owner kill below - the guard there asserts its recorded provenance.
 	d.mustCall("POST", "/projects/"+project+"/outcomes", http.StatusCreated, map[string]any{
 		"title": "Persistent governed session fixture", "goal": "Create durable.txt containing PERSISTENT and keep the same governed Codex session steerable.",
-		"successCriteria":  []string{"durable.txt contains exactly PERSISTENT"},
-		"review":           "The owner inspects durable.txt personally and posts criterion proof through the review API; no automated check verifies this outcome.",
-		"constraints":      []string{"Verification is manual owner review: never run or propose automated check commands; criterion proof arrives only as owner-posted evidence."},
+		"successCriteria": []string{"durable.txt contains exactly PERSISTENT"}, "review": "Run test -f durable.txt and grep -Fx PERSISTENT durable.txt.",
 		"authorityCeiling": map[string]any{"readWorkspace": true, "writeWorkspace": true, "executeLocal": true}, "requestKey": "b4-create",
 	}, &created)
 	out := created.Outcome.ID
-	type planEnvelope struct {
+	var plan struct {
 		Plan struct {
 			ID, Status string
 			WorkUnits  []struct {
-				ID             string `json:"id"`
-				Provider       string `json:"provider"`
-				ApprovedChecks []struct {
-					Argv []string `json:"argv"`
-				} `json:"approvedChecks"`
+				ID             string              `json:"id"`
+				Provider       string              `json:"provider"`
+				ApprovedChecks []approvedCheckView `json:"approvedChecks"`
 			} `json:"workUnits"`
 		} `json:"plan"`
 	}
-	var plan planEnvelope
-	propose := func(feedback string) {
-		plan = planEnvelope{}
-		if feedback == "" {
-			d.mustCall("POST", "/outcomes/"+out+"/plans", http.StatusCreated, map[string]any{"expectedContractRevision": 1}, &plan)
-			return
-		}
-		d.mustCall("POST", "/outcomes/"+out+"/plans/replan", http.StatusCreated, map[string]any{"expectedContractRevision": 1, "feedback": feedback}, &plan)
-	}
-	propose("")
-	// If the planner attached an auto-runnable check despite the Contract's
-	// manual-verification constraint, replan with explicit feedback; a
-	// proposal that still carries checks is a fixture-conditioning failure,
-	// surfaced here rather than misread later as fabricated success.
-	for i := 0; i < 2 && len(plan.Plan.WorkUnits) == 1 && len(plan.Plan.WorkUnits[0].ApprovedChecks) != 0; i++ {
-		propose("Do not attach deterministic checkCommands to any work unit: this outcome's verification is manual owner review, and an approved check would short-circuit that journey. Propose the same single work unit with checkCommands empty.")
-	}
+	d.mustCall("POST", "/outcomes/"+out+"/plans", http.StatusCreated, map[string]any{"expectedContractRevision": 1}, &plan)
 	if plan.Plan.Status != "proposed" || len(plan.Plan.WorkUnits) != 1 {
 		t.Fatalf("proposal=%+v", plan.Plan)
 	}
-	if len(plan.Plan.WorkUnits[0].ApprovedChecks) != 0 {
-		t.Fatalf("planner attached approved checks despite the Contract's manual-verification constraint: %+v", plan.Plan.WorkUnits[0].ApprovedChecks)
+	if len(plan.Plan.WorkUnits[0].ApprovedChecks) == 0 {
+		t.Fatalf("proposal carried no approved checks; the governed Codex launch requires one: %+v", plan.Plan)
 	}
 	if plan.Plan.WorkUnits[0].Provider != "codex" {
 		t.Fatalf("frozen plan provider=%q, want codex", plan.Plan.WorkUnits[0].Provider)
@@ -145,39 +123,41 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 		t.Fatalf("restart changed lineage: %+v", reread)
 	}
 
-	// A provider/session exit is only execution-end evidence. With no durable
-	// criterion proof yet the Attempt must settle reconciled, never succeeded.
+	// A provider/session exit is only execution-end evidence; it can never
+	// earn success by itself. The one truthful success path here is the
+	// plan's approved deterministic check, which the daemon runs itself
+	// against the retained bytes during the reconcile classification.
 	restarted.mustCall("POST", "/sessions/"+session+"/kill", http.StatusOK, nil, nil)
-	deadline := time.Now().Add(90 * time.Second)
-	for time.Now().Before(deadline) {
-		reread = getOutcomeAttempt(t, restarted, out, start.ID)
-		if reread.Status == "reconciled" {
-			break
-		}
-		if reread.Status == "succeeded" {
-			t.Fatal("session exit fabricated success")
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	if reread.Status != "reconciled" {
-		t.Fatalf("post-exit status=%s, want reconciled proof failure", reread.Status)
-	}
-	assertLaunchRows(t, dataDir, out, 1, 1)
-	if proof := getProof(t, restarted, out); proof.Status == "ready_for_acceptance" || proof.Status == "accepted" {
-		t.Fatalf("provider exit without criterion evidence yielded proof status %q", proof.Status)
-	}
-
-	// Now bind independently recorded evidence and verification to this exact
-	// Attempt and retained artifact version. A later reconcile may classify the
-	// Attempt, but only from these durable facts.
-	// The status flip to reconciled is visible the instant the liveness half
-	// of a reconcile tick commits; the retained-artifact receipt lands in the
-	// classification half that immediately follows in the same tick. A direct
-	// read can legitimately land between the two, so wait for the row before
+	// The status flip is visible the instant the liveness half of a reconcile
+	// tick commits; the retained-artifact receipt lands in the classification
+	// half that immediately follows in the same tick. A direct read can
+	// legitimately land between the two, so wait for the row before
 	// asserting on it.
 	awaitAttemptReceipt(t, dataDir, out, start.ID)
 	artifactVersion := retainedAttemptArtifact(t, dataDir, out, start.ID)
 	criterionID := created.Outcome.CurrentRevision.Criteria[0].CriterionID
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		reread = getOutcomeAttempt(t, restarted, out, start.ID)
+		if reread.Status == "succeeded" {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if reread.Status != "succeeded" {
+		t.Fatalf("post-exit status=%s, want success earned by the approved check", reread.Status)
+	}
+	assertLaunchRows(t, dataDir, out, 1, 1)
+	// Success with zero proof rows is exit-fabricated and fatal. Success here
+	// must be backed by the daemon's own check observation, bound to this
+	// exact Attempt and retained artifact version.
+	assertCheckEarnedSuccess(t, restarted, out, criterionID, start.ID, artifactVersion, plan.Plan.WorkUnits[0].ApprovedChecks)
+
+	// The manual journey still runs on top: the owner posts independently
+	// recorded evidence and verification bound to this exact Attempt and
+	// retained artifact version through the review API. The attempt is
+	// already succeeded on the check's observation; these rows must
+	// accumulate alongside it.
 	restarted.mustCall("POST", "/outcomes/"+out+"/evidence", http.StatusCreated, map[string]any{
 		"expectedContractRevision": 1, "contractRevisionId": created.Outcome.CurrentRevision.ID,
 		"criterionId": criterionID, "subjectType": "attempt", "subjectId": start.ID,
@@ -187,10 +167,18 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	}, nil)
 	pv := getProof(t, restarted, out)
 	criterion := criterionByID(pv, criterionID)
-	if criterion == nil || len(criterion.Evidence) != 1 {
-		t.Fatalf("attempt evidence missing: %+v", pv)
+	evidenceID := ""
+	if criterion != nil {
+		for _, item := range criterion.Evidence {
+			if item["subjectId"] == start.ID && item["subjectRevision"] == artifactVersion &&
+				item["producerRef"] == "b4-real-daemon-e2e" && item["sourceRef"] == "grep-durable-txt" {
+				evidenceID, _ = item["id"].(string)
+			}
+		}
 	}
-	evidenceID, _ := criterion.Evidence[0]["id"].(string)
+	if evidenceID == "" {
+		t.Fatalf("owner-posted evidence missing alongside the check observation: %+v", pv)
+	}
 	restarted.mustCall("POST", "/outcomes/"+out+"/verifications", http.StatusCreated, map[string]any{
 		"expectedContractRevision": 1, "contractRevisionId": created.Outcome.CurrentRevision.ID,
 		"criterionId": criterionID, "subjectType": "attempt", "subjectId": start.ID,
@@ -283,6 +271,45 @@ func retainedAttemptArtifact(t *testing.T, dataDir, outcomeID, attemptID string)
 		t.Fatalf("durable.txt digest=%q", fileDigest)
 	}
 	return version
+}
+
+type approvedCheckView struct {
+	ID          string   `json:"id"`
+	CriterionID string   `json:"criterionId"`
+	Argv        []string `json:"argv"`
+}
+
+// assertCheckEarnedSuccess proves a succeeded attempt earned the success: the
+// proof holds the daemon's own approved-check observation - evidence plus a
+// deterministic, passed verification, both naming one of the plan's approved
+// check argv vectors and bound to this exact Attempt and retained artifact
+// version. Success without those rows is exit-fabricated and fails the test.
+func assertCheckEarnedSuccess(t *testing.T, d *daemon, outcomeID, criterionID, attemptID, artifactVersion string, checks []approvedCheckView) {
+	t.Helper()
+	criterion := criterionByID(getProof(t, d, outcomeID), criterionID)
+	if criterion == nil {
+		t.Fatalf("criterion %s missing from proof", criterionID)
+	}
+	for _, check := range checks {
+		argv := strings.Join(check.Argv, " ")
+		evidenceOK, verificationOK := false, false
+		for _, item := range criterion.Evidence {
+			if item["subjectId"] == attemptID && item["subjectRevision"] == artifactVersion &&
+				item["sourceType"] == "deterministic_check" && item["sourceRef"] == argv && item["producerRef"] == attemptID {
+				evidenceOK = true
+			}
+		}
+		for _, verification := range criterion.Verifications {
+			if verification["subjectId"] == attemptID && verification["subjectRevision"] == artifactVersion &&
+				verification["method"] == argv && verification["independenceClass"] == "deterministic" && verification["result"] == "passed" {
+				verificationOK = true
+			}
+		}
+		if evidenceOK && verificationOK {
+			return
+		}
+	}
+	t.Fatalf("session exit fabricated success: succeeded with no approved-check observation bound to attempt %s artifact %s: %+v", attemptID, artifactVersion, criterion)
 }
 
 func assertSucceededEvidence(t *testing.T, dataDir, outcomeID, attemptID, artifactVersion string) {
