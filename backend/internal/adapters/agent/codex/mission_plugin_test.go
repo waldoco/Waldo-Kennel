@@ -22,7 +22,7 @@ func fakeCodex(t *testing.T) (bin string, logPath *string) {
 	script := `#!/usr/bin/env bash
 set -euo pipefail
 home="$CODEX_HOME"
-echo "codex_home_count=$(env | grep -c '^CODEX_HOME=' || true) home=$CODEX_HOME argv=$*" >> "` + log + `"
+echo "home=$CODEX_HOME argv=$*" >> "` + log + `"
 state="$home/fake-marketplaces"
 case "$1 $2" in
   "plugin marketplace")
@@ -224,5 +224,84 @@ func TestMissionSkillMDPathResolvesToVerifiedArtifact(t *testing.T) {
 	sum := sha256.Sum256(content)
 	if hex.EncodeToString(sum[:]) != want {
 		t.Fatal("the invoked skill artifact differs from the shipped manifest")
+	}
+}
+
+// TestEnsureMissionPluginAmbientHomeUntouched falsifies the env-construction
+// bug class: with an ambient CODEX_HOME present, every provider CLI
+// invocation must observe exactly one CODEX_HOME - the scoped one - and the
+// ambient home must stay byte-for-byte untouched. Appending CODEX_HOME to
+// os.Environ() yields duplicate keys whose winner is runtime-dependent.
+// Exactly-one-key is asserted deterministically at the env-construction
+// layer by TestScopedHomeEnvExactlyOneKey (a shell fake cannot observe
+// duplicate keys - its runtime dedupes its own environment at startup);
+// this test covers the observable consequence: which home the provider
+// writes to.
+func TestEnsureMissionPluginAmbientHomeUntouched(t *testing.T) {
+	bin, log := fakeCodex(t)
+	market := missionMarket(t)
+	ambient := t.TempDir()
+	ambientState := filepath.Join(ambient, "fake-marketplaces")
+	ambientBytes := []byte("kennel /ambient/marketplace\n")
+	if err := os.WriteFile(ambientState, ambientBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", ambient)
+	scoped := filepath.Join(t.TempDir(), "scoped")
+
+	if err := EnsureMissionPlugin(context.Background(), bin, scoped, market); err != nil {
+		t.Fatal(err)
+	}
+
+	// Every CLI invocation observed exactly one CODEX_HOME, the scoped home.
+	calls := readCalls(t, *log)
+	if calls == "" {
+		t.Fatal("no provider CLI invocations recorded")
+	}
+	for _, line := range strings.Split(strings.TrimSpace(calls), "\n") {
+		if !strings.Contains(line, "home="+scoped+" ") {
+			t.Fatalf("invocation ran against the wrong CODEX_HOME: %q", line)
+		}
+	}
+
+	// The ambient home is byte-for-byte untouched and gained no new entries.
+	got, err := os.ReadFile(ambientState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(ambientBytes) {
+		t.Fatalf("ambient CODEX_HOME state mutated:\nhave %q\nwant %q", got, ambientBytes)
+	}
+	entries, err := os.ReadDir(ambient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "fake-marketplaces" {
+		t.Fatalf("ambient CODEX_HOME gained entries: %v", entries)
+	}
+
+	// Marketplace/plugin state exists only under the scoped home.
+	if _, err := os.Stat(filepath.Join(scoped, "fake-marketplaces")); err != nil {
+		t.Fatalf("scoped marketplace state missing: %v", err)
+	}
+	cache := filepath.Join(scoped, "plugins", "cache", "kennel", "mission", missionplugin.Version)
+	if err := missionplugin.VerifyInstalled(cache); err != nil {
+		t.Fatalf("scoped plugin cache must verify: %v", err)
+	}
+}
+
+// TestScopedHomeEnvExactlyOneKey deterministically falsifies the duplicate
+// CODEX_HOME construction: appending to os.Environ() leaves the ambient key
+// in place, so the returned environment would carry two CODEX_HOME entries.
+func TestScopedHomeEnvExactlyOneKey(t *testing.T) {
+	t.Setenv("CODEX_HOME", "/ambient-home")
+	var found []string
+	for _, entry := range scopedHomeEnv("/scoped-home") {
+		if strings.HasPrefix(entry, "CODEX_HOME=") {
+			found = append(found, entry)
+		}
+	}
+	if len(found) != 1 || found[0] != "CODEX_HOME=/scoped-home" {
+		t.Fatalf("want exactly one CODEX_HOME=/scoped-home, got %v", found)
 	}
 }

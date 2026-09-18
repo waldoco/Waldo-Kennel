@@ -154,11 +154,15 @@ func verifyMissionPluginCache(home string) error {
 
 func runPluginCLI(ctx context.Context, codexBin, home string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, codexBin, args...)
-	// Merge, never append: with an ambient CODEX_HOME set, appending yields
-	// duplicate keys and which one the provider honors is runtime-dependent,
-	// so the CLI could mutate the user's real home. The overlay replaces any
-	// inherited value - every invocation observes exactly one scoped home.
-	cmd.Env = processenv.Merge(map[string]string{"CODEX_HOME": home})
+	cmd.Env = scopedHomeEnv(home)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// scopedHomeEnv builds the provider CLI environment with exactly one
+// CODEX_HOME - the scoped one. Merge, never append: with an ambient
+// CODEX_HOME set, appending yields duplicate keys and which one the provider
+// honors is runtime-dependent, so the CLI could mutate the user's real home.
+func scopedHomeEnv(home string) []string {
+	return processenv.Merge(map[string]string{"CODEX_HOME": home})
 }
