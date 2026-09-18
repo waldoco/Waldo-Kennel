@@ -427,9 +427,16 @@ func (s *Service) EvaluateAttemptLiveness(ctx context.Context) error {
 		releaseReason := ""
 		if facts.completionBoundary == domain.AttemptCompletionProcessExit &&
 			!domain.SupervisedExitSucceeded(facts.exitCode, facts.exitReason) {
-			target = domain.AttemptFailed
-			outcome = "governed provider process exited unsuccessfully"
-			releaseReason = "governed_provider_process_failed"
+			if facts.exitReason == domain.SupervisedExitReasonOwnerKilled {
+				// An owner kill is an intentional, non-success end: the
+				// attempt settles reconciled (result unclassified), never
+				// failed, exactly like a clean provider exit without proof.
+				outcome = "owner terminated the governed provider session; result unclassified"
+			} else {
+				target = domain.AttemptFailed
+				outcome = "governed provider process exited unsuccessfully"
+				releaseReason = "governed_provider_process_failed"
+			}
 		}
 		payload := mustJSON(map[string]any{
 			"sessionId":  facts.sessionID,

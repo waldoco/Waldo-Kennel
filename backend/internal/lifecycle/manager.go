@@ -418,6 +418,27 @@ func (m *Manager) RecordSupervisedProcessExit(ctx context.Context, id domain.Ses
 	return m.store.UpdateSession(ctx, rec)
 }
 
+// RecordOwnerTermination records the daemon-observed origin of an
+// owner-initiated kill of a governed session, before any teardown begins.
+// The distinction lives in the same exit facts the attempt liveness pass
+// reads: an owner kill settles the attempt reconciled (an intentional,
+// non-success end), while a provider crash stays failed. An authenticated
+// supervisor report always outranks kill intent — if the provider already
+// died on its own, the recorded crash facts are kept and the attempt still
+// settles failed. Non-governed sessions carry no attempt, so there is
+// nothing to mark.
+func (m *Manager) RecordOwnerTermination(ctx context.Context, id domain.SessionID) error {
+	return m.mutate(ctx, id, func(cur domain.SessionRecord, _ time.Time) (domain.SessionRecord, bool) {
+		if strings.TrimSpace(cur.Metadata.GovernedExecutionPolicyDigest) == "" ||
+			strings.TrimSpace(cur.Metadata.SupervisedProcessExitReason) != "" {
+			return cur, false
+		}
+		next := cur
+		next.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+		return next, true
+	})
+}
+
 func (m *Manager) governedProcessExitCanTerminate(ctx context.Context, rec domain.SessionRecord) bool {
 	if strings.TrimSpace(rec.Metadata.GovernedExecutionPolicyDigest) == "" ||
 		strings.TrimSpace(rec.Metadata.SupervisorCapabilityVerifier) == "" ||

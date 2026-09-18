@@ -1411,6 +1411,40 @@ func TestLivenessLoopReconcilesLegitimateZeroExit(t *testing.T) {
 	}
 }
 
+// TestLivenessLoopReconcilesOwnerKilledGovernedProcessExit covers the owner
+// adjudication: an owner-initiated kill of a governed session is an
+// intentional, non-success end. The attempt settles reconciled (result
+// unclassified) — never failed, and never succeeded, exactly like a clean
+// provider exit without criterion proof.
+func TestLivenessLoopReconcilesOwnerKilledGovernedProcessExit(t *testing.T) {
+	svc, _, spawner, heartbeats, outcomeID, planID := newAttemptHarness(t)
+	spawner.completionBoundary = domain.AttemptCompletionProcessExit
+	view, err := svc.StartAttempt(context.Background(), outcomeID, startInput(planID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := domain.SessionID(view.Sessions[0].SessionID)
+	rec := heartbeats.sessions[sessionID]
+	rec.IsTerminated = true
+	rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+	heartbeats.sessions[sessionID] = rec
+
+	if err := svc.EvaluateAttemptLiveness(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	reread, err := svc.GetAttempt(context.Background(), outcomeID, view.Attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reread.Attempt.Status != domain.AttemptReconciled {
+		t.Fatalf("status = %s, want reconciled", reread.Attempt.Status)
+	}
+	if len(reread.Observations) != 1 ||
+		!strings.Contains(reread.Observations[len(reread.Observations)-1].Payload, "owner terminated") {
+		t.Fatalf("observations = %+v, want one owner-termination observation", reread.Observations)
+	}
+}
+
 func TestLivenessLoopBlocksCompletionAfterUnknownGovernedCheckTerminationUntilOwnerReconciles(t *testing.T) {
 	svc, _, spawner, heartbeats, outcomeID, planID := newAttemptHarness(t)
 	spawner.completionBoundary = domain.AttemptCompletionProcessExit

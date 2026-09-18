@@ -198,6 +198,7 @@ type lifecycleRecorder interface {
 	ConfirmAgentSwitchSourceStopped(ctx context.Context, confirmation domain.AgentSwitchSourceStopConfirmation) (bool, error)
 	ActivateAgentSwitchTarget(ctx context.Context, activation domain.AgentSwitchTargetActivation) (bool, error)
 	MarkTerminated(ctx context.Context, id domain.SessionID) error
+	RecordOwnerTermination(ctx context.Context, id domain.SessionID) error
 }
 
 // ShellTerminalCloser gates a session's scoped shell terminals around every
@@ -1561,6 +1562,13 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 	}
 	if !ok {
 		return false, nil // already gone: benign race
+	}
+	// An owner kill of a governed attempt session is an intentional,
+	// non-success end: record the origin before any teardown so the attempt
+	// settles reconciled, never failed. A provider that already crashed on
+	// its own keeps its authenticated crash facts — crash outranks intent.
+	if err := m.lcm.RecordOwnerTermination(ctx, id); err != nil {
+		return false, fmt.Errorf("kill %s: record owner termination: %w", id, err)
 	}
 	m.stopPreviewBestEffort(ctx, id)
 	m.destroyBrowserBestEffort(ctx, id)

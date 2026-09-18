@@ -93,6 +93,13 @@ type SessionMetadata struct {
 // process exit may report.
 const SupervisedExitReasonExited = "exited"
 
+// SupervisedExitReasonOwnerKilled marks an owner-initiated termination of a
+// governed session. The daemon itself records it at kill time — the
+// supervisor never reports it and the wire never accepts it — so an
+// intentional, non-success end stays distinguishable from a provider crash:
+// the attempt settles reconciled (result unclassified), never failed.
+const SupervisedExitReasonOwnerKilled = "owner_killed"
+
 // SupervisedExitFactsConsistent reports whether an (exitCode, reason) pair is
 // internally consistent: a zero exit code and the "exited" reason must agree
 // in both directions. This rejects "zero exit code plus a failure reason" and

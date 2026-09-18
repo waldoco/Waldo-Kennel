@@ -112,3 +112,63 @@ func TestRecordSupervisedProcessExitRejectsContradictoryFacts(t *testing.T) {
 		t.Fatal("contradictory report must not be persisted")
 	}
 }
+
+// TestRecordOwnerTerminationMarksGovernedSession covers the owner-kill
+// origin record: the daemon marks the governed session's exit facts with the
+// owner_killed reason before teardown, so the attempt liveness pass can
+// settle the attempt reconciled instead of failed.
+func TestRecordOwnerTerminationMarksGovernedSession(t *testing.T) {
+	base := newFakeStore()
+	base.sessions["session-1"] = domain.SessionRecord{
+		ID: "session-1", Harness: domain.HarnessCodex,
+		Metadata: domain.SessionMetadata{
+			RuntimeLaunchID: "launch-1", GovernedExecutionPolicyDigest: "digest-1",
+		},
+	}
+	manager := New(base, nil)
+	if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	if got := base.sessions["session-1"].Metadata.SupervisedProcessExitReason; got != domain.SupervisedExitReasonOwnerKilled {
+		t.Fatalf("reason = %q, want %q", got, domain.SupervisedExitReasonOwnerKilled)
+	}
+}
+
+// TestRecordOwnerTerminationKeepsAuthenticatedCrashFacts covers the
+// precedence rule: a provider that already died on its own keeps its
+// authenticated crash facts — an owner kill afterwards must not relabel a
+// real crash as an intentional end.
+func TestRecordOwnerTerminationKeepsAuthenticatedCrashFacts(t *testing.T) {
+	base := newFakeStore()
+	exitCode := 17
+	base.sessions["session-1"] = domain.SessionRecord{
+		ID: "session-1", Harness: domain.HarnessCodex,
+		Metadata: domain.SessionMetadata{
+			RuntimeLaunchID: "launch-1", GovernedExecutionPolicyDigest: "digest-1",
+			SupervisedProcessExitCode: &exitCode, SupervisedProcessExitReason: "failed",
+		},
+	}
+	manager := New(base, nil)
+	if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	rec := base.sessions["session-1"]
+	if rec.Metadata.SupervisedProcessExitReason != "failed" ||
+		rec.Metadata.SupervisedProcessExitCode == nil || *rec.Metadata.SupervisedProcessExitCode != 17 {
+		t.Fatalf("authenticated crash facts overwritten: %+v", rec.Metadata)
+	}
+}
+
+// TestRecordOwnerTerminationIgnoresNonGovernedSession covers the scope
+// guard: a plain session carries no attempt, so there is nothing to mark.
+func TestRecordOwnerTerminationIgnoresNonGovernedSession(t *testing.T) {
+	base := newFakeStore()
+	base.sessions["session-1"] = domain.SessionRecord{ID: "session-1", Harness: domain.HarnessCodex}
+	manager := New(base, nil)
+	if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	if got := base.sessions["session-1"].Metadata.SupervisedProcessExitReason; got != "" {
+		t.Fatalf("reason = %q, want empty for a non-governed session", got)
+	}
+}

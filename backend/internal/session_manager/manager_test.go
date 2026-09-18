@@ -183,6 +183,8 @@ type fakeLCM struct {
 	cancelled []string
 	// terminated counts MarkTerminated calls per session id.
 	terminated map[domain.SessionID]int
+	// ownerTerminations counts RecordOwnerTermination calls per session id.
+	ownerTerminations map[domain.SessionID]int
 }
 
 func (l *fakeLCM) PrepareLaunch(id domain.SessionID, launchID string) error {
@@ -245,6 +247,19 @@ func (l *fakeLCM) ActivateAgentSwitchTarget(ctx context.Context, activation doma
 	}
 	return store.ActivateAgentSwitchTarget(ctx, activation)
 }
+func (l *fakeLCM) RecordOwnerTermination(_ context.Context, id domain.SessionID) error {
+	if l.ownerTerminations == nil {
+		l.ownerTerminations = map[domain.SessionID]int{}
+	}
+	l.ownerTerminations[id]++
+	rec := l.store.sessions[id]
+	if rec.Metadata.GovernedExecutionPolicyDigest != "" && rec.Metadata.SupervisedProcessExitReason == "" {
+		rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+		l.store.sessions[id] = rec
+	}
+	return nil
+}
+
 func (l *fakeLCM) MarkTerminated(_ context.Context, id domain.SessionID) error {
 	if l.terminated == nil {
 		l.terminated = map[domain.SessionID]int{}
@@ -2626,6 +2641,27 @@ func TestKill_TearsDownRuntimeAndWorkspace(t *testing.T) {
 		t.Fatalf("reviewer terminate bodies = %v", reviewer.bodies)
 	}
 	requireNoPromptDir(t, dataDir, "mer-1")
+}
+
+// TestKill_RecordsOwnerTerminationForGovernedSession covers the owner-kill
+// origin record: killing a governed attempt session marks its exit facts
+// with the owner_killed reason before teardown, so the attempt settles
+// reconciled rather than failed.
+func TestKill_RecordsOwnerTerminationForGovernedSession(t *testing.T) {
+	m, st, _, _ := newManager()
+	rec := mkLive("mer-1")
+	rec.Metadata.GovernedExecutionPolicyDigest = "digest-1"
+	st.sessions["mer-1"] = rec
+	if _, err := m.Kill(ctx, "mer-1"); err != nil {
+		t.Fatal(err)
+	}
+	lcm := m.lcm.(*fakeLCM)
+	if lcm.ownerTerminations["mer-1"] != 1 {
+		t.Fatalf("RecordOwnerTermination calls = %d, want 1", lcm.ownerTerminations["mer-1"])
+	}
+	if got := st.sessions["mer-1"].Metadata.SupervisedProcessExitReason; got != domain.SupervisedExitReasonOwnerKilled {
+		t.Fatalf("exit reason = %q, want %q", got, domain.SupervisedExitReasonOwnerKilled)
+	}
 }
 
 func TestKill_ReviewerTeardownFailureLeavesSessionActive(t *testing.T) {
