@@ -72,6 +72,23 @@ jobs:
             "$modules/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
           ln -s "$modules/codex/bin/codex.js" "$root/codex"
 
+      - name: Provision job-scoped CODEX_HOME with auth only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The runner service account's ~/.codex/config.toml registers MCP
+          # servers owned by the owner's interactive login (observed: rmcp
+          # AuthRequired against mcp.cloudflare.com in run 35365047003). Codex
+          # invocations in this job must authenticate without inheriting that
+          # config, so the job gets a CODEX_HOME carrying only auth.json. The
+          # copy lives under the waldo-kennel-e2e tree that the cleanup step
+          # already removes.
+          home="$RUNNER_TEMP/waldo-kennel-e2e/codex-home"
+          mkdir -p "$home"
+          cp "$HOME/.codex/auth.json" "$home/auth.json"
+          chmod 600 "$home/auth.json"
+          printf 'CODEX_HOME=%s\n' "$home" >> "$GITHUB_ENV"
+
       - name: Verify certified auth as the runner service identity
         shell: bash
         run: |
