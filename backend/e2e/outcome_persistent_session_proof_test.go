@@ -340,7 +340,7 @@ func TestOutcomeLaunchCutRejectsStaleAuthorizationWithoutCustody(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"outcome"`
 	}
-	d.mustCall("POST", "/projects/"+project+"/outcomes", 201, map[string]any{"title": "stale fixture", "goal": "write durable state", "successCriteria": []string{"state exists"}, "review": "inspect state", "authorityCeiling": map[string]any{"readWorkspace": true, "writeWorkspace": true}, "requestKey": "b4-stale-create"}, &created)
+	d.mustCall("POST", "/projects/"+project+"/outcomes", 201, map[string]any{"title": "stale fixture", "goal": "write durable state", "successCriteria": []string{"durable state file exists"}, "review": "run test -f durable.txt to confirm the state file exists", "authorityCeiling": map[string]any{"readWorkspace": true, "writeWorkspace": true}, "requestKey": "b4-stale-create"}, &created)
 	var plan struct {
 		Plan struct {
 			ID        string `json:"id"`
