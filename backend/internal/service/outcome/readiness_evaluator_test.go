@@ -341,6 +341,46 @@ func TestEvaluatePlanReadiness_PlannerIssuesRekeyedUnderSnapshotBoundFence(t *te
 	}
 }
 
+// ---- fence/revision consistency: keys are minted under the fence, so the
+// fence must name the revision actually being evaluated ----
+
+func TestEvaluatePlanReadiness_FenceMustMatchContractUnderEvaluation(t *testing.T) {
+	draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", domain.WorkUnitIntentModify, "C1")}}
+	contract := readinessContract(fullLocalAuthority(), readinessCriterion(1))
+	t.Run("fence names a different revision", func(t *testing.T) {
+		router := &routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+		svc := readinessService(router)
+		fence := readinessFence()
+		fence.ContractRevisionID = "crev-OTHER"
+		result, _, err := svc.EvaluatePlanReadiness(context.Background(), fence, "p1", contract, nil, draft, nil, "m")
+		var apiErr *apierr.Error
+		if !errors.As(err, &apiErr) || apiErr.Code != "PLANNING_READINESS_FENCE_MISMATCH" {
+			t.Fatalf("err = %v, want PLANNING_READINESS_FENCE_MISMATCH", err)
+		}
+		if result.Status != "" || len(result.Issues) != 0 {
+			t.Fatalf("mismatched fence produced a packet: %+v", result)
+		}
+		if router.calls != 0 {
+			t.Fatalf("inventory was read (%d calls) despite a mismatched fence", router.calls)
+		}
+	})
+	t.Run("zero fence identity", func(t *testing.T) {
+		router := &routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+		svc := readinessService(router)
+		result, _, err := svc.EvaluatePlanReadiness(context.Background(), domain.PlanningReadinessFence{}, "p1", contract, nil, draft, nil, "m")
+		var apiErr *apierr.Error
+		if !errors.As(err, &apiErr) || apiErr.Code != "PLANNING_READINESS_FENCE_INVALID" {
+			t.Fatalf("err = %v, want PLANNING_READINESS_FENCE_INVALID", err)
+		}
+		if result.Status != "" || len(result.Issues) != 0 {
+			t.Fatalf("zero fence produced a packet: %+v", result)
+		}
+		if router.calls != 0 {
+			t.Fatalf("inventory was read (%d calls) despite a zero fence", router.calls)
+		}
+	})
+}
+
 // ---- fence integrity: stale planner references and blank inventory identity ----
 
 func TestEvaluatePlanReadiness_StalePlannerIssueRejected(t *testing.T) {

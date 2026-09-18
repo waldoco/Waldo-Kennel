@@ -41,6 +41,17 @@ func (s *Service) EvaluatePlanReadiness(
 	if s.routing == nil {
 		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("PLAN_CONTROL_PLANE_UNWIRED", "Planning is not fully wired in this environment")
 	}
+	// The fence must describe exactly the Contract revision being evaluated:
+	// issue keys are minted under the fence, so evaluating revision B's
+	// ceiling while labeling keys with revision A would silently mis-fence the
+	// packet. Zero or blank fence identity fails the same way. This check runs
+	// before any inventory read: a malformed evaluation never touches routing.
+	if fence.PlanningSessionID.IsZero() || fence.SessionRevision <= 0 || fence.ContractRevisionID.IsZero() || strings.TrimSpace(fence.ContextDigest.String()) == "" {
+		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("PLANNING_READINESS_FENCE_INVALID", "planning readiness fence identity is zero or blank")
+	}
+	if fence.ContractRevisionID != revision.ID {
+		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("PLANNING_READINESS_FENCE_MISMATCH", "planning readiness fence names a different Contract revision than the one under evaluation")
+	}
 	// Evaluator step 5: the draft graph must survive S2 validation before any
 	// dry-run. A structurally invalid proposal is invalid provider output,
 	// never a typed readiness issue.
