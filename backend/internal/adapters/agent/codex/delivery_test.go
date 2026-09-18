@@ -25,12 +25,18 @@ type fakeTerminal struct {
 	afterEntersTo string
 	afterTabs     int
 	afterTabsTo   string
+	// deadAfterCaptures, when >0, flips PaneDead to true once that many
+	// captures have been served - models a provider exiting mid-wait while
+	// tmux remain-on-exit retains the pane content.
+	deadAfterCaptures int
+	capturesServed    int
 }
 
 func (f *fakeTerminal) Capture(ctx context.Context, lines int) (string, error) {
 	if len(f.captures) == 0 {
 		return "", errors.New("no capture scripted")
 	}
+	f.capturesServed++
 	out := f.captures[0]
 	if len(f.captures) > 1 {
 		f.captures = f.captures[1:]
@@ -65,6 +71,9 @@ func (f *fakeTerminal) SendTab(ctx context.Context) error {
 }
 func (f *fakeTerminal) PaneDead(ctx context.Context) (bool, error) {
 	f.ops = append(f.ops, "probe")
+	if f.deadAfterCaptures > 0 && f.capturesServed >= f.deadAfterCaptures {
+		return true, nil
+	}
 	return f.dead, nil
 }
 
@@ -177,8 +186,10 @@ func TestDeliverIdleHappyPath(t *testing.T) {
 	if term.enters != 1 || term.tabs != 0 || len(term.pastes) != 1 {
 		t.Fatalf("enters=%d tabs=%d pastes=%d, want 1/0/1", term.enters, term.tabs, len(term.pastes))
 	}
-	// Ordering contract: cancel copy mode BEFORE paste BEFORE enter.
-	want := []string{"probe", "cancel", "paste", "enter"}
+	// Ordering contract: liveness probes BEFORE dispatch, cancel copy mode
+	// BEFORE paste BEFORE enter. The second probe is the mandatory post-wait
+	// re-probe (round-5.2).
+	want := []string{"probe", "probe", "cancel", "paste", "enter"}
 	if strings.Join(term.ops, ",") != strings.Join(want, ",") {
 		t.Fatalf("ops = %v, want %v", term.ops, want)
 	}
@@ -278,6 +289,29 @@ func TestDeliverStillFailsClosedOnPersistentUnknown(t *testing.T) {
 	}
 	if len(term.pastes) != 0 || term.enters != 0 || term.tabs != 0 {
 		t.Fatalf("keystrokes sent against persistently unknown layout: %v", term.ops)
+	}
+}
+
+// TestDeliverReProbesLivenessAfterBootWait is the review round-5 HIGH: the
+// pane boots (unknown -> idle) while the provider exits mid-wait, and tmux
+// remain-on-exit retains the steerable-looking content. The mandatory
+// liveness re-probe after awaitSteerable must stop the delivery: zero
+// paste/Enter/Tab to a dead retained pane.
+func TestDeliverReProbesLivenessAfterBootWait(t *testing.T) {
+	term := &fakeTerminal{
+		captures: []string{
+			paneBootBanner,  // booting: unknown
+			paneBootBanner,  // still booting
+			paneIdleNoDraft, // booted-looking; provider already exited
+		},
+		deadAfterCaptures: 3,
+	}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	if !errors.Is(err, ErrPaneDead) {
+		t.Fatalf("err = %v, want ErrPaneDead", err)
+	}
+	if len(term.pastes) != 0 || term.enters != 0 || term.tabs != 0 {
+		t.Fatalf("keystrokes sent to a dead retained pane: %v", term.ops)
 	}
 }
 

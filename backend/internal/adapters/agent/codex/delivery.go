@@ -160,6 +160,18 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 		return DeliveryNone, &DeliveryPendingError{Reason: reason}
 	}
 
+	// Re-probe liveness after the wait: the tolerated boot/unsteerable window
+	// can span provider exit, and tmux remain-on-exit retains pane content,
+	// so a capture can classify steerable on a dead pane (review round 5
+	// HIGH). Keystrokes follow only a live pane.
+	dead, err = term.PaneDead(ctx)
+	if err != nil {
+		return DeliveryNone, &DeliveryUnknownError{Phase: "post-wait liveness probe"}
+	}
+	if dead {
+		return DeliveryNone, ErrPaneDead
+	}
+
 	// Pre-dispatch boundary: snapshot the pane so acknowledgment can be
 	// anchored to evidence that POSTDATES this delivery. A cleared composer
 	// alone never acks - the pane could have lost the draft spuriously.
