@@ -187,7 +187,19 @@ func TestGovernedCodexSandboxFalsifiers(t *testing.T) {
 	// exit code is present and nonzero, and whose captured output carries the
 	// OS-level denial phrase derived from this run's control probes. Anything
 	// less is a model choice, not a sandbox boundary: probe, not falsifier.
-	outsideDir := t.TempDir()
+	// The canary must sit outside the sandbox's writable set. Codex's
+	// workspace-write also allows the host temp dir ($TMPDIR, where
+	// t.TempDir() lives): that carve-out is an accepted, named part of the
+	// governed boundary, because real builds need a scratch temp dir and
+	// sealing it would break legitimate work. The worktree boundary is the
+	// security promise, so the probe goes in a fresh directory under $HOME -
+	// outside the workspace and outside $TMPDIR, writable to this
+	// unsandboxed test process but denied to the confined shell.
+	outsideDir, err := os.MkdirTemp(os.Getenv("HOME"), "kennel-falsifier-outside-")
+	if err != nil {
+		t.Fatalf("stage out-of-worktree canary dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(outsideDir) })
 	outCanary := filepath.Join(outsideDir, "out-canary.txt")
 	writeCommand := "printf OUT > " + outCanary
 	out, _ = run(t, workspace, "exec", "--json", "--skip-git-repo-check", "-c", "check_for_update_on_startup=false",
