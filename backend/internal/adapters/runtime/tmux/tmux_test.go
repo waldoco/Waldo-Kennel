@@ -1387,3 +1387,21 @@ func exitCodeErr(t *testing.T, code int) error {
 	}
 	return err
 }
+
+func TestStateAwareDeliveryArgs(t *testing.T) {
+	if got, want := sendTabArgs("sess-1"), []string{"send-keys", "-t", "sess-1", "Tab"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("sendTabArgs = %v, want %v", got, want)
+	}
+	if got, want := cancelCopyModeArgs("sess-1"), []string{"send-keys", "-t", "sess-1", "-X", "cancel"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("cancelCopyModeArgs = %v, want %v", got, want)
+	}
+	if got, want := loadBufferArgs(), []string{"load-buffer", "-"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("loadBufferArgs = %v, want %v", got, want)
+	}
+	if got, want := pasteBufferArgs("sess-1"), []string{"paste-buffer", "-p", "-d", "-t", "sess-1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("pasteBufferArgs = %v, want %v", got, want)
+	}
+	if got, want := paneDeadArgs("sess-1"), []string{"display-message", "-p", "-t", "sess-1", "#{pane_dead}"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("paneDeadArgs = %v, want %v", got, want)
+	}
+}

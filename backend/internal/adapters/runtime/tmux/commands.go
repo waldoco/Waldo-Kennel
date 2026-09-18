@@ -129,3 +129,42 @@ func capturePaneArgs(id string, lines int) []string {
 func capturePaneStyledArgs(id string, lines int) []string {
 	return []string{"capture-pane", "-e", "-t", id, "-p", "-S", fmt.Sprintf("-%d", lines)}
 }
+
+// sendTabArgs builds args for `tmux send-keys -t <id> Tab`. In the Codex TUI
+// keymap, Tab requests queueing while a task is running (and submits like
+// Enter when idle) - the explicit mid-turn queue semantic for the state-aware
+// send path.
+func sendTabArgs(id string) []string {
+	return []string{"send-keys", "-t", id, "Tab"}
+}
+
+// cancelCopyModeArgs builds args for `tmux send-keys -t <id> -X cancel`.
+// Copy mode swallows submission keystrokes, so the hardened delivery path
+// cancels it before pasting (ported from AWS cli-agent-orchestrator's
+// _send_to_terminal_tmux).
+func cancelCopyModeArgs(id string) []string {
+	return []string{"send-keys", "-t", id, "-X", "cancel"}
+}
+
+// loadBufferArgs builds args for `tmux load-buffer -` reading the buffer
+// content from stdin. Buffer delivery replaces keystroke streaming for prompt
+// text: one paste-buffer applies the whole message atomically, immune to
+// per-chunk key interleaving.
+func loadBufferArgs() []string {
+	return []string{"load-buffer", "-"}
+}
+
+// pasteBufferArgs builds args for `tmux paste-buffer -p -d -t <id>`.
+// -p wraps the paste in bracketed-paste framing so the target TUI treats it
+// as one paste event; -d deletes the buffer after pasting so a retried
+// delivery never replays stale content.
+func pasteBufferArgs(id string) []string {
+	return []string{"paste-buffer", "-p", "-d", "-t", id}
+}
+
+// paneDeadArgs builds args for `tmux display-message -p -t <id> #{pane_dead}`:
+// "1" when the pane's process has exited but the pane remains (remain-on-exit).
+// The hardened path refuses to type into a dead provider.
+func paneDeadArgs(id string) []string {
+	return []string{"display-message", "-p", "-t", id, "#{pane_dead}"}
+}
