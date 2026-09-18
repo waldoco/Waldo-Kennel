@@ -392,9 +392,9 @@ func ScopedConfigDir(root, projectID, installationDigest string, generation uint
 	if !filepath.IsAbs(root) || strings.TrimSpace(projectID) == "" || strings.TrimSpace(installationDigest) == "" || generation == 0 {
 		return "", errors.New("claude-code: scoped config requires absolute root, project, installation, and non-zero generation")
 	}
-	cleanRoot := filepath.Clean(root)
-	if err := rejectExistingSymlinkComponents(cleanRoot); err != nil {
-		return "", err
+	cleanRoot, err := evalSymlinksAllowMissing(filepath.Clean(root))
+	if err != nil {
+		return "", fmt.Errorf("claude-code: resolve custody root: %w", err)
 	}
 	project := shortHash(projectID)
 	install := shortHash(installationDigest)
@@ -411,27 +411,35 @@ func shortHash(value string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-func rejectExistingSymlinkComponents(path string) error {
-	volume := filepath.VolumeName(path)
-	current := volume + string(filepath.Separator)
-	parts := strings.Split(strings.TrimPrefix(path, current), string(filepath.Separator))
-	for _, part := range parts {
-		if part == "" {
-			continue
+func evalSymlinksAllowMissing(path string) (string, error) {
+	current := path
+	var missing []string
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for i := len(missing) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, missing[i])
+			}
+			return filepath.Clean(resolved), nil
 		}
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
 		}
-		if err != nil {
-			return err
+		// EvalSymlinks also reports ENOENT for an existing dangling symlink.
+		// Append only a component proven absent; any existing component whose
+		// identity cannot be resolved is rejected.
+		if _, lstatErr := os.Lstat(current); lstatErr == nil {
+			return "", fmt.Errorf("unresolved existing custody component: %s", current)
+		} else if !errors.Is(lstatErr, os.ErrNotExist) {
+			return "", lstatErr
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("claude-code: custody root contains symlink: %s", current)
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
 		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
 	}
-	return nil
 }
 
 // ConfigCanary captures metadata and content digests only. It never returns or

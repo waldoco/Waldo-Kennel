@@ -151,7 +151,11 @@ func TestScopedConfigDirIsDeterministicAndTraversalSafe(t *testing.T) {
 	if got != want {
 		t.Fatalf("not deterministic: %q != %q", got, want)
 	}
-	rel, err := filepath.Rel(root, got)
+	canonicalRoot, err := evalSymlinksAllowMissing(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(canonicalRoot, got)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		t.Fatalf("escaped root: %q", got)
 	}
@@ -179,8 +183,31 @@ func TestScopedConfigDirRejectsInvalidAndSymlinkRoot(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ScopedConfigDir(filepath.Join(link, "custody"), "p", "i", 1); err == nil {
-		t.Fatal("symlink root accepted")
+	got, err := ScopedConfigDir(filepath.Join(link, "custody"), "p", "i", 1)
+	if err != nil {
+		t.Fatalf("canonical symlink ancestor rejected: %v", err)
+	}
+	if !strings.HasPrefix(got, filepath.Join(target, "custody")+string(filepath.Separator)) {
+		t.Fatalf("root not canonicalized: %q", got)
+	}
+}
+
+func TestScopedConfigDirRejectsDanglingSymlinks(t *testing.T) {
+	base := t.TempDir()
+	final := filepath.Join(base, "dangling-final")
+	if err := os.Symlink(filepath.Join(base, "missing-target"), final); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ScopedConfigDir(final, "p", "i", 1); err == nil {
+		t.Fatal("dangling final symlink accepted")
+	}
+
+	middle := filepath.Join(base, "dangling-middle")
+	if err := os.Symlink(filepath.Join(base, "missing-middle-target"), middle); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ScopedConfigDir(filepath.Join(middle, "tail", "custody"), "p", "i", 1); err == nil {
+		t.Fatal("dangling middle symlink accepted")
 	}
 }
 
@@ -282,6 +309,10 @@ func TestDiscoverFoundationBindsResolvedSymlinkAndPathChanges(t *testing.T) {
 		return got
 	}
 	first := discover()
+	one, err := filepath.EvalSymlinks(one)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if first.Fingerprint.ExecutablePath != one {
 		t.Fatalf("path=%q want=%q", first.Fingerprint.ExecutablePath, one)
 	}
@@ -292,6 +323,10 @@ func TestDiscoverFoundationBindsResolvedSymlinkAndPathChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := discover()
+	two, err = filepath.EvalSymlinks(two)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if second.Fingerprint.ExecutablePath != two {
 		t.Fatalf("path=%q want=%q", second.Fingerprint.ExecutablePath, two)
 	}
@@ -374,8 +409,12 @@ func TestDiscoverFoundationSourceReplaceRestoreDoesNotChangePinnedBehavior(t *te
 	if err != nil {
 		t.Fatalf("source replace/restore affected pinned discovery: %v", err)
 	}
-	if got.Fingerprint.ExecutablePath != binary {
-		t.Fatalf("source identity=%q want=%q", got.Fingerprint.ExecutablePath, binary)
+	expectedBinary, err := filepath.EvalSymlinks(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Fingerprint.ExecutablePath != expectedBinary {
+		t.Fatalf("source identity=%q want=%q", got.Fingerprint.ExecutablePath, expectedBinary)
 	}
 	if _, err := os.Stat(filepath.Join(custody, "claude-pinned")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("pinned copy leaked: %v", err)
