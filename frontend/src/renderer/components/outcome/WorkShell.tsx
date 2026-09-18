@@ -48,7 +48,7 @@ type WorkShellProps = {
  * falls back to a bare "Board" crumb here). `_shell.tsx` suppresses both for
  * every Work route so this is the only copy.
  */
-export function WorkShell({ projectId, outcomeId, stage, children }: WorkShellProps) {
+export function WorkShell({ projectId, outcomeId, children }: WorkShellProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const router = useRouter();
