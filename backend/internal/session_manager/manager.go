@@ -2060,6 +2060,9 @@ func (m *Manager) relaunchSessionWithPolicy(ctx context.Context, operation strin
 		m.cleanupSystemPromptDir(rec.ID)
 		return RestoreResult{}, fmt.Errorf("%s %s: %w", operation, rec.ID, err)
 	}
+	if execution != nil {
+		m.attestGovernedLaunchBinary(ctx, rec.ID, argv)
+	}
 	m.augmentRuntimePATHForLaunchBinary(ctx, env, argv)
 	argv, launchID, supervisorVerifier, err := m.superviseAgentProcess(agent, rec.ID, env, argv, execution != nil)
 	if err != nil {

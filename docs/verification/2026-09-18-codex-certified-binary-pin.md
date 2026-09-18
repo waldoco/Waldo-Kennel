@@ -51,3 +51,17 @@ selected/canonical split is a reporting concern, not launch authority.
   compiles (gated suite runs on the self-hosted runner only).
 - Live verdict: re-runs on outcome-loop after promotion (model-backed-e2e is
   outcome-loop-only by design).
+
+## Review round 2 (attestation coverage)
+
+- MEDIUM: attestation covered fresh Spawn only. relaunchSessionWithPolicy
+  (governed restore/relaunch - daemon restart or explicit governed restore)
+  rebuilt fresh/restore argv with the persisted execution policy, validated,
+  and launched with no attestation, exactly where cache removal lets a
+  re-pinned binary identity change. Fixed: the same attestation now runs
+  after validation on the relaunch path when `execution != nil`.
+- Call-site tests (not just the helper): TestSpawn_ExactExecutionPolicy... now
+  asserts the fresh-spawn attestation line; TestResumeGovernedTUIUsesAdmission
+  BindingAfterProjectChange asserts the restore/relaunch attestation line.
+  Both record version_error against fake argv binaries (success-path version
+  logging stays covered by the helper tests).

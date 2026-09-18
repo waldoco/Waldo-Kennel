@@ -1184,9 +1184,11 @@ func TestSpawn_ExactExecutionPolicyOverridesProjectPermissionsAndReachesLaunch(t
 			t.Fatalf("provider launch began before governed workspace evidence was durable: %+v", rec.Metadata)
 		}
 	}
+	var logBuf bytes.Buffer
 	m := New(Deps{
 		Runtime: rt, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st,
 		Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: func(string) (string, error) { return "/bin/true", nil },
+		Logger: slog.New(slog.NewTextHandler(&logBuf, nil)),
 	})
 	policy := &domain.AttemptExecutionPolicy{
 		OutcomeID: "out-1", PlanRevisionID: "plan-1", WorkUnitID: "wu-1", ContractRevisionNumber: 1,
@@ -1208,6 +1210,12 @@ func TestSpawn_ExactExecutionPolicyOverridesProjectPermissionsAndReachesLaunch(t
 	}
 	if agent.lastLaunch.Permissions != domain.PermissionModeAcceptEdits {
 		t.Fatalf("governed launch retained mutable Project permission %q", agent.lastLaunch.Permissions)
+	}
+	// The fresh governed spawn call site must attest the exact binary it
+	// resolved (here a fake argv binary, so the version probe failure is the
+	// expected recorded detail).
+	if out := logBuf.String(); !strings.Contains(out, "governed launch binary") || !strings.Contains(out, "mer-1") || !strings.Contains(out, "version_error") {
+		t.Fatalf("fresh governed spawn attestation missing from log: %q", out)
 	}
 }
 

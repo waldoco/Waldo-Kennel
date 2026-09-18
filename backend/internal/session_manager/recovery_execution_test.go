@@ -1,9 +1,11 @@
 package sessionmanager
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -280,7 +282,8 @@ func TestResumeGovernedTUIUsesAdmissionBindingAfterProjectChange(t *testing.T) {
 	store := &recoveryEvidenceFakeStore{fakeStore: base, ref: recoveryRef(t, "mer-1", domain.SessionModeTUI, policy, digest), found: true}
 	agent := &recordingAgent{}
 	rt := &fakeRuntime{aliveByHandle: map[string]bool{"h1": true}}
-	mgr := New(Deps{Runtime: rt, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: store, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: base}, LookPath: func(string) (string, error) { return "/bin/true", nil }})
+	var logBuf bytes.Buffer
+	mgr := New(Deps{Runtime: rt, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: store, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: base}, LookPath: func(string) (string, error) { return "/bin/true", nil }, Logger: slog.New(slog.NewTextHandler(&logBuf, nil))})
 
 	if _, err := mgr.ResumeAgentWithMode(context.Background(), "mer-1"); err != nil {
 		t.Fatalf("ResumeAgentWithMode: %v", err)
@@ -297,6 +300,12 @@ func TestResumeGovernedTUIUsesAdmissionBindingAfterProjectChange(t *testing.T) {
 	}
 	if agent.lastRestore.Config.Permissions == domain.PermissionModeBypassPermissions {
 		t.Fatal("restore inherited broader Project bypass permissions")
+	}
+	// The governed restore/relaunch call site must attest too: a daemon
+	// restart re-resolves the (possibly re-pinned) binary, and that identity
+	// change is exactly what the attestation exists to make loud.
+	if out := logBuf.String(); !strings.Contains(out, "governed launch binary") || !strings.Contains(out, "mer-1") || !strings.Contains(out, "version_error") {
+		t.Fatalf("governed restore attestation missing from log: %q", out)
 	}
 }
 
