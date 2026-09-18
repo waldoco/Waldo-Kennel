@@ -1,6 +1,7 @@
 import { OutcomeTrash } from "./OutcomeDeletionControls";
 import { useMissionAttention } from "../../hooks/useMissionAttention";
 import { type MissionAttention } from "../../lib/mission-attention";
+import { boardLane, BOARD_LANE_TONE } from "../../lib/mission-lane-tone";
 import { Fragment, useMemo, useState } from "react";
 import { Flag, Network, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -289,32 +290,6 @@ function ProjectOutcomesGroup({
 // `contributor` indents a contributing Outcome under the parent that claims
 // it. The Mission Control action sits outside the row's own button rather than
 // inside it — a button cannot nest, and the two go to different places.
-// Board buckets group derived states; acceptance remains a daemon fact.
-// Canon lanes (locked 2026-09-17, ruling 2026-09-18): review is its own
-// "Ready" lane - finished work awaiting acceptance, not an input ask.
-// Unrecognized lanes (including "unavailable") fall into needsYou, matching
-// the overview's filter behavior.
-const boardLane = (lane?: string) =>
-	lane === "accepted"
-		? "accepted"
-		: lane === "review"
-			? "review"
-			: lane === "observe"
-				? "observe"
-				: lane === "define" || lane === "authorize"
-					? "define"
-					: "needsYou";
-
-// One canon tone per board lane, shared by the lane heading dot and the card
-// status sentence so a card always reads its own lane's color.
-const BOARD_LANE_TONE: Record<string, { dot: string; text: string }> = {
-	define: { dot: "bg-status-needs-you", text: "text-status-needs-you" },
-	needsYou: { dot: "bg-status-in-review", text: "text-status-in-review" },
-	review: { dot: "bg-status-ready", text: "text-status-ready" },
-	observe: { dot: "bg-status-working", text: "text-status-working" },
-	accepted: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
-};
-
 function OutcomeOverviewRow({
 	attention,
 	selected,

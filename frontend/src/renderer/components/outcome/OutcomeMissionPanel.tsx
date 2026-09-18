@@ -3,6 +3,8 @@ import { MissionContractEditor } from "./MissionContractEditor";
 import { useOutcomeRunState } from "../../hooks/useOutcomeRunState";
 import { X, Maximize2, Minimize2, History } from "lucide-react";
 import { runStateAttention } from "../../lib/mission-attention";
+import { boardLane, BOARD_LANE_TONE } from "../../lib/mission-lane-tone";
+import { cn } from "../../lib/utils";
 import { MissionUsage } from "./MissionUsage";
 import { useSettings } from "../../hooks/useSettings";
 import { ReasoningSettingsSection } from "../settings/ReasoningSettingsSection";
@@ -261,9 +263,27 @@ function MissionGlance({
 			<div className="flex flex-wrap items-end justify-between gap-3">
 				<div className="min-w-0 flex-1">
 					<span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{t("mission.state")}</span>
-					<p className="text-sm font-medium">
-						{loading ? t("outcome.overview.loading") : t(`mission.lane.${attention.lane}`)}
-					</p>
+					{loading ? (
+						<p className="text-sm font-medium text-muted-foreground">
+							{t("outcome.overview.loading")}
+						</p>
+					) : (
+						<p
+							className={cn(
+								"flex items-center gap-1.5 text-sm font-medium",
+								BOARD_LANE_TONE[boardLane(attention.lane)].text,
+							)}
+						>
+							<span
+								aria-hidden="true"
+								className={cn(
+									"size-2 shrink-0 rounded-full",
+									BOARD_LANE_TONE[boardLane(attention.lane)].dot,
+								)}
+							/>
+							{t(`mission.lane.${attention.lane}`)}
+						</p>
+					)}
 					<p className="text-xs leading-body text-muted-foreground">
 						{connection !== "connected" ? t("mission.offline") : loading ? t("outcome.overview.loading") : nextDescription}
 					</p>

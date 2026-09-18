@@ -17,7 +17,8 @@ vi.mock("../../hooks/useOutcomeRunState", () => ({
 	useOutcomeRunState: () => ({ data: undefined, isLoading: false, error: undefined, refetch: vi.fn() }),
 }));
 vi.mock("../../hooks/useSettings", () => ({ useSettings: () => ({ settings: { reasoning: { ready: true } } }) }));
-vi.mock("../../lib/mission-attention", () => ({ runStateAttention: () => ({ lane: "define", reason: undefined }) }));
+const attentionMock = vi.hoisted(() => ({ lane: "define", reason: undefined as string | undefined }));
+vi.mock("../../lib/mission-attention", () => ({ runStateAttention: () => attentionMock }));
 vi.mock("../../hooks/useEventsConnection", () => ({ useEventsConnection: () => "connected" }));
 vi.mock("../../hooks/useWorkspaceQuery", () => ({ useWorkspaceQuery: () => ({ data: [{ id: "project-1", name: "kennel" }] }) }));
 
@@ -96,4 +97,27 @@ it("keeps tab navigation working around the drawer", async () => {
 	await user.keyboard("{Escape}");
 	expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 	expect(screen.getByTestId("mission-tab-plan")).toHaveAttribute("aria-pressed", "true");
+});
+
+it("carries the lane's canon color into the mission state readout", () => {
+	const cases = [
+		["define", "Define", "text-status-needs-you", "bg-status-needs-you"],
+		["needsYou", "Needs you", "text-status-in-review", "bg-status-in-review"],
+		["review", "Ready for review", "text-status-ready", "bg-status-ready"],
+		["observe", "In progress", "text-status-working", "bg-status-working"],
+		["accepted", "Accepted", "text-muted-foreground", "bg-muted-foreground"],
+		// Unknown states honestly wear the Needs you tone, matching the board.
+		["unavailable", "Status unavailable", "text-status-in-review", "bg-status-in-review"],
+	] as const;
+	for (const [lane, label, textTone, dotTone] of cases) {
+		attentionMock.lane = lane;
+		const { unmount } = renderPanel();
+		const glance = within(screen.getByTestId("mission-glance"));
+		const state = glance.getByText(label);
+		expect(state.className).toContain(textTone);
+		const dot = state.querySelector("span[aria-hidden]");
+		expect(dot?.className).toContain(dotTone);
+		unmount();
+	}
+	attentionMock.lane = "define";
 });
