@@ -57,6 +57,11 @@ const (
 	ReadinessCheckUnrepresentable  PlanningReadinessIssueKind = "check_unrepresentable"
 	ReadinessEffectUnresolved      PlanningReadinessIssueKind = "effect_unresolved"
 	ReadinessProviderUnavailable   PlanningReadinessIssueKind = "provider_unavailable"
+	// ReadinessReferenceUnresolvable marks a planner-declared issue that named
+	// a work unit key or criterion alias absent from its own envelope. The
+	// control plane strips the unresolvable references (they never reach the
+	// evaluated result) and keeps the signal owner-visible under this kind.
+	ReadinessReferenceUnresolvable PlanningReadinessIssueKind = "reference_unresolvable"
 )
 
 // readinessIssueKindRank freezes the declaration order used for stable sorting.
@@ -69,6 +74,7 @@ var readinessIssueKindRank = []PlanningReadinessIssueKind{
 	ReadinessCheckUnrepresentable,
 	ReadinessEffectUnresolved,
 	ReadinessProviderUnavailable,
+	ReadinessReferenceUnresolvable,
 }
 
 // Valid reports whether the issue kind is supported.
@@ -158,6 +164,7 @@ const (
 	PlanningCheckUnrepresentable      PlanningReadinessReasonCode = "PLANNING_CHECK_UNREPRESENTABLE"
 	PlanningEffectUnresolved          PlanningReadinessReasonCode = "PLANNING_EFFECT_UNRESOLVED"
 	PlanningProviderUnavailable       PlanningReadinessReasonCode = "PLANNING_PROVIDER_UNAVAILABLE"
+	PlanningReferenceUnresolvable     PlanningReadinessReasonCode = "PLANNING_REFERENCE_UNRESOLVABLE"
 )
 
 // ReasonCode maps an issue kind to its stable presentation code.
@@ -179,6 +186,8 @@ func (k PlanningReadinessIssueKind) ReasonCode() PlanningReadinessReasonCode {
 		return PlanningEffectUnresolved
 	case ReadinessProviderUnavailable:
 		return PlanningProviderUnavailable
+	case ReadinessReferenceUnresolvable:
+		return PlanningReferenceUnresolvable
 	default:
 		return ""
 	}
@@ -250,6 +259,12 @@ var readinessIssueSpecs = map[PlanningReadinessIssueKind]readinessIssueSpec{
 	ReadinessProviderUnavailable: {
 		routes:            []PlanningEscalationRoute{RouteRetryPlanning, RouteAuthenticateHarness},
 		admissionEvidence: true,
+	},
+	// Degrade marker for planner references its own envelope does not define.
+	// Control-plane only (the planner may not raise it); answer_context inside
+	// needs_context packets (their only legal route), revise_plan otherwise.
+	ReadinessReferenceUnresolvable: {
+		routes: []PlanningEscalationRoute{RouteAnswerContext, RouteRevisePlan},
 	},
 }
 

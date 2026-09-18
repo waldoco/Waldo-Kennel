@@ -159,6 +159,8 @@ func parsePlanningReadinessReply(
 		allowedAliases[alias] = true
 	}
 
+	var droppedUnitsAll, droppedAliasesAll []string
+	var droppedUnits, droppedAliases []string
 	for _, raw := range reply.Issues {
 		issue := domain.PlanningReadinessIssue{
 			Kind:             domain.PlanningReadinessIssueKind(raw.Kind),
@@ -180,22 +182,27 @@ func parsePlanningReadinessReply(
 				return invalid("waldo referenced a blank criterion alias (%s)", domain.ReadinessIssueInvalid)
 			}
 		}
-		for _, key := range issue.WorkUnitKeys {
-			if !allowedUnits[key] {
-				return invalid("waldo referenced unknown work unit key %q (%s)", key, domain.ReadinessIssueInvalid)
-			}
-		}
-		for _, alias := range issue.CriterionAliases {
-			if !allowedAliases[alias] {
-				return invalid("waldo referenced unknown criterion alias %q (%s)", alias, domain.ReadinessIssueInvalid)
-			}
-		}
+		// Degrade, don't invalidate: the one-shot lane has no conversation to
+		// repair an unresolvable reference through, and planner output is
+		// non-authoritative. Strip keys/aliases the envelope itself does not
+		// define (a no-proposal envelope defines none) so no invented
+		// reference can ride an issue into the evaluated result, and surface
+		// ONE control-plane issue per envelope so the owner still sees the
+		// drop. Blank and duplicate references remain hard-invalid: those are
+		// malformed, not unresolvable.
+		issue.WorkUnitKeys, droppedUnits = partitionRefs(issue.WorkUnitKeys, allowedUnits)
+		issue.CriterionAliases, droppedAliases = partitionRefs(issue.CriterionAliases, allowedAliases)
+		droppedUnitsAll = append(droppedUnitsAll, droppedUnits...)
+		droppedAliasesAll = append(droppedAliasesAll, droppedAliases...)
 		for _, choice := range raw.Choices {
 			issue.Choices = append(issue.Choices, domain.PlanningReadinessChoice{
 				Key: strings.TrimSpace(choice.Key), Label: strings.TrimSpace(choice.Label),
 			})
 		}
 		result.Issues = append(result.Issues, issue)
+	}
+	if len(droppedUnitsAll) > 0 || len(droppedAliasesAll) > 0 {
+		result.Issues = append(result.Issues, unresolvablePlannerRefIssue(result.Status, droppedUnitsAll, droppedAliasesAll))
 	}
 
 	canonical, err := domain.CanonicalizePlanningReadinessIssues(result.Issues, workUnitOrder)
@@ -233,4 +240,54 @@ func isAuthorityClaimField(field string) bool {
 		}
 	}
 	return false
+}
+
+// partitionRefs splits refs into those the envelope itself defines (kept) and
+// those it does not (dropped). Order is preserved in both partitions.
+func partitionRefs(refs []string, allowed map[string]bool) (kept, dropped []string) {
+	for _, ref := range refs {
+		if allowed[ref] {
+			kept = append(kept, ref)
+		} else {
+			dropped = append(dropped, ref)
+		}
+	}
+	return kept, dropped
+}
+
+// unresolvablePlannerRefIssue is the control-plane issue recording that a
+// planner-declared issue named units or criteria its own envelope does not
+// define. It carries no planner reference: the dropped values live only in
+// the prose so no invented key can reach the evaluated result.
+func unresolvablePlannerRefIssue(status domain.PlanningReadinessStatus, units, aliases []string) domain.PlanningReadinessIssue {
+	// A needs_context envelope admits only answer-context routes (mixed
+	// packets are blocked), so the degrade issue follows the envelope status.
+	route := domain.RouteRevisePlan
+	if status == domain.PlanningNeedsContext {
+		route = domain.RouteAnswerContext
+	}
+	parts := []string{}
+	if len(units) > 0 {
+		parts = append(parts, fmt.Sprintf("work unit key(s) %s", quotedJoin(units)))
+	}
+	if len(aliases) > 0 {
+		parts = append(parts, fmt.Sprintf("criterion alias(es) %s", quotedJoin(aliases)))
+	}
+	what := strings.Join(parts, " and ")
+	return domain.PlanningReadinessIssue{
+		Kind:           domain.ReadinessReferenceUnresolvable,
+		Route:          route,
+		Source:         domain.ReadinessSourceControlPlane,
+		Prompt:         fmt.Sprintf("The planner's notes referenced %s, which its own proposal does not define; the reference was dropped.", what),
+		Reason:         "A planner-declared issue named work or criteria outside the returned envelope, so the reference cannot be evaluated against real units.",
+		Recommendation: "Re-run planning or revise the plan so every referenced unit and criterion exists in the proposal.",
+	}
+}
+
+func quotedJoin(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, v := range values {
+		quoted = append(quoted, fmt.Sprintf("%q", v))
+	}
+	return strings.Join(quoted, ", ")
 }

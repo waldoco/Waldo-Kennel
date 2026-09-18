@@ -186,18 +186,52 @@ func TestParsePlanningReadinessRejectsUnknownTaxonomy(t *testing.T) {
 }
 
 func TestParsePlanningReadinessUnitReferenceNeedsProposal(t *testing.T) {
-	// Without a proposal there is no draft, so no issue may reference a unit.
-	_, err := parsePlanningReadinessReply([]byte(`{
+	// A no-proposal envelope defines no units, so a planner reference to one
+	// cannot resolve - but on the sessionless one-shot lane an unresolvable
+	// reference on an advisory issue must degrade, not 500 plan creation
+	// (run 35306197815: "waldo referenced unknown work unit key W1" 500ed
+	// POST /outcomes/:id/plans). The reference is stripped, the planner's
+	// issue survives reference-free, and one control-plane degrade issue
+	// records the drop; no invented key reaches the evaluated result.
+	res, err := parsePlanningReadinessReply([]byte(`{
 	  "status": "needs_context",
 	  "message": "One answer needed.",
 	  "proposal": null,
 	  "issues": [{"kind": "fact_missing", "prompt": "Which release channel?", "reason": "The verification graph depends on it.", "recommendation": "", "choices": [], "workUnitKeys": ["verify-release"], "criterionAliases": []}]
 	}`), readinessTestFence(), []string{"C1", "C2"})
-	if err == nil || !strings.Contains(err.Error(), string(domain.ReadinessIssueInvalid)) {
-		t.Fatalf("unit reference without a proposal: err = %v", err)
+	if err != nil {
+		t.Fatalf("unresolvable reference must degrade, not invalidate: %v", err)
 	}
-	// A ready claim carries no issues, so unit references arise only in the
-	// evaluator's control-plane issues - the planner envelope stays clean.
+	var plannerIssue, degradeIssue *domain.PlanningReadinessIssue
+	for i := range res.Issues {
+		switch res.Issues[i].Kind {
+		case domain.ReadinessFactMissing:
+			plannerIssue = &res.Issues[i]
+		case domain.ReadinessReferenceUnresolvable:
+			degradeIssue = &res.Issues[i]
+		}
+	}
+	if plannerIssue == nil {
+		t.Fatal("the planner's issue must survive the degrade")
+	}
+	if len(plannerIssue.WorkUnitKeys) != 0 {
+		t.Fatalf("invented key rode the issue into the result: %v", plannerIssue.WorkUnitKeys)
+	}
+	if degradeIssue == nil {
+		t.Fatal("the drop must surface as a control-plane degrade issue")
+	}
+	if degradeIssue.Source != domain.ReadinessSourceControlPlane {
+		t.Fatalf("degrade issue source = %s, want control_plane", degradeIssue.Source)
+	}
+	if degradeIssue.Route != domain.RouteAnswerContext {
+		t.Fatalf("needs_context packets admit only answer_context routes, got %s", degradeIssue.Route)
+	}
+	if len(degradeIssue.WorkUnitKeys) != 0 || len(degradeIssue.CriterionAliases) != 0 {
+		t.Fatal("the degrade issue itself must carry no references")
+	}
+	if !strings.Contains(degradeIssue.Prompt, "verify-release") {
+		t.Fatal("the dropped key must be named in the degrade issue's prose")
+	}
 }
 
 func TestParsePlanningReadinessShapeRules(t *testing.T) {
@@ -271,19 +305,26 @@ func TestParsePlanningReadinessRejectsTrailingData(t *testing.T) {
 }
 
 func TestParsePlanningReadinessFencesPlannerReferences(t *testing.T) {
-	// Any WorkUnit key reference without a proposal is rejected (there is no
-	// draft for it to name).
+	// A WorkUnit key reference the envelope does not define is DEGRADED
+	// (stripped + control-plane degrade issue), never carried through.
 	unknown := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"workUnitKeys": ["verify-release"], "criterionAliases": ["C1"]`, 1)
-	if _, err := parsePlanningReadinessReply([]byte(unknown),
-		readinessTestFence(), []string{"C1", "C2"}); err == nil {
-		t.Fatal("work unit key reference without a proposal accepted")
+	res, err := parsePlanningReadinessReply([]byte(unknown),
+		readinessTestFence(), []string{"C1", "C2"})
+	if err != nil {
+		t.Fatalf("unresolvable unit reference must degrade: %v", err)
 	}
-	// Unknown criterion alias reference is rejected even though it parses as a string.
+	assertRefsStripped(t, res)
+	// Unknown criterion alias references degrade the same way.
 	unknown = strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"criterionAliases": ["C99"]`, 1)
-	if _, err := parsePlanningReadinessReply([]byte(unknown),
-		readinessTestFence(), []string{"C1", "C2"}); err == nil {
-		t.Fatal("unknown criterion alias accepted")
+	res, err = parsePlanningReadinessReply([]byte(unknown),
+		readinessTestFence(), []string{"C1", "C2"})
+	if err != nil {
+		t.Fatalf("unresolvable alias reference must degrade: %v", err)
 	}
+	assertRefsStripped(t, res)
+	// The fence still bites for defined keys: a reference to a unit the
+	// proposal DOES define survives untouched (strictness unchanged for
+	// resolvable references).
 	// Duplicate references are rejected by the domain contract.
 	dup := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"criterionAliases": ["C1", "C1"]`, 1)
 	if _, err := parsePlanningReadinessReply([]byte(dup),
@@ -295,5 +336,75 @@ func TestParsePlanningReadinessFencesPlannerReferences(t *testing.T) {
 	if _, err := parsePlanningReadinessReply([]byte(blank),
 		readinessTestFence(), []string{"C1", "C2"}); err == nil {
 		t.Fatal("blank work unit key accepted")
+	}
+}
+
+// assertRefsStripped fails unless every planner-declared issue in res carries
+// only envelope-defined references and exactly one control-plane degrade issue
+// recorded a drop.
+func assertRefsStripped(t *testing.T, res domain.PlanningReadinessResult) {
+	t.Helper()
+	degrades := 0
+	for _, issue := range res.Issues {
+		if issue.Kind == domain.ReadinessReferenceUnresolvable {
+			degrades++
+			if issue.Source != domain.ReadinessSourceControlPlane {
+				t.Fatalf("degrade issue source = %s, want control_plane", issue.Source)
+			}
+			continue
+		}
+		for _, key := range issue.WorkUnitKeys {
+			if key == "verify-release" {
+				t.Fatalf("invented unit key rode issue into result: %v", issue.WorkUnitKeys)
+			}
+		}
+		for _, alias := range issue.CriterionAliases {
+			if alias != "C1" && alias != "C2" {
+				t.Fatalf("invented criterion alias rode issue into result: %v", issue.CriterionAliases)
+			}
+		}
+	}
+	if degrades != 1 {
+		t.Fatalf("degrade issues = %d, want exactly 1 per envelope", degrades)
+	}
+}
+
+// TestParsePlanningReadinessSelectiveDegrade: within one issue, references
+// that resolve against the Contract's frozen aliases survive while
+// references the envelope cannot define are stripped - the fence bites
+// selectively, it does not blanket-drop. (Unit keys can never resolve in a
+// planner envelope: planner issues are only legal in needs_context packets,
+// which carry no proposal - the degrade is what keeps that shape alive.)
+func TestParsePlanningReadinessSelectiveDegrade(t *testing.T) {
+	envelope := `{
+	  "status": "needs_context",
+	  "message": "One answer needed.",
+	  "proposal": null,
+	  "issues": [{"kind": "fact_missing", "prompt": "Which release channel?", "reason": "The verification graph depends on it.", "recommendation": "", "choices": [], "workUnitKeys": ["verify-release"], "criterionAliases": ["C1", "C99"]}]
+	}`
+	res, err := parsePlanningReadinessReply([]byte(envelope), readinessTestFence(), []string{"C1", "C2"})
+	if err != nil {
+		t.Fatalf("mixed references must degrade selectively: %v", err)
+	}
+	var plannerIssue *domain.PlanningReadinessIssue
+	degrades := 0
+	for i := range res.Issues {
+		if res.Issues[i].Kind == domain.ReadinessReferenceUnresolvable {
+			degrades++
+			continue
+		}
+		plannerIssue = &res.Issues[i]
+	}
+	if plannerIssue == nil {
+		t.Fatal("planner issue lost")
+	}
+	if len(plannerIssue.CriterionAliases) != 1 || plannerIssue.CriterionAliases[0] != "C1" {
+		t.Fatalf("defined alias C1 must survive, got %v", plannerIssue.CriterionAliases)
+	}
+	if len(plannerIssue.WorkUnitKeys) != 0 {
+		t.Fatalf("undefined unit key must be stripped, got %v", plannerIssue.WorkUnitKeys)
+	}
+	if degrades != 1 {
+		t.Fatalf("degrade issues = %d, want 1", degrades)
 	}
 }

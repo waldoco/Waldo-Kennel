@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -475,8 +476,10 @@ func (p *LLMProvider) DraftPlan(ctx context.Context, request ports.PlanIntellige
 
 	result, err := parsePlanningReadinessReply(response.JSON, request.Fence, aliases)
 	if err != nil {
+		logReadinessInvalid(response.JSON, err)
 		return ports.PlanIntelligenceResponse{}, err
 	}
+	logUnresolvableRefs(result.Issues)
 	return ports.PlanIntelligenceResponse{
 		Readiness: result,
 		Provenance: ports.IntelligenceProvenance{
@@ -552,8 +555,10 @@ func (p *LLMProvider) DiscussPlan(ctx context.Context, request ports.PlanningDis
 	}
 	result, err := parsePlanningReadinessReply(response.JSON, request.Fence, aliases)
 	if err != nil {
+		logReadinessInvalid(response.JSON, err)
 		return ports.PlanningDiscussionResponse{}, err
 	}
+	logUnresolvableRefs(result.Issues)
 	provenance := ports.IntelligenceProvenance{
 		EffectiveProvider: domain.IntelligenceProviderID(p.client.ID()), EffectiveModel: response.EffectiveModel,
 		NativeSessionRef: response.NativeSessionRef, InputTokens: response.InputTokens, OutputTokens: response.OutputTokens,
@@ -693,4 +698,27 @@ func planDraftInputs(values []struct {
 		out = append(out, domain.PlanDraftDependencyInput{FromKey: strings.TrimSpace(v.FromKey), Required: strings.TrimSpace(v.Required)})
 	}
 	return out
+}
+
+// logReadinessInvalid WARN-logs a bounded prefix of a rejected readiness
+// envelope so the next planner/schema inconsistency is diagnosable from
+// preserved daemon logs (the e2e artifact path keeps them on failure).
+func logReadinessInvalid(raw []byte, err error) {
+	const maxEnvelope = 2000
+	excerpt := string(raw)
+	if len(excerpt) > maxEnvelope {
+		excerpt = excerpt[:maxEnvelope]
+	}
+	slog.Default().Warn("waldo readiness envelope rejected", "error", err, "envelope_prefix", excerpt)
+}
+
+// logUnresolvableRefs WARN-logs degrade issues: the plan survives, but the
+// dropped planner references stay visible in the daemon log as well as in
+// the owner-facing issue.
+func logUnresolvableRefs(issues []domain.PlanningReadinessIssue) {
+	for _, issue := range issues {
+		if issue.Kind == domain.ReadinessReferenceUnresolvable {
+			slog.Default().Warn("planner-declared issue referenced undefined units or criteria; references dropped", "detail", issue.Prompt)
+		}
+	}
 }
