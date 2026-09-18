@@ -164,18 +164,26 @@ func (s *Store) CreateAttemptWithFence(ctx context.Context, in ports.AttemptAdmi
 		return domain.Attempt{}, fmt.Errorf("create attempt for %s: %w", in.OutcomeID, err)
 	}
 
+	fenceSubject := in.FenceSubject
+	if in.FenceReadOnly {
+		// A read-only WorkUnit still gets a durable fence row (so renew/
+		// release/recovery treat every Attempt uniformly), but under a
+		// subject unique to this Attempt so it never contends with a
+		// concurrent read-only sibling for the same open-fence slot.
+		fenceSubject = domain.FenceSubjectForReadOnlyAttempt(in.FenceSubject, attempt.ID)
+	}
 	fenceID := "fence-" + uuid.NewString()
 	if err := txq.IssueAttemptFence(ctx, gen.IssueAttemptFenceParams{
 		ID:        fenceID,
-		Subject:   in.FenceSubject,
+		Subject:   fenceSubject,
 		AttemptID: attempt.ID,
 	}); err != nil {
 		if isSQLiteUnique(err) {
 			holder := domain.AttemptID("")
-			if open, findErr := txq.FindOpenFenceBySubject(ctx, in.FenceSubject); findErr == nil {
+			if open, findErr := txq.FindOpenFenceBySubject(ctx, fenceSubject); findErr == nil {
 				holder = open.AttemptID
 			}
-			return domain.Attempt{}, &ports.AttemptFenceHeldError{Subject: in.FenceSubject, Holder: holder, OutcomeID: in.OutcomeID}
+			return domain.Attempt{}, &ports.AttemptFenceHeldError{Subject: fenceSubject, Holder: holder, OutcomeID: in.OutcomeID}
 		}
 		return domain.Attempt{}, fmt.Errorf("issue fence for %s: %w", attempt.ID, err)
 	}

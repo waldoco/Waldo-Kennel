@@ -13,8 +13,12 @@ func schedulerPlanFixture() domain.PlanRevision {
 		ID: "plan-scheduler", OutcomeID: "out-scheduler", Number: 1, ContractRevisionNumber: 1,
 		Status: domain.PlanStatusApproved, Summary: "A then B", RunBriefCoreDigest: strings.Repeat("a", 64),
 		WorkUnits: []domain.WorkUnit{
-			{ID: "wu-a", Kind: domain.WorkUnitDirect, Title: "A", ContractRevisionNumber: 1, Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault, OutputSummary: "A output", EvidenceChecks: []string{"A evidence"}, VerificationRequirement: "verify A", StopConditions: []string{"stop"}, CriterionIDs: []domain.CriterionID{"crit-a"}, RequiredCapabilities: []string{domain.CapabilityWorktreeRead}},
-			{ID: "wu-b", Kind: domain.WorkUnitDirect, Title: "B", ContractRevisionNumber: 1, Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault, OutputSummary: "B output", EvidenceChecks: []string{"B evidence"}, VerificationRequirement: "verify B", StopConditions: []string{"stop"}, DependsOn: []domain.WorkUnitID{"wu-a"}, CriterionIDs: []domain.CriterionID{"crit-b"}, RequiredCapabilities: []string{domain.CapabilityWorktreeRead}},
+			// Both units are write-capable so these general scheduler/custody
+			// tests keep exercising the pre-existing serialized-fence model;
+			// concurrent read-only admission has its own dedicated fixture
+			// (see schedulerReadOnlyPlanFixture).
+			{ID: "wu-a", Kind: domain.WorkUnitDirect, Title: "A", ContractRevisionNumber: 1, Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault, OutputSummary: "A output", EvidenceChecks: []string{"A evidence"}, VerificationRequirement: "verify A", StopConditions: []string{"stop"}, CriterionIDs: []domain.CriterionID{"crit-a"}, RequiredCapabilities: []string{domain.CapabilityWorktreeRead, domain.CapabilityWorktreeWrite}},
+			{ID: "wu-b", Kind: domain.WorkUnitDirect, Title: "B", ContractRevisionNumber: 1, Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault, OutputSummary: "B output", EvidenceChecks: []string{"B evidence"}, VerificationRequirement: "verify B", StopConditions: []string{"stop"}, DependsOn: []domain.WorkUnitID{"wu-a"}, CriterionIDs: []domain.CriterionID{"crit-b"}, RequiredCapabilities: []string{domain.CapabilityWorktreeRead, domain.CapabilityWorktreeWrite}},
 		},
 	}
 }

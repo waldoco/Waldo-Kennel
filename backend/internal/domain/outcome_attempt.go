@@ -345,6 +345,15 @@ func FenceSubjectForProject(projectID ProjectID) string {
 	return "project:" + string(projectID)
 }
 
+// FenceSubjectForReadOnlyAttempt turns the exclusive project fence subject
+// into a non-exclusive, per-Attempt subject: concurrent read-only Attempts
+// (ADR 0009 §6) never collide on the unique open-fence-per-subject index,
+// while each still gets a durable fence row so renew/release/recovery code
+// paths (recover.go) keep treating every Attempt uniformly.
+func FenceSubjectForReadOnlyAttempt(projectSubject string, attemptID AttemptID) string {
+	return projectSubject + ":read:" + string(attemptID)
+}
+
 // RecoveryResolution is the verdict a recovery receipt records.
 type RecoveryResolution string
 

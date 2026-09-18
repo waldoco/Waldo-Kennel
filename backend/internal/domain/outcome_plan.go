@@ -70,6 +70,25 @@ const WorkUnitDirect WorkUnitKind = "direct"
 // Valid reports whether the work unit kind is supported.
 func (k WorkUnitKind) Valid() bool { return k == WorkUnitDirect }
 
+// RequiresExclusiveWorktreeAccess reports whether a WorkUnit with these
+// required capabilities must hold the project's exclusive worktree fence
+// rather than run concurrently with sibling Attempts. Only a WorkUnit whose
+// required capabilities are read-only (worktree.read, and nothing else) may
+// share worktree access with concurrent siblings; an empty/unspecified
+// capability set is treated as exclusive so unclassified WorkUnits keep
+// today's serialized guarantee.
+func requiresExclusiveWorktreeAccess(capabilities []string) bool {
+	if len(capabilities) == 0 {
+		return true
+	}
+	for _, capability := range capabilities {
+		if capability != CapabilityWorktreeRead {
+			return true
+		}
+	}
+	return false
+}
+
 // WorkUnit is immutable unit-level execution authority once its Plan is approved.
 // Dependencies and criterion coverage are canonical graph/proof identity; routing
 // recommendation is stored separately and must agree with this exact binding.
@@ -93,6 +112,14 @@ type WorkUnit struct {
 	// are what Kennel itself runs and records as independent observation.
 	// Empty is valid: not every WorkUnit can be proved by a command.
 	Checks []ApprovedCheck
+}
+
+// RequiresExclusiveWorktreeAccess reports whether this WorkUnit must hold the
+// project's exclusive worktree fence rather than run concurrently with
+// sibling Attempts (ADR 0009 §6: read/reason-only work may run concurrently;
+// writes, exec, and unclassified WorkUnits remain exclusive).
+func (w WorkUnit) RequiresExclusiveWorktreeAccess() bool {
+	return requiresExclusiveWorktreeAccess(w.RequiredCapabilities)
 }
 
 // Validate checks the work unit's structural and binding invariants.

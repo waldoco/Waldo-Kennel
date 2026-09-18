@@ -38,7 +38,13 @@ type AttemptAdmission struct {
 	RunIntentGeneration int64
 	RequestKey          string
 	FenceSubject        string
-	At                  time.Time
+	// FenceReadOnly is true only for a read-only WorkUnit's Attempt (ADR 0009
+	// §6). Storage then issues a non-exclusive, per-Attempt fence subject so
+	// concurrent read-only Attempts never contend for the same fence row.
+	// The zero value (false) preserves today's exclusive project-wide fence
+	// for every write/exec-capable or unclassified WorkUnit.
+	FenceReadOnly bool
+	At            time.Time
 }
 
 // RunIntentReplayConflictError reports reuse of a run-command key with a
