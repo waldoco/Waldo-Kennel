@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +76,31 @@ func TestGovernedCodexSandboxFalsifiers(t *testing.T) {
 	}
 	home, err := codex.ProvisionGovernedCodexHome(bound, workspace, dataDir, "falsifier-session")
 	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ProvisionGovernedCodexHome pins the governed MCP command to
+	// os.Executable() - correct in production, where that is the kennel
+	// daemon, but under `go test` it is this e2e test binary, which has no
+	// governed-tools entrypoint and dies at the MCP initialize handshake.
+	// Repoint the command at the real built daemon so the falsifiers
+	// exercise the production MCP path.
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kennelBin := buildDaemon(t)
+	configPath := filepath.Join(home, "config.toml")
+	rawConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCommand := "command = " + strconv.Quote(self)
+	if !strings.Contains(string(rawConfig), oldCommand) {
+		t.Fatalf("generated config does not carry the expected governed command line %q", oldCommand)
+	}
+	rewritten := strings.Replace(string(rawConfig), oldCommand, "command = "+strconv.Quote(kennelBin), 1)
+	if err := os.WriteFile(configPath, []byte(rewritten), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
