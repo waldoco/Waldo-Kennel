@@ -1,11 +1,12 @@
+import type { BaseWindow, WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { createAttemptReplacementHandler, type OwnerCommandHandlerDeps } from "./owner-command-handler";
 
 const command = { outcomeId: "out", predecessorAttemptId: "a", planRevisionId: "p", workUnitId: "w", runIntentGeneration: 1, contractRevisionNumber: 1, action: "replace", requestKey: "rk" };
 function harness() {
 	const frame = {} as never;
-	const shell = { isDestroyed: vi.fn(() => false), mainFrame: frame } as never;
-	const window = { isDestroyed: vi.fn(() => false) } as never;
+	const shell = { isDestroyed: vi.fn(() => false), mainFrame: frame } as unknown as WebContents;
+	const window = { isDestroyed: vi.fn(() => false) } as unknown as BaseWindow;
 	const response = { ok: true, status: 201, json: vi.fn(async () => ({ data: { created: true } })) } as never;
 	const deps: OwnerCommandHandlerDeps = {
 		getWindow: vi.fn(() => window), getShellWebContents: vi.fn(() => shell),

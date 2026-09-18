@@ -4,13 +4,13 @@ import { access, realpath } from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { WebContents } from "electron";
+import type { IpcMainInvokeEvent, WebContents } from "electron";
 import type {
   CodexDiscoveryState,
   CodexPairingState,
 } from "../shared/provider-pairing";
 
-type Event = { sender: WebContents; senderFrame: WebContents["mainFrame"] };
+type Event = Pick<IpcMainInvokeEvent, "sender" | "senderFrame">;
 type Daemon = { port: number };
 type Deps = {
   getShellWebContents: () => WebContents | null;

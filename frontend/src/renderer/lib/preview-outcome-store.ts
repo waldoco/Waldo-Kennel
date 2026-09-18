@@ -148,6 +148,8 @@ export function proposePreviewPlan(outcomeId: string, expectedContractRevision: 
 				criterionIds: [...outcome.currentRevision.criteria.map((criterion) => criterion.criterionId)],
 				provider: "codex",
 				modelSelection: "provider_default",
+				inputs: [],
+				role: "implementer",
 				requiredCapabilities: ["worktree.read", "worktree.write", "worktree.exec"],
 				approvedChecks: [],
 				outputSummary: "Produce the agreed result inside the selected project without exceeding the approved scope.",

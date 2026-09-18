@@ -16,6 +16,17 @@ export const aoBridge: AoBridge =
 			installTmux: async () => ({ status: "failed" as const, message: "Installing tmux requires the desktop app." }),
 			scanImportFolder: async ({ path }) => ({ path, repos: [] }),
 			checkAncestorRepo: async () => undefined,
+			approveAttemptReplacement: async () => {
+				throw new Error("Attempt replacement approval requires the desktop app.");
+			},
+			approveHarnessAuthority: async () => {
+				throw new Error("Harness connection approval requires the desktop app.");
+			},
+			discoverCodex: async () => ({ state: "not_found", message: "Codex discovery requires the desktop app." }),
+			getCodexPairing: async () => ({ state: "unpaired" }),
+			pairCodex: async () => {
+				throw new Error("Codex pairing requires the desktop app.");
+			},
 			onNewSessionShortcut: () => () => undefined,
 			onKeyboardShortcutsHelp: () => () => undefined,
 			onNewShellTerminalShortcut: () => () => undefined,

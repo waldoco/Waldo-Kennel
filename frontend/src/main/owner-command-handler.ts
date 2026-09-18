@@ -1,10 +1,7 @@
-import type { BaseWindow, WebContents } from "electron";
+import type { BaseWindow, IpcMainInvokeEvent, WebContents } from "electron";
 import { parseAttemptReplacementProposal } from "./owner-command";
 
-type SenderEvent = {
-  sender: WebContents;
-  senderFrame: WebContents["mainFrame"];
-};
+type SenderEvent = Pick<IpcMainInvokeEvent, "sender" | "senderFrame">;
 type DialogResult = { response: number };
 type DaemonConnection = { port: number };
 
