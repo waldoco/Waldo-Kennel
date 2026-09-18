@@ -596,7 +596,6 @@ func TestGetLaunchCommandMapsApprovalModes(t *testing.T) {
 	}
 }
 
-
 // governedConfig reads the generated config.toml from the CODEX_HOME carried
 // in a governed launch/restore argv ("env", "CODEX_HOME=<dir>", ...).
 func governedConfig(t *testing.T, cmd []string) string {
@@ -1454,6 +1453,66 @@ func TestProvisionGovernedCodexHomeRejectsForeignAndSymlinkPaths(t *testing.T) {
 	}
 	if _, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-a"); err != nil {
 		t.Fatalf("same-session re-provisioning refused: %v", err)
+	}
+}
+
+func TestProvisionGovernedCodexHomeRejectsParentSymlink(t *testing.T) {
+	workspace := canonicalTempDir(t)
+	dataDir := canonicalTempDir(t)
+	policy := governedTestPolicy(t, workspace)
+	// Plant <dataDir>/codex-home as a symlink out of the data dir: a leaf-only
+	// Lstat would miss this and let credential writes (and cleanup removals)
+	// escape through the redirect.
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dataDir, "codex-home")); err != nil {
+		t.Fatal(err)
+	}
+	canary := filepath.Join(outside, "canary.txt")
+	if err := os.WriteFile(canary, []byte("untouched"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-a"); err == nil {
+		t.Fatal("provisioned through a symlinked codex-home parent")
+	}
+	plugin := &Plugin{}
+	if err := plugin.CleanSessionHome(dataDir, "session-a"); err == nil {
+		t.Fatal("cleaned through a symlinked codex-home parent")
+	}
+	if raw, err := os.ReadFile(canary); err != nil || string(raw) != "untouched" {
+		t.Fatalf("parent symlink redirect touched outside content: %q, %v", raw, err)
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 1 {
+		t.Fatalf("outside dir changed through redirect: %v, %v", entries, err)
+	}
+}
+
+func TestProvisionGovernedCodexHomeReseedsAfterCleanup(t *testing.T) {
+	workspace := canonicalTempDir(t)
+	dataDir := canonicalTempDir(t)
+	userHome := t.TempDir()
+	t.Setenv("CODEX_HOME", userHome)
+	if err := os.WriteFile(filepath.Join(userHome, "auth.json"), []byte(`{"token":"fresh"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	policy := governedTestPolicy(t, workspace)
+	home, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Durable termination deletes the credential copy...
+	plugin := &Plugin{}
+	if err := plugin.CleanSessionHome(dataDir, "session-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(home); !os.IsNotExist(err) {
+		t.Fatalf("credential copy survived termination: %v", err)
+	}
+	// ...and the restore/launch path re-provisions it just-in-time.
+	if _, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-a"); err != nil {
+		t.Fatalf("re-provisioning after cleanup failed: %v", err)
+	}
+	if raw, err := os.ReadFile(filepath.Join(home, "auth.json")); err != nil || string(raw) != `{"token":"fresh"}` {
+		t.Fatalf("reseeded auth = %q, %v", raw, err)
 	}
 }
 

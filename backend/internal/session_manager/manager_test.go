@@ -2368,6 +2368,99 @@ func TestSpawn_WorkspaceProjectRollsBackWhenWorktreeRowsFail(t *testing.T) {
 	}
 }
 
+// cleanerAgent records CleanSessionHome calls so termination-path tests can
+// prove the session's credential home is deleted when the row goes terminal.
+type cleanerAgent struct {
+	fakeAgent
+	cleaned []string
+}
+
+func (a *cleanerAgent) CleanSessionHome(_, sessionID string) error {
+	a.cleaned = append(a.cleaned, sessionID)
+	return nil
+}
+
+func newCleanerManager(cleaner *cleanerAgent) (*Manager, *fakeStore, *fakeRuntime, *fakeWorkspace) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: testRoleAgents()}
+	rt := &fakeRuntime{}
+	ws := &fakeWorkspace{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: rt, Agents: singleAgent{agent: cleaner}, Workspace: ws, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+	return m, st, rt, ws
+}
+
+// Shutdown: a graceful save/teardown is a durable termination, so the
+// session's credential home must be deleted with it (restore re-seeds
+// just-in-time on the next launch).
+func TestSaveTeardownCleansAgentSessionHome(t *testing.T) {
+	cleaner := &cleanerAgent{}
+	m, st, _, ws := newCleanerManager(cleaner)
+	ws.stashRef = "refs/kennel/preserved/mer-1"
+	st.sessions["mer-1"] = domain.SessionRecord{
+		ID:        "mer-1",
+		ProjectID: "mer",
+		Kind:      domain.KindWorker,
+		Metadata:  domain.SessionMetadata{WorkspacePath: "/ws/mer-1", Branch: "kennel/mer-1/root", RuntimeHandleID: "h1"},
+		Activity:  domain.Activity{State: domain.ActivityActive},
+	}
+	if err := m.SaveAndTeardownAll(ctx); err != nil {
+		t.Fatalf("SaveAndTeardownAll err = %v", err)
+	}
+	if !st.sessions["mer-1"].IsTerminated {
+		t.Fatal("save/teardown must mark the session terminated")
+	}
+	if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
+		t.Fatalf("session home cleanups = %v, want [mer-1]", cleaner.cleaned)
+	}
+}
+
+// Replacement: retiring an orchestrator for its replacement is a durable
+// termination, so its credential home must be deleted too.
+func TestRetireForReplacementCleansAgentSessionHome(t *testing.T) {
+	cleaner := &cleanerAgent{}
+	m, st, _, ws := newCleanerManager(cleaner)
+	ws.stashRef = "refs/kennel/preserved/mer-orch"
+	st.sessions["mer-orch"] = domain.SessionRecord{
+		ID:        "mer-orch",
+		ProjectID: "mer",
+		Kind:      domain.KindOrchestrator,
+		Metadata:  domain.SessionMetadata{WorkspacePath: "/ws/mer-orch", Branch: "kennel/mer-orchestrator", RuntimeHandleID: "orch-handle"},
+		Activity:  domain.Activity{State: domain.ActivityActive},
+	}
+	st.worktrees["mer-orch"] = []domain.SessionWorktreeRecord{{
+		SessionID:    "mer-orch",
+		RepoName:     domain.RootWorkspaceRepoName,
+		Branch:       "kennel/mer-orchestrator",
+		WorktreePath: "/ws/mer-orch",
+		PreservedRef: "refs/kennel/preserved/old",
+	}}
+	if err := m.RetireForReplacement(ctx, "mer-orch"); err != nil {
+		t.Fatalf("RetireForReplacement err = %v", err)
+	}
+	if !st.sessions["mer-orch"].IsTerminated {
+		t.Fatal("retired orchestrator must be marked terminated")
+	}
+	if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-orch"}) {
+		t.Fatalf("session home cleanups = %v, want [mer-orch]", cleaner.cleaned)
+	}
+}
+
+// Kill already cleaned; keep one assertion at that path so a future refactor
+// cannot silently drop the boundary the other paths mirror.
+func TestKillCleansAgentSessionHome(t *testing.T) {
+	cleaner := &cleanerAgent{}
+	m, st, _, _ := newCleanerManager(cleaner)
+	m.dataDir = t.TempDir()
+	st.sessions["mer-1"] = mkLive("mer-1")
+	if _, err := m.Kill(ctx, "mer-1"); err != nil {
+		t.Fatalf("Kill err = %v", err)
+	}
+	if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
+		t.Fatalf("session home cleanups = %v, want [mer-1]", cleaner.cleaned)
+	}
+}
+
 func TestKill_TearsDownRuntimeAndWorkspace(t *testing.T) {
 	m, st, rt, ws := newManager()
 	preview := &fakePreviewLifecycle{}

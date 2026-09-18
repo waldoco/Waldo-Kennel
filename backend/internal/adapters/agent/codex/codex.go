@@ -310,8 +310,8 @@ func ProvisionGovernedCodexHome(policy domain.AttemptExecutionPolicy, canonicalW
 	if policy.Has(domain.CapabilityWorktreeWrite) {
 		enabledTools = append(enabledTools, "write_text_file")
 	}
-	home := filepath.Join(filepath.Clean(dataDir), "codex-home", sessionID)
-	if err := prepareGovernedHome(home); err != nil {
+	home, err := prepareGovernedHome(dataDir, sessionID)
+	if err != nil {
 		return "", err
 	}
 	if err := seedCodexAuth(home); err != nil {
@@ -323,34 +323,68 @@ func ProvisionGovernedCodexHome(policy domain.AttemptExecutionPolicy, canonicalW
 	return home, nil
 }
 
+// governedHomeDir resolves <dataDir>/codex-home/<sessionID> one component at
+// a time, verifying the data root and every existing component is a real
+// directory - never a symlink. Checking only the leaf is not enough: a
+// planted symlink at codex-home would let MkdirAll write credentials through
+// the redirect and let cleanup RemoveAll the target. Missing components are
+// created individually (never following links) with mode 0700 when create is
+// true; with create false a missing component reports os.IsNotExist. existed
+// reports whether the session leaf already was a directory.
+func governedHomeDir(dataDir, sessionID string, create bool) (home string, existed bool, err error) {
+	if strings.TrimSpace(sessionID) == "" || sessionID != filepath.Base(sessionID) || sessionID == "." || sessionID == ".." {
+		return "", false, fmt.Errorf("unsafe session identity %q", sessionID)
+	}
+	dir := filepath.Clean(dataDir)
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return "", false, fmt.Errorf("inspect Kennel data dir: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return "", false, fmt.Errorf("Kennel data dir %q is not a plain directory", dir)
+	}
+	for _, component := range []string{"codex-home", sessionID} {
+		dir = filepath.Join(dir, component)
+		info, err := os.Lstat(dir)
+		switch {
+		case os.IsNotExist(err):
+			if !create {
+				return "", false, err
+			}
+			if err := os.Mkdir(dir, 0o700); err != nil {
+				return "", false, fmt.Errorf("create governed Codex home: %w", err)
+			}
+			// existed must describe only the session leaf: a freshly created
+			// component is not a pre-existing home.
+			existed = false
+		case err != nil:
+			return "", false, fmt.Errorf("inspect governed Codex home: %w", err)
+		case info.Mode()&os.ModeSymlink != 0:
+			return "", false, fmt.Errorf("governed Codex home component %q must not be a symlink", dir)
+		case !info.IsDir():
+			return "", false, fmt.Errorf("governed Codex home component %q is not a directory", dir)
+		default:
+			existed = true
+		}
+	}
+	return dir, existed, nil
+}
+
 // prepareGovernedHome exclusively creates the session home, or accepts an
 // existing one only when it is verifiably ours (a real directory already
 // carrying our config.toml - i.e. the same session re-provisioning). Symlinks
 // and foreign paths fail closed.
-func prepareGovernedHome(home string) error {
-	info, err := os.Lstat(home)
-	switch {
-	case os.IsNotExist(err):
-		if err := os.MkdirAll(home, 0o700); err != nil {
-			return fmt.Errorf("provision governed Codex home: %w", err)
-		}
-		// MkdirAll silently succeeds through a symlinked component; re-lstat
-		// so a planted link can never redirect credential writes.
-		if info, err := os.Lstat(home); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("governed Codex home %q is not a plain directory", home)
-		}
-		return nil
-	case err != nil:
-		return fmt.Errorf("inspect governed Codex home: %w", err)
-	case info.Mode()&os.ModeSymlink != 0:
-		return fmt.Errorf("governed Codex home %q must not be a symlink", home)
-	case !info.IsDir():
-		return fmt.Errorf("governed Codex home %q is not a directory", home)
+func prepareGovernedHome(dataDir, sessionID string) (string, error) {
+	home, existed, err := governedHomeDir(dataDir, sessionID, true)
+	if err != nil {
+		return "", err
 	}
-	if _, err := os.Lstat(filepath.Join(home, "config.toml")); err != nil {
-		return fmt.Errorf("governed Codex home %q already exists without our config: refusing to adopt a foreign path", home)
+	if existed {
+		if _, err := os.Lstat(filepath.Join(home, "config.toml")); err != nil {
+			return "", fmt.Errorf("governed Codex home %q already exists without our config: refusing to adopt a foreign path", home)
+		}
 	}
-	return nil
+	return home, nil
 }
 
 // writeFileAtomic writes mode-0600 content via a same-directory temp file and
@@ -450,19 +484,12 @@ func seedCodexAuth(home string) error {
 // durably terminated so its credential copy never outlives the session. It is
 // part of the ports.AgentSessionHomeCleaner contract.
 func (p *Plugin) CleanSessionHome(dataDir, sessionID string) error {
-	if strings.TrimSpace(sessionID) == "" || sessionID != filepath.Base(sessionID) || sessionID == "." || sessionID == ".." {
-		return fmt.Errorf("refusing to clean a Codex home for unsafe session identity %q", sessionID)
-	}
-	home := filepath.Join(filepath.Clean(dataDir), "codex-home", sessionID)
-	info, err := os.Lstat(home)
+	home, _, err := governedHomeDir(dataDir, sessionID, false)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("inspect governed Codex home: %w", err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return fmt.Errorf("governed Codex home %q is not a plain directory; refusing removal", home)
+		return err
 	}
 	if err := os.RemoveAll(home); err != nil {
 		return fmt.Errorf("remove governed Codex home: %w", err)

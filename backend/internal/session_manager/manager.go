@@ -1438,6 +1438,9 @@ func sessionPrefix(project domain.ProjectRecord) string {
 func (m *Manager) markSpawnFailedTerminated(ctx context.Context, id domain.SessionID) {
 	_ = m.lcm.MarkTerminated(ctx, id)
 	m.cleanupSystemPromptDir(id)
+	if rec, ok, err := m.store.GetSession(ctx, id); err == nil && ok {
+		m.cleanAgentSessionHomeBestEffort(&rec)
+	}
 }
 
 // markSpawnFailedTerminatedWithoutWorkspace parks a spawn failure after the
@@ -1707,6 +1710,7 @@ func (m *Manager) RetireForReplacement(ctx context.Context, id domain.SessionID)
 		if err := m.lcm.MarkTerminated(ctx, id); err != nil {
 			return fmt.Errorf("retire replacement %s: mark terminated: %w", id, err)
 		}
+		m.cleanAgentSessionHomeBestEffort(&rec)
 		return nil
 	}
 	// Gate shut this session's scoped shell terminals before either branch
@@ -1760,6 +1764,7 @@ func (m *Manager) RetireForReplacement(ctx context.Context, id domain.SessionID)
 	if err := m.lcm.MarkTerminated(ctx, rec.ID); err != nil {
 		return fmt.Errorf("retire replacement %s: mark terminated: %w", id, err)
 	}
+	m.cleanAgentSessionHomeBestEffort(&rec)
 	return nil
 }
 
@@ -1815,6 +1820,7 @@ func (m *Manager) retireWorkspaceProjectForReplacement(ctx context.Context, rec 
 	if err := m.lcm.MarkTerminated(ctx, rec.ID); err != nil {
 		return fmt.Errorf("retire replacement %s: mark terminated: %w", rec.ID, err)
 	}
+	m.cleanAgentSessionHomeBestEffort(&rec)
 	return nil
 }
 
@@ -2116,6 +2122,7 @@ func (m *Manager) relaunchSessionWithPolicy(ctx context.Context, operation strin
 			_ = m.runtime.Destroy(ctx, handle)
 			_ = m.lcm.MarkTerminated(ctx, rec.ID)
 			m.cleanupSystemPromptDir(rec.ID)
+			m.cleanAgentSessionHomeBestEffort(&rec)
 			return RestoreResult{}, fmt.Errorf("%s %s: deliver prompt: %w", operation, rec.ID, err)
 		}
 	}
@@ -2247,6 +2254,9 @@ func (m *Manager) saveAndTeardownOne(ctx context.Context, rec domain.SessionReco
 	if err := m.lcm.MarkTerminated(ctx, rec.ID); err != nil {
 		return fmt.Errorf("save %s: mark terminated: %w", rec.ID, err)
 	}
+	// The credential copy must not outlive the terminal row: restore re-seeds
+	// the session home just-in-time on the next launch.
+	m.cleanAgentSessionHomeBestEffort(&rec)
 
 	// 5. Runtime teardown (best-effort; same pattern as Kill).
 	handle := runtimeHandle(rec.Metadata)
@@ -2316,13 +2326,18 @@ func (m *Manager) reconcileLive(ctx context.Context, rec domain.SessionRecord) e
 		}
 	}
 	if projectKind == domain.ProjectKindScratch {
-		return m.lcm.MarkTerminated(ctx, rec.ID)
+		if err := m.lcm.MarkTerminated(ctx, rec.ID); err != nil {
+			return err
+		}
+		m.cleanAgentSessionHomeBestEffort(&rec)
+		return nil
 	}
 	if err := m.saveAndTeardownOne(ctx, rec, false); err != nil {
 		m.logger.Warn("reconcile: save-and-teardown failed; terminating without restore marker", "sessionID", rec.ID, "error", err)
 		if mErr := m.lcm.MarkTerminated(ctx, rec.ID); mErr != nil {
 			return fmt.Errorf("reconcile %s: mark terminated: %w", rec.ID, mErr)
 		}
+		m.cleanAgentSessionHomeBestEffort(&rec)
 	}
 	return nil
 }
@@ -2770,6 +2785,7 @@ func (m *Manager) saveAndTeardownWorkspaceProject(ctx context.Context, rec domai
 	if err := m.lcm.MarkTerminated(ctx, rec.ID); err != nil {
 		return fmt.Errorf("save %s: mark terminated: %w", rec.ID, err)
 	}
+	m.cleanAgentSessionHomeBestEffort(&rec)
 	handle := runtimeHandle(rec.Metadata)
 	if destroyRuntime && handle.ID != "" {
 		if err := m.runtime.Destroy(ctx, handle); err != nil {
