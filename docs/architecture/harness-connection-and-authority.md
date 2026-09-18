@@ -39,3 +39,12 @@ CI tests the oldest supported, current pinned, and latest available harness vers
 - Restarting the desktop forks or loses an otherwise healthy mission.
 - The UI says `connected` before a real authenticated capability check.
 - A harness update silently changes the admitted profile or mission semantics.
+
+## Stage 4C falsifier-to-evidence map
+
+| Authority claim | Deterministic evidence |
+|---|---|
+| Drift classification has one exact typed repair | `adapterinstall.TestRepairForExactDriftClassMapping` |
+| Spoofed or stale connection bindings cannot reach claim creation | `harnesscommand.TestServerWireRejectsSpoofStaleExpiredRevokedAndRotatedOldCredentials` |
+| Expired, revoked, or rotated-old credentials fail identically | The same wire test asserts exact `genericFailure` bytes and zero claim-store calls for every case. |
+| A stale run file cannot accept a different daemon | `daemon.TestRunFileOwnerServing` already falsifies both wrong service and wrong PID. |

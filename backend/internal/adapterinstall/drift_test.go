@@ -52,3 +52,27 @@ func TestClassifyDriftInSyncHasNoRepair(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestRepairForExactDriftClassMapping(t *testing.T) {
+	cases := map[domain.HarnessAdapterDrift]domain.HarnessAdapterInstallRepair{
+		domain.AdapterDriftInSync: "", domain.AdapterDriftUpgradeAvailable: domain.AdapterRepairStageUpgrade,
+		domain.AdapterDriftOptionalDegradation:       domain.AdapterRepairReviewDegraded,
+		domain.AdapterDriftRequiredCapabilityMissing: domain.AdapterRepairKeepCurrent,
+		domain.AdapterDriftProtocol:                  domain.AdapterRepairKeepCurrent,
+		domain.AdapterDriftArtifactTamper:            domain.AdapterRepairQuarantineRestore,
+		domain.AdapterDriftLocalModification:         domain.AdapterRepairReviewLocal,
+		domain.AdapterDriftSource:                    domain.AdapterRepairReviewSource,
+		domain.AdapterDriftRollbackAttempt:           domain.AdapterRepairRejectCandidate,
+		domain.AdapterDriftMetadataExpired:           domain.AdapterRepairRefreshMetadata,
+		domain.AdapterDriftMixedGeneration:           domain.AdapterRepairRejectCandidate,
+		domain.AdapterDriftActivationIncomplete:      domain.AdapterRepairReconcileRollback,
+		domain.AdapterDriftRollbackFailed:            domain.AdapterRepairManual,
+	}
+	for class, want := range cases {
+		t.Run(string(class), func(t *testing.T) {
+			if got := repairFor(class); got != want {
+				t.Fatalf("repairFor(%q)=%q want %q", class, got, want)
+			}
+		})
+	}
+}

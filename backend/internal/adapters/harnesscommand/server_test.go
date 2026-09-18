@@ -108,3 +108,40 @@ func TestServerFailuresAreGenericAndPeerFailureReadsNothing(t *testing.T) {
 		t.Fatal("peer failure reached command store")
 	}
 }
+
+func TestServerWireRejectsSpoofStaleExpiredRevokedAndRotatedOldCredentials(t *testing.T) {
+	now := time.Date(2026, 9, 17, 8, 0, 0, 0, time.UTC)
+	baseRecord := domain.HarnessConnection{ID: "hc", InstallationID: "install", AdapterDigest: domain.DigestSHA256([]byte("adapter")), HarnessIdentity: "codex", ProviderVersion: "1", ProtocolFingerprint: domain.DigestSHA256([]byte("protocol")), MissionID: "mission", AppRunID: "run", CapabilityClasses: []domain.HarnessCapabilityClass{domain.HarnessCapabilityAnswer}, CapabilityVerifier: domain.DigestSHA256([]byte("bearer")).String(), Generation: 1, ExpiresAt: now.Add(time.Hour), CreatedAt: now, UpdatedAt: now}
+	for _, tc := range []struct {
+		name          string
+		mutateRequest func(*request)
+		mutateRecord  func(*domain.HarnessConnection)
+	}{
+		{"spoofed bearer", func(r *request) { r.ConnectionBearer = "spoof" }, func(*domain.HarnessConnection) {}},
+		{"stale binding", func(r *request) { r.ConnectionGeneration = 0 }, func(*domain.HarnessConnection) {}},
+		{"expired", func(*request) {}, func(r *domain.HarnessConnection) { r.ExpiresAt = now }},
+		{"revoked", func(*request) {}, func(r *domain.HarnessConnection) { revoked := now; r.RevokedAt = &revoked }},
+		{"rotated old credential", func(*request) {}, func(r *domain.HarnessConnection) {
+			r.CapabilityVerifier = domain.DigestSHA256([]byte("new-bearer")).String()
+			r.Generation = 2
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := serverRequest()
+			rec := baseRecord
+			tc.mutateRequest(&req)
+			tc.mutateRecord(&rec)
+			commands := &commandStore{}
+			srv := &Server{peers: peerVerifier{}, connections: harnessconnection.New(connectionStore{rec}), store: commands, now: func() time.Time { return now }}
+			payload, _ := json.Marshal(req)
+			payload = append(payload, '\n')
+			got := runHandle(t, srv, payload)
+			if !bytes.Equal(got, genericFailure) {
+				t.Fatalf("response=%q", got)
+			}
+			if commands.calls != 0 {
+				t.Fatalf("claim store calls=%d, want 0", commands.calls)
+			}
+		})
+	}
+}
