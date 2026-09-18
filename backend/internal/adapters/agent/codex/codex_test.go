@@ -1582,8 +1582,16 @@ func TestResolveCodexBinaryHonorsExplicitPinOverPATH(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveCodexBinary: %v", err)
 	}
-	if got != pin {
-		t.Fatalf("ResolveCodexBinary = %q, want the pinned %q (PATH decoy must not win)", got, pin)
+	// The resolver canonicalizes symlinks so native sidecars resolve beside
+	// the real binary; on macOS t.TempDir() itself sits under the
+	// /var -> /private/var symlink, so compare canonical forms (same pattern
+	// as the discovery tests above).
+	want, err := filepath.EvalSymlinks(pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("ResolveCodexBinary = %q, want the pinned %q (PATH decoy must not win)", got, want)
 	}
 }
 
@@ -1632,6 +1640,15 @@ func TestPluginResolvesBinaryFreshPerLaunch(t *testing.T) {
 		return p
 	}
 	first, second := mk("codex-a"), mk("codex-b")
+	// Canonicalize expectations: resolution evaluates symlinks, and on macOS
+	// t.TempDir() sits under the /var -> /private/var symlink.
+	for _, p := range []*string{&first, &second} {
+		c, err := filepath.EvalSymlinks(*p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*p = c
+	}
 	p := New()
 
 	t.Setenv("KENNEL_CODEX_BIN", first)
