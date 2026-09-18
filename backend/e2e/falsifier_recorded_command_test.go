@@ -2,7 +2,11 @@
 
 package e2e
 
-import "testing"
+import (
+	"encoding/hex"
+	"strings"
+	"testing"
+)
 
 // TestMatchesCanonicalRecordedForms pins the byte-exact contract between the
 // falsifier matchers and codex 0.153.4's recorded command string: codex
@@ -53,24 +57,30 @@ func TestShlexQuoteMirrorsShlexJoin(t *testing.T) {
 	}
 }
 
-// TestProbeTargetMarkerBindsExactly pins the round-7 contract: the
-// KENNEL-PROBE-TARGET marker must carry the intended resolved dir as ONE
-// complete delimited field - substring relatives (prefix/suffix embedding,
-// trailing junk, duplicate markers) never pass. These are the laundering
-// shapes the round-6 review demonstrated live.
+// TestProbeTargetMarkerBindsExactly pins the round-8 contract: the
+// KENNEL-PROBE-TARGET marker must carry the HEX ENCODING of the intended
+// resolved dir as ONE complete delimited field - raw-text paths, delimiter
+// injection, newline framing, embedding relatives, and duplicate or
+// injected markers never pass. These are the laundering shapes the round-6
+// and round-7 reviews demonstrated live.
 func TestProbeTargetMarkerBindsExactly(t *testing.T) {
 	dir := "/Users/runner/kennel-falsifier-outside-2358120678"
+	enc := hex.EncodeToString([]byte(dir))
 	cases := []struct {
 		name   string
 		output string
 		want   bool
 	}{
-		{"exact marker", "some prelude\nKENNEL-PROBE-TARGET=<" + dir + ">\nsh: x: Operation not permitted\n", true},
-		{"suffix-embedded real path never passes", "KENNEL-PROBE-TARGET=</workspace/denied-prefix" + dir + ">\n", false},
-		{"prefix-embedded real path never passes", "KENNEL-PROBE-TARGET=<" + dir + ".evil>\n", false},
-		{"trailing junk never passes", "KENNEL-PROBE-TARGET=<" + dir + "> extra\n", false},
-		{"duplicate marker never passes", "KENNEL-PROBE-TARGET=<" + dir + ">\nKENNEL-PROBE-TARGET=<" + dir + ">\n", false},
-		{"conflicting marker never passes", "KENNEL-PROBE-TARGET=<" + dir + ">\nKENNEL-PROBE-TARGET=</tmp/other>\n", false},
+		{"exact encoded marker", "some prelude\nKENNEL-PROBE-TARGET=<" + enc + ">\nsh: x: Operation not permitted\n", true},
+		{"raw unencoded path never passes", "KENNEL-PROBE-TARGET=<" + dir + ">\n", false},
+		{"uppercase hex never passes", "KENNEL-PROBE-TARGET=<" + strings.ToUpper(enc) + ">\n", false},
+		{"round-7 raw newline-split never passes", "KENNEL-PROBE-TARGET=<" + dir + ">\nactor-tail>\n", false},
+		{"duplicate marker never passes", "KENNEL-PROBE-TARGET=<" + enc + ">\nKENNEL-PROBE-TARGET=<" + enc + ">\n", false},
+		{"conflicting marker never passes", "KENNEL-PROBE-TARGET=<" + enc + ">\nKENNEL-PROBE-TARGET=<" + hex.EncodeToString([]byte("/tmp/other")) + ">\n", false},
+		{"encoded suffix-embedding never passes", "KENNEL-PROBE-TARGET=<" + hex.EncodeToString([]byte("/workspace/denied-prefix"+dir)) + ">\n", false},
+		{"encoded prefix-embedding never passes", "KENNEL-PROBE-TARGET=<" + hex.EncodeToString([]byte(dir+".evil")) + ">\n", false},
+		{"trailing junk never passes", "KENNEL-PROBE-TARGET=<" + enc + "> extra\n", false},
+		{"framing close-open never passes", "KENNEL-PROBE-TARGET=<" + enc + "><" + enc + ">\n", false},
 		{"no marker never passes", "sh: x: Operation not permitted\n", false},
 		{"empty field never passes", "KENNEL-PROBE-TARGET=<>\n", false},
 	}
