@@ -2437,6 +2437,69 @@ func TestSaveTeardownCleansAgentSessionHome(t *testing.T) {
 	}
 }
 
+// When runtime destroy fails the agent's death is unconfirmed, so the
+// credential copy must be RETAINED with the terminal row - deleting it under a
+// possibly-live process would strand auth with a tail nobody can see, and the
+// copy's continued existence is exactly what lets reconcileReap finish the job
+// once death is confirmed.
+func TestSaveTeardownDefersCredentialCleanupWhenDestroyFails(t *testing.T) {
+	cleaner := &cleanerAgent{}
+	m, st, rt, ws := newCleanerManager(cleaner)
+	rt.destroyErr = errors.New("tmux server unreachable")
+	ws.stashRef = "refs/kennel/preserved/mer-1"
+	st.sessions["mer-1"] = domain.SessionRecord{
+		ID:        "mer-1",
+		ProjectID: "mer",
+		Kind:      domain.KindWorker,
+		Metadata:  domain.SessionMetadata{WorkspacePath: "/ws/mer-1", Branch: "kennel/mer-1/root", RuntimeHandleID: "h1"},
+		Activity:  domain.Activity{State: domain.ActivityActive},
+	}
+	if err := m.SaveAndTeardownAll(ctx); err != nil {
+		t.Fatalf("SaveAndTeardownAll err = %v", err)
+	}
+	if !st.sessions["mer-1"].IsTerminated {
+		t.Fatal("save/teardown must mark the session terminated")
+	}
+	if len(cleaner.cleaned) != 0 {
+		t.Fatalf("cleanup ran with process death unconfirmed: %v", cleaner.cleaned)
+	}
+
+	// A later reaper pass finds the leaked runtime dead and discharges the
+	// retained obligation.
+	rt.destroyErr = nil
+	if err := m.reconcileReap(ctx, st.sessions["mer-1"]); err != nil {
+		t.Fatalf("reconcileReap err = %v", err)
+	}
+	if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
+		t.Fatalf("reaper cleanups = %v, want [mer-1]", cleaner.cleaned)
+	}
+}
+
+// The reaper also discharges the obligation when it has to kill the leaked
+// runtime itself: after its destroy succeeds, death is confirmed.
+func TestReconcileReapCleansAgentSessionHomeAfterKill(t *testing.T) {
+	cleaner := &cleanerAgent{}
+	m, st, rt, _ := newCleanerManager(cleaner)
+	rec := domain.SessionRecord{
+		ID:           "mer-1",
+		ProjectID:    "mer",
+		Kind:         domain.KindWorker,
+		Metadata:     domain.SessionMetadata{WorkspacePath: "/ws/mer-1", Branch: "kennel/mer-1/root", RuntimeHandleID: "h1"},
+		IsTerminated: true,
+	}
+	st.sessions["mer-1"] = rec
+	rt.aliveByHandle = map[string]bool{"h1": true}
+	if err := m.reconcileReap(ctx, rec); err != nil {
+		t.Fatalf("reconcileReap err = %v", err)
+	}
+	if rt.destroyed != 1 {
+		t.Fatalf("reaper destroyed %d runtimes, want 1", rt.destroyed)
+	}
+	if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
+		t.Fatalf("reaper cleanups = %v, want [mer-1]", cleaner.cleaned)
+	}
+}
+
 // Replacement: retiring an orchestrator for its replacement is a durable
 // termination, so its credential home must be deleted too.
 func TestRetireForReplacementCleansAgentSessionHome(t *testing.T) {

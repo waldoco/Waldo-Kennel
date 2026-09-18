@@ -2257,9 +2257,11 @@ func (m *Manager) saveAndTeardownOne(ctx context.Context, rec domain.SessionReco
 
 	// 5. Runtime teardown (best-effort; same pattern as Kill).
 	handle := runtimeHandle(rec.Metadata)
+	runtimeGone := true
 	if destroyRuntime && handle.ID != "" {
 		if err := m.runtime.Destroy(ctx, handle); err != nil {
 			m.logger.Warn("save-teardown-all: runtime destroy failed", "sessionID", rec.ID, "error", err)
+			runtimeGone = false
 		}
 	}
 
@@ -2270,10 +2272,14 @@ func (m *Manager) saveAndTeardownOne(ctx context.Context, rec domain.SessionReco
 	} else {
 		m.cleanupAgentWorkspace(ctx, rec, ws.Path)
 	}
-	// 7. Delete the credential copy LAST: no live tail of the agent may
-	// outlive its auth. The copy must not outlive the terminal row either -
-	// restore re-seeds the session home just-in-time on the next launch.
-	m.cleanAgentSessionHomeBestEffort(&rec)
+	// 7. Delete the credential copy once the agent process is confirmed gone:
+	// a live tail must never outlive its auth, and the auth copy must not
+	// outlive a dead session (restore re-seeds just-in-time). When destroy
+	// failed, death is unconfirmed: the copy is retained with the terminal
+	// row and reconcileReap cleans it after confirming death on a later pass.
+	if runtimeGone {
+		m.cleanAgentSessionHomeBestEffort(&rec)
+	}
 	return nil
 }
 
@@ -2360,11 +2366,13 @@ func (m *Manager) reconcileReap(ctx context.Context, rec domain.SessionRecord) e
 		return fmt.Errorf("reconcile reap %s: probe: %w", rec.ID, err)
 	}
 	if !alive {
+		m.cleanAgentSessionHomeBestEffort(&rec)
 		return nil
 	}
 	if err := m.runtime.Destroy(ctx, handle); err != nil {
 		return fmt.Errorf("reconcile reap %s: destroy: %w", rec.ID, err)
 	}
+	m.cleanAgentSessionHomeBestEffort(&rec)
 	return nil
 }
 
@@ -2787,9 +2795,11 @@ func (m *Manager) saveAndTeardownWorkspaceProject(ctx context.Context, rec domai
 		return fmt.Errorf("save %s: mark terminated: %w", rec.ID, err)
 	}
 	handle := runtimeHandle(rec.Metadata)
+	runtimeGone := true
 	if destroyRuntime && handle.ID != "" {
 		if err := m.runtime.Destroy(ctx, handle); err != nil {
 			m.logger.Warn("save-teardown-all: runtime destroy failed", "sessionID", rec.ID, "error", err)
+			runtimeGone = false
 		}
 	}
 	rootDestroyed := false
@@ -2804,9 +2814,11 @@ func (m *Manager) saveAndTeardownWorkspaceProject(ctx context.Context, rec domai
 	if rootDestroyed {
 		m.cleanupAgentWorkspace(ctx, rec, rec.Metadata.WorkspacePath)
 	}
-	// Credential cleanup runs after all runtime/worktree teardown (see
-	// saveAndTeardownOne step 7).
-	m.cleanAgentSessionHomeBestEffort(&rec)
+	// Credential cleanup runs only when runtime teardown confirmed the
+	// process is gone (see saveAndTeardownOne step 7).
+	if runtimeGone {
+		m.cleanAgentSessionHomeBestEffort(&rec)
+	}
 	return nil
 }
 
