@@ -112,24 +112,31 @@ func (f *interactivePlanningFake) DiscussPlan(ctx context.Context, request ports
 	provenance := ports.IntelligenceProvenance{EffectiveProvider: request.Binding.Provider, EffectiveModel: effectiveModel, NativeSessionRef: nativeRef}
 	latest := request.Turns[len(request.Turns)-1].Text
 	if request.Finalize {
-		return ports.PlanningDiscussionResponse{Provenance: provenance, Result: ports.PlanningResult{
-			Kind: ports.PlanningResultPlanProposal, Message: "A bounded implementation Plan is ready for review.",
-			PlanProposal: &domain.PlanDraftProposal{Summary: "Make the bounded local change.", WorkUnits: []domain.PlanDraftWorkUnit{{
+		return ports.PlanningDiscussionResponse{Provenance: provenance, Result: domain.NewPlanningReadinessResult(
+			"A bounded implementation Plan is ready for review.",
+			&domain.PlanDraftProposal{Summary: "Make the bounded local change.", WorkUnits: []domain.PlanDraftWorkUnit{{
 				Key: "implement", Title: "Implement the confirmed Outcome", Intent: domain.WorkUnitIntentModify, Role: domain.WorkUnitRoleImplement,
 				OutputSummary: "The requested local change is ready for review.", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"inspect the retained diff"},
-			}}},
-		}}, nil
+			}}}, nil)}, nil
 	}
 	if strings.Contains(latest, "Contract") {
-		return ports.PlanningDiscussionResponse{Provenance: provenance, Result: ports.PlanningResult{
-			Kind: ports.PlanningResultContractChange, Message: "The success criterion could be narrower.",
-			ContractChange: &ports.PlanContractChangeProposal{Summary: "Narrow the criterion before approval if this distinction matters.", ChangedFields: []string{"successCriteria"}},
-		}}, nil
+		// A planner Contract-change suggestion is not a second result shape
+		// under S3: it is a needs_context envelope asking the owner to decide.
+		return ports.PlanningDiscussionResponse{Provenance: provenance, Result: domain.NewPlanningReadinessResult(
+			"The success criterion could be narrower.",
+			nil, []domain.PlanningReadinessIssue{{
+				Key: "contract-narrower", Kind: domain.ReadinessContextInsufficient, Route: domain.RouteAnswerContext, Source: domain.ReadinessSourcePlannerDeclared,
+				Prompt: "Narrow the criterion before approval if this distinction matters?", Reason: "The success criterion could be narrower.",
+				Choices: []domain.PlanningReadinessChoice{{Key: "narrow", Label: "Narrow the criterion"}, {Key: "keep", Label: "Keep it as confirmed"}},
+			}})}, nil
 	}
-	return ports.PlanningDiscussionResponse{Provenance: provenance, Result: ports.PlanningResult{
-		Kind: ports.PlanningResultClarification, Message: "One choice will keep the Plan small.",
-		Clarification: &ports.PlanClarification{Question: "Should the first slice stay local only?", Reason: "Remote effects need separate authority.", Recommendation: "Keep it local.", Alternatives: []string{"Include remote delivery later"}},
-	}}, nil
+	return ports.PlanningDiscussionResponse{Provenance: provenance, Result: domain.NewPlanningReadinessResult(
+		"Should the first slice stay local only?",
+		nil, []domain.PlanningReadinessIssue{{
+			Key: "scope-local", Kind: domain.ReadinessFactMissing, Route: domain.RouteAnswerContext, Source: domain.ReadinessSourcePlannerDeclared,
+			Prompt: "Should the first slice stay local only?", Reason: "Remote effects need separate authority.", Recommendation: "Keep it local.",
+			Choices: []domain.PlanningReadinessChoice{{Key: "keep-local", Label: "Keep it local."}, {Key: "remote-later", Label: "Include remote delivery later"}},
+		}})}, nil
 }
 
 func newPlanningCancellationFixture(t *testing.T, provider *interactivePlanningFake) (*outcome.Service, *sqlite.Store, domain.Outcome, domain.PlanningSession) {
@@ -234,8 +241,12 @@ func TestInteractivePlanning_NativePacketTurnsProduceOnlyAProposedPlan(t *testin
 	if err != nil {
 		t.Fatalf("request Contract suggestion: %v", err)
 	}
-	if view.Turns[len(view.Turns)-1].Kind != domain.PlanningTurnContractChangeProposal {
+	if view.Turns[len(view.Turns)-1].Kind != domain.PlanningTurnClarification {
 		t.Fatalf("last turn = %+v", view.Turns[len(view.Turns)-1])
+	}
+	if view.Readiness == nil || view.Readiness.Status != domain.PlanningNeedsContext || len(view.Readiness.Issues) != 1 ||
+		view.Readiness.Issues[0].Route != domain.RouteAnswerContext || view.Session.WaitingOn != domain.PlanningWaitingOwner {
+		t.Fatalf("Contract-change suggestion must surface as a needs_context packet: %+v", view.Readiness)
 	}
 	unchanged, err := svc.Get(ctx, created.Outcome.ID)
 	if err != nil || unchanged.Outcome.CurrentRevisionNumber != 1 || len(unchanged.History) != 1 {

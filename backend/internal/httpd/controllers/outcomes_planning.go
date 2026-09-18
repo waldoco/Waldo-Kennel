@@ -198,14 +198,23 @@ func planningResponse(view outcomevc.PlanningView) PlanningResponse {
 func planningTurnResponse(turn domain.PlanningTurn) PlanningTurnResponse {
 	response := PlanningTurnResponse{ID: string(turn.ID), Sequence: turn.Sequence, ReplyToTurnID: string(turn.ReplyToTurnID), Role: string(turn.Role), Kind: string(turn.Kind), Text: turn.Text, IntelligenceRunID: string(turn.IntelligenceRunID), CreatedAt: turn.CreatedAt}
 	if turn.Role == domain.PlanningTurnPlanner && len(turn.StructuredPayload) > 0 {
-		var result ports.PlanningResult
-		if json.Unmarshal(turn.StructuredPayload, &result) == nil {
-			if result.Clarification != nil {
-				response.Clarification = &PlanningClarificationResponse{Question: result.Clarification.Question, Reason: result.Clarification.Reason, Recommendation: result.Clarification.Recommendation, Alternatives: append([]string(nil), result.Clarification.Alternatives...)}
+		// The planner turn payload is the readiness envelope. A needs_context
+		// envelope adapts to the owner-decision card from its message and first
+		// owner-routed issue; ready envelopes surface through ProposedPlan, and
+		// blocked envelopes carry their issues in the packet (S3: one path, no
+		// legacy clarification/contract-change payload).
+		var result domain.PlanningReadinessResult
+		if json.Unmarshal(turn.StructuredPayload, &result) == nil && result.Status == domain.PlanningNeedsContext {
+			card := &PlanningClarificationResponse{Question: result.Message}
+			if len(result.Issues) > 0 {
+				issue := result.Issues[0]
+				card.Reason = issue.Reason
+				card.Recommendation = issue.Recommendation
+				for _, choice := range issue.Choices {
+					card.Alternatives = append(card.Alternatives, choice.Label)
+				}
 			}
-			if result.ContractChange != nil {
-				response.ContractChange = &PlanningContractChangeResponse{Summary: result.ContractChange.Summary, ChangedFields: append([]string(nil), result.ContractChange.ChangedFields...)}
-			}
+			response.Clarification = card
 		}
 	}
 	return response

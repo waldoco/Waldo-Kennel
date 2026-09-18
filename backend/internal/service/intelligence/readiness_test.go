@@ -52,7 +52,7 @@ const needsContextEnvelope = `{
       "reason": "The verification graph depends on the channel.",
       "recommendation": "stable",
       "choices": [{"key": "stable", "label": "Stable"}, {"key": "beta", "label": "Beta"}],
-      "workUnitKeys": ["verify-release"],
+      "workUnitKeys": [],
       "criterionAliases": ["C1"]
     },
     {
@@ -61,14 +61,14 @@ const needsContextEnvelope = `{
       "reason": "Proof obligations depend on the rollout stages.",
       "recommendation": "",
       "choices": [],
-      "workUnitKeys": ["verify-release"],
+      "workUnitKeys": [],
       "criterionAliases": ["C2"]
     }
   ]
 }`
 
 func TestParsePlanningReadinessReadyEnvelope(t *testing.T) {
-	result, err := parsePlanningReadinessReply([]byte(readyEnvelope), readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"})
+	result, err := parsePlanningReadinessReply([]byte(readyEnvelope), readinessTestFence(), []string{"C1", "C2"})
 	if err != nil {
 		t.Fatalf("ready envelope: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestParsePlanningReadinessReadyEnvelope(t *testing.T) {
 }
 
 func TestParsePlanningReadinessNeedsContext(t *testing.T) {
-	result, err := parsePlanningReadinessReply([]byte(needsContextEnvelope), readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"})
+	result, err := parsePlanningReadinessReply([]byte(needsContextEnvelope), readinessTestFence(), []string{"C1", "C2"})
 	if err != nil {
 		t.Fatalf("needs_context envelope: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestParsePlanningReadinessNeedsContext(t *testing.T) {
 	}
 
 	// Replay under the same fence is byte-stable; a new fence is a new generation.
-	again, err := parsePlanningReadinessReply([]byte(needsContextEnvelope), readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"})
+	again, err := parsePlanningReadinessReply([]byte(needsContextEnvelope), readinessTestFence(), []string{"C1", "C2"})
 	if err != nil {
 		t.Fatalf("replay: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestParsePlanningReadinessNeedsContext(t *testing.T) {
 	}
 	moved := readinessTestFence()
 	moved.SessionRevision = 3
-	regen, err := parsePlanningReadinessReply([]byte(needsContextEnvelope), moved, []string{"verify-release"}, []string{"C1", "C2"})
+	regen, err := parsePlanningReadinessReply([]byte(needsContextEnvelope), moved, []string{"C1", "C2"})
 	if err != nil {
 		t.Fatalf("regeneration: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestParsePlanningReadinessRejectsUnknownTaxonomy(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := parsePlanningReadinessReply([]byte(tc.envelope), readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"})
+			_, err := parsePlanningReadinessReply([]byte(tc.envelope), readinessTestFence(), []string{"C1", "C2"})
 			if err == nil {
 				t.Fatalf("%s was accepted", name)
 			}
@@ -183,6 +183,21 @@ func TestParsePlanningReadinessRejectsUnknownTaxonomy(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParsePlanningReadinessUnitReferenceNeedsProposal(t *testing.T) {
+	// Without a proposal there is no draft, so no issue may reference a unit.
+	_, err := parsePlanningReadinessReply([]byte(`{
+	  "status": "needs_context",
+	  "message": "One answer needed.",
+	  "proposal": null,
+	  "issues": [{"kind": "fact_missing", "prompt": "Which release channel?", "reason": "The verification graph depends on it.", "recommendation": "", "choices": [], "workUnitKeys": ["verify-release"], "criterionAliases": []}]
+	}`), readinessTestFence(), []string{"C1", "C2"})
+	if err == nil || !strings.Contains(err.Error(), string(domain.ReadinessIssueInvalid)) {
+		t.Fatalf("unit reference without a proposal: err = %v", err)
+	}
+	// A ready claim carries no issues, so unit references arise only in the
+	// evaluator's control-plane issues - the planner envelope stays clean.
 }
 
 func TestParsePlanningReadinessShapeRules(t *testing.T) {
@@ -197,7 +212,7 @@ func TestParsePlanningReadinessShapeRules(t *testing.T) {
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := parsePlanningReadinessReply([]byte("{"+body+"}"), readinessTestFence(), nil, []string{"C1", "C2"}); err == nil {
+			if _, err := parsePlanningReadinessReply([]byte("{"+body+"}"), readinessTestFence(), []string{"C1", "C2"}); err == nil {
 				t.Fatalf("%s was accepted", name)
 			}
 		})
@@ -239,45 +254,46 @@ func TestParsePlanningReadinessRejectsTrailingData(t *testing.T) {
 	// A trailing object carrying authority is rejected, not ignored.
 	_, err := parsePlanningReadinessReply([]byte(readyEnvelope+`
 {"route":"revise_contract"}`),
-		readinessTestFence(), nil, nil)
+		readinessTestFence(), nil)
 	if err == nil || !strings.Contains(err.Error(), string(domain.ReadinessPayloadInvalid)) {
 		t.Fatalf("trailing object error = %v", err)
 	}
 	// A trailing scalar is rejected too.
 	if _, err := parsePlanningReadinessReply([]byte(readyEnvelope+` 42`),
-		readinessTestFence(), nil, nil); err == nil {
+		readinessTestFence(), nil); err == nil {
 		t.Fatal("trailing scalar accepted")
 	}
 	// Trailing whitespace and newlines are fine.
 	if _, err := parsePlanningReadinessReply([]byte(readyEnvelope+" \n\t "),
-		readinessTestFence(), nil, []string{"C1"}); err != nil {
+		readinessTestFence(), []string{"C1"}); err != nil {
 		t.Fatalf("trailing whitespace: %v", err)
 	}
 }
 
 func TestParsePlanningReadinessFencesPlannerReferences(t *testing.T) {
-	// Unknown WorkUnit key reference is rejected.
-	unknown := strings.Replace(needsContextEnvelope, `"verify-release"`, `"invented-unit"`, 1)
+	// Any WorkUnit key reference without a proposal is rejected (there is no
+	// draft for it to name).
+	unknown := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"workUnitKeys": ["verify-release"], "criterionAliases": ["C1"]`, 1)
 	if _, err := parsePlanningReadinessReply([]byte(unknown),
-		readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"}); err == nil {
-		t.Fatal("unknown work unit key accepted")
+		readinessTestFence(), []string{"C1", "C2"}); err == nil {
+		t.Fatal("work unit key reference without a proposal accepted")
 	}
 	// Unknown criterion alias reference is rejected even though it parses as a string.
 	unknown = strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"criterionAliases": ["C99"]`, 1)
 	if _, err := parsePlanningReadinessReply([]byte(unknown),
-		readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"}); err == nil {
+		readinessTestFence(), []string{"C1", "C2"}); err == nil {
 		t.Fatal("unknown criterion alias accepted")
 	}
 	// Duplicate references are rejected by the domain contract.
 	dup := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"criterionAliases": ["C1", "C1"]`, 1)
 	if _, err := parsePlanningReadinessReply([]byte(dup),
-		readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"}); err == nil {
+		readinessTestFence(), []string{"C1", "C2"}); err == nil {
 		t.Fatal("duplicate criterion alias accepted")
 	}
 	// Blank references are rejected.
-	blank := strings.Replace(needsContextEnvelope, `"workUnitKeys": ["verify-release"]`, `"workUnitKeys": [" "]`, 1)
+	blank := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"workUnitKeys": [" "], "criterionAliases": ["C1"]`, 1)
 	if _, err := parsePlanningReadinessReply([]byte(blank),
-		readinessTestFence(), []string{"verify-release"}, []string{"C1", "C2"}); err == nil {
+		readinessTestFence(), []string{"C1", "C2"}); err == nil {
 		t.Fatal("blank work unit key accepted")
 	}
 }

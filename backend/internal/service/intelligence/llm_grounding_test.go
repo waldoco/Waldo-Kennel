@@ -67,7 +67,7 @@ func TestAnalyzeContractPropagatesOnlyExplicitRepositoryToolAuthority(t *testing
 }
 
 func TestDraftPlanCarriesExplicitReplanFeedbackAndChecks(t *testing.T) {
-	client := &captureLLMClient{result: `{"summary":"Use the inspected check","workUnits":[{"key":"W1","title":"Implement","intent":"modify_and_execute","role":"implement","inputs":[],"outputSummary":"Changed code and verified it","criteriaCovered":["C1"],"dependsOn":[],"evidenceIdeas":["test output"]}],"assumptions":[],"blockers":[]}`}
+	client := &captureLLMClient{result: `{"status":"ready","message":"Ready.","proposal":{"summary":"Use the inspected check","workUnits":[{"key":"W1","title":"Implement","intent":"modify_and_execute","role":"implement","inputs":[],"outputSummary":"Changed code and verified it","criteriaCovered":["C1"],"dependsOn":[],"evidenceIdeas":["test output"]}],"assumptions":[],"blockers":[]},"issues":[]}`}
 	provider := NewLLMProvider(client)
 	_, err := provider.DraftPlan(context.Background(), ports.PlanIntelligenceRequest{
 		Outcome:          domain.Outcome{Title: "Grounded work"},
@@ -105,12 +105,12 @@ func TestPlanSchemaAllowsExecutableCriterionChecks(t *testing.T) {
 }
 
 func TestDraftPlanPreservesExecutableCheckArguments(t *testing.T) {
-	client := &captureLLMClient{result: `{"summary":"Verify greeting","workUnits":[{"key":"W1","title":"Change and check","intent":"modify_and_execute","role":"implement","inputs":[],"outputSummary":"Correct greeting","criteriaCovered":["C1"],"checkCommands":[{"criterionAlias":"C1","argv":["python3","-c","import subprocess; assert subprocess.check_output(['python3', 'greet.py']) == b'Hello Kennel\\n'\n"],"timeoutSeconds":12}]}]}`}
+	client := &captureLLMClient{result: `{"status":"ready","message":"Ready.","proposal":{"summary":"Verify greeting","workUnits":[{"key":"W1","title":"Change and check","intent":"modify_and_execute","role":"implement","inputs":[],"outputSummary":"Correct greeting","criteriaCovered":["C1"],"checkCommands":[{"criterionAlias":"C1","argv":["python3","-c","import subprocess; assert subprocess.check_output(['python3', 'greet.py']) == b'Hello Kennel\\n'\n"],"timeoutSeconds":12}]}]},"issues":[]}`}
 	result, err := NewLLMProvider(client).DraftPlan(context.Background(), ports.PlanIntelligenceRequest{CriterionAliases: map[string]domain.CriterionID{"C1": "criterion-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	checks := result.Proposal.WorkUnits[0].CheckCommands
+	checks := result.Readiness.Proposal.WorkUnits[0].CheckCommands
 	if len(checks) != 1 || checks[0].CriterionAlias != "C1" || checks[0].TimeoutSeconds != 12 || len(checks[0].Argv) != 3 || checks[0].Argv[2] != "import subprocess; assert subprocess.check_output(['python3', 'greet.py']) == b'Hello Kennel\\n'\n" {
 		t.Fatalf("check arguments or criterion binding changed: %#v", checks)
 	}
@@ -118,7 +118,7 @@ func TestDraftPlanPreservesExecutableCheckArguments(t *testing.T) {
 
 func TestDraftPlanReceivesFrozenPermissions(t *testing.T) {
 	for _, execute := range []bool{false, true} {
-		client := &captureLLMClient{result: `{"workUnits":[]}`}
+		client := &captureLLMClient{result: `{"status":"needs_context","message":"One question.","proposal":null,"issues":[{"kind":"context_insufficient","prompt":"Which area first?","reason":"Scope changes the plan.","recommendation":"Start with the core.","choices":[],"workUnitKeys":[],"criterionAliases":[]}]}`}
 		_, err := NewLLMProvider(client).DraftPlan(context.Background(), ports.PlanIntelligenceRequest{
 			Contract: domain.ContractRevision{AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true, ExecuteLocal: execute}},
 		})
@@ -134,7 +134,7 @@ func TestDraftPlanReceivesFrozenPermissions(t *testing.T) {
 				t.Errorf("missing frozen permission %s", field)
 			}
 		}
-		unit := client.request.Schema["properties"].(map[string]any)["workUnits"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+		unit := client.request.Schema["properties"].(map[string]any)["proposal"].(map[string]any)["properties"].(map[string]any)["workUnits"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
 		wantType := "null"
 		if execute {
 			wantType = "array"
@@ -142,14 +142,14 @@ func TestDraftPlanReceivesFrozenPermissions(t *testing.T) {
 		if unit["checkCommands"].(map[string]any)["type"] != wantType {
 			t.Fatal("schema permits checks outside the frozen command boundary")
 		}
-		if !execute && !strings.Contains(client.request.User, "checkCommands must be empty") {
+		if !execute && !strings.Contains(client.request.User, "checkCommands must be null") {
 			t.Error("read-only planning omitted the command-check restriction")
 		}
 	}
 }
 
 func TestDiscussPlanCarriesConversationAndRestrictsUnapprovedCommands(t *testing.T) {
-	client := &captureLLMClient{result: `{"decision":"clarification","message":"One choice remains.","clarification":{"question":"Keep this local?","reason":"Remote work needs authority.","recommendation":"Keep it local.","alternatives":["Add remote delivery later"]}}`}
+	client := &captureLLMClient{result: `{"status":"needs_context","message":"One choice remains.","proposal":null,"issues":[{"kind":"fact_missing","prompt":"Keep this local?","reason":"Remote work needs authority.","recommendation":"Keep it local.","choices":[{"key":"local","label":"Keep it local."},{"key":"remote","label":"Add remote delivery later"}],"workUnitKeys":[],"criterionAliases":[]}]}`}
 	result, err := NewLLMProvider(client).DiscussPlan(context.Background(), ports.PlanningDiscussionRequest{
 		Outcome:           domain.Outcome{Title: "Interactive plan"},
 		Contract:          domain.ContractRevision{Number: 2, Goal: "Make one local change", AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true}, Criteria: []domain.ContractCriterion{{ID: "criterion-1", Text: "The result is reviewable"}}},
@@ -160,7 +160,8 @@ func TestDiscussPlanCarriesConversationAndRestrictsUnapprovedCommands(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Result.Kind != ports.PlanningResultClarification || result.Result.Clarification == nil {
+	if result.Result.Status != domain.PlanningNeedsContext || len(result.Result.Issues) != 1 ||
+		result.Result.Issues[0].Route != domain.RouteAnswerContext || result.Result.Issues[0].Prompt != "Keep this local?" {
 		t.Fatalf("planning result = %+v", result.Result)
 	}
 	for _, want := range []string{"Inspect first", "README.md", "abc123", "Local command execution is forbidden"} {
@@ -180,7 +181,7 @@ func TestDiscussPlanCarriesConversationAndRestrictsUnapprovedCommands(t *testing
 }
 
 func TestDiscussPlanPropagatesFrozenRepositoryToolGrant(t *testing.T) {
-	client := &captureLLMClient{result: `{"decision":"clarification","message":"One choice remains.","clarification":{"question":"Which layer?","reason":"It changes the evidence.","recommendation":"Trace the runtime layer.","alternatives":["Trace the UI layer"]}}`}
+	client := &captureLLMClient{result: `{"status":"needs_context","message":"One choice remains.","proposal":null,"issues":[{"kind":"fact_missing","prompt":"Which layer?","reason":"It changes the evidence.","recommendation":"Trace the runtime layer.","choices":[{"key":"runtime","label":"Trace the runtime layer"},{"key":"ui","label":"Trace the UI layer"}],"workUnitKeys":[],"criterionAliases":[]}]}`}
 	root := t.TempDir()
 	_, err := NewLLMProvider(client).DiscussPlan(context.Background(), ports.PlanningDiscussionRequest{
 		Contract:          domain.ContractRevision{Number: 1, Goal: "Assess architecture", AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true}},

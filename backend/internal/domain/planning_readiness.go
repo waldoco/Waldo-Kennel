@@ -107,6 +107,14 @@ var readinessRouteRank = []PlanningEscalationRoute{
 	RouteRetryPlanning,
 }
 
+// WaitsOnOwner reports whether resolving the route is an owner decision -
+// answering context or revising the Contract - rather than setup, harness, or
+// planner work. A blocked packet claims waiting_on=owner only when at least
+// one issue routes here; every other blocked packet waits on system setup.
+func (r PlanningEscalationRoute) WaitsOnOwner() bool {
+	return r == RouteAnswerContext || r == RouteReviseContract
+}
+
 // Valid reports whether the escalation route is supported.
 func (r PlanningEscalationRoute) Valid() bool {
 	for _, known := range readinessRouteRank {

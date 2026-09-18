@@ -60,7 +60,7 @@ func (Provider) DraftPlan(_ context.Context, request ports.PlanIntelligenceReque
 	}
 	sortStrings(covered)
 	return ports.PlanIntelligenceResponse{
-		Proposal: domain.PlanDraftProposal{
+		Readiness: domain.NewPlanningReadinessResult("Ready.", &domain.PlanDraftProposal{
 			Summary: "Deliver the outcome in one direct unit.",
 			WorkUnits: []domain.PlanDraftWorkUnit{{
 				Key:             "W1",
@@ -71,7 +71,7 @@ func (Provider) DraftPlan(_ context.Context, request ports.PlanIntelligenceReque
 				CriteriaCovered: covered,
 				EvidenceIdeas:   []string{"A deterministic check demonstrates the result."},
 			}},
-		},
+		}, nil),
 		Provenance: ports.IntelligenceProvenance{EffectiveProvider: ProviderID, EffectiveModel: "fixed"},
 	}, nil
 }

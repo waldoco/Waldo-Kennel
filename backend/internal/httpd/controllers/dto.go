@@ -3244,23 +3244,16 @@ type PlanningClarificationResponse struct {
 	Alternatives   []string `json:"alternatives"`
 }
 
-// PlanningContractChangeResponse recommends but never applies Contract edits.
-type PlanningContractChangeResponse struct {
-	Summary       string   `json:"summary"`
-	ChangedFields []string `json:"changedFields"`
-}
-
 // PlanningTurnResponse is one normalized owner-visible conversation turn.
 type PlanningTurnResponse struct {
 	ID                string                          `json:"id"`
 	Sequence          int64                           `json:"sequence"`
 	ReplyToTurnID     string                          `json:"replyToTurnId,omitempty"`
 	Role              string                          `json:"role" enum:"owner,planner"`
-	Kind              string                          `json:"kind" enum:"message,finalize_request,clarification,contract_change_proposal,plan_proposal"`
+	Kind              string                         `json:"kind" enum:"message,finalize_request,clarification,contract_change_proposal,plan_proposal,readiness_blocked"`
 	Text              string                          `json:"text"`
-	Clarification     *PlanningClarificationResponse  `json:"clarification,omitempty"`
-	ContractChange    *PlanningContractChangeResponse `json:"contractChange,omitempty"`
-	IntelligenceRunID string                          `json:"intelligenceRunId,omitempty"`
+	Clarification     *PlanningClarificationResponse `json:"clarification,omitempty"`
+	IntelligenceRunID string                         `json:"intelligenceRunId,omitempty"`
 	CreatedAt         time.Time                       `json:"createdAt"`
 }
 

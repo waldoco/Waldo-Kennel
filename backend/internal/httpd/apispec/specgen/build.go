@@ -384,7 +384,6 @@ var schemaNames = map[string]string{
 	"ControllersPlanningCandidateResponse":                "PlanningCandidateResponse",
 	"ControllersPlanningCandidatesEnvelope":               "PlanningCandidatesEnvelope",
 	"ControllersPlanningClarificationResponse":            "PlanningClarificationResponse",
-	"ControllersPlanningContractChangeResponse":           "PlanningContractChangeResponse",
 	"ControllersPlanningTurnResponse":                     "PlanningTurnResponse",
 	"ControllersPlanningSessionResponse":                  "PlanningSessionResponse",
 	"ControllersPlanningResponse":                         "PlanningResponse",

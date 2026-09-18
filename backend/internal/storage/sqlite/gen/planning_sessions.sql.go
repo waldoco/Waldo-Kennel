@@ -609,6 +609,30 @@ func (q *Queries) RecoverInterruptedPlanningSessions(ctx context.Context, update
 	return result.RowsAffected()
 }
 
+const setPlanningSessionWaitingSystem = `-- name: SetPlanningSessionWaitingSystem :execrows
+UPDATE planning_sessions
+SET revision = revision + 1, waiting_on = 'system', updated_at = ?
+WHERE id = ? AND revision = ? AND status = 'active'
+`
+
+type SetPlanningSessionWaitingSystemParams struct {
+	UpdatedAt time.Time
+	ID        string
+	Revision  int64
+}
+
+func (q *Queries) SetPlanningSessionWaitingSystem(ctx context.Context, arg SetPlanningSessionWaitingSystemParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setPlanningSessionWaitingSystem,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.Revision,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setPlanningSessionFailure = `-- name: SetPlanningSessionFailure :execrows
 UPDATE planning_sessions
 SET revision = revision + 1, waiting_on = 'owner', last_failure_code = ?,

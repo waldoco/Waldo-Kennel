@@ -53,7 +53,7 @@ func TestEvaluatePlanReadiness_ReadyCarriesProposalAndBindsSnapshot(t *testing.T
 		readinessUnit("implement", domain.WorkUnitIntentExecute, "C1"),
 	}}
 	result, snapshot, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, draft, nil, "ready")
+		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, nil, "ready")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -85,7 +85,7 @@ func TestEvaluatePlanReadiness_InvalidDraftIsProviderErrorNotIssue(t *testing.T)
 			draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", domain.WorkUnitIntentModify, "C1")}}
 			mutate(&draft)
 			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-				readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, draft, nil, "m")
+				readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, nil, "m")
 			if err == nil {
 				t.Fatalf("expected provider error, got result %+v", result)
 			}
@@ -101,7 +101,7 @@ func TestEvaluatePlanReadiness_InvalidDraftIsProviderErrorNotIssue(t *testing.T)
 	t.Run("unknown unit criterion alias", func(t *testing.T) {
 		draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", domain.WorkUnitIntentModify, "C9")}}
 		_, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-			readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, draft, nil, "m")
+			readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, nil, "m")
 		var apiErr *apierr.Error
 		if !errors.As(err, &apiErr) || apiErr.Code != "PLAN_DRAFT_CRITERION_UNKNOWN" {
 			t.Fatalf("err = %v, want PLAN_DRAFT_CRITERION_UNKNOWN", err)
@@ -124,7 +124,7 @@ func TestEvaluatePlanReadiness_AboveCeilingCapabilityIsAuthorityIssue(t *testing
 			svc := readinessService(&routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}})
 			draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", tc.intent, "C1")}}
 			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-				readinessContract(tc.ceiling, readinessCriterion(1)), nil, draft, nil, "m")
+				readinessContract(tc.ceiling, readinessCriterion(1)), nil, &draft, nil, "m")
 			if err != nil {
 				t.Fatalf("err = %v", err)
 			}
@@ -191,7 +191,7 @@ func TestEvaluatePlanReadiness_CheckDryRun(t *testing.T) {
 			unit := readinessUnit("u", domain.WorkUnitIntentExecute, "C1")
 			tc.mutate(&unit)
 			draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{unit}}
-			result, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, nil, "m")
+			result, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, nil, "m")
 			if err != nil {
 				t.Fatalf("err = %v", err)
 			}
@@ -214,7 +214,7 @@ func TestEvaluatePlanReadiness_CheckDryRun(t *testing.T) {
 		unit := readinessUnit("u", domain.WorkUnitIntentExecute, "C1")
 		unit.CheckCommands = []domain.PlanDraftCheck{{CriterionAlias: "C1", Argv: []string{"go", "test"}, TimeoutSeconds: 99999}}
 		draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{unit}}
-		result, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, nil, "m")
+		result, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, nil, "m")
 		if err != nil || result.Status != domain.PlanningReady {
 			t.Fatalf("err = %v status = %q, want ready (timeout bounded)", err, result.Status)
 		}
@@ -231,7 +231,7 @@ func TestEvaluatePlanReadiness_WorkerUnavailableRouting(t *testing.T) {
 		weak := readyClaudeCandidate()
 		weak.Capabilities[domain.CapabilityWorktreeExec] = domain.CapabilityUnsupported
 		svc := readinessService(&routingInventoryFake{candidates: []domain.RoutingCandidate{weak}})
-		result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, nil, "m")
+		result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, nil, "m")
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
@@ -251,7 +251,7 @@ func TestEvaluatePlanReadiness_WorkerUnavailableRouting(t *testing.T) {
 		unauthed := readyClaudeCandidate()
 		unauthed.Readiness = domain.CapabilityUnsupported
 		svc := readinessService(&routingInventoryFake{candidates: []domain.RoutingCandidate{unauthed}})
-		result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, nil, "m")
+		result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, nil, "m")
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
@@ -262,7 +262,7 @@ func TestEvaluatePlanReadiness_WorkerUnavailableRouting(t *testing.T) {
 
 	t.Run("ready candidate passes", func(t *testing.T) {
 		svc := readinessService(&routingInventoryFake{candidates: []domain.RoutingCandidate{readyClaudeCandidate()}})
-		result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, nil, "m")
+		result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, nil, "m")
 		if err != nil || result.Status != domain.PlanningReady {
 			t.Fatalf("err = %v status = %q, want ready", err, result.Status)
 		}
@@ -273,7 +273,7 @@ func TestEvaluatePlanReadiness_InventoryErrorIsUnavailableNotIssue(t *testing.T)
 	svc := readinessService(&routingInventoryFake{err: errors.New("inventory down")})
 	draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", domain.WorkUnitIntentModify, "C1")}}
 	result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, draft, nil, "m")
+		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, nil, "m")
 	if err == nil || err.Error() != "inventory down" {
 		t.Fatalf("err = %v, want the raw inventory failure", err)
 	}
@@ -290,7 +290,7 @@ func TestEvaluatePlanReadiness_PlannerBlockersBecomeContextIssues(t *testing.T) 
 		readinessUnit("u", domain.WorkUnitIntentModify, "C1"),
 	}}
 	result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, draft, nil, "m")
+		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, nil, "m")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -319,7 +319,7 @@ func TestEvaluatePlanReadiness_PlannerIssuesRekeyedUnderSnapshotBoundFence(t *te
 	}
 	draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", domain.WorkUnitIntentModify, "C1")}}
 	result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, draft, []domain.PlanningReadinessIssue{planner}, "m")
+		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, []domain.PlanningReadinessIssue{planner}, "m")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -334,7 +334,7 @@ func TestEvaluatePlanReadiness_PlannerIssuesRekeyedUnderSnapshotBoundFence(t *te
 	// And an unparseable planner issue is invalid provider output, not a packet entry.
 	planner.Source = "mystery"
 	_, _, err = svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1",
-		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, draft, []domain.PlanningReadinessIssue{planner}, "m")
+		readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, []domain.PlanningReadinessIssue{planner}, "m")
 	var apiErr *apierr.Error
 	if !errors.As(err, &apiErr) || apiErr.Kind != apierr.KindInvalid {
 		t.Fatalf("err = %v, want 400 invalid planner issue", err)
@@ -352,7 +352,7 @@ func TestEvaluatePlanReadiness_FenceMustMatchContractUnderEvaluation(t *testing.
 		svc := readinessService(router)
 		fence := readinessFence()
 		fence.ContractRevisionID = "crev-OTHER"
-		result, _, err := svc.EvaluatePlanReadiness(context.Background(), fence, "p1", contract, nil, draft, nil, "m")
+		result, _, err := svc.EvaluatePlanReadiness(context.Background(), fence, "p1", contract, nil, &draft, nil, "m")
 		var apiErr *apierr.Error
 		if !errors.As(err, &apiErr) || apiErr.Code != "PLANNING_READINESS_FENCE_MISMATCH" {
 			t.Fatalf("err = %v, want PLANNING_READINESS_FENCE_MISMATCH", err)
@@ -367,7 +367,7 @@ func TestEvaluatePlanReadiness_FenceMustMatchContractUnderEvaluation(t *testing.
 	t.Run("zero fence identity", func(t *testing.T) {
 		router := &routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
 		svc := readinessService(router)
-		result, _, err := svc.EvaluatePlanReadiness(context.Background(), domain.PlanningReadinessFence{}, "p1", contract, nil, draft, nil, "m")
+		result, _, err := svc.EvaluatePlanReadiness(context.Background(), domain.PlanningReadinessFence{}, "p1", contract, nil, &draft, nil, "m")
 		var apiErr *apierr.Error
 		if !errors.As(err, &apiErr) || apiErr.Code != "PLANNING_READINESS_FENCE_INVALID" {
 			t.Fatalf("err = %v, want PLANNING_READINESS_FENCE_INVALID", err)
@@ -398,7 +398,7 @@ func TestEvaluatePlanReadiness_StalePlannerIssueRejected(t *testing.T) {
 			svc := readinessService(&routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}})
 			issue := base
 			mutate(&issue)
-			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, []domain.PlanningReadinessIssue{issue}, "m")
+			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, []domain.PlanningReadinessIssue{issue}, "m")
 			var apiErr *apierr.Error
 			if !errors.As(err, &apiErr) || apiErr.Code != "PLANNING_READINESS_ISSUE_STALE" {
 				t.Fatalf("err = %v, want PLANNING_READINESS_ISSUE_STALE", err)
@@ -414,7 +414,7 @@ func TestEvaluatePlanReadiness_StalePlannerIssueRejected(t *testing.T) {
 	issue := base
 	issue.WorkUnitKeys = []string{"u"}
 	issue.CriterionAliases = []string{"C1"}
-	result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, []domain.PlanningReadinessIssue{issue}, "m")
+	result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, []domain.PlanningReadinessIssue{issue}, "m")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -432,7 +432,7 @@ func TestEvaluatePlanReadiness_BlankSnapshotIdentityRejected(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			svc := readinessService(router)
-			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, nil, "m")
+			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, nil, "m")
 			var apiErr *apierr.Error
 			if !errors.As(err, &apiErr) || apiErr.Code != "ROUTING_INVENTORY_MALFORMED" {
 				t.Fatalf("err = %v, want ROUTING_INVENTORY_MALFORMED", err)
@@ -462,11 +462,11 @@ func TestEvaluatePlanReadiness_DeterministicAndDeduplicated(t *testing.T) {
 	newSvc := func() *outcome.Service {
 		return readinessService(&routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: nil})
 	}
-	first, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, []domain.PlanningReadinessIssue{duplicatePlanner, duplicatePlanner}, "m")
+	first, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, []domain.PlanningReadinessIssue{duplicatePlanner, duplicatePlanner}, "m")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	second, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, []domain.PlanningReadinessIssue{duplicatePlanner, duplicatePlanner}, "m")
+	second, _, err := newSvc().EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, &draft, []domain.PlanningReadinessIssue{duplicatePlanner, duplicatePlanner}, "m")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}

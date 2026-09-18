@@ -34,7 +34,7 @@ func (s *Service) EvaluatePlanReadiness(
 	projectID domain.ProjectID,
 	revision domain.ContractRevision,
 	preference *domain.RoutingPreference,
-	draft domain.PlanDraftProposal,
+	draft *domain.PlanDraftProposal,
 	plannerIssues []domain.PlanningReadinessIssue,
 	message string,
 ) (domain.PlanningReadinessResult, ports.RoutingInventorySnapshot, error) {
@@ -44,23 +44,41 @@ func (s *Service) EvaluatePlanReadiness(
 	// The fence must describe exactly the Contract revision being evaluated:
 	// issue keys are minted under the fence, so evaluating revision B's
 	// ceiling while labeling keys with revision A would silently mis-fence the
-	// packet. Zero or blank fence identity fails the same way. This check runs
-	// before any inventory read: a malformed evaluation never touches routing.
-	if fence.PlanningSessionID.IsZero() || fence.SessionRevision <= 0 || fence.ContractRevisionID.IsZero() || strings.TrimSpace(fence.ContextDigest.String()) == "" {
+	// packet. Zero or blank fence identity fails the same way - with one
+	// packet-sanctioned exception: a sessionless one-shot evaluation carries
+	// no planning lineage, so the session identity is zero AND the session
+	// revision is zero. A half-zero session identity is always malformed.
+	// This check runs before any inventory read: a malformed evaluation never
+	// touches routing.
+	sessionless := fence.PlanningSessionID.IsZero() && fence.SessionRevision == 0
+	if !sessionless && (fence.PlanningSessionID.IsZero() || fence.SessionRevision <= 0) {
+		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("PLANNING_READINESS_FENCE_INVALID", "planning readiness fence identity is zero or blank")
+	}
+	if fence.ContractRevisionID.IsZero() || strings.TrimSpace(fence.ContextDigest.String()) == "" {
 		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("PLANNING_READINESS_FENCE_INVALID", "planning readiness fence identity is zero or blank")
 	}
 	if fence.ContractRevisionID != revision.ID {
 		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("PLANNING_READINESS_FENCE_MISMATCH", "planning readiness fence names a different Contract revision than the one under evaluation")
 	}
-	// Evaluator step 5: the draft graph must survive S2 validation before any
-	// dry-run. A structurally invalid proposal is invalid provider output,
-	// never a typed readiness issue.
-	if err := draft.Validate(); err != nil {
-		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid(planDraftRefusalCode(err), err.Error(), nil)
+	// A nil draft is the planner-declared non-ready path: the strict envelope
+	// carried issues and no proposal, so steps 5-9 have nothing to evaluate.
+	// Draft-less evaluations must carry at least one planner issue.
+	if draft == nil && len(plannerIssues) == 0 {
+		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLANNING_READINESS_PAYLOAD_INVALID", "a readiness evaluation without a proposal must carry planner-declared issues", nil)
 	}
-	order, err := draft.TopologicalOrder()
-	if err != nil {
-		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_INVALID", err.Error(), nil)
+	var order []string
+	if draft != nil {
+		// Evaluator step 5: the draft graph must survive S2 validation before any
+		// dry-run. A structurally invalid proposal is invalid provider output,
+		// never a typed readiness issue.
+		if err := draft.Validate(); err != nil {
+			return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid(planDraftRefusalCode(err), err.Error(), nil)
+		}
+		var err error
+		order, err = draft.TopologicalOrder()
+		if err != nil {
+			return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLAN_DRAFT_INVALID", err.Error(), nil)
+		}
 	}
 	aliases, err := criterionAliases(revision)
 	if err != nil {
@@ -75,17 +93,21 @@ func (s *Service) EvaluatePlanReadiness(
 	}
 	// A snapshot without a stable identity cannot fence anything: fail before
 	// packet construction rather than mint keys bound to a blank generation.
-	if strings.TrimSpace(snapshot.SnapshotID) == "" || strings.TrimSpace(snapshot.GenerationID) == "" {
-		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("ROUTING_INVENTORY_MALFORMED", "routing inventory returned a snapshot without a stable identity")
+	if err := validateRoutingSnapshotIdentity(snapshot); err != nil {
+		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, err
 	}
 	fence.RoutingSnapshotID = snapshot.SnapshotID
 
-	draftsByKey := make(map[string]domain.PlanDraftWorkUnit, len(draft.WorkUnits))
-	for _, unit := range draft.WorkUnits {
-		draftsByKey[strings.TrimSpace(unit.Key)] = unit
+	draftsByKey := map[string]domain.PlanDraftWorkUnit{}
+	draftUnitCount := 0
+	if draft != nil {
+		draftUnitCount = len(draft.WorkUnits) + len(draft.Blockers)
+		for _, unit := range draft.WorkUnits {
+			draftsByKey[strings.TrimSpace(unit.Key)] = unit
+		}
 	}
 
-	issues := make([]domain.PlanningReadinessIssue, 0, len(plannerIssues)+len(draft.WorkUnits)+len(draft.Blockers))
+	issues := make([]domain.PlanningReadinessIssue, 0, len(plannerIssues)+draftUnitCount)
 	addIssue := func(issue domain.PlanningReadinessIssue) error {
 		built, err := domain.NewPlanningReadinessIssue(fence, issue)
 		if err != nil {
@@ -241,16 +263,18 @@ func (s *Service) EvaluatePlanReadiness(
 	// ready. The planner declared the blockers, so each becomes a
 	// planner-declared, owner-answerable context issue - prose is never read
 	// for connectors, capabilities, paths, or authority.
-	for _, blocker := range draft.Blockers {
-		if err := addIssue(domain.PlanningReadinessIssue{
-			Kind:           domain.ReadinessContextInsufficient,
-			Route:          domain.RouteAnswerContext,
-			Source:         domain.ReadinessSourcePlannerDeclared,
-			Prompt:         blocker,
-			Reason:         "The planner declared this blocker on a ready proposal; a proposal carrying blockers cannot normalize to ready.",
-			Recommendation: "Answer or resolve the blocker, then replan.",
-		}); err != nil {
-			return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, err
+	if draft != nil {
+		for _, blocker := range draft.Blockers {
+			if err := addIssue(domain.PlanningReadinessIssue{
+				Kind:           domain.ReadinessContextInsufficient,
+				Route:          domain.RouteAnswerContext,
+				Source:         domain.ReadinessSourcePlannerDeclared,
+				Prompt:         blocker,
+				Reason:         "The planner declared this blocker on a ready proposal; a proposal carrying blockers cannot normalize to ready.",
+				Recommendation: "Answer or resolve the blocker, then replan.",
+			}); err != nil {
+				return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, err
+			}
 		}
 	}
 
@@ -259,11 +283,21 @@ func (s *Service) EvaluatePlanReadiness(
 	if err != nil {
 		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, fmt.Errorf("canonicalize readiness issues: %w", err)
 	}
-	result := domain.NewPlanningReadinessResult(message, &draft, canonical)
+	result := domain.NewPlanningReadinessResult(message, draft, canonical)
 	if err := result.Validate(); err != nil {
 		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, fmt.Errorf("evaluator produced an invalid readiness result: %w", err)
 	}
 	return result, snapshot, nil
+}
+
+// validateRoutingSnapshotIdentity refuses a snapshot without a stable
+// identity: nothing can fence to a blank generation, at the evaluator seam or
+// at the compiler seam.
+func validateRoutingSnapshotIdentity(snapshot ports.RoutingInventorySnapshot) error {
+	if strings.TrimSpace(snapshot.SnapshotID) == "" || strings.TrimSpace(snapshot.GenerationID) == "" {
+		return apierr.Internal("ROUTING_INVENTORY_MALFORMED", "routing inventory returned a snapshot without a stable identity")
+	}
+	return nil
 }
 
 // checkUnrepresentableIssue builds the typed issue for one proposed check the

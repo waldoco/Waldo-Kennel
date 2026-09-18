@@ -50,6 +50,10 @@ type PlanningView struct {
 	Session      domain.PlanningSession
 	Turns        []domain.PlanningTurn
 	ProposedPlan *domain.PlanRevision
+	// Readiness carries the typed readiness packet for the latest evaluation
+	// when planning stopped before a Plan existed (needs_context or blocked).
+	// It is nil once a Plan is proposed; the durable receipt arrives in S3.3.
+	Readiness *domain.PlanningReadinessResult
 }
 
 // PlanningCandidates lists exact bindings available for the confirmed Contract.
@@ -407,8 +411,12 @@ func (s *Service) runPlanningTurn(ctx context.Context, outcomeID domain.OutcomeI
 	if err != nil {
 		return PlanningView{}, err
 	}
+	fence := domain.PlanningReadinessFence{
+		PlanningSessionID: session.ID, SessionRevision: session.Revision,
+		ContractRevisionID: session.ContractRevisionID, ContextDigest: session.ContextDigest,
+	}
 	request := ports.PlanningDiscussionRequest{
-		Binding: session.Binding, Outcome: view.Outcome, Contract: revision, CriterionAliases: aliases,
+		Binding: session.Binding, Outcome: view.Outcome, Contract: revision, CriterionAliases: aliases, Fence: fence,
 		// The frozen repository snapshot supplies planning context for every
 		// provider. Native repository tools remain a separately conformed mode;
 		// this launch path never silently upgrades packet access into tool access.
@@ -501,10 +509,7 @@ func (s *Service) runPlanningTurn(ctx context.Context, outcomeID domain.OutcomeI
 	if session.Status == domain.PlanningSessionSuperseded {
 		return PlanningView{}, apierr.New(apierr.KindConflict, "PLANNING_CONTRACT_STALE", "The Contract changed. Start a new planning conversation.", map[string]any{"currentRevision": currentOutcome.CurrentRevisionNumber})
 	}
-	if response.Result.Kind == ports.PlanningResultPlanProposal {
-		return s.finishPlanningProposal(ctx, currentOutcome, revision, session, run.ID, response.Result)
-	}
-	return s.planningView(ctx, currentOutcome, session)
+	return s.finishPlanningEvaluation(ctx, currentOutcome, revision, session, run.ID, fence, response.Result)
 }
 
 func (s *Service) beginPlanningTurn(parent context.Context, sessionID domain.PlanningSessionID) (context.Context, *planningTurnCancellation) {
@@ -553,7 +558,7 @@ func (s *Service) resumePlanningReply(ctx context.Context, outcomeRecord domain.
 		if turn.Kind != domain.PlanningTurnPlanProposal || session.Status != domain.PlanningSessionActive {
 			return s.planningView(ctx, outcomeRecord, session)
 		}
-		var result ports.PlanningResult
+		var result domain.PlanningReadinessResult
 		if err := json.Unmarshal(turn.StructuredPayload, &result); err != nil {
 			return PlanningView{}, apierr.Internal("PLANNING_REPLY_CORRUPT", "The saved planning reply could not be read")
 		}
@@ -561,15 +566,68 @@ func (s *Service) resumePlanningReply(ctx context.Context, outcomeRecord domain.
 		if err != nil {
 			return PlanningView{}, err
 		}
-		return s.finishPlanningProposal(ctx, outcomeRecord, revision, session, turn.IntelligenceRunID, result)
+		// Replay re-runs the same evaluation the original turn ran; the fence
+		// rebuilds from durable session state.
+		fence := domain.PlanningReadinessFence{
+			PlanningSessionID: session.ID, SessionRevision: session.Revision,
+			ContractRevisionID: session.ContractRevisionID, ContextDigest: session.ContextDigest,
+		}
+		return s.finishPlanningEvaluation(ctx, outcomeRecord, revision, session, turn.IntelligenceRunID, fence, result)
 	}
 	return s.planningView(ctx, outcomeRecord, session)
 }
 
-func (s *Service) finishPlanningProposal(ctx context.Context, outcomeRecord domain.Outcome, revision domain.ContractRevision, session domain.PlanningSession, runID domain.IntelligenceRunID, result ports.PlanningResult) (PlanningView, error) {
-	if result.PlanProposal == nil {
-		return PlanningView{}, apierr.Internal("PLANNING_PROPOSAL_MISSING", "The planning agent returned no Plan proposal")
+// finishPlanningEvaluation is the S3 seam every interactive planning result
+// passes: the strict envelope is evaluated against the confirmed Contract and
+// one normalized inventory snapshot, and only a zero-issue ready packet enters
+// the canonical compiler. needs_context keeps the session waiting on the
+// owner; a blocked packet marks the session waiting on system setup, never on
+// owner silence. No Plan is written for a non-ready packet.
+func (s *Service) finishPlanningEvaluation(ctx context.Context, outcomeRecord domain.Outcome, revision domain.ContractRevision, session domain.PlanningSession, runID domain.IntelligenceRunID, fence domain.PlanningReadinessFence, envelope domain.PlanningReadinessResult) (PlanningView, error) {
+	projectID, project, err := s.projectForOutcome(ctx, outcomeRecord.ID)
+	if err != nil {
+		return PlanningView{}, err
 	}
+	preference, hasPreference, err := domain.ResolveEffectiveExecutionPreference(revision.ExecutionPreference, project.Config)
+	if err != nil {
+		return PlanningView{}, apierr.Invalid("PLAN_PREFERENCE_INVALID", err.Error(), nil)
+	}
+	routingPreference := routingPreferenceFromExecution(preference, hasPreference)
+	evaluated, snapshot, err := s.EvaluatePlanReadiness(ctx, fence, projectID, revision, routingPreference, envelope.Proposal, envelope.Issues, envelope.Message)
+	if err != nil {
+		return PlanningView{}, err
+	}
+	if evaluated.Status == domain.PlanningReady {
+		return s.finishPlanningProposal(ctx, outcomeRecord, revision, session, runID, *evaluated.Proposal, snapshot, routingPreference)
+	}
+	// A blocked packet waits on system setup by default. It claims the owner
+	// only when at least one issue route is an owner decision - the appended
+	// planner turn already left the session waiting on the owner in that
+	// case, so there is nothing to change.
+	if evaluated.Status == domain.PlanningBlocked && session.WaitingOn != domain.PlanningWaitingSystem {
+		waitsOnOwner := false
+		for _, issue := range evaluated.Issues {
+			if issue.Route.WaitsOnOwner() {
+				waitsOnOwner = true
+				break
+			}
+		}
+		if !waitsOnOwner {
+			session, err = s.planningSessions.SetPlanningSessionWaitingSystem(ctx, session.ID, session.Revision)
+			if err != nil {
+				return PlanningView{}, planningAPIError(err)
+			}
+		}
+	}
+	view, err := s.planningView(ctx, outcomeRecord, session)
+	if err != nil {
+		return PlanningView{}, err
+	}
+	view.Readiness = &evaluated
+	return view, nil
+}
+
+func (s *Service) finishPlanningProposal(ctx context.Context, outcomeRecord domain.Outcome, revision domain.ContractRevision, session domain.PlanningSession, runID domain.IntelligenceRunID, draft domain.PlanDraftProposal, proposalSnapshot ports.RoutingInventorySnapshot, routingPreference *domain.RoutingPreference) (PlanningView, error) {
 	if existing, found, err := s.planningSessions.GetPlanRevisionByPlanningSession(ctx, outcomeRecord.ID, session.ID); err != nil {
 		return PlanningView{}, err
 	} else if found {
@@ -581,19 +639,15 @@ func (s *Service) finishPlanningProposal(ctx context.Context, outcomeRecord doma
 		}
 		return s.planningView(ctx, outcomeRecord, session)
 	}
-	projectID, project, err := s.projectForOutcome(ctx, outcomeRecord.ID)
+	projectID, _, err := s.projectForOutcome(ctx, outcomeRecord.ID)
 	if err != nil {
 		return PlanningView{}, err
-	}
-	preference, hasPreference, err := domain.ResolveEffectiveExecutionPreference(revision.ExecutionPreference, project.Config)
-	if err != nil {
-		return PlanningView{}, apierr.Invalid("PLAN_PREFERENCE_INVALID", err.Error(), nil)
 	}
 	aliases, err := criterionAliases(revision)
 	if err != nil {
 		return PlanningView{}, err
 	}
-	units, decisions, proposalSnapshot, err := s.compileAndRoutePlan(ctx, projectID, revision, *result.PlanProposal, aliases, routingPreferenceFromExecution(preference, hasPreference))
+	units, decisions, _, err := s.compileAndRoutePlan(ctx, projectID, revision, draft, aliases, routingPreference, proposalSnapshot)
 	if err != nil {
 		return PlanningView{}, err
 	}
@@ -607,8 +661,8 @@ func (s *Service) finishPlanningProposal(ctx context.Context, outcomeRecord doma
 	}
 	plan := domain.PlanRevision{
 		ID: domain.PlanRevisionID("plan-" + uuid.NewString()), OutcomeID: outcomeRecord.ID, ContractRevisionNumber: revision.Number,
-		Status: domain.PlanStatusProposed, Summary: result.PlanProposal.Summary, Assumptions: append([]string(nil), result.PlanProposal.Assumptions...),
-		Blockers: append([]string(nil), result.PlanProposal.Blockers...), WorkUnits: units, Grants: grants, RoutingDecisions: decisions,
+		Status: domain.PlanStatusProposed, Summary: draft.Summary, Assumptions: append([]string(nil), draft.Assumptions...),
+		Blockers: append([]string(nil), draft.Blockers...), WorkUnits: units, Grants: grants, RoutingDecisions: decisions,
 		RunBriefCoreDigest: digest, PlanningSessionID: session.ID, SourceIntelligenceRunID: runID,
 	}
 	validation := plan
@@ -753,14 +807,19 @@ func planningStartFingerprint(outcomeID domain.OutcomeID, revision int64, candid
 	return domain.DigestSHA256(payload)
 }
 
-func planningTurnKind(result ports.PlanningResult) (domain.PlanningTurnKind, error) {
-	switch result.Kind {
-	case ports.PlanningResultClarification:
+// planningTurnKind records what the planner's envelope claimed. A ready claim
+// is a proposal turn; needs_context is a clarification turn; a blocked packet
+// is a readiness_blocked turn whatever its routes - the packet payload and
+// the session wait state carry the detail, never a fabricated kind. The
+// envelope schema admits nothing else.
+func planningTurnKind(result domain.PlanningReadinessResult) (domain.PlanningTurnKind, error) {
+	switch result.Status {
+	case domain.PlanningNeedsContext:
 		return domain.PlanningTurnClarification, nil
-	case ports.PlanningResultContractChange:
-		return domain.PlanningTurnContractChangeProposal, nil
-	case ports.PlanningResultPlanProposal:
+	case domain.PlanningReady:
 		return domain.PlanningTurnPlanProposal, nil
+	case domain.PlanningBlocked:
+		return domain.PlanningTurnReadinessBlocked, nil
 	default:
 		return "", apierr.Internal("PLANNING_REPLY_INVALID", "The planning agent returned an unsupported reply")
 	}

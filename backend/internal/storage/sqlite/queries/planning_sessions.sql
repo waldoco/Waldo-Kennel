@@ -56,6 +56,11 @@ SET revision = revision + 1, waiting_on = 'owner', last_failure_code = ?,
     last_failure_detail = ?, updated_at = ?
 WHERE id = ? AND revision = ? AND status = 'active' AND waiting_on = 'provider';
 
+-- name: SetPlanningSessionWaitingSystem :execrows
+UPDATE planning_sessions
+SET revision = revision + 1, waiting_on = 'system', updated_at = ?
+WHERE id = ? AND revision = ? AND status = 'active';
+
 -- name: RecoverInterruptedPlanningSessions :execrows
 UPDATE planning_sessions
 SET revision = revision + 1, waiting_on = 'owner',

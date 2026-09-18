@@ -50,19 +50,20 @@ Return only the structured object.`
 
 const planSystemPrompt = `You are Waldo, planning execution for an approved Contract in an outcome control plane.
 
-Break the Contract into the smallest set of work units that can actually be executed and proved. You are proposing work, not authorizing it: the control plane derives capabilities, routing, stop policy, and verification from what you return.
+Return one readiness envelope: status "ready" with a proposal, or status "needs_context" with every material missing fact or bounded context request batched as issues. A proposal carrying real blockers is never ready: if a missing fact could change the graph, proof, or safe execution, ask instead of proposing. You are proposing work, not authorizing it: the control plane derives capabilities, routing, stop policy, and verification from what you return.
 
 Rules:
 - Prefer few units. One unit is correct when the work is genuinely one step. Never split work just to look thorough.
 - Each unit must produce an observable output. A criterion-free enabling unit is valid only when a later unit directly consumes it.
 - role describes orchestration purpose only: investigate, implement, verify, or consolidate. It never grants authority; intent alone determines local capabilities. Verify cannot mutate. Consolidate requires at least two direct predecessors.
 - inputs must contain exactly one semantic handoff requirement for every direct dependsOn key, and no others. Describe what predecessor result is needed, never a path, URI, command, secret, capability, or artifact id.
-- Use dependsOn only for real ordering constraints. Use dependencies only for real ordering constraints. Independent units keep future execution options open, but the current launch executes the canonical Plan order serially. Do not add fake dependencies merely to force display or execution order.
+- Use dependsOn only for real ordering constraints. Independent units keep future execution options open, but the current launch executes the canonical Plan order serially. Do not add fake dependencies merely to force display or execution order.
 - intent classifies the work: "inspect" reads only; "modify" edits files; "execute" runs commands; "modify_and_execute" does both. Choose the LEAST intent that can do the unit's job — it decides how much authority the unit is granted.
 - criteriaCovered references the criterion aliases given to you (C1, C2, ...). Every criterion should be covered by at least one unit.
 - evidenceIdeas are the artifacts that would prove the unit did its job.
 - checkCommands are proposed deterministic local checks: criterionAlias, exact argv array (not shell text), and timeoutSeconds. Never invoke sh, bash, zsh, or another shell, including shell -c: the daemon rejects shell-based checks even when local command execution is allowed. Do not use pipes, redirection, command substitution, or shell operators. Invoke a permitted executable directly with individual arguments. For exact file content checks, an available python3 interpreter may use -c with a read-only assertion that exits nonzero for missing or incorrect bytes. Do not propose a check that only prints the file. Ground them in the approved context. A check must exit nonzero when its criterion is false, not merely print output. Use execute or modify_and_execute intent when checks execute commands. Never widen the Contract authority. Return an empty list only when no safe deterministic check is available; explain the verification limitation in blockers.
-- Record real assumptions and real blockers. An empty list is the honest answer when there are none; never invent them.
+- Issues are batched: return every material question in one needs_context packet, each with a reason explaining why the fact changes the graph, proof, or safe execution. If the Contract itself seems wrong, ask a context question whose choices name the change — the owner revises the Contract, you never do.
+- Record real assumptions. An empty list is the honest answer when there are none; never invent them.
 
 Return only the structured object.`
 
@@ -70,12 +71,12 @@ const planningDiscussionSystemPrompt = `You are Waldo, discussing an execution p
 
 You receive an immutable Contract, a bounded read-only repository packet, and the visible planning conversation. Investigate the supplied facts and make the next useful planning move.
 
-Return exactly one of: clarification, contract_change_proposal, or plan_proposal.
+Return one readiness envelope: status "ready" with a proposal, or status "needs_context" with every material missing fact or bounded context request batched as issues. A proposal carrying real blockers is never ready: if a missing fact could change the graph, proof, or safe execution, ask instead of proposing.
 
 Rules:
 - Do not ask the owner to perform repository analysis already present in the packet.
 - Do not claim commands ran. Planning authorizes no commands, writes, network access, commits, pull requests, deployment, or external effects.
-- A Contract change is advisory only. Never treat conversational agreement as Contract confirmation.
+- If the Contract itself seems wrong, ask a context question whose choices name the change. The owner revises the Contract; never treat conversational agreement as Contract confirmation.
 - Prefer a small plan. Cover every criterion alias with proof-bearing units and use the least WorkUnit intent. Roles describe investigate/implement/verify/consolidate purpose but grant no authority. Every dependency must have one matching semantic input requirement.
 - Proposed checks are exact argv arrays and must fail when their criterion is false. Never use a shell or shell operators.
 - The control plane, not you, derives authority, routing, stop policy, verification, approval, and execution.
@@ -234,43 +235,6 @@ func planSchema(aliases []string) map[string]any {
 	}
 }
 
-func planningDiscussionSchema(aliases []string) map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []any{"decision", "message", "clarification", "contractChange", "proposal"},
-		"properties": map[string]any{
-			"decision": map[string]any{"type": "string", "enum": []any{"clarification", "contract_change_proposal", "plan_proposal"}},
-			"message":  map[string]any{"type": "string", "description": "concise owner-facing explanation"},
-			"clarification": nullableObject(map[string]any{
-				"additionalProperties": false,
-				"required":             []any{"question", "reason", "recommendation", "alternatives"},
-				"properties": map[string]any{
-					"question":       map[string]any{"type": "string"},
-					"reason":         map[string]any{"type": "string"},
-					"recommendation": map[string]any{"type": "string"},
-					"alternatives":   stringArray("short concrete answer choices"),
-				},
-			}),
-			"contractChange": nullableObject(map[string]any{
-				"additionalProperties": false,
-				"required":             []any{"summary", "changedFields"},
-				"properties": map[string]any{
-					"summary": map[string]any{"type": "string"},
-					"changedFields": map[string]any{
-						"type": "array",
-						"items": map[string]any{"type": "string", "enum": []any{
-							"goal", "successCriteria", "review", "constraints", "nonGoals", "evidenceExpectations",
-							"authorityCeiling", "stopConditions", "temporalCondition", "facets", "executionPreference",
-						}},
-					},
-				},
-			}),
-			"proposal": nullableObject(planSchema(aliases)),
-		},
-	}
-}
-
 type contractReply struct {
 	Decision string `json:"decision"`
 	Question *struct {
@@ -329,22 +293,6 @@ type planReply struct {
 	} `json:"workUnits"`
 	Assumptions []string `json:"assumptions"`
 	Blockers    []string `json:"blockers"`
-}
-
-type planningDiscussionReply struct {
-	Decision      string `json:"decision"`
-	Message       string `json:"message"`
-	Clarification *struct {
-		Question       string   `json:"question"`
-		Reason         string   `json:"reason"`
-		Recommendation string   `json:"recommendation"`
-		Alternatives   []string `json:"alternatives"`
-	} `json:"clarification"`
-	ContractChange *struct {
-		Summary       string   `json:"summary"`
-		ChangedFields []string `json:"changedFields"`
-	} `json:"contractChange"`
-	Proposal *planReply `json:"proposal"`
 }
 
 // AnalyzeContract asks the model for one clarification or one editable
@@ -496,16 +444,21 @@ func (p *LLMProvider) DraftPlan(ctx context.Context, request ports.PlanIntellige
 		ceiling.ReadWorkspace, ceiling.WriteWorkspace, ceiling.ExecuteLocal, ceiling.UseNetwork,
 		ceiling.CommitLocal, ceiling.CreatePR, ceiling.Deploy, ceiling.ExternalEffect)
 	if !ceiling.ExecuteLocal {
-		input.WriteString("Local command execution is forbidden: checkCommands must be empty. Use permitted inspection and evidence for owner review; do not invent executable verification or claim manual review proves a criterion automatically. If the result needs more authority, state that as a blocker requiring an owner Contract revision.\n")
+		input.WriteString("Local command execution is forbidden: checkCommands must be null and no unit may use an executing intent. Use permitted inspection and evidence for owner review; do not invent executable verification or claim manual review proves a criterion automatically. If the result needs more authority, return needs_context asking for an owner Contract revision.")
 	}
 	if feedback := strings.TrimSpace(request.ReplanFeedback); feedback != "" {
 		fmt.Fprintf(&input, "\nOwner replan feedback (this is an explicit new proposal request):\n%s\n", feedback)
 	}
 	appendRepositoryContext(&input, request.RepositoryContext)
 
-	schema := planSchema(sortedAliasKeys(request.CriterionAliases))
+	aliases := sortedAliasKeys(request.CriterionAliases)
+	schema := planningReadinessSchema(aliases)
 	if !ceiling.ExecuteLocal {
-		if err := restrictPlanSchemaToContract(schema, ceiling); err != nil {
+		proposal, ok := schema["properties"].(map[string]any)["proposal"].(map[string]any)
+		if !ok {
+			return ports.PlanIntelligenceResponse{}, fmt.Errorf("invalid readiness proposal schema")
+		}
+		if err := restrictPlanSchemaToContract(proposal, ceiling); err != nil {
 			return ports.PlanIntelligenceResponse{}, err
 		}
 		input.WriteString("For this read-only command boundary, encode checkCommands as null as required by the schema.\n")
@@ -513,45 +466,19 @@ func (p *LLMProvider) DraftPlan(ctx context.Context, request ports.PlanIntellige
 	response, err := p.client.Complete(ctx, ports.LLMRequest{
 		System:     planSystemPrompt,
 		User:       input.String(),
-		SchemaName: "plan_draft",
+		SchemaName: "planning_readiness",
 		Schema:     schema,
 	})
 	if err != nil {
 		return ports.PlanIntelligenceResponse{}, err
 	}
 
-	var reply planReply
-	if err := json.Unmarshal(response.JSON, &reply); err != nil {
-		return ports.PlanIntelligenceResponse{}, fmt.Errorf("waldo returned an unreadable plan draft: %w", err)
+	result, err := parsePlanningReadinessReply(response.JSON, request.Fence, aliases)
+	if err != nil {
+		return ports.PlanIntelligenceResponse{}, err
 	}
-
-	units := make([]domain.PlanDraftWorkUnit, 0, len(reply.WorkUnits))
-	for _, unit := range reply.WorkUnits {
-		key := strings.TrimSpace(unit.Key)
-		if key == "" {
-			continue
-		}
-		units = append(units, domain.PlanDraftWorkUnit{
-			Key:             key,
-			Title:           strings.TrimSpace(unit.Title),
-			Intent:          domain.WorkUnitIntent(strings.TrimSpace(unit.Intent)),
-			Role:            domain.WorkUnitRole(strings.TrimSpace(unit.Role)),
-			Inputs:          planDraftInputs(unit.Inputs),
-			OutputSummary:   strings.TrimSpace(unit.OutputSummary),
-			CriteriaCovered: trimAll(unit.CriteriaCovered),
-			DependsOn:       trimAll(unit.DependsOn),
-			EvidenceIdeas:   trimAll(unit.EvidenceIdeas),
-			CheckCommands:   planDraftChecks(unit.CheckCommands),
-		})
-	}
-
 	return ports.PlanIntelligenceResponse{
-		Proposal: domain.PlanDraftProposal{
-			Summary:     strings.TrimSpace(reply.Summary),
-			WorkUnits:   units,
-			Assumptions: trimAll(reply.Assumptions),
-			Blockers:    trimAll(reply.Blockers),
-		},
+		Readiness: result,
 		Provenance: ports.IntelligenceProvenance{
 			EffectiveProvider: domain.IntelligenceProviderID(p.client.ID()),
 			EffectiveModel:    response.EffectiveModel,
@@ -563,7 +490,9 @@ func (p *LLMProvider) DraftPlan(ctx context.Context, request ports.PlanIntellige
 }
 
 // DiscussPlan performs one structured turn in a durable planning conversation.
-// Continuity remains canonical in Kennel and is supplied explicitly.
+// Continuity remains canonical in Kennel and is supplied explicitly. The reply
+// is the strict readiness envelope: ready with a proposal, or needs_context
+// with every material issue batched. Nothing here is authority.
 func (p *LLMProvider) DiscussPlan(ctx context.Context, request ports.PlanningDiscussionRequest) (ports.PlanningDiscussionResponse, error) {
 	if p == nil || p.client == nil {
 		return ports.PlanningDiscussionResponse{}, ports.NewReasoningFailure(
@@ -595,13 +524,14 @@ func (p *LLMProvider) DiscussPlan(ctx context.Context, request ports.PlanningDis
 		fmt.Fprintf(&input, "- %s (%s): %s\n", turn.Role, turn.Kind, strings.TrimSpace(turn.Text))
 	}
 	if request.Finalize {
-		input.WriteString("\nThe owner requested a Plan proposal now. Propose it unless a material clarification or Contract change is still required.\n")
+		input.WriteString("\nThe owner requested a Plan proposal now. Return ready with a proposal unless material facts are still missing; batch every missing fact into one needs_context packet otherwise.\n")
 	}
-	schema := planningDiscussionSchema(sortedAliasKeys(request.CriterionAliases))
+	aliases := sortedAliasKeys(request.CriterionAliases)
+	schema := planningReadinessSchema(aliases)
 	if !ceiling.ExecuteLocal {
 		proposal, ok := schema["properties"].(map[string]any)["proposal"].(map[string]any)
 		if !ok {
-			return ports.PlanningDiscussionResponse{}, fmt.Errorf("invalid planning proposal schema")
+			return ports.PlanningDiscussionResponse{}, fmt.Errorf("invalid readiness proposal schema")
 		}
 		if err := restrictPlanSchemaToContract(proposal, ceiling); err != nil {
 			return ports.PlanningDiscussionResponse{}, err
@@ -614,60 +544,19 @@ func (p *LLMProvider) DiscussPlan(ctx context.Context, request ports.PlanningDis
 		return ports.PlanningDiscussionResponse{}, err
 	}
 	response, err := p.client.Complete(ctx, ports.LLMRequest{
-		System: planningDiscussionSystemPrompt, User: input.String(), SchemaName: "planning_turn",
+		System: planningDiscussionSystemPrompt, User: input.String(), SchemaName: "planning_readiness",
 		Schema: schema, ContextAccess: contextAccess,
 	})
 	if err != nil {
 		return ports.PlanningDiscussionResponse{}, err
 	}
-	var reply planningDiscussionReply
-	if err := json.Unmarshal(response.JSON, &reply); err != nil {
-		return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo returned an unreadable planning turn: %w", err)
+	result, err := parsePlanningReadinessReply(response.JSON, request.Fence, aliases)
+	if err != nil {
+		return ports.PlanningDiscussionResponse{}, err
 	}
 	provenance := ports.IntelligenceProvenance{
 		EffectiveProvider: domain.IntelligenceProviderID(p.client.ID()), EffectiveModel: response.EffectiveModel,
 		NativeSessionRef: response.NativeSessionRef, InputTokens: response.InputTokens, OutputTokens: response.OutputTokens,
-	}
-	result := ports.PlanningResult{Message: strings.TrimSpace(reply.Message)}
-	switch reply.Decision {
-	case string(ports.PlanningResultClarification):
-		if reply.Clarification == nil {
-			return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo selected clarification without a question")
-		}
-		result.Kind = ports.PlanningResultClarification
-		result.Clarification = &ports.PlanClarification{
-			Question: strings.TrimSpace(reply.Clarification.Question), Reason: strings.TrimSpace(reply.Clarification.Reason),
-			Recommendation: strings.TrimSpace(reply.Clarification.Recommendation), Alternatives: trimAll(reply.Clarification.Alternatives),
-		}
-		if result.Clarification.Question == "" || result.Clarification.Reason == "" {
-			return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo returned an incomplete planning clarification")
-		}
-	case string(ports.PlanningResultContractChange):
-		if reply.ContractChange == nil {
-			return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo selected Contract change without its summary")
-		}
-		result.Kind = ports.PlanningResultContractChange
-		result.ContractChange = &ports.PlanContractChangeProposal{
-			Summary: strings.TrimSpace(reply.ContractChange.Summary), ChangedFields: trimAll(reply.ContractChange.ChangedFields),
-		}
-		if result.ContractChange.Summary == "" || len(result.ContractChange.ChangedFields) == 0 {
-			return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo returned an incomplete Contract change proposal")
-		}
-	case string(ports.PlanningResultPlanProposal):
-		if reply.Proposal == nil {
-			return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo selected Plan proposal without a Plan")
-		}
-		proposal := planProposalFromReply(*reply.Proposal)
-		if err := proposal.Validate(); err != nil {
-			return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo returned an invalid planning proposal: %w", err)
-		}
-		result.Kind = ports.PlanningResultPlanProposal
-		result.PlanProposal = &proposal
-	default:
-		return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo returned unsupported planning decision %q", reply.Decision)
-	}
-	if result.Message == "" {
-		return ports.PlanningDiscussionResponse{}, fmt.Errorf("waldo returned a planning turn without an owner-facing message")
 	}
 	return ports.PlanningDiscussionResponse{Result: result, Provenance: provenance}, nil
 }

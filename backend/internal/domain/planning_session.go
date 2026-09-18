@@ -93,12 +93,17 @@ type PlanningWaitingOn string
 const (
 	PlanningWaitingOwner    PlanningWaitingOn = "owner"
 	PlanningWaitingProvider PlanningWaitingOn = "provider"
+	// PlanningWaitingSystem marks a blocked planning evaluation: the next move
+	// is a setup, harness, or Contract action routed from the readiness
+	// packet's route codes, not an owner answer to an ordinary question and
+	// never provider thinking.
+	PlanningWaitingSystem   PlanningWaitingOn = "system"
 	PlanningWaitingNone     PlanningWaitingOn = "none"
 )
 
 // Valid reports whether the waiting actor is supported.
 func (w PlanningWaitingOn) Valid() bool {
-	return w == PlanningWaitingOwner || w == PlanningWaitingProvider || w == PlanningWaitingNone
+	return w == PlanningWaitingOwner || w == PlanningWaitingProvider || w == PlanningWaitingSystem || w == PlanningWaitingNone
 }
 
 // PlanningBinding freezes the owner-selected reasoner. It is proposal
@@ -227,13 +232,19 @@ const (
 	PlanningTurnClarification          PlanningTurnKind = "clarification"
 	PlanningTurnContractChangeProposal PlanningTurnKind = "contract_change_proposal"
 	PlanningTurnPlanProposal           PlanningTurnKind = "plan_proposal"
+	// PlanningTurnReadinessBlocked labels a planner turn whose readiness
+	// packet evaluated blocked. S3 mints only this kind for blocked packets;
+	// contract_change_proposal remains valid so historical turns still load,
+	// but no new turn is minted with it - a Contract-change request now
+	// arrives as a blocked envelope with revise_contract issues.
+	PlanningTurnReadinessBlocked PlanningTurnKind = "readiness_blocked"
 )
 
 // Valid reports whether the planning-turn kind is supported.
 func (k PlanningTurnKind) Valid() bool {
 	switch k {
 	case PlanningTurnMessage, PlanningTurnFinalizeRequest, PlanningTurnClarification,
-		PlanningTurnContractChangeProposal, PlanningTurnPlanProposal:
+		PlanningTurnContractChangeProposal, PlanningTurnPlanProposal, PlanningTurnReadinessBlocked:
 		return true
 	default:
 		return false

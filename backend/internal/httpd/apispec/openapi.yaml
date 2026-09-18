@@ -14352,18 +14352,6 @@ components:
       - recommendation
       - alternatives
       type: object
-    PlanningContractChangeResponse:
-      properties:
-        changedFields:
-          items:
-            type: string
-          type: array
-        summary:
-          type: string
-      required:
-      - summary
-      - changedFields
-      type: object
     PlanningEnvelope:
       properties:
         planning:
@@ -14483,8 +14471,6 @@ components:
       properties:
         clarification:
           $ref: '#/components/schemas/PlanningClarificationResponse'
-        contractChange:
-          $ref: '#/components/schemas/PlanningContractChangeResponse'
         createdAt:
           format: date-time
           type: string
@@ -14499,6 +14485,7 @@ components:
           - clarification
           - contract_change_proposal
           - plan_proposal
+          - readiness_blocked
           type: string
         replyToTurnId:
           type: string

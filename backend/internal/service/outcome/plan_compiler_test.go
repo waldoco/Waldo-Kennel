@@ -118,13 +118,13 @@ func (*twoUnitPlanIntelligence) AnalyzeContract(context.Context, ports.ContractI
 func (p *twoUnitPlanIntelligence) DraftPlan(context.Context, ports.PlanIntelligenceRequest) (ports.PlanIntelligenceResponse, error) {
 	p.calls++
 	return ports.PlanIntelligenceResponse{
-		Proposal: domain.PlanDraftProposal{
+		Readiness: domain.NewPlanningReadinessResult("Ready.", &domain.PlanDraftProposal{
 			Summary: "Edit, then verify the confirmed Contract.",
 			WorkUnits: []domain.PlanDraftWorkUnit{
 				{Key: "verify", Title: "Verify outcome", Intent: domain.WorkUnitIntentExecute, Role: domain.WorkUnitRoleVerify, Inputs: []domain.PlanDraftDependencyInput{{FromKey: "edit", Required: "implemented result"}}, OutputSummary: "Verified result", CriteriaCovered: []string{"C2"}, DependsOn: []string{"edit"}, EvidenceIdeas: []string{"verification output"}},
 				{Key: "edit", Title: "Implement outcome", Intent: domain.WorkUnitIntentModify, Role: domain.WorkUnitRoleImplement, OutputSummary: "Implemented result", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"workspace diff"}},
 			},
-		},
+		}, nil),
 		Provenance: ports.IntelligenceProvenance{EffectiveProvider: "test-plan-intelligence", EffectiveModel: "planner-test"},
 	}, nil
 }
@@ -272,15 +272,25 @@ func TestPlanCompilerRejectsWorkUnitOutsideContractCeiling(t *testing.T) {
 	store.revs[outcomeID] = revs
 	store.planFakeStore.mu.Unlock()
 
-	_, err := svc.ProposePlan(context.Background(), outcomeID, 2)
-	if err == nil {
-		t.Fatal("execute intent outside Contract ceiling must fail closed")
+	// S3: authority shortfalls are typed readiness issues, not API errors.
+	view, err := svc.ProposePlan(context.Background(), outcomeID, 2)
+	if err != nil {
+		t.Fatalf("propose: %v", err)
 	}
-	if code := apiCode(t, err); code != "PLAN_AUTHORITY_INSUFFICIENT" {
-		t.Fatalf("code = %s, want PLAN_AUTHORITY_INSUFFICIENT", code)
+	if view.Readiness == nil || view.Readiness.Status != domain.PlanningBlocked {
+		t.Fatalf("execute intent outside Contract ceiling must produce a blocked packet: %+v", view.Readiness)
+	}
+	authorityIssue := false
+	for _, issue := range view.Readiness.Issues {
+		if issue.Kind == domain.ReadinessAuthorityInsufficient && issue.Route == domain.RouteReviseContract {
+			authorityIssue = true
+		}
+	}
+	if !authorityIssue {
+		t.Fatalf("blocked packet carries no authority_insufficient/revise_contract issue: %+v", view.Readiness.Issues)
 	}
 	if got := len(store.plans[outcomeID]); got != 0 {
-		t.Fatalf("authority refusal persisted %d plans", got)
+		t.Fatalf("blocked packet persisted %d plans", got)
 	}
 }
 
@@ -293,15 +303,30 @@ func TestPlanCompilerDoesNotWidenMissingNewWorkAuthority(t *testing.T) {
 	store.revs[outcomeID] = revs
 	store.planFakeStore.mu.Unlock()
 
-	_, err := svc.ProposePlan(context.Background(), outcomeID, 2)
-	if err == nil {
-		t.Fatal("missing new-work authority must not become read+write+exec")
+	// S3: an empty ceiling cannot error its way into a Plan either. The
+	// evaluator reads its single normalized snapshot and returns a blocked
+	// authority packet; no grants are minted and nothing is persisted.
+	view, err := svc.ProposePlan(context.Background(), outcomeID, 2)
+	if err != nil {
+		t.Fatalf("propose: %v", err)
 	}
-	if code := apiCode(t, err); code != "PLAN_AUTHORITY_REQUIRED" {
-		t.Fatalf("code = %s, want PLAN_AUTHORITY_REQUIRED", code)
+	if view.Readiness == nil || view.Readiness.Status != domain.PlanningBlocked {
+		t.Fatalf("missing new-work authority must produce a blocked packet: %+v", view.Readiness)
 	}
-	if router.calls != 0 {
-		t.Fatalf("routing ran %d times after authority refusal", router.calls)
+	authorityIssue := false
+	for _, issue := range view.Readiness.Issues {
+		if issue.Kind == domain.ReadinessAuthorityInsufficient && issue.Route == domain.RouteReviseContract {
+			authorityIssue = true
+		}
+	}
+	if !authorityIssue {
+		t.Fatalf("blocked packet carries no authority_insufficient/revise_contract issue: %+v", view.Readiness.Issues)
+	}
+	if router.calls != 1 {
+		t.Fatalf("evaluation must read exactly one routing snapshot, got %d", router.calls)
+	}
+	if got := len(store.plans[outcomeID]); got != 0 {
+		t.Fatalf("blocked packet persisted %d plans", got)
 	}
 }
 
@@ -335,12 +360,23 @@ func TestProposePlanNoValidRoutePersistsNothing(t *testing.T) {
 		Capabilities: map[string]domain.CapabilitySupport{}, Models: map[string]domain.CapabilitySupport{},
 	}}}
 	svc, store, outcomeID, _ := newPlanningTestService(t, router)
-	_, err := svc.ProposePlan(context.Background(), outcomeID, 2)
-	if err == nil {
-		t.Fatal("no admissible route must fail closed")
+	// S3: no admissible route is a blocked worker_unavailable packet, not an
+	// API error, and it persists no Plan.
+	view, err := svc.ProposePlan(context.Background(), outcomeID, 2)
+	if err != nil {
+		t.Fatalf("propose: %v", err)
 	}
-	if code := apiCode(t, err); code != "PLAN_NO_VALID_ROUTE" {
-		t.Fatalf("code = %s", code)
+	if view.Readiness == nil || view.Readiness.Status != domain.PlanningBlocked {
+		t.Fatalf("no admissible route must produce a blocked packet: %+v", view.Readiness)
+	}
+	routeIssue := false
+	for _, issue := range view.Readiness.Issues {
+		if issue.Kind == domain.ReadinessWorkerUnavailable && issue.Route == domain.RouteChooseHarness {
+			routeIssue = true
+		}
+	}
+	if !routeIssue {
+		t.Fatalf("blocked packet carries no worker_unavailable/choose_harness issue: %+v", view.Readiness.Issues)
 	}
 	if persisted := len(store.plans[outcomeID]); persisted != 0 {
 		t.Fatalf("persisted %d plans", persisted)

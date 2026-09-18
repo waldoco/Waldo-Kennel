@@ -72,13 +72,17 @@ type PlanIntelligenceRequest struct {
 	CriterionAliases  map[string]domain.CriterionID
 	RepositoryContext RepositoryContextSnapshot
 	ReplanFeedback    string
+	// Fence is the evaluation fence the readiness envelope's planner-declared
+	// issues are keyed under. Its RoutingSnapshotID is blank at request time;
+	// the readiness evaluator re-keys every issue under the snapshot it reads.
+	Fence domain.PlanningReadinessFence
 }
 
 // PlanIntelligenceResponse is non-authoritative planning material. The control
 // plane still validates graph shape, derives authority, routes, and compiles the
 // canonical PlanRevision.
 type PlanIntelligenceResponse struct {
-	Proposal   domain.PlanDraftProposal
+	Readiness  domain.PlanningReadinessResult
 	Provenance IntelligenceProvenance
 }
 

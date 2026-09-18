@@ -100,13 +100,13 @@ var authorityClaimFields = []string{
 // fields fail as authority claims; trailing data after the envelope fails
 // closed. Planner-declared issues are stamped with their only legal source
 // and route, canonicalized, keyed under the evaluation fence, and validated
-// against the domain contract. WorkUnit keys and criterion aliases are fenced
-// to the evaluation's frozen draft keys and Contract aliases: the planner may
-// reference real units and criteria, never invent them.
+// against the domain contract. Criterion aliases are fenced to the Contract's
+// frozen aliases; work unit keys are fenced to the proposal just decoded, so
+// the planner may reference real units and criteria, never invent them - and
+// a no-proposal envelope admits no unit references at all.
 func parsePlanningReadinessReply(
 	data []byte,
 	fence domain.PlanningReadinessFence,
-	workUnitOrder []string,
 	criterionAliases []string,
 ) (domain.PlanningReadinessResult, error) {
 	invalid := func(format string, args ...any) (domain.PlanningReadinessResult, error) {
@@ -129,20 +129,36 @@ func parsePlanningReadinessReply(
 		return invalid("waldo returned trailing data after the readiness envelope (%s)", domain.ReadinessPayloadInvalid)
 	}
 
-	allowedUnits := make(map[string]bool, len(workUnitOrder))
-	for _, key := range workUnitOrder {
-		allowedUnits[key] = true
-	}
-	allowedAliases := make(map[string]bool, len(criterionAliases))
-	for _, alias := range criterionAliases {
-		allowedAliases[alias] = true
-	}
-
+	// The unit order and allowed unit keys derive from the proposal just
+	// decoded; nothing external to this envelope defines them.
+	var workUnitOrder []string
+	allowedUnits := map[string]bool{}
 	result := domain.PlanningReadinessResult{
 		Version: domain.PlanningReadinessEnvelopeVersion,
 		Status:  domain.PlanningReadinessStatus(reply.Status),
 		Message: strings.TrimSpace(reply.Message),
 	}
+	if reply.Proposal != nil {
+		proposal := planProposalFromReply(*reply.Proposal)
+		if err := proposal.Validate(); err != nil {
+			return invalid("waldo returned an invalid readiness proposal: %v (%s)", err, domain.ReadinessPayloadInvalid)
+		}
+		order, err := proposal.TopologicalOrder()
+		if err != nil {
+			return invalid("waldo returned an invalid readiness proposal: %v (%s)", err, domain.ReadinessPayloadInvalid)
+		}
+		workUnitOrder = order
+		for _, key := range order {
+			allowedUnits[key] = true
+		}
+		result.Proposal = &proposal
+	}
+
+	allowedAliases := make(map[string]bool, len(criterionAliases))
+	for _, alias := range criterionAliases {
+		allowedAliases[alias] = true
+	}
+
 	for _, raw := range reply.Issues {
 		issue := domain.PlanningReadinessIssue{
 			Kind:             domain.PlanningReadinessIssueKind(raw.Kind),
@@ -180,13 +196,6 @@ func parsePlanningReadinessReply(
 			})
 		}
 		result.Issues = append(result.Issues, issue)
-	}
-	if reply.Proposal != nil {
-		proposal := planProposalFromReply(*reply.Proposal)
-		if err := proposal.Validate(); err != nil {
-			return invalid("waldo returned an invalid readiness proposal: %v (%s)", err, domain.ReadinessPayloadInvalid)
-		}
-		result.Proposal = &proposal
 	}
 
 	canonical, err := domain.CanonicalizePlanningReadinessIssues(result.Issues, workUnitOrder)

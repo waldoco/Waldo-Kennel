@@ -43,45 +43,16 @@ type PlanningCandidate struct {
 	UnavailableDetail string
 }
 
-// PlanClarification is one material owner decision requested by the planner.
-type PlanClarification struct {
-	Question       string
-	Reason         string
-	Recommendation string
-	Alternatives   []string
-}
-
-// PlanContractChangeProposal recommends a Contract edit without applying it.
-type PlanContractChangeProposal struct {
-	Summary       string
-	ChangedFields []string
-}
-
-// PlanningResultKind identifies the planner's one typed response.
-type PlanningResultKind string
-
-// Supported planning-result kinds.
-const (
-	PlanningResultClarification  PlanningResultKind = "clarification"
-	PlanningResultContractChange PlanningResultKind = "contract_change_proposal"
-	PlanningResultPlanProposal   PlanningResultKind = "plan_proposal"
-)
-
-// PlanningResult carries one normalized, non-authoritative planner response.
-type PlanningResult struct {
-	Kind           PlanningResultKind
-	Message        string
-	Clarification  *PlanClarification
-	ContractChange *PlanContractChangeProposal
-	PlanProposal   *domain.PlanDraftProposal
-}
-
 // PlanningDiscussionRequest carries frozen lineage, context, and conversation.
 type PlanningDiscussionRequest struct {
 	Binding           domain.PlanningBinding
 	Outcome           domain.Outcome
 	Contract          domain.ContractRevision
 	CriterionAliases  map[string]domain.CriterionID
+	// Fence is the evaluation fence the readiness envelope's planner-declared
+	// issues are keyed under. Its RoutingSnapshotID is blank at request time;
+	// the readiness evaluator re-keys every issue under the snapshot it reads.
+	Fence domain.PlanningReadinessFence
 	RepositoryContext RepositoryContextSnapshot
 	// RepositoryToolUse comes from the PlanningSession's frozen, owner-approved
 	// repository_read grant. A repository packet alone never grants native tools.
@@ -90,9 +61,11 @@ type PlanningDiscussionRequest struct {
 	Finalize          bool
 }
 
-// PlanningDiscussionResponse pairs the typed result with actual provenance.
+// PlanningDiscussionResponse pairs the strict readiness envelope with actual
+// provenance. The result is non-authoritative: the control plane evaluates
+// every claim before any Plan exists.
 type PlanningDiscussionResponse struct {
-	Result     PlanningResult
+	Result     domain.PlanningReadinessResult
 	Provenance IntelligenceProvenance
 }
 
@@ -113,6 +86,7 @@ type PlanningSessionStore interface {
 	AppendPlanningOwnerTurn(context.Context, domain.PlanningSessionID, int64, domain.PlanningTurn) (domain.PlanningSession, domain.PlanningTurn, bool, error)
 	AppendPlanningProviderTurn(context.Context, domain.PlanningSessionID, int64, domain.PlanningTurn, domain.IntelligenceProviderID, string, string) (domain.PlanningSession, error)
 	SetPlanningSessionFailure(context.Context, domain.PlanningSessionID, int64, string, string) (domain.PlanningSession, error)
+	SetPlanningSessionWaitingSystem(context.Context, domain.PlanningSessionID, int64) (domain.PlanningSession, error)
 	ClosePlanningSession(context.Context, domain.PlanningSessionID, int64, domain.PlanningSessionStatus) (domain.PlanningSession, error)
 	LinkPlanningSessionPlan(context.Context, domain.PlanningSessionID, int64, domain.PlanRevisionID, domain.IntelligenceRunID) (domain.PlanningSession, error)
 	GetPlanRevisionByPlanningSession(context.Context, domain.OutcomeID, domain.PlanningSessionID) (domain.PlanRevision, bool, error)

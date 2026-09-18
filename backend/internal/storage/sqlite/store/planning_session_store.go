@@ -264,6 +264,15 @@ func (s *Store) SetPlanningSessionFailure(ctx context.Context, sessionID domain.
 	})
 }
 
+// SetPlanningSessionWaitingSystem marks an active session blocked on setup,
+// harness, or Contract action routed from a readiness packet - never provider
+// thinking and never an ordinary owner answer.
+func (s *Store) SetPlanningSessionWaitingSystem(ctx context.Context, sessionID domain.PlanningSessionID, expectedRevision int64) (domain.PlanningSession, error) {
+	return s.updatePlanningSession(ctx, sessionID, expectedRevision, func(q *gen.Queries, now time.Time) (int64, error) {
+		return q.SetPlanningSessionWaitingSystem(ctx, gen.SetPlanningSessionWaitingSystemParams{UpdatedAt: now, ID: sessionID.String(), Revision: expectedRevision})
+	})
+}
+
 // ClosePlanningSession records cancellation or Contract supersession.
 func (s *Store) ClosePlanningSession(ctx context.Context, sessionID domain.PlanningSessionID, expectedRevision int64, status domain.PlanningSessionStatus) (domain.PlanningSession, error) {
 	if status != domain.PlanningSessionCancelled && status != domain.PlanningSessionSuperseded {

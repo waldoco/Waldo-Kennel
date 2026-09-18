@@ -158,6 +158,9 @@ func migrate(db *sql.DB) error {
 	if err := prepareInteractivePlanningMigration(db); err != nil {
 		return fmt.Errorf("prepare interactive-planning migration: %w", err)
 	}
+	if err := preparePlanningReadinessMigration(db); err != nil {
+		return fmt.Errorf("prepare planning-readiness migration: %w", err)
+	}
 	if err := prepareWorkUnitPositionMigration(db); err != nil {
 		return fmt.Errorf("prepare work-unit-position migration: %w", err)
 	}
@@ -326,6 +329,46 @@ SELECT COALESCE((
 	return nil
 }
 
+// preparePlanningReadinessMigration lets a degraded profile whose planning
+// tables were never physically installed (0133 marked applied by
+// prepareInteractivePlanningMigration) complete goose without rebuilding
+// absent tables. The migration is recorded as applied and
+// reconcileInteractivePlanningSchema installs the physical shape with the
+// widened CHECKs once every dependency actually exists.
+func preparePlanningReadinessMigration(db *sql.DB) error {
+	var gooseTable int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'goose_db_version'`,
+	).Scan(&gooseTable); err != nil {
+		return err
+	}
+	if gooseTable == 0 {
+		return nil
+	}
+	var applied int
+	if err := db.QueryRow(`
+SELECT COALESCE((
+    SELECT is_applied FROM goose_db_version
+    WHERE version_id = 157 ORDER BY id DESC LIMIT 1
+), 0)`).Scan(&applied); err != nil {
+		return err
+	}
+	if applied != 0 {
+		return nil
+	}
+	var sessionsPresent int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'planning_sessions'`,
+	).Scan(&sessionsPresent); err != nil {
+		return err
+	}
+	if sessionsPresent == 0 {
+		_, err := db.Exec(`INSERT INTO goose_db_version (version_id, is_applied) VALUES (157, 1)`)
+		return err
+	}
+	return nil
+}
+
 // preparePlanReviewContextMigration lets a degraded profile with burned
 // Outcome migration versions complete goose without attempting ALTER TABLE on
 // an absent plan_revisions table. reconcilePlanReviewSchema below installs the
@@ -453,7 +496,7 @@ CREATE TABLE IF NOT EXISTS planning_sessions (
     revision                  INTEGER NOT NULL CHECK (revision >= 1),
     latest_turn_sequence      INTEGER NOT NULL DEFAULT 0 CHECK (latest_turn_sequence >= 0),
     status                    TEXT NOT NULL CHECK (status IN ('active','proposal_ready','superseded','cancelled')),
-    waiting_on                TEXT NOT NULL CHECK (waiting_on IN ('owner','provider','none')),
+    waiting_on                TEXT NOT NULL CHECK (waiting_on IN ('owner','provider','system','none')),
     mode                      TEXT NOT NULL CHECK (mode IN ('direct_api','native_harness')),
     requested_provider        TEXT NOT NULL,
     model_selection           TEXT NOT NULL CHECK (model_selection IN ('provider_default','explicit')),
@@ -493,7 +536,7 @@ CREATE TABLE IF NOT EXISTS planning_turns (
     sequence                INTEGER NOT NULL CHECK (sequence >= 1),
     reply_to_turn_id        TEXT REFERENCES planning_turns (id),
     role                    TEXT NOT NULL CHECK (role IN ('owner','planner')),
-    kind                    TEXT NOT NULL CHECK (kind IN ('message','finalize_request','clarification','contract_change_proposal','plan_proposal')),
+    kind                    TEXT NOT NULL CHECK (kind IN ('message','finalize_request','clarification','contract_change_proposal','plan_proposal','readiness_blocked')),
     text                    TEXT NOT NULL,
     structured_payload_json TEXT CHECK (structured_payload_json IS NULL OR json_valid(structured_payload_json)),
     intelligence_run_id     TEXT REFERENCES intelligence_runs (id),
@@ -501,7 +544,7 @@ CREATE TABLE IF NOT EXISTS planning_turns (
     request_fingerprint     TEXT CHECK (request_fingerprint IS NULL OR (length(request_fingerprint) = 64 AND request_fingerprint NOT GLOB '*[^0-9a-f]*')),
     created_at              TIMESTAMP NOT NULL,
     CHECK ((role = 'owner' AND reply_to_turn_id IS NULL AND intelligence_run_id IS NULL AND request_key IS NOT NULL AND request_fingerprint IS NOT NULL AND kind IN ('message','finalize_request'))
-        OR (role = 'planner' AND reply_to_turn_id IS NOT NULL AND intelligence_run_id IS NOT NULL AND request_key IS NULL AND request_fingerprint IS NULL AND kind IN ('clarification','contract_change_proposal','plan_proposal'))),
+        OR (role = 'planner' AND reply_to_turn_id IS NOT NULL AND intelligence_run_id IS NOT NULL AND request_key IS NULL AND request_fingerprint IS NULL AND kind IN ('clarification','contract_change_proposal','plan_proposal','readiness_blocked'))),
     UNIQUE (planning_session_id, sequence),
     UNIQUE (planning_session_id, request_key)
 );

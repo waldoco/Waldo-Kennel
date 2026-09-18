@@ -91,6 +91,6 @@ func TestPlanSchemaIsStrictModeValid(t *testing.T) {
 	assertStrictSchema(t, "planSchema", planSchema([]string{"C1"}))
 }
 
-func TestPlanningDiscussionSchemaIsStrictModeValid(t *testing.T) {
-	assertStrictSchema(t, "planningDiscussionSchema", planningDiscussionSchema([]string{"C1"}))
+func TestPlanningReadinessSchemaIsStrictModeValid(t *testing.T) {
+	assertStrictSchema(t, "planningReadinessSchema", planningReadinessSchema([]string{"C1"}))
 }

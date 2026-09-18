@@ -19,6 +19,10 @@ import (
 type PlanView struct {
 	Outcome domain.Outcome
 	Plan    domain.PlanRevision
+	// Readiness carries the typed readiness packet when planning stopped
+	// before a Plan existed (needs_context or blocked). It is nil whenever a
+	// Plan was proposed; a non-ready result never carries a Plan.
+	Readiness *domain.PlanningReadinessResult
 }
 
 // AuthorizedPlanView is the projection of an owner-approved plan.
@@ -122,11 +126,22 @@ func (s *Service) proposePlan(ctx context.Context, outcomeID domain.OutcomeID, e
 			"Planning cannot start: the configured admission policy is invalid",
 			map[string]any{"reasons": []domain.AdmissionReasonCode{domain.AdmissionPolicyInvalid}})
 	}
-	draft, err := s.draftPlanWithProvenance(ctx, projectID, outcomeRecord, revision, aliases, replanFeedback)
+	envelope, fence, err := s.draftPlanWithProvenance(ctx, projectID, outcomeRecord, revision, aliases, replanFeedback)
 	if err != nil {
 		return PlanView{}, err
 	}
-	units, routingDecisions, proposalSnapshot, err := s.compileAndRoutePlan(ctx, projectID, revision, draft, aliases, routingPreference)
+	// S3: every one-shot proposal passes the readiness evaluator before any
+	// immutable Plan exists. A non-ready result returns the typed packet; no
+	// PlanRevision is written and no admission verdict is minted.
+	evaluated, snapshot, err := s.EvaluatePlanReadiness(ctx, fence, projectID, revision, routingPreference, envelope.Proposal, envelope.Issues, envelope.Message)
+	if err != nil {
+		return PlanView{}, err
+	}
+	if evaluated.Status != domain.PlanningReady {
+		return PlanView{Outcome: outcomeRecord, Readiness: &evaluated}, nil
+	}
+	draft := *evaluated.Proposal
+	units, routingDecisions, proposalSnapshot, err := s.compileAndRoutePlan(ctx, projectID, revision, draft, aliases, routingPreference, snapshot)
 	if err != nil {
 		return PlanView{}, err
 	}
@@ -213,6 +228,7 @@ func (s *Service) compileAndRoutePlan(
 	draft domain.PlanDraftProposal,
 	aliases map[string]domain.CriterionID,
 	preference *domain.RoutingPreference,
+	snapshot ports.RoutingInventorySnapshot,
 ) ([]domain.WorkUnit, []domain.WorkUnitRoutingDecision, ports.RoutingInventorySnapshot, error) {
 	if err := draft.Validate(); err != nil {
 		code := planDraftRefusalCode(err)
@@ -304,8 +320,10 @@ func (s *Service) compileAndRoutePlan(
 		units = append(units, unit)
 	}
 
-	snapshot, err := s.routing.RoutingSnapshot(ctx, projectID, preference)
-	if err != nil {
+	// The caller supplies exactly the snapshot the readiness evaluator bound
+	// into the packet fence: one evaluation, one inventory read, no drift
+	// between the dry-run and the compiled routing decisions.
+	if err := validateRoutingSnapshotIdentity(snapshot); err != nil {
 		return nil, nil, ports.RoutingInventorySnapshot{}, err
 	}
 	decisions := make([]domain.WorkUnitRoutingDecision, 0, len(units))
