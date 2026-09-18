@@ -18,6 +18,7 @@ import {
 	X,
 	XCircle,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 import { useAgentsQuery } from "../hooks/useAgentsQuery";
 import { useSettings, useUpdateReasoning } from "../hooks/useSettings";
@@ -49,6 +50,7 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 	const closeOnboarding = useUiStore((state) => state.closeOnboarding);
 	const [stepIndex, setStepIndex] = useState(0);
 	const contentRef = useRef<HTMLDivElement>(null);
+	const { t } = useTranslation();
 
 	useEffect(() => {
 		if (!hasCompleted && daemonReady) openOnboarding();
@@ -90,13 +92,13 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 								{TITLES[step]}
 							</span>
 							<span className="shrink-0 text-2xs text-passive">
-								· {stepIndex + 1} of {STEPS.length}
+								{t("onboarding.stepCount", { current: stepIndex + 1, total: STEPS.length })}
 							</span>
 						</Dialog.Title>
 						<div className="flex items-center gap-3">
 							<StepPager current={stepIndex} total={STEPS.length} />
 							<Dialog.Close
-								aria-label="Close setup"
+								aria-label={t("onboarding.close")}
 								className="grid size-control-chip place-items-center rounded-md text-passive transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
 							>
 								<X aria-hidden="true" className="size-icon-md" />
@@ -122,10 +124,10 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 							size="sm"
 							variant="ghost"
 						>
-							<ArrowLeft aria-hidden="true" className="size-icon-sm" /> Back
+							<ArrowLeft aria-hidden="true" className="size-icon-sm" /> {t("onboarding.back")}
 						</Button>
 						<Button onClick={closeOnboarding} size="sm" variant="ghost">
-							Skip tour
+							{t("onboarding.skip")}
 						</Button>
 						<Button
 							className="gap-1.5"
@@ -155,9 +157,10 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 }
 
 function StepPager({ current, total }: { current: number; total: number }) {
+	const { t } = useTranslation();
 	return (
 		<div
-			aria-label={`Step ${current + 1} of ${total}`}
+			aria-label={t("onboarding.progressAria", { current: current + 1, total })}
 			aria-valuemax={total}
 			aria-valuemin={1}
 			aria-valuenow={current + 1}
@@ -209,6 +212,7 @@ function Heading({
 }
 
 function WelcomeStep() {
+	const { t } = useTranslation();
 	return (
 		<div className="flex flex-col items-center gap-6 text-center">
 			<div className="grid size-14 place-items-center rounded-2xl hairline border-border bg-popover text-foreground shadow-sm">
@@ -220,32 +224,31 @@ function WelcomeStep() {
 					data-onboarding-step-heading
 					tabIndex={-1}
 				>
-					Bring an Outcome. Keep the final say.
+					{t("onboarding.tour.welcome.heading")}
 				</h2>
 				<p className="mx-auto max-w-[54ch] text-xs leading-body text-foreground/60">
-					Kennel turns a goal into a reviewed Contract, an approved Plan, and
-					visible work. Nothing runs until you authorize it.
+					{t("onboarding.tour.welcome.body")}
 				</p>
 			</div>
 			<div className="grid w-full grid-cols-3 gap-2 text-left">
 				<WelcomeCard
 					icon={<ShieldCheck />}
-					title="Governed"
+					title={t("onboarding.tour.welcome.governedTitle")}
 					body="Authority stays inside the Contract you approve."
 				/>
 				<WelcomeCard
 					icon={<GitBranch />}
-					title="Traceable"
+					title={t("onboarding.tour.welcome.traceableTitle")}
 					body="Every WorkUnit keeps its plan and evidence lineage."
 				/>
 				<WelcomeCard
 					icon={<FileCheck2 />}
-					title="Yours to accept"
+					title={t("onboarding.tour.welcome.acceptTitle")}
 					body="Agent completion never replaces your decision."
 				/>
 			</div>
 			<p className="text-2xs text-passive">
-				About two minutes. You can change provider settings later.
+				{t("onboarding.tour.welcome.timeHint")}
 			</p>
 		</div>
 	);
@@ -271,6 +274,7 @@ function WelcomeCard({
 }
 
 function SystemStep() {
+	const { t } = useTranslation();
 	const [installState, setInstallState] = useState<
 		"idle" | "installing" | "installed" | "failed" | "cancelled"
 	>("idle");
@@ -298,12 +302,12 @@ function SystemStep() {
 						className="size-icon-base text-muted-foreground"
 					/>
 				}
-				title="Check the local runtime"
+				title={t("onboarding.tour.system.title")}
 				body="Kennel runs coding work on your machine. The daemon is ready. macOS and Linux sessions also need tmux; Windows uses its native terminal runtime."
 			/>
 			<StatusRow
 				state="ready"
-				title="Kennel daemon"
+				title={t("onboarding.tour.system.daemonTitle")}
 				body="Running and responding on this Mac."
 			/>
 			<StatusRow
@@ -314,7 +318,7 @@ function SystemStep() {
 							? "error"
 							: "unknown"
 				}
-				title="Session runtime"
+				title={t("onboarding.tour.system.runtimeTitle")}
 				body={
 					installState === "installed"
 						? "Homebrew finished installing tmux. Kennel will verify the session runtime when the first session starts."
@@ -333,7 +337,7 @@ function SystemStep() {
 							{installState === "installing" ? (
 								<>
 									<Loader2 className="mr-1.5 size-icon-sm animate-spin" />
-									Installing…
+									{t("onboarding.tour.system.installing")}
 								</>
 							) : (
 								"Install tmux with Homebrew"
@@ -344,13 +348,11 @@ function SystemStep() {
 			/>
 			{installState === "cancelled" ? (
 				<p className="text-2xs text-passive" role="status">
-					Installation was cancelled. No changes were made.
+					{t("onboarding.tour.system.cancelled")}
 				</p>
 			) : null}
 			<p className="rounded-md bg-muted/45 px-3 py-2.5 text-2xs leading-body text-passive">
-				Git and the selected provider are checked by the daemon when a Project
-				is registered. Missing prerequisites stop before work starts and stay
-				recoverable.
+				{t("onboarding.tour.system.prereqNote")}
 			</p>
 		</div>
 	);
@@ -402,6 +404,7 @@ function StatusRow({
 }
 
 function CodexStep() {
+	const { t } = useTranslation();
 	const agents = useAgentsQuery();
 	const { settings } = useSettings();
 	const { update, saving } = useUpdateReasoning();
@@ -443,18 +446,18 @@ function CodexStep() {
 						className="size-icon-base text-muted-foreground"
 					/>
 				}
-				title="Connect your first provider"
+				title={t("onboarding.tour.codex.title")}
 				body="Codex can reason about Contracts and Plans, then carry out approved WorkUnits inside the Project you choose."
 			/>
 			{agents.isPending ? (
 				<div className="flex items-center gap-2 rounded-lg hairline border-border p-4 text-xs text-passive">
 					<Loader2 className="size-icon-sm animate-spin" />
-					Looking for Codex…
+					{t("onboarding.tour.codex.looking")}
 				</div>
 			) : agents.isError ? (
 				<StatusRow
 					state="error"
-					title="Provider check failed"
+					title={t("onboarding.tour.codex.checkFailedTitle")}
 					body="The daemon could not read the provider inventory."
 					action={
 						<Button
@@ -463,14 +466,14 @@ function CodexStep() {
 							variant="outline"
 						>
 							<RefreshCw className="mr-1.5 size-icon-sm" />
-							Try again
+							{t("onboarding.tour.codex.tryAgain")}
 						</Button>
 					}
 				/>
 			) : !codex ? (
 				<StatusRow
 					state="unknown"
-					title="Codex not found"
+					title={t("onboarding.tour.codex.notFoundTitle")}
 					body="Install and sign in to Codex, then ask Kennel to check again. No provider is selected automatically."
 					action={
 						<Button
@@ -479,7 +482,7 @@ function CodexStep() {
 							variant="outline"
 						>
 							<RefreshCw className="mr-1.5 size-icon-sm" />
-							Check again
+							{t("onboarding.tour.codex.checkAgain")}
 						</Button>
 					}
 				/>
@@ -498,7 +501,7 @@ function CodexStep() {
 					settings?.reasoning.provider === "codex" ? (
 						<span className="flex items-center gap-1 text-2xs text-status-ready">
 							<Check className="size-icon-sm" />
-							Selected
+							{t("onboarding.tour.codex.selected")}
 						</span>
 					) : (
 						<Button
@@ -521,15 +524,14 @@ function CodexStep() {
 				</p>
 			) : null}
 			<p className="text-2xs leading-body text-passive">
-				Provider authority is Project-scoped. After you add a Project, Kennel
-				asks for native confirmation before the first pairing. This tour does
-				not bypass that approval.
+				{t("onboarding.tour.codex.authorityNote")}
 			</p>
 		</div>
 	);
 }
 
 function JourneyStep() {
+	const { t } = useTranslation();
 	const stages = [
 		["1", "Project", "Choose the repository or workspace that holds the work."],
 		["2", "Outcome", "Describe the result you want, not a list of tasks."],
@@ -550,7 +552,7 @@ function JourneyStep() {
 						className="size-icon-base text-muted-foreground"
 					/>
 				}
-				title="One path from intent to proof"
+				title={t("onboarding.tour.journey.title")}
 				body="Kennel keeps each decision in its own place, so setup never turns into silent execution."
 			/>
 			<ol className="relative flex flex-col gap-1 before:absolute before:bottom-5 before:left-[17px] before:top-5 before:w-px before:bg-border">
@@ -576,6 +578,7 @@ function JourneyStep() {
 }
 
 function ProjectStep() {
+	const { t } = useTranslation();
 	const requestCreateProject = useUiStore(
 		(state) => state.requestCreateProject,
 	);
@@ -587,16 +590,16 @@ function ProjectStep() {
 			</div>
 			<Heading
 				icon={null}
-				title="Start with a Project"
+				title={t("onboarding.tour.project.title")}
 				body="Choose one repository or a workspace of repositories. Registering it records context and provider preferences; it does not start agent work."
 			/>
 			<div className="w-full rounded-lg hairline border-border bg-popover/55 p-4 text-left">
-				<p className="text-xs font-medium">Next, Kennel will guide you to:</p>
+				<p className="text-xs font-medium">{t("onboarding.tour.project.guideIntro")}</p>
 				<ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-2xs text-passive">
-					<li>• review repository readiness</li>
-					<li>• confirm Codex pairing</li>
-					<li>• describe your first Outcome</li>
-					<li>• approve Contract and Plan</li>
+					<li>{t("onboarding.tour.project.guideReview")}</li>
+					<li>{t("onboarding.tour.project.guidePairing")}</li>
+					<li>{t("onboarding.tour.project.guideOutcome")}</li>
+					<li>{t("onboarding.tour.project.guideApprove")}</li>
 				</ul>
 			</div>
 			<Button
@@ -609,10 +612,10 @@ function ProjectStep() {
 				variant="primary"
 			>
 				<FolderPlus className="size-icon-sm" />
-				Choose a Project folder
+				{t("onboarding.tour.project.chooseFolder")}
 			</Button>
 			<p className="text-2xs text-passive">
-				You can reopen this tour from Settings.
+				{t("onboarding.tour.project.reopenHint")}
 			</p>
 		</div>
 	);
