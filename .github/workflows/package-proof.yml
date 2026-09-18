@@ -1,0 +1,95 @@
+# Maintainer-dispatched, fixed macOS package proof on the self-hosted runner.
+#
+# SECURITY BOUNDARY: dispatch permission plus push access to this repository is
+# code execution on the owner's Mac. The repository-writer actor set is currently
+# the owner alone. The ancestry gate below limits execution to a full commit SHA
+# already contained by protected outcome-loop. The verifier itself comes from a
+# separate trusted checkout of that protected branch and runs before candidate
+# files. No input becomes a command or prompt.
+#
+# Future hardening options, deliberately out of scope here: a GitHub Environment
+# approval gate and an ephemeral-VM runner. General remote execution is deferred.
+name: macOS package proof on self-hosted runner
+run-name: "package proof @ ${{ inputs.commit_sha }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Full 40-hex commit SHA already contained by protected outcome-loop"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-package-proof-single-runner
+  cancel-in-progress: false
+
+jobs:
+  package-proof:
+    name: fixed packaged-DMG proof
+    runs-on: [self-hosted, macOS, ARM64, codex]
+    timeout-minutes: 60
+    steps:
+      - name: Check out protected trust anchor
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: outcome-loop
+          fetch-depth: 0
+          persist-credentials: false
+          path: trusted
+
+      - name: Verify requested commit is protected history
+        id: verify
+        shell: bash
+        working-directory: trusted
+        env:
+          REQUESTED_COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          verified="$(./scripts/ci/verify-package-proof-ref.sh "$REQUESTED_COMMIT_SHA")"
+          printf 'commit_sha=%s\n' "$verified" >> "$GITHUB_OUTPUT"
+
+      - name: Check out verified package source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.verify.outputs.commit_sha }}
+          persist-credentials: false
+          path: candidate
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: candidate/backend/go.mod
+          cache-dependency-path: candidate/backend/go.sum
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: candidate/.nvmrc
+
+      - name: Build DMG and run fixed mounted-image smoke proof
+        shell: bash
+        working-directory: candidate
+        env:
+          KENNEL_RELEASE_REPO: ${{ github.repository }}
+        run: ./scripts/ci/package-proof.sh
+
+      - name: Upload bounded package diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-proof-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: candidate/artifacts/package-proof/diagnostic.log
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload DMG and SHA-256
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kennel-dmg-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            candidate/artifacts/package-proof/*.dmg
+            candidate/artifacts/package-proof/*.dmg.sha256
+          if-no-files-found: error
+          retention-days: 2
