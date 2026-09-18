@@ -153,20 +153,24 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 	}
 	appendTerminalCompatibilityFlags(&providerArgs)
 	permission := cfg.Permissions
-	var execArgs []string
+	var envPrefix []string
 	if cfg.ExecutionPolicy != nil {
 		if err := p.ValidateExecutionPolicy(ctx, cfg.Config, *cfg.ExecutionPolicy); err != nil {
 			return nil, err
 		}
-		governedArgs, err := governedRepositoryArgs(*cfg.ExecutionPolicy, cfg.WorkspacePath, cfg.DataDir, cfg.SessionID)
+		governedEnv, governedArgs, err := governedRepositoryArgs(*cfg.ExecutionPolicy, cfg.WorkspacePath, cfg.DataDir, cfg.SessionID)
 		if err != nil {
 			return nil, err
 		}
+		envPrefix = governedEnv
 		providerArgs = append(providerArgs, governedArgs...)
-		execArgs = []string{"--ignore-user-config"}
 		permission = ports.PermissionModeAcceptEdits
 	}
-	return agentruntime.BuildLaunchCommand(agentruntime.LaunchConfig{
+	// A governed Attempt is a persistent interactive Codex session, never a
+	// one-shot exec: the launch-cut proof steers the same live pane across a
+	// daemon restart, and completion plus approved checks reconcile on real
+	// session termination (bbcb3607's exit path, re-scoped to session end).
+	cmd, err = agentruntime.BuildLaunchCommand(agentruntime.LaunchConfig{
 		Harness:          agentruntime.HarnessCodex,
 		Binary:           binary,
 		WorkspacePath:    cfg.WorkspacePath,
@@ -176,9 +180,11 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 		SystemPromptFile: cfg.SystemPromptFile,
 		Permission:       agentruntime.PermissionPolicy(permission),
 		ProviderArgs:     providerArgs,
-		ExecArgs:         execArgs,
-		OneShot:          cfg.ExecutionPolicy != nil,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return append(envPrefix, cmd...), nil
 }
 
 // GetRestoreCommand rebuilds the argv that continues an existing Codex
@@ -207,20 +213,20 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	}
 	appendTerminalCompatibilityFlags(&providerArgs)
 	permission := cfg.Permissions
-	var execArgs []string
+	var envPrefix []string
 	if cfg.ExecutionPolicy != nil {
 		if err := p.ValidateExecutionPolicy(ctx, cfg.Config, *cfg.ExecutionPolicy); err != nil {
 			return nil, false, err
 		}
-		governedArgs, err := governedRepositoryArgs(*cfg.ExecutionPolicy, cfg.Session.WorkspacePath, cfg.DataDir, cfg.Session.ID)
+		governedEnv, governedArgs, err := governedRepositoryArgs(*cfg.ExecutionPolicy, cfg.Session.WorkspacePath, cfg.DataDir, cfg.Session.ID)
 		if err != nil {
 			return nil, false, err
 		}
+		envPrefix = governedEnv
 		providerArgs = append(providerArgs, governedArgs...)
-		execArgs = []string{"--ignore-user-config"}
 		permission = ports.PermissionModeAcceptEdits
 	}
-	return agentruntime.BuildRestoreCommand(agentruntime.RestoreConfig{
+	cmd, ok, err = agentruntime.BuildRestoreCommand(agentruntime.RestoreConfig{
 		Harness:          agentruntime.HarnessCodex,
 		Binary:           binary,
 		SessionID:        cfg.Session.ID,
@@ -232,32 +238,38 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 		SystemPromptFile: cfg.SystemPromptFile,
 		Permission:       agentruntime.PermissionPolicy(permission),
 		ProviderArgs:     providerArgs,
-		ExecArgs:         execArgs,
-		OneShot:          cfg.ExecutionPolicy != nil,
 	})
+	if err != nil {
+		return nil, false, err
+	}
+	return append(envPrefix, cmd...), ok, nil
 }
 
-func governedRepositoryArgs(policy domain.AttemptExecutionPolicy, workspace, dataDir, sessionID string) ([]string, error) {
-	if _, err := codexpolicy.SandboxFor(policy); err != nil {
-		return nil, err
+func governedRepositoryArgs(policy domain.AttemptExecutionPolicy, workspace, dataDir, sessionID string) (env []string, args []string, err error) {
+	sandbox, err := codexpolicy.SandboxFor(policy)
+	if err != nil {
+		return nil, nil, err
 	}
 	canonicalWorkspace, err := filepath.EvalSymlinks(filepath.Clean(strings.TrimSpace(workspace)))
 	if err != nil || !filepath.IsAbs(canonicalWorkspace) {
-		return nil, fmt.Errorf("codex governed repository tools require an existing absolute workspace path")
+		return nil, nil, fmt.Errorf("codex governed repository tools require an existing absolute workspace path")
 	}
 	if err := policy.ValidateWorkspaceRoot(canonicalWorkspace); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(dataDir) == "" || !filepath.IsAbs(filepath.Clean(dataDir)) {
-		return nil, fmt.Errorf("codex governed repository tools require session identity and an absolute Kennel data directory")
+	if strings.TrimSpace(sessionID) == "" || !filepath.IsAbs(filepath.Clean(dataDir)) {
+		return nil, nil, fmt.Errorf("codex governed repository tools require session identity and an absolute Kennel data directory")
+	}
+	if sessionID != filepath.Base(sessionID) || sessionID == "." || sessionID == ".." {
+		return nil, nil, fmt.Errorf("codex governed repository tools require a path-safe session identity, got %q", sessionID)
 	}
 	binary, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("resolve Kennel executable: %w", err)
+		return nil, nil, fmt.Errorf("resolve Kennel executable: %w", err)
 	}
 	raw, err := json.Marshal(policy)
 	if err != nil {
-		return nil, fmt.Errorf("marshal governed repository policy: %w", err)
+		return nil, nil, fmt.Errorf("marshal governed repository policy: %w", err)
 	}
 	encoded := base64.RawURLEncoding.EncodeToString(raw)
 	enabledTools := []string{"list_repository", "read_text_file"}
@@ -267,23 +279,95 @@ func governedRepositoryArgs(policy domain.AttemptExecutionPolicy, workspace, dat
 	// Approved checks are daemon-owned post-termination work. Do not expose a
 	// provider-side executor: it would race the durable Attempt/check/artifact
 	// reservation path and could run the same exact check twice.
+	home := filepath.Join(dataDir, "codex-home", sessionID)
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return nil, nil, fmt.Errorf("provision governed Codex home: %w", err)
+	}
+	if err := seedCodexAuth(home); err != nil {
+		return nil, nil, err
+	}
+	if err := writeGovernedCodexConfig(home, sandbox, binary, canonicalWorkspace, encoded, filepath.Clean(dataDir), sessionID, enabledTools); err != nil {
+		return nil, nil, err
+	}
+	args = []string{
+		"-c", "web_search=\"disabled\"",
+	}
+	// Feature toggles stay CLI flags: unlike `mcp_servers`, scalar and list
+	// overrides apply correctly through `-c`. Native effect tools stay disabled
+	// for read-only policies; an exec-capable policy maps to the workspace-write
+	// sandbox, under which Codex's confined shell is the blessed way to run the
+	// approved local commands - the sandbox, not tool removal, is the boundary.
+	disabled := []string{"plugins", "apps", "remote_plugin", "browser_use", "computer_use", "standalone_web_search", "multi_agent"}
+	if sandbox != "workspace-write" {
+		disabled = append([]string{"shell_tool", "unified_exec"}, disabled...)
+	}
+	for _, feature := range disabled {
+		args = append(args, "--disable", feature)
+	}
+	return []string{"env", "CODEX_HOME=" + home}, args, nil
+}
+
+// writeGovernedCodexConfig generates the session-scoped config.toml for a
+// governed Attempt. The governed MCP server MUST be delivered this way: Codex
+// silently drops `mcp_servers` inline-table overrides passed via `-c`
+// (https://github.com/openai/codex/issues/16045), which previously left
+// governed sessions with no repository tools at all.
+func writeGovernedCodexConfig(home, sandbox, binary, canonicalWorkspace, encodedPolicy, dataDir, sessionID string, enabledTools []string) error {
+	var b strings.Builder
+	b.WriteString("sandbox_mode = " + strconv.Quote(sandbox) + "\n")
+	if sandbox == "workspace-write" {
+		// Nothing writable outside the worktree, no network: the confined
+		// shell can run approved local commands and nothing else.
+		b.WriteString("\n[sandbox_workspace_write]\nnetwork_access = false\nwritable_roots = []\n")
+	}
+	mcpArgs := []string{"governed-tools", "--workspace", canonicalWorkspace, "--policy", encodedPolicy, "--data-dir", dataDir, "--session", sessionID}
+	quotedArgs := make([]string, 0, len(mcpArgs))
+	for _, arg := range mcpArgs {
+		quotedArgs = append(quotedArgs, strconv.Quote(arg))
+	}
 	quotedTools := make([]string, 0, len(enabledTools))
 	for _, name := range enabledTools {
 		quotedTools = append(quotedTools, strconv.Quote(name))
 	}
-	mcp := "mcp_servers={kennel_governed={command=" + strconv.Quote(binary) + ",args=[" + strconv.Quote("governed-tools") + "," + strconv.Quote("--workspace") + "," + strconv.Quote(canonicalWorkspace) + "," + strconv.Quote("--policy") + "," + strconv.Quote(encoded) + "," + strconv.Quote("--data-dir") + "," + strconv.Quote(filepath.Clean(dataDir)) + "," + strconv.Quote("--session") + "," + strconv.Quote(sessionID) + "],required=true,enabled_tools=[" + strings.Join(quotedTools, ",") + "],default_tools_approval_mode=\"approve\"}}"
-	args := []string{
-		// Built-in or newly introduced native effect tools remain unable to
-		// mutate the repository. Only the separately governed MCP process owns
-		// the frozen write/check authority.
-		"--sandbox", "read-only",
-		"-c", "web_search=\"disabled\"",
-		"-c", mcp,
+	b.WriteString("\n[mcp_servers.kennel_governed]\n")
+	b.WriteString("command = " + strconv.Quote(binary) + "\n")
+	b.WriteString("args = [" + strings.Join(quotedArgs, ", ") + "]\n")
+	b.WriteString("required = true\n")
+	b.WriteString("enabled_tools = [" + strings.Join(quotedTools, ", ") + "]\n")
+	b.WriteString("default_tools_approval_mode = \"approve\"\n")
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(b.String()), 0o600); err != nil {
+		return fmt.Errorf("write governed Codex config: %w", err)
 	}
-	for _, feature := range []string{"shell_tool", "unified_exec", "plugins", "apps", "remote_plugin", "browser_use", "computer_use", "standalone_web_search", "multi_agent"} {
-		args = append(args, "--disable", feature)
+	return nil
+}
+
+// seedCodexAuth copies the user's Codex credentials into the session-scoped
+// home so the governed session can sign in without inheriting the user's
+// config.toml (which could carry ungoverned MCP servers or settings). A
+// missing login is left for Codex itself to report honestly at launch.
+func seedCodexAuth(home string) error {
+	source := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if source == "" {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolve Codex auth home: %w", err)
+		}
+		source = filepath.Join(userHome, ".codex")
 	}
-	return args, nil
+	if filepath.Clean(source) == filepath.Clean(home) {
+		return nil
+	}
+	auth, err := os.ReadFile(filepath.Join(source, "auth.json"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read Codex auth: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "auth.json"), auth, 0o600); err != nil {
+		return fmt.Errorf("seed governed Codex auth: %w", err)
+	}
+	return nil
 }
 
 // SessionInfo surfaces Codex hook-derived metadata. Metadata is intentionally

@@ -596,6 +596,22 @@ func TestGetLaunchCommandMapsApprovalModes(t *testing.T) {
 	}
 }
 
+
+// governedConfig reads the generated config.toml from the CODEX_HOME carried
+// in a governed launch/restore argv ("env", "CODEX_HOME=<dir>", ...).
+func governedConfig(t *testing.T, cmd []string) string {
+	t.Helper()
+	if len(cmd) < 2 || cmd[0] != "env" || !strings.HasPrefix(cmd[1], "CODEX_HOME=") {
+		t.Fatalf("governed command missing CODEX_HOME env prefix: %#v", cmd)
+	}
+	home := strings.TrimPrefix(cmd[1], "CODEX_HOME=")
+	raw, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatalf("governed config.toml: %v", err)
+	}
+	return string(raw)
+}
+
 func TestGetLaunchCommandMapsAttemptExecutionPolicy(t *testing.T) {
 	plugin := &Plugin{resolvedBinary: "codex"}
 	policy := domain.AttemptExecutionPolicy{
@@ -619,14 +635,27 @@ func TestGetLaunchCommandMapsAttemptExecutionPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsSubsequence(cmd, []string{"--sandbox", "read-only"}) {
-		t.Fatalf("command %#v missing governed read-only sandbox", cmd)
+	config := governedConfig(t, cmd)
+	if !strings.Contains(config, `sandbox_mode = "read-only"`) {
+		t.Fatalf("governed config missing read-only sandbox:\n%s", config)
+	}
+	if !strings.Contains(config, "[mcp_servers.kennel_governed]") {
+		t.Fatalf("governed config missing the governed MCP server:\n%s", config)
+	}
+	if strings.Contains(config, "write_text_file") {
+		t.Fatalf("read-only policy exposed the governed write tool:\n%s", config)
+	}
+	if contains(cmd, "--sandbox") || contains(cmd, "mcp_servers={") {
+		t.Fatalf("governed launch still carries the silently-dropped -c/--sandbox overrides: %#v", cmd)
 	}
 	if contains(cmd, "--dangerously-bypass-approvals-and-sandbox") {
 		t.Fatalf("policy launch retained broad bypass: %#v", cmd)
 	}
-	if !contains(cmd, "exec") {
-		t.Fatalf("governed launch did not use one-shot codex exec: %#v", cmd)
+	if contains(cmd, "exec") {
+		t.Fatalf("governed launch must be a persistent interactive session, not one-shot exec: %#v", cmd)
+	}
+	if !containsSubsequence(cmd, []string{"--disable", "shell_tool"}) {
+		t.Fatalf("read-only policy must keep the native shell disabled: %#v", cmd)
 	}
 }
 
@@ -727,11 +756,29 @@ func TestGetLaunchCommandPinsWorkspaceWriteBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsSubsequence(cmd, []string{"--sandbox", "read-only"}) || !contains(cmd, "--ignore-user-config") || !containsSubsequence(cmd, []string{"--disable", "shell_tool"}) {
-		t.Fatalf("command does not pin the workspace-write boundary: %#v", cmd)
+	config := governedConfig(t, cmd)
+	for _, want := range []string{
+		`sandbox_mode = "workspace-write"`,
+		"network_access = false",
+		"writable_roots = []",
+		"[mcp_servers.kennel_governed]",
+		`"--data-dir", "` + dataDir + `", "--session", "session-write"`,
+		"write_text_file",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("governed config missing %q:\n%s", want, config)
+		}
 	}
-	if encoded := strings.Join(cmd, " "); !strings.Contains(encoded, `"--data-dir","`+dataDir+`","--session","session-write"`) {
-		t.Fatalf("command does not bind governed uncertainty state: %#v", cmd)
+	if contains(cmd, "--sandbox") || contains(cmd, "--ignore-user-config") {
+		t.Fatalf("workspace-write boundary must live in the generated config, not CLI overrides: %#v", cmd)
+	}
+	// The exec-capable policy maps to workspace-write: the confined shell is
+	// how approved local commands run, so shell tools must NOT be disabled.
+	if containsSubsequence(cmd, []string{"--disable", "shell_tool"}) || containsSubsequence(cmd, []string{"--disable", "unified_exec"}) {
+		t.Fatalf("exec-capable policy wrongly disabled the confined shell: %#v", cmd)
+	}
+	if contains(cmd, "exec") {
+		t.Fatalf("governed launch must be a persistent interactive session, not one-shot exec: %#v", cmd)
 	}
 }
 
@@ -1124,20 +1171,18 @@ func TestGetRestoreCommandPinsGovernedWorkspaceWriteBoundary(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("restore = (ok=%v, err=%v), want ok", ok, err)
 	}
-	for _, want := range []string{
-		"--sandbox",
-		"read-only",
-		"--ignore-user-config",
-	} {
-		if !containsSubsequence(cmd, []string{want}) {
-			t.Fatalf("restore command %#v missing governed setting %q", cmd, want)
-		}
+	config := governedConfig(t, cmd)
+	if !strings.Contains(config, `sandbox_mode = "workspace-write"`) || !strings.Contains(config, "[mcp_servers.kennel_governed]") {
+		t.Fatalf("governed restore config missing sandbox/MCP mapping:\n%s", config)
+	}
+	if contains(cmd, "--sandbox") || contains(cmd, "--ignore-user-config") {
+		t.Fatalf("governed restore still carries CLI sandbox overrides: %#v", cmd)
 	}
 	if containsSubsequence(cmd, []string{"--ask-for-approval", "never"}) || !containsSubsequence(cmd, []string{"--ask-for-approval", "on-request"}) {
 		t.Fatalf("restore command %#v did not force governed approval posture", cmd)
 	}
-	if !containsSubsequence(cmd, []string{"exec", "--ignore-user-config", "resume", "thread-123"}) {
-		t.Fatalf("governed restore did not use one-shot codex exec resume: %#v", cmd)
+	if contains(cmd, "exec") || !contains(cmd, "resume") || !contains(cmd, "thread-123") {
+		t.Fatalf("governed restore must resume the persistent session, not one-shot exec: %#v", cmd)
 	}
 }
 
