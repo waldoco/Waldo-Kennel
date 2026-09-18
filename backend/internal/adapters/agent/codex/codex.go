@@ -18,7 +18,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,11 +34,10 @@ import (
 )
 
 // Plugin is the Codex agent adapter. It is safe for concurrent use; the binary
-// path is resolved once and cached under binaryMu.
+// path is resolved fresh at every launch so a re-pinned KENNEL_CODEX_BIN can
+// never be frozen out by a stale first resolution.
 type Plugin struct {
 	agentbase.Base
-	binaryMu       sync.Mutex
-	resolvedBinary string
 }
 
 // New returns a ready-to-register Codex adapter.
@@ -642,11 +640,16 @@ func codexAuthStatusFromOutput(out []byte) (ports.AgentAuthStatus, bool) {
 	return ports.AgentAuthStatusUnknown, false
 }
 
-// ResolveCodexBinary returns the path to the codex binary on this machine,
-// searching platform-specific well-known install locations and PATH.
+// ResolveCodexBinary returns the path to the codex binary on this machine. An
+// explicit KENNEL_CODEX_BIN pin wins over every discovery path; only without a
+// pin does it search platform-specific well-known install locations and PATH.
 func ResolveCodexBinary(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+
+	if pin := strings.TrimSpace(os.Getenv("KENNEL_CODEX_BIN")); pin != "" {
+		return resolvePinnedCodexBinary(pin)
 	}
 
 	if runtime.GOOS == "windows" {
@@ -734,6 +737,20 @@ func ResolveCodexBinary(ctx context.Context) (string, error) {
 // PATH entry is a symlink. Native Codex distributions can ship required
 // sidecars beside the real executable and locate them relative to argv[0];
 // launching the symlink path would make Codex search beside the shim instead.
+// resolvePinnedCodexBinary validates an explicit KENNEL_CODEX_BIN pin. A pin
+// that does not resolve to an executable file is a certification break, so it
+// fails loudly instead of silently falling back to whatever PATH carries.
+func resolvePinnedCodexBinary(pin string) (string, error) {
+	info, err := os.Stat(pin)
+	if err != nil || info.IsDir() {
+		return "", fmt.Errorf("codex: KENNEL_CODEX_BIN %q is not an installed file: %w", pin, ports.ErrAgentBinaryNotFound)
+	}
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
+		return "", fmt.Errorf("codex: KENNEL_CODEX_BIN %q is not executable: %w", pin, ports.ErrAgentBinaryNotFound)
+	}
+	return resolveCodexExecutable(pin), nil
+}
+
 func resolveCodexExecutable(path string) string {
 	if runtime.GOOS == "windows" {
 		return resolveNativeWindowsCodex(path)
@@ -775,19 +792,7 @@ func isWindowsAppsCodexExecutable(path string) bool {
 }
 
 func (p *Plugin) codexBinary(ctx context.Context) (string, error) {
-	p.binaryMu.Lock()
-	defer p.binaryMu.Unlock()
-
-	if p.resolvedBinary != "" {
-		return p.resolvedBinary, nil
-	}
-
-	binary, err := ResolveCodexBinary(ctx)
-	if err != nil {
-		return "", err
-	}
-	p.resolvedBinary = binary
-	return binary, nil
+	return ResolveCodexBinary(ctx)
 }
 
 // DoctorLaunchProbes returns argv tails `kennel doctor` runs against the installed

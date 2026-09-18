@@ -197,6 +197,17 @@ func startDaemon(t *testing.T, dataDir string) *daemon {
 		pgid:    cmd.Process.Pid,
 	}
 	t.Cleanup(d.kill)
+	// Failure evidence outlives the temp tree: the workflow deletes
+	// RUNNER_TEMP at the end of the job, so copy the daemon log out while it
+	// still exists.
+	t.Cleanup(func() {
+		if t.Failed() {
+			data, err := os.ReadFile(d.logPath)
+			if err == nil {
+				preserveE2EArtifact(t, fmt.Sprintf("daemon-%d.log", port), data)
+			}
+		}
+	})
 	d.waitReady()
 	// Kill this daemon's sessions before it goes away. A TUI session's tmux lives
 	// outside the data dir and outlives the daemon, so without this the machine
@@ -280,6 +291,25 @@ func (d *daemon) waitPortFree() {
 		}
 		_ = conn.Close()
 		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// preserveE2EArtifact writes failure evidence into the directory named by
+// KENNEL_E2E_ARTIFACTS so CI can upload it before the runner temp tree is
+// deleted. Best-effort: evidence loss is logged, never fatal.
+func preserveE2EArtifact(t *testing.T, name string, data []byte) {
+	t.Helper()
+	dir := os.Getenv("KENNEL_E2E_ARTIFACTS")
+	if dir == "" {
+		return
+	}
+	safe := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()) + "-" + name
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Logf("preserve %s: %v", safe, err)
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, safe), data, 0o644); err != nil {
+		t.Logf("preserve %s: %v", safe, err)
 	}
 }
 

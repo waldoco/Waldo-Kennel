@@ -5,6 +5,7 @@ package e2e
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -274,6 +275,7 @@ func awaitPane(t *testing.T, handle string, timeout time.Duration, what string, 
 		}
 		time.Sleep(2 * time.Second)
 	}
+	preserveE2EArtifact(t, fmt.Sprintf("pane-%s.txt", handle), out)
 	t.Fatalf("timed out waiting for %s in pane %s:\n%s", what, handle, out)
 	return ""
 }

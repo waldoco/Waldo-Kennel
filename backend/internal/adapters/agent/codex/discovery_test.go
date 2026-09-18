@@ -39,7 +39,8 @@ func TestDiscoverCapturesCanonicalNonSecretProvenance(t *testing.T) {
 	}
 	now := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
 	protocol := ports.ChatProtocolProvenance{Provider: "codex app-server", InstalledVersion: "0.154.0", ProtocolDigest: string(domain.DigestSHA256([]byte("protocol")))}
-	got, err := (&Plugin{resolvedBinary: link}).DiscoverWithOptions(context.Background(), discoveryProtocol{provenance: protocol}, DiscoveryOptions{Now: func() time.Time { return now }})
+	t.Setenv("KENNEL_CODEX_BIN", link)
+	got, err := (&Plugin{}).DiscoverWithOptions(context.Background(), discoveryProtocol{provenance: protocol}, DiscoveryOptions{Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +57,8 @@ func TestDiscoverFailsClosedOnTimeoutAndMalformedVersion(t *testing.T) {
 	if err := os.WriteFile(path, []byte("x"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	p := &Plugin{resolvedBinary: path}
+	t.Setenv("KENNEL_CODEX_BIN", path)
+	p := &Plugin{}
 	_, err := p.DiscoverWithOptions(context.Background(), discoveryProtocol{wait: true}, DiscoveryOptions{Timeout: time.Millisecond, VersionProbe: func(context.Context, string) (string, error) { return "codex-cli 0.154.0", nil }})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("timeout=%v", err)
@@ -78,7 +80,8 @@ func TestFileDigestCancelledAndRejectsDirectory(t *testing.T) {
 }
 
 func TestDiscoverMissingBinaryFailsClosed(t *testing.T) {
-	p := &Plugin{resolvedBinary: filepath.Join(t.TempDir(), "missing-codex")}
+	t.Setenv("KENNEL_CODEX_BIN", filepath.Join(t.TempDir(), "missing-codex"))
+	p := &Plugin{}
 	if _, err := p.Discover(context.Background(), discoveryProtocol{}); err == nil {
 		t.Fatal("missing binary accepted")
 	}

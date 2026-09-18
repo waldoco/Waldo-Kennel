@@ -294,8 +294,22 @@ func TestProbeNativeSessionUnknownWithoutConfigDir(t *testing.T) {
 	}
 }
 
+// pinnedLocalCodexPlugin pins KENNEL_CODEX_BIN to a hermetic fake codex in a
+// throwaway CWD so launch argv resolves the literal relative name "codex" -
+// the same argv[0] the pre-pin cache seeded - without touching the real PATH.
+func pinnedLocalCodexPlugin(t *testing.T) *Plugin {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "codex"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("KENNEL_CODEX_BIN", "codex")
+	return &Plugin{}
+}
+
 func TestGetLaunchCommandBuildsCrossPlatformArgv(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	workspace := canonicalTempDir(t)
 	systemFile := filepath.Join("tmp", "prompt with spaces.md")
 
@@ -333,7 +347,7 @@ func TestGetLaunchCommandBuildsCrossPlatformArgv(t *testing.T) {
 }
 
 func TestGetLaunchCommandUsesSystemPromptFile(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	promptFile := filepath.Join(t.TempDir(), "system.md")
 	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
 		SystemPromptFile: promptFile,
@@ -347,7 +361,7 @@ func TestGetLaunchCommandUsesSystemPromptFile(t *testing.T) {
 }
 
 func TestGetLaunchCommandWithoutAODataRootFallsBackToInlineSystemPrompt(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
 		SessionID:    "review-session",
 		SystemPrompt: "inline instructions",
@@ -362,7 +376,7 @@ func TestGetLaunchCommandWithoutAODataRootFallsBackToInlineSystemPrompt(t *testi
 }
 
 func TestGetLaunchCommandWithoutWorkspaceOmitsTrustFlag(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 
 	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{})
 	if err != nil {
@@ -379,7 +393,7 @@ func TestGetLaunchCommandWithoutWorkspaceOmitsTrustFlag(t *testing.T) {
 }
 
 func TestGetLaunchCommandAppendsConfiguredModel(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 
 	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
 		Config: ports.AgentConfig{Model: "  gpt-5.4-mini  "},
@@ -397,7 +411,7 @@ func TestGetLaunchCommandAppendsConfiguredModel(t *testing.T) {
 }
 
 func TestGetLaunchCommandOmitsBlankConfiguredModel(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 
 	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
 		Config: ports.AgentConfig{Model: " \t "},
@@ -579,7 +593,7 @@ func TestGetLaunchCommandMapsApprovalModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			plugin := &Plugin{resolvedBinary: "codex"}
+			plugin := pinnedLocalCodexPlugin(t)
 			cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
 				Permissions: tt.permission,
 			})
@@ -612,7 +626,7 @@ func governedConfig(t *testing.T, cmd []string) string {
 }
 
 func TestGetLaunchCommandMapsAttemptExecutionPolicy(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	policy := domain.AttemptExecutionPolicy{
 		OutcomeID: "out-1", PlanRevisionID: "plan-1", WorkUnitID: "wu-1", ContractRevisionNumber: 1,
 		RunBriefCoreDigest:   "brief",
@@ -659,7 +673,7 @@ func TestGetLaunchCommandMapsAttemptExecutionPolicy(t *testing.T) {
 }
 
 func TestGetLaunchCommandKeepsOrdinarySessionInteractive(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{Prompt: "continue interactively"})
 	if err != nil {
 		t.Fatal(err)
@@ -729,7 +743,7 @@ func TestValidateExecutionPolicyRejectsUnknownCapability(t *testing.T) {
 }
 
 func TestGetLaunchCommandPinsWorkspaceWriteBoundary(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	policy := domain.AttemptExecutionPolicy{
 		OutcomeID: "out-1", PlanRevisionID: "plan-1", WorkUnitID: "wu-1", ContractRevisionNumber: 1,
 		RunBriefCoreDigest: "brief",
@@ -889,7 +903,7 @@ func legacyHooksJSON() string {
 }
 
 func TestGetAgentHooksWritesNothingIntoFreshWorkspace(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	workspace := t.TempDir()
 
 	cfg := ports.WorkspaceHookConfig{
@@ -907,7 +921,7 @@ func TestGetAgentHooksWritesNothingIntoFreshWorkspace(t *testing.T) {
 }
 
 func TestGetAgentHooksRequiresWorkspacePath(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	err := plugin.GetAgentHooks(context.Background(), ports.WorkspaceHookConfig{WorkspacePath: "  "})
 	if err == nil {
 		t.Fatal("expected error for blank WorkspacePath")
@@ -915,7 +929,7 @@ func TestGetAgentHooksRequiresWorkspacePath(t *testing.T) {
 }
 
 func TestGetAgentHooksStripsLegacyAOEntries(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	workspace := t.TempDir()
 	hooksPath := filepath.Join(workspace, codexHooksDirName, codexHooksFileName)
 	if err := os.MkdirAll(filepath.Dir(hooksPath), 0o755); err != nil {
@@ -959,7 +973,7 @@ func TestGetAgentHooksStripsLegacyAOEntries(t *testing.T) {
 }
 
 func TestGetAgentHooksLeavesFilesWithoutAOEntriesUntouched(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	workspace := t.TempDir()
 	hooksPath := filepath.Join(workspace, codexHooksDirName, codexHooksFileName)
 	if err := os.MkdirAll(filepath.Dir(hooksPath), 0o755); err != nil {
@@ -989,7 +1003,7 @@ func TestGetAgentHooksLeavesFilesWithoutAOEntriesUntouched(t *testing.T) {
 }
 
 func TestUninstallHooksRemovesLegacyCodexHooks(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	workspace := t.TempDir()
 	hooksPath := filepath.Join(workspace, codexHooksDirName, codexHooksFileName)
 
@@ -1037,7 +1051,7 @@ func TestUninstallHooksRemovesLegacyCodexHooks(t *testing.T) {
 }
 
 func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	workspace := canonicalTempDir(t)
 	systemFile := filepath.Join("tmp", "restore system.md")
 
@@ -1083,7 +1097,7 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
 }
 
 func TestGetRestoreCommandUsesSystemPromptFile(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	promptFile := filepath.Join(t.TempDir(), "system.md")
 	cmd, ok, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
 		SystemPromptFile: promptFile,
@@ -1100,7 +1114,7 @@ func TestGetRestoreCommandUsesSystemPromptFile(t *testing.T) {
 }
 
 func TestGetRestoreCommandWithoutAODataRootFallsBackToInlineSystemPrompt(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	cmd, ok, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
 		SystemPrompt: "restore inline instructions",
 		Session: ports.SessionRef{
@@ -1118,7 +1132,7 @@ func TestGetRestoreCommandWithoutAODataRootFallsBackToInlineSystemPrompt(t *test
 }
 
 func TestGetRestoreCommandAppendsConfiguredModel(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 
 	cmd, ok, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
 		Config: ports.AgentConfig{Model: "  gpt-5.4-mini  "},
@@ -1138,7 +1152,7 @@ func TestGetRestoreCommandAppendsConfiguredModel(t *testing.T) {
 }
 
 func TestGetRestoreCommandPinsGovernedWorkspaceWriteBoundary(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	policy := domain.AttemptExecutionPolicy{
 		OutcomeID: "out-1", PlanRevisionID: "plan-1", WorkUnitID: "wu-1", ContractRevisionNumber: 1,
 		RunBriefCoreDigest: "brief", RequiredCapabilities: []string{
@@ -1196,7 +1210,7 @@ func TestGetRestoreCommandRejectsDifferentWorkspaceThanFrozenPolicy(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = (&Plugin{resolvedBinary: "codex"}).GetRestoreCommand(context.Background(), ports.RestoreConfig{
+	_, _, err = pinnedLocalCodexPlugin(t).GetRestoreCommand(context.Background(), ports.RestoreConfig{
 		DataDir:         canonicalTempDir(t),
 		ExecutionPolicy: &policy,
 		Session: ports.SessionRef{ID: "session-mismatch", WorkspacePath: canonicalTempDir(t), Metadata: map[string]string{
@@ -1209,7 +1223,7 @@ func TestGetRestoreCommandRejectsDifferentWorkspaceThanFrozenPolicy(t *testing.T
 }
 
 func TestGetRestoreCommandKeepsOrdinarySessionInteractive(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 	cmd, ok, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
 		Session: ports.SessionRef{Metadata: map[string]string{ports.MetadataKeyAgentSessionID: "thread-ordinary"}},
 	})
@@ -1222,7 +1236,7 @@ func TestGetRestoreCommandKeepsOrdinarySessionInteractive(t *testing.T) {
 }
 
 func TestGetRestoreCommandFalseWithoutAgentSessionID(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 
 	cases := []struct {
 		name string
@@ -1253,7 +1267,7 @@ func TestGetRestoreCommandFalseWithoutAgentSessionID(t *testing.T) {
 }
 
 func TestSessionInfoReadsHookMetadata(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 
 	info, ok, err := plugin.SessionInfo(context.Background(), ports.SessionRef{
 		WorkspacePath: "/some/path",
@@ -1285,7 +1299,7 @@ func TestSessionInfoReadsHookMetadata(t *testing.T) {
 }
 
 func TestSessionInfoFalseWhenNoHookMetadata(t *testing.T) {
-	plugin := &Plugin{resolvedBinary: "codex"}
+	plugin := pinnedLocalCodexPlugin(t)
 
 	info, ok, err := plugin.SessionInfo(context.Background(), ports.SessionRef{
 		WorkspacePath: "/some/path",
@@ -1539,5 +1553,95 @@ func TestCleanSessionHomeRemovesOnlyOurs(t *testing.T) {
 	// Unsafe identities and symlinked homes are refused, not removed.
 	if err := plugin.CleanSessionHome(dataDir, "../escape"); err == nil {
 		t.Fatal("accepted an unsafe session identity")
+	}
+}
+
+func TestResolveCodexBinaryHonorsExplicitPinOverPATH(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("executable-bit and symlink semantics are Unix-specific here")
+	}
+	home := t.TempDir()
+	pin := filepath.Join(home, "pinned", "codex")
+	if err := os.MkdirAll(filepath.Dir(pin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	decoyDir := filepath.Join(home, "pathbin")
+	if err := os.MkdirAll(decoyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(decoyDir, "codex"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KENNEL_CODEX_BIN", pin)
+	t.Setenv("PATH", decoyDir)
+
+	got, err := ResolveCodexBinary(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveCodexBinary: %v", err)
+	}
+	if got != pin {
+		t.Fatalf("ResolveCodexBinary = %q, want the pinned %q (PATH decoy must not win)", got, pin)
+	}
+}
+
+func TestResolveCodexBinaryPinNeverFallsBackToPATH(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("executable-bit semantics are Unix-specific here")
+	}
+	home := t.TempDir()
+	decoyDir := filepath.Join(home, "pathbin")
+	if err := os.MkdirAll(decoyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(decoyDir, "codex"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", decoyDir)
+
+	t.Run("missing", func(t *testing.T) {
+		t.Setenv("KENNEL_CODEX_BIN", filepath.Join(home, "does-not-exist"))
+		if _, err := ResolveCodexBinary(context.Background()); !errors.Is(err, ports.ErrAgentBinaryNotFound) {
+			t.Fatalf("missing pin err = %v, want ErrAgentBinaryNotFound (no silent PATH fallback)", err)
+		}
+	})
+	t.Run("not executable", func(t *testing.T) {
+		pin := filepath.Join(home, "codex-noexec")
+		if err := os.WriteFile(pin, []byte("#!/bin/sh\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("KENNEL_CODEX_BIN", pin)
+		if _, err := ResolveCodexBinary(context.Background()); !errors.Is(err, ports.ErrAgentBinaryNotFound) {
+			t.Fatalf("non-executable pin err = %v, want ErrAgentBinaryNotFound (no silent PATH fallback)", err)
+		}
+	})
+}
+
+func TestPluginResolvesBinaryFreshPerLaunch(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("executable-bit semantics are Unix-specific here")
+	}
+	home := t.TempDir()
+	mk := func(name string) string {
+		p := filepath.Join(home, name)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	first, second := mk("codex-a"), mk("codex-b")
+	p := New()
+
+	t.Setenv("KENNEL_CODEX_BIN", first)
+	got, err := p.codexBinary(context.Background())
+	if err != nil || got != first {
+		t.Fatalf("first resolution = %q, %v; want %q", got, err, first)
+	}
+	t.Setenv("KENNEL_CODEX_BIN", second)
+	got, err = p.codexBinary(context.Background())
+	if err != nil || got != second {
+		t.Fatalf("second resolution = %q, %v; want %q - a cached first resolution must not freeze the pin", got, err, second)
 	}
 }

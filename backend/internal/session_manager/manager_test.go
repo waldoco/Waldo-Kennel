@@ -7733,3 +7733,33 @@ func TestSpawn_CustomProfilesDoNotReuseBranches(t *testing.T) {
 		t.Fatal("independent profiles generated the same checked-out branch")
 	}
 }
+
+func TestAttestGovernedLaunchBinaryLogsResolvedVersion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "codex")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho codex-cli 0.153.4\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var logBuf bytes.Buffer
+	m := &Manager{logger: slog.New(slog.NewTextHandler(&logBuf, nil))}
+
+	m.attestGovernedLaunchBinary(context.Background(), "sess-1", []string{"env", "CODEX_HOME=/tmp/x", bin, "--sandbox", "read-only"})
+	out := logBuf.String()
+	if !strings.Contains(out, "governed launch binary") || !strings.Contains(out, bin) || !strings.Contains(out, "codex-cli 0.153.4") {
+		t.Fatalf("attestation log = %q, want binary path and version past the env prefix", out)
+	}
+}
+
+func TestAttestGovernedLaunchBinaryRecordsVersionProbeFailure(t *testing.T) {
+	var logBuf bytes.Buffer
+	m := &Manager{logger: slog.New(slog.NewTextHandler(&logBuf, nil))}
+
+	m.attestGovernedLaunchBinary(context.Background(), "sess-2", []string{filepath.Join(t.TempDir(), "missing-codex")})
+	out := logBuf.String()
+	if !strings.Contains(out, "governed launch binary") || !strings.Contains(out, "version_error") {
+		t.Fatalf("attestation failure log = %q, want the probe error recorded, not dropped", out)
+	}
+}

@@ -1030,6 +1030,9 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (rec domain.
 		m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, true)
 		return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: %w", id, err)
 	}
+	if cfg.ExecutionPolicy != nil {
+		m.attestGovernedLaunchBinary(ctx, id, argv)
+	}
 	m.augmentRuntimePATHForLaunchBinary(ctx, env, argv)
 	argv, launchID, supervisorVerifier, err := m.superviseAgentProcess(agent, id, env, argv, cfg.ExecutionPolicy != nil)
 	if err != nil {
@@ -4241,6 +4244,27 @@ func (m *Manager) validateAgentBinary(argv []string) error {
 		return fmt.Errorf("agent binary %q: %w", bin, ports.ErrAgentBinaryNotFound)
 	}
 	return nil
+}
+
+// attestGovernedLaunchBinary logs the exact provider binary and version a
+// governed launch resolved. Binary drift - a governed pane silently running an
+// install other than the certified one - must be loud in the daemon log, not
+// discoverable only from a pane banner after a failure. Attestation never
+// fails a spawn; a failed version probe is recorded in the same log line.
+func (m *Manager) attestGovernedLaunchBinary(ctx context.Context, id domain.SessionID, argv []string) {
+	bin, ok := launchBinary(argv)
+	if !ok {
+		m.logger.Warn("governed launch binary attestation failed", "session", id, "err", "launch argv missing binary")
+		return
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(probeCtx, bin, "--version").CombinedOutput()
+	if err != nil {
+		m.logger.Warn("governed launch binary", "session", id, "binary", bin, "version_error", err)
+		return
+	}
+	m.logger.Info("governed launch binary", "session", id, "binary", bin, "version", strings.TrimSpace(string(out)))
 }
 
 func launchBinary(argv []string) (string, bool) {
