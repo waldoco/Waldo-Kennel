@@ -1,6 +1,6 @@
-import type { BaseWindow, WebContents } from "electron";
+import type { IpcMainInvokeEvent, BaseWindow, WebContents } from "electron";
 import { parseHarnessAuthorityProposal } from "./harness-authority-command";
-type Event = { sender: WebContents; senderFrame: WebContents["mainFrame"] };
+type Event = Pick<IpcMainInvokeEvent, "sender" | "senderFrame">;
 type Deps = {
   getWindow: () => BaseWindow | null;
   getShellWebContents: () => WebContents | null;
