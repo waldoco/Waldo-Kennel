@@ -1,7 +1,7 @@
 import { OutcomeDeletionControls } from "./OutcomeDeletionControls";
 import { MissionContractEditor } from "./MissionContractEditor";
 import { useOutcomeRunState } from "../../hooks/useOutcomeRunState";
-import { X, Maximize2, Minimize2 } from "lucide-react";
+import { X, Maximize2, Minimize2, History } from "lucide-react";
 import { runStateAttention } from "../../lib/mission-attention";
 import { MissionUsage } from "./MissionUsage";
 import { useSettings } from "../../hooks/useSettings";
@@ -12,12 +12,16 @@ import { useOutcome, useOutcomePlan, useOutcomeProof } from "../../hooks/useOutc
 import { useEventsConnection } from "../../hooks/useEventsConnection";
 import { useWorkspaceQuery } from "../../hooks/useWorkspaceQuery";
 import { Button } from "../ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { OutcomeDecideAuthorizeSurface } from "./OutcomeDecideAuthorizeSurface";
 import { OutcomeRunSurface } from "./OutcomeRunSurface";
 import { OutcomeProveCloseSurface } from "./OutcomeProveCloseSurface";
 import { OutcomeDeliveryPanel } from "./OutcomeDeliveryPanel";
 import { OutcomeDocumentsPanel } from "./OutcomeDocumentsPanel";
 import type { OutcomeDestinationStage } from "../../lib/outcome-tree";
+
+/** Locked 2026-09-17 surface: four tabs (overview / plan / run / result); Decision history is a drawer, never a tab. */
+type MissionTab = "overview" | "plan" | "run" | "result";
 
 /** One identity boundary for all direct-Outcome views and their local drafts. */
 export function OutcomeMissionPanel({
@@ -43,9 +47,10 @@ export function OutcomeMissionPanel({
 	const settings = useSettings();
 	const reasoningUnavailable = settings.settings && !settings.settings.reasoning.ready;
 	const projects = useWorkspaceQuery();
-	const [tab, setTab] = useState<"contract" | "plan" | "execution" | "result" | "history">(
-		stage === "prove_close" ? "result" : stage === "act_observe" ? "execution" : "contract",
+	const [tab, setTab] = useState<MissionTab>(
+		stage === "prove_close" ? "result" : stage === "act_observe" ? "run" : "overview",
 	);
+	const [historyOpen, setHistoryOpen] = useState(false);
 	const outcome = query.outcome;
 	const plan = planQuery.plan;
 	const runQuery = useOutcomeRunState(outcomeId);
@@ -54,7 +59,7 @@ export function OutcomeMissionPanel({
 	return (
 		<section
 			className="mx-auto flex h-full min-h-0 min-w-0 w-full max-w-5xl flex-col px-4 py-3"
-			aria-label={outcome?.title ?? t("mission.contract")}
+			aria-label={outcome?.title ?? t("mission.overview")}
 			data-testid="outcome-mission-panel"
 		>
 			<header className="flex shrink-0 flex-col gap-2 border-b border-border pb-3">
@@ -63,6 +68,10 @@ export function OutcomeMissionPanel({
 						{projects.data?.find((project) => project.id === projectId)?.name ?? projectId}
 					</span>
 					<div className="flex gap-1">
+						<Button data-testid="mission-history-open" size="sm" variant="ghost" onClick={() => setHistoryOpen(true)}>
+							<History aria-hidden="true" className="size-4" />
+							{t("mission.history")}
+						</Button>
  <OutcomeDeletionControls outcomeId={outcomeId} onRemoved={onClose} />
 						<Button className="hidden @[1050px]/mission:inline-flex" size="sm" variant="ghost" onClick={onExpand}>
 							{expanded ? (
@@ -135,7 +144,7 @@ export function OutcomeMissionPanel({
 							aria-label={t("outcome.dashboard.missionControlAria", { title: outcome.title })}
 							className="flex shrink-0 flex-wrap gap-1 py-2"
 						>
-							{(["contract", "plan", "execution", "result", "history"] as const).map((view) => (
+							{(["overview", "plan", "run", "result"] as const).map((view) => (
 								<Button
 									data-testid={`mission-tab-${view}`}
 									key={view}
@@ -149,7 +158,7 @@ export function OutcomeMissionPanel({
 							))}
 						</nav>
 						<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2 pb-6">
-							<div hidden={tab !== "contract"}>
+							<div hidden={tab !== "overview"}>
 								<MissionContractEditor key={outcomeId} outcomeId={outcomeId} contract={outcome.currentRevision} disabled={connection !== "connected"} />
 								<ContractOverview contract={outcome.currentRevision} />
 								<OutcomeDocumentsPanel outcomeId={outcomeId} />
@@ -175,13 +184,13 @@ export function OutcomeMissionPanel({
 									className="min-w-0"
 								>
 									<OutcomeDecideAuthorizeSurface
-										onReviewContract={() => setTab("contract")}
-										onReviewWork={() => setTab("execution")}
+										onReviewContract={() => setTab("overview")}
+										onReviewWork={() => setTab("run")}
 										outcomeId={outcomeId}
 									/>
 								</fieldset>
 							</div>
-							<div hidden={tab !== "execution"}>
+							<div hidden={tab !== "run"}>
 								<OutcomeRunSurface
 									outcomeId={outcomeId}
 									admissionBlocked={stale || connection !== "connected"}
@@ -195,37 +204,17 @@ export function OutcomeMissionPanel({
 								</fieldset>
 								<OutcomeDeliveryPanel outcomeId={outcomeId} />
 							</div>
-							<div hidden={tab !== "history"}>
-								<ul className="mb-4 space-y-3">
-									{proofQuery.proof?.decisions.map((decision) => (
-										<li key={decision.id} className="border-b border-border pb-2 text-xs">
-											<span className="font-medium">
-												{decision.kind} · {decision.actorType}
-											</span>
-											<p>{decision.summary}</p>
-											<time dateTime={decision.createdAt}>{new Date(decision.createdAt).toLocaleString()}</time>
-										</li>
-									))}
-								</ul>
-								<ol className="space-y-4">
-									{outcome.history.map((revision) => (
-										<li key={revision.id}>
-											<h3 className="text-sm font-medium">
-												{t("mission.historyRevision", {
-													number: revision.number,
-													time: new Date(revision.createdAt).toLocaleString(),
-												})}
-											</h3>
-											<p className="whitespace-pre-wrap text-xs text-muted-foreground">{revision.goal}</p>
-										</li>
-									))}
-								</ol>
-								<p className="mt-3 text-xs text-muted-foreground">{t("mission.authorization")}</p>
-								<Button className="mt-2" size="sm" variant="outline" onClick={() => setTab("result")}>
-									{t("mission.result")}
-								</Button>
-							</div>
 						</div>
+						<Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+							<SheetContent aria-describedby={undefined} className="w-full sm:max-w-md" side="right">
+								<SheetHeader>
+									<SheetTitle>{t("mission.history")}</SheetTitle>
+								</SheetHeader>
+								<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6" data-testid="mission-history-drawer">
+									<MissionHistory decisions={proofQuery.proof?.decisions ?? []} history={outcome.history} />
+								</div>
+							</SheetContent>
+						</Sheet>
 					</>
 				)
 			)}
@@ -246,16 +235,16 @@ function MissionGlance({
 	goal: string;
 	loading: boolean;
 	onRefresh: () => void;
-	onSelect: (tab: "contract" | "plan" | "execution" | "result" | "history") => void;
+	onSelect: (tab: MissionTab) => void;
 }) {
 	const { t } = useTranslation();
-	const nextTab = attention.lane === "define"
-		? "contract"
+	const nextTab: MissionTab = attention.lane === "define"
+		? "overview"
 		: attention.lane === "authorize"
 			? "plan"
 			: attention.lane === "review" || attention.lane === "accepted"
 				? "result"
-				: "execution";
+				: "run";
 	const nextLabel = attention.lane === "unavailable"
 		? t("mission.refresh")
 		: t(`mission.${nextTab}`);
@@ -290,6 +279,51 @@ function MissionGlance({
 				</Button>
 			</div>
 		</section>
+	);
+}
+
+function MissionHistory({
+	decisions,
+	history,
+}: {
+	decisions: NonNullable<ReturnType<typeof useOutcomeProof>["proof"]>["decisions"];
+	history: NonNullable<ReturnType<typeof useOutcome>["outcome"]>["history"];
+}) {
+	const { t } = useTranslation();
+	if (decisions.length === 0 && history.length === 0) {
+		return <p className="text-xs text-muted-foreground">{t("mission.none")}</p>;
+	}
+	return (
+		<div className="flex flex-col gap-6">
+			{decisions.length > 0 && (
+				<ul className="space-y-3">
+					{decisions.map((decision) => (
+						<li key={decision.id} className="border-b border-border pb-2 text-xs">
+							<span className="font-medium">
+								{decision.kind} · {decision.actorType}
+							</span>
+							<p>{decision.summary}</p>
+							<time dateTime={decision.createdAt}>{new Date(decision.createdAt).toLocaleString()}</time>
+						</li>
+					))}
+				</ul>
+			)}
+			{history.length > 0 && (
+				<ol className="space-y-4">
+					{history.map((revision) => (
+						<li key={revision.id}>
+							<h3 className="text-sm font-medium">
+								{t("mission.historyRevision", {
+									number: revision.number,
+									time: new Date(revision.createdAt).toLocaleString(),
+								})}
+							</h3>
+							<p className="whitespace-pre-wrap text-xs text-muted-foreground">{revision.goal}</p>
+						</li>
+					))}
+				</ol>
+			)}
+		</div>
 	);
 }
 
