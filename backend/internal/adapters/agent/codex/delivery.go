@@ -224,7 +224,26 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 	if err != nil {
 		return DeliveryNone, &DeliveryUnknownError{Phase: "pre-submit capture: " + err.Error()}
 	}
+	// A mid-redraw frame during TUI boot can drop the composer or footer for
+	// a beat, classifying unknown with our draft already in the composer (run
+	// 35313180154 failed the steer here, 1s after launch). Waiting sends no
+	// keystrokes, so poll through the transient frame on the same bound as
+	// the pre-dispatch hold; the submit still fires only against a known-safe
+	// state, and a persistently unknown pane still fails closed.
 	freshState, freshReason := ClassifyPaneState(freshCapture)
+	if freshState == PaneStateUnknown {
+		deadline := time.Now().Add(d.cfg.UnsteerableDeadline)
+		for freshState == PaneStateUnknown && !time.Now().After(deadline) {
+			if err := d.poll(ctx, d.cfg.UnsteerablePoll); err != nil {
+				return DeliveryNone, err
+			}
+			freshCapture, err = term.Capture(ctx, d.cfg.CaptureLines)
+			if err != nil {
+				return DeliveryNone, &DeliveryUnknownError{Phase: "pre-submit capture: " + err.Error()}
+			}
+			freshState, freshReason = ClassifyPaneState(freshCapture)
+		}
+	}
 	switch freshState {
 	case PaneStateUnknown:
 		return DeliveryNone, &DeliveryUnknownError{Phase: "pre-submit classification", Capture: freshCapture}

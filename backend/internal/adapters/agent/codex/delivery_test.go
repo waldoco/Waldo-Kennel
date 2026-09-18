@@ -349,6 +349,55 @@ func TestDeliveryPendingWhenModalPersists(t *testing.T) {
 	}
 }
 
+// TestDeliverPreSubmitRedrawFrameIsTransient reproduces run 35313180154: a
+// mid-redraw boot frame at the pre-submit capture drops the composer/footer
+// (unknown) with our draft already injected. Delivery polls through the
+// frame - waiting sends no keystrokes - and submits once the pane is
+// classifiable again.
+func TestDeliverPreSubmitRedrawFrameIsTransient(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneIdleNoDraft,          // pre-dispatch: idle
+		paneIdleNoDraft,          // boundary snapshot
+		paneIdleWithSteeredDraft, // settle: draft visible
+		paneBootBanner,           // pre-submit first capture: mid-redraw unknown
+		paneIdleWithSteeredDraft, // pre-submit after poll: idle with draft
+		paneSubmittedAck,         // ack
+	}}
+	outcome, err := testDeliverer().Deliver(context.Background(), term, msg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if outcome != DeliverySubmitted {
+		t.Fatalf("outcome = %v, want submitted", outcome)
+	}
+	if term.enters != 1 || len(term.pastes) != 1 {
+		t.Fatalf("enters=%d pastes=%d, want 1/1", term.enters, len(term.pastes))
+	}
+}
+
+// TestDeliverPreSubmitPersistentUnknownFailsClosed: the redraw never
+// resolves within the hold - the keystroke is never sent and the outcome is
+// honestly unknown with the pane evidence attached.
+func TestDeliverPreSubmitPersistentUnknownFailsClosed(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneIdleNoDraft,          // pre-dispatch: idle
+		paneIdleNoDraft,          // boundary snapshot
+		paneIdleWithSteeredDraft, // settle: draft visible
+		paneBootBanner,           // pre-submit: unknown, and stays unknown
+	}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError", err)
+	}
+	if term.enters != 0 || term.tabs != 0 {
+		t.Fatalf("submit keystroke sent against an unrecognizable pane: %v", term.ops)
+	}
+	if unk.Capture == "" {
+		t.Fatal("DeliveryUnknownError must preserve the pane evidence")
+	}
+}
+
 // TestDeliverUnknownWhenPasteNeverLands is the upstream #28167 wedge: the
 // paste is absorbed and the draft never renders. One re-paste, then honest
 // unknown - never a bare Enter into an empty composer.
