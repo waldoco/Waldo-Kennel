@@ -210,7 +210,7 @@ it("shows accepted Outcomes in Finished on the board", async () => {
 	expect(screen.getByText("Accepted work")).toBeInTheDocument();
 });
 
-it("groups the board into four useful columns and keeps the same Outcomes in List", async () => {
+it("groups the board into the canon columns and keeps the same Outcomes in List", async () => {
 	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Project")], isLoading: false });
 	projectOutcomesQueryMock.mockReturnValue({
 		outcomes: [outcome("active", "Current work")],
@@ -219,15 +219,37 @@ it("groups the board into four useful columns and keeps the same Outcomes in Lis
 	});
 	useUiStore.setState({ outcomeRunViewMode: "board" });
 	renderSurface();
-	expect(screen.getByRole("heading", { name: /To do/ })).toBeInTheDocument();
-	expect(screen.getByRole("heading", { name: /Needs you/ })).toBeInTheDocument();
+	expect(screen.getByRole("heading", { name: /Needs choice/ })).toBeInTheDocument();
+	expect(screen.getByRole("heading", { name: /Needs input/ })).toBeInTheDocument();
+	expect(screen.getByRole("heading", { name: /Ready/ })).toBeInTheDocument();
+	expect(screen.getByRole("heading", { name: /Running/ })).toBeInTheDocument();
 	expect(screen.getByRole("heading", { name: /Finished/ })).toBeInTheDocument();
-	expect(screen.queryByRole("heading", { name: /Ready to authorize/ })).not.toBeInTheDocument();
-	expect(screen.getByRole("heading", { name: /In progress/ })).toBeInTheDocument();
+	expect(screen.queryByRole("heading", { name: /To do/ })).not.toBeInTheDocument();
+	expect(screen.queryByRole("heading", { name: /In progress/ })).not.toBeInTheDocument();
+	expect(screen.queryByRole("heading", { name: /Needs you$/ })).not.toBeInTheDocument();
 	expect(screen.getByText("Filters").closest("details")).not.toHaveAttribute("open");
 	act(() => useUiStore.setState({ outcomeRunViewMode: "list" }));
 	expect(screen.getAllByTestId("outcomes-overview-row")).toHaveLength(1);
 	expect(screen.getByText("Current work")).toBeInTheDocument();
+});
+
+it("places review Outcomes in the Ready lane, separate from Needs input", async () => {
+	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Project")], isLoading: false });
+	projectOutcomesQueryMock.mockReturnValue({
+		outcomes: [outcome("review-one", "Ready for owner review"), outcome("needs-one", "Waiting on an answer"), outcome("active", "Being defined")],
+		isLoading: false, refetch: vi.fn(),
+	});
+	useUiStore.setState({ outcomeRunViewMode: "board" });
+	renderSurface();
+	const readyHeading = await screen.findByRole("heading", { name: /Ready/ });
+	const readyLane = readyHeading.closest("section");
+	expect(readyLane).not.toBeNull();
+	expect(readyLane!.textContent).toContain("Ready for owner review");
+	expect(readyLane!.textContent).not.toContain("Waiting on an answer");
+	const inputHeading = screen.getByRole("heading", { name: /Needs input/ });
+	const inputLane = inputHeading.closest("section");
+	expect(inputLane!.textContent).toContain("Waiting on an answer");
+	expect(inputLane!.textContent).not.toContain("Ready for owner review");
 });
 
 it("keeps reviewable Outcomes in the Needs you filter and applies Active consistently", async () => {

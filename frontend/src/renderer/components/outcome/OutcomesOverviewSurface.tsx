@@ -157,14 +157,16 @@ function ProjectOutcomesGroup({
 	const visibleNodes = outcomeTree.slice(0, limit);
 	const attention = useMissionAttention(visibleNodes.map((node) => node.outcome), workspace.id);
 	// Board buckets group derived states; acceptance remains a daemon fact.
-	const boardLane = (lane?: string) => lane === "accepted" ? "accepted" : lane === "observe" ? "observe" : lane === "define" || lane === "authorize" ? "define" : "needsYou";
+	// Canon lanes (locked 2026-09-17, ruling 2026-09-18): review is its own
+	// "Ready" lane - finished work awaiting acceptance, not an input ask.
+	const boardLane = (lane?: string) => lane === "accepted" ? "accepted" : lane === "review" ? "review" : lane === "observe" ? "observe" : lane === "define" || lane === "authorize" ? "define" : "needsYou";
 	const filteredNodes = visibleNodes.filter((node) => {
 		const lane = attention.get(node.outcome.id)?.lane;
 		return attentionFilter === "history" || (attentionFilter === "needsYou"
-			? boardLane(lane) === "needsYou"
+			? boardLane(lane) === "needsYou" || boardLane(lane) === "review"
 			: lane !== "accepted");
 	});
-	const lanes = view === "board" ? (["define", "observe", "needsYou", "accepted"] as const) : [undefined];
+	const lanes = view === "board" ? (["define", "needsYou", "observe", "review", "accepted"] as const) : [undefined];
 
 
 	// Keep the project heading and Trash reachable after its final Outcome is removed.
@@ -204,13 +206,15 @@ function ProjectOutcomesGroup({
 											aria-hidden="true"
 											className={cn(
 												"size-2 rounded-full",
-												lane === "needsYou"
-													? "bg-orange-400"
-													: lane === "observe"
-														? "bg-blue-400"
-														: lane === "accepted"
-															? "bg-green-400"
-															: "bg-muted-foreground",
+												lane === "define"
+													? "bg-status-needs-you"
+													: lane === "needsYou"
+														? "bg-status-in-review"
+														: lane === "review"
+															? "bg-status-ready"
+															: lane === "observe"
+																? "bg-status-working"
+																: "bg-muted-foreground",
 											)}
 										/>
 										{t(`mission.boardLane.${lane}`)}
