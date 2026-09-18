@@ -187,7 +187,11 @@ func TestScopedConfigDirRejectsInvalidAndSymlinkRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canonical symlink ancestor rejected: %v", err)
 	}
-	if !strings.HasPrefix(got, filepath.Join(target, "custody")+string(filepath.Separator)) {
+	canonicalTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, filepath.Join(canonicalTarget, "custody")+string(filepath.Separator)) {
 		t.Fatalf("root not canonicalized: %q", got)
 	}
 }
