@@ -22,7 +22,7 @@ func fakeCodex(t *testing.T) (bin string, logPath *string) {
 	script := `#!/usr/bin/env bash
 set -euo pipefail
 home="$CODEX_HOME"
-echo "$*" >> "` + log + `"
+echo "codex_home_count=$(env | grep -c '^CODEX_HOME=' || true) home=$CODEX_HOME argv=$*" >> "` + log + `"
 state="$home/fake-marketplaces"
 case "$1 $2" in
   "plugin marketplace")

@@ -3,12 +3,12 @@ package codex
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/chatdriver/processenv"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/missionplugin"
 )
 
@@ -154,7 +154,11 @@ func verifyMissionPluginCache(home string) error {
 
 func runPluginCLI(ctx context.Context, codexBin, home string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, codexBin, args...)
-	cmd.Env = append(os.Environ(), "CODEX_HOME="+home)
+	// Merge, never append: with an ambient CODEX_HOME set, appending yields
+	// duplicate keys and which one the provider honors is runtime-dependent,
+	// so the CLI could mutate the user's real home. The overlay replaces any
+	// inherited value - every invocation observes exactly one scoped home.
+	cmd.Env = processenv.Merge(map[string]string{"CODEX_HOME": home})
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
