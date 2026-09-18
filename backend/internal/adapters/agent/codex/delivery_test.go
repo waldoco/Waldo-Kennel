@@ -539,3 +539,42 @@ func TestDeliverWrappedDraftIsNotQueuedEvidence(t *testing.T) {
 		t.Fatalf("tabs = %d, want exactly 1 (no retry without draft proof)", term.tabs)
 	}
 }
+
+// paneActiveTallDraft: a turn running while the composer holds a draft
+// wrapped across MORE THAN 10 rows - the working indicator sits far above
+// the footer. A tail-windowed "esc to interrupt" check false-idles here and
+// Enter steers instead of queueing (review round-4 HIGH).
+var paneActiveTallDraft = func() string {
+	// The composer holds OUR message, its first line wrapped across rows.
+	wrapped := "› Run this shell command: for i in 1 2"
+	for i := 0; i < 12; i++ {
+		wrapped += "\n  continuation of the wrapped draft row"
+	}
+	return strings.Replace(paneActive, "› Ask Codex to do anything", wrapped, 1)
+}()
+
+// TestDeliverActiveTurnWithTallDraftQueuesViaTab: the working indicator is
+// more than 10 lines above the bottom; classification must still see the
+// live bottom-pane structure and dispatch Tab.
+func TestDeliverActiveTurnWithTallDraftQueuesViaTab(t *testing.T) {
+	if got, _ := ClassifyPaneState(paneActiveTallDraft); got != PaneStateActiveTurn {
+		t.Fatalf("ClassifyPaneState(paneActiveTallDraft) = %v, want active_turn", got)
+	}
+	term := &fakeTerminal{captures: []string{
+		paneActiveTallDraft, // classify
+		paneActiveTallDraft, // boundary
+		paneActiveTallDraft, // settle: draft already visible (composer holds a draft)
+		paneActiveTallDraft, // pre-submit
+		paneQueuedAck,       // ack: queued
+	}}
+	outcome, err := testDeliverer().Deliver(context.Background(), term, msg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if outcome != DeliveryQueued {
+		t.Fatalf("outcome = %v, want queued", outcome)
+	}
+	if term.tabs != 1 || term.enters != 0 {
+		t.Fatalf("tabs=%d enters=%d, want 1/0 - Enter against an active turn is the bug", term.tabs, term.enters)
+	}
+}

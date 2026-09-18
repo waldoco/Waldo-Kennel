@@ -127,3 +127,25 @@ func TestClassifyPaneStateActiveBeatsIdle(t *testing.T) {
 		t.Fatalf("state = %v, want active_turn", state)
 	}
 }
+
+// TestClassifyPaneStateOldWorkingMarkerIsIdle: an "esc to interrupt" line
+// in scrollback (with completed-turn rows between it and the composer) is
+// not a live indicator - the pane is idle and Enter is correct.
+func TestClassifyPaneStateOldWorkingMarkerIsIdle(t *testing.T) {
+	pane := "› earlier prompt\n\n  Working (30s, esc to interrupt)\n\n  done 9:01 AM\n\n› another prompt\n\n  done 9:04 AM\n\n› Ask Codex to do anything\n\n  gpt-6-astra default · /tmp/worktrees/mer-1 · title"
+	got, _ := ClassifyPaneState(pane)
+	if got != PaneStateIdle {
+		t.Fatalf("ClassifyPaneState(old working marker) = %v, want idle", got)
+	}
+}
+
+// TestClassifyPaneStateQueuedRowsBetweenWorkingAndComposer: queued user
+// renders may sit between the live working line and the composer; the pane
+// is still mid-turn.
+func TestClassifyPaneStateQueuedRowsBetweenWorkingAndComposer(t *testing.T) {
+	pane := "› earlier prompt\n\n• Called tool({})\n  └ out\n\n  Working (14s, esc to interrupt)\n\n› queued follow-up text\n\n› Ask Codex to do anything\n\n  gpt-6-astra default · /tmp/worktrees/mer-1 · title"
+	got, _ := ClassifyPaneState(pane)
+	if got != PaneStateActiveTurn {
+		t.Fatalf("ClassifyPaneState(queued rows) = %v, want active_turn", got)
+	}
+}
