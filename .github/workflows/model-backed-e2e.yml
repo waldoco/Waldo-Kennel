@@ -109,7 +109,11 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          go test ./e2e -run '^TestGovernedCodexSandboxFalsifiers' -count=1 -v -timeout 20m
+          # Tee the full falsifier output so every typed verdict survives as a
+          # run artifact; failed runs otherwise upload nothing and the verdict
+          # would live only in the job log.
+          mkdir -p "$KENNEL_E2E_ARTIFACTS"
+          go test ./e2e -run '^TestGovernedCodexSandboxFalsifiers' -count=1 -v -timeout 20m 2>&1 | tee "$KENNEL_E2E_ARTIFACTS/sandbox-falsifiers.log"
 
       - name: Run Outcome launch-cut proof
         shell: bash
@@ -127,7 +131,7 @@ jobs:
           go test ./e2e -skip '^TestOutcomeLaunchCut|^TestGovernedCodexSandboxFalsifiers' -count=1 -v -timeout 45m
 
       - name: Upload failure evidence
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: model-backed-e2e-failure-evidence
