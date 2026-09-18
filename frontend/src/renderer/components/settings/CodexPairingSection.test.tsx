@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { appI18n } from "../../i18n";
 import { CodexPairingSection } from "./CodexPairingSection";
-afterEach(() => {
+afterEach(async () => {
   delete window.kennel;
+  await appI18n.changeLanguage("en");
 });
 describe("Codex project pairing", () => {
   it("discovers inside a project and requires native pairing confirmation", async () => {
@@ -209,4 +211,32 @@ it("does not project a late manual Refresh result onto another Project", async (
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(screen.getByText(/Codex project-b/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Pair Codex" })).toBeEnabled();
+});
+
+it("renders pairing status and actions in the selected locale, with interpolation", async () => {
+  await appI18n.changeLanguage("ja");
+  window.kennel = {
+    app: {
+      discoverCodex: vi.fn(async () => ({
+        state: "installed" as const,
+        installationId: "i",
+        version: "1.2.3",
+        source: "path",
+      })),
+      getCodexPairing: vi.fn(async () => ({
+        state: "connected" as const,
+        connectionId: "c",
+        generation: 7,
+      })),
+    } as never,
+  } as never;
+  render(<CodexPairingSection projectId="p" />);
+  // ja catalog: "接続済み · 世代 {{generation}}" - proves the non-English
+  // catalog is live and that interpolation survives translation.
+  await screen.findByText("接続済み · 世代 7");
+  expect(screen.queryByText(/Connected/)).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "再接続" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reconnect" })).toBeNull();
 });
