@@ -153,7 +153,7 @@ const paneQueuedAck = `› Execute the following approved WorkUnit inside your i
 // scrollback and the pane is already back to idle, no working indicator.
 var paneInstantAck = strings.Replace(paneIdleNoDraft,
 	"› Ask Codex to do anything",
-	"› "+msg+"\n\n› Ask Codex to do anything", 1)
+	"› "+msg+"\n\n  done 9:07 AM\n\n› Ask Codex to do anything", 1)
 
 // idleClearedAck: draft vanished with NO echo and NO turn evidence - the
 // HIGH-1 false-positive pane. Must never ack.
@@ -475,5 +475,67 @@ func TestDeliverRecoveryUsesTabMidTurn(t *testing.T) {
 	}
 	if term.tabs != 2 || term.enters != 0 {
 		t.Fatalf("tabs=%d enters=%d, want 2/0", term.tabs, term.enters)
+	}
+}
+
+// TestDeliverOldEchoWindowShiftIsUnknown pins review round-3 HIGH-1: the
+// same message was submitted EARLIER and its echo sat just above the
+// capture window; when our draft vanishes spuriously, the shrinking
+// composer reveals that OLD echo. A count-based anchor would false-ack
+// (0->1, idle pane). The positional anchor (last stable scrollback row at
+// dispatch) sits BELOW the revealed echo, so it never counts.
+func TestDeliverOldEchoWindowShiftIsUnknown(t *testing.T) {
+	// Boundary: the last stable scrollback row is the old turn's "done"
+	// marker, which sits BELOW the old echo of the same message text.
+	boundaryWithOldEcho := strings.Replace(paneIdleNoDraft,
+		"  done 9:04 AM",
+		"› "+msg+"\n\n  done 9:04 AM", 1)
+	// Ack window: draft gone, pane idle, old echo revealed - nothing new
+	// below the "done 9:04 AM" anchor row.
+	term := &fakeTerminal{captures: []string{
+		boundaryWithOldEcho, // classify: idle (old echo present in scrollback)
+		boundaryWithOldEcho, // boundary snapshot: anchor = "done 9:04 AM"
+		paneIdleWithSteeredDraft,
+		paneIdleWithSteeredDraft,
+		boundaryWithOldEcho, // ack polls + recovery: draft gone, only the OLD echo (repeats)
+	}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError (old echo must not ack)", err)
+	}
+	if term.enters != 1 {
+		t.Fatalf("enters = %d, want exactly 1", term.enters)
+	}
+}
+
+// TestDeliverWrappedDraftIsNotQueuedEvidence pins review round-3 HIGH-2:
+// mid-turn, the draft renders in the composer region as a bare continuation
+// row (no "›" prefix on the text row), evading DraftPresent's bottom-row
+// match. Generic text-below-the-working-line matching would accept it as a
+// queued rendering; structural queued evidence must not.
+func TestDeliverWrappedDraftIsNotQueuedEvidence(t *testing.T) {
+	wrappedDraft := strings.Replace(paneActive,
+		"› Ask Codex to do anything",
+		"› \n"+msg+"\n\n› Ask Codex to do anything", 1)
+	// Sanity: the text row sits below the working line but the bottom-most
+	// "›" row is the empty composer prompt, so DraftPresent misses it.
+	if DraftPresent(wrappedDraft, msg) {
+		t.Fatal("precondition: wrapped draft must evade DraftPresent")
+	}
+	term := &fakeTerminal{captures: []string{
+		paneActive,
+		paneActive,
+		paneActiveWithDraft, // settle: draft visible in the composer
+		paneActiveWithDraft, // pre-submit
+		wrappedDraft,        // ack polls + recovery: only a composer-region wrap (repeats)
+	}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError (composer wrap must not ack queued)", err)
+	}
+	if term.tabs != 1 {
+		t.Fatalf("tabs = %d, want exactly 1 (no retry without draft proof)", term.tabs)
 	}
 }

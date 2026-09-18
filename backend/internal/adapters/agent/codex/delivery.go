@@ -168,8 +168,8 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 		return DeliveryNone, &DeliveryUnknownError{Phase: "boundary capture: " + err.Error()}
 	}
 	anchor := ackAnchor{
-		echoes: countEchoRows(boundary, message),
-		queued: countQueuedRegion(boundary, message),
+		line:   lastStableScrollbackRow(boundary),
+		queued: countQueuedStructural(boundary, message),
 	}
 
 	// Dispatch boundary: cancel copy mode, paste atomically, then WAIT FOR
@@ -325,24 +325,29 @@ func (d *Deliverer) awaitDraft(ctx context.Context, term PaneTerminal, message s
 	}
 }
 
-// ackAnchor snapshots message-render evidence BEFORE dispatch so the ack
-// can require post-boundary evidence. Without it, a cleared composer plus an
-// idle footer - or a continuing original turn - would false-positive as
-// acknowledgment of a message that never entered the turn stream.
+// ackAnchor anchors acknowledgment to the pre-dispatch pane. Counts over a
+// bounded capture window are NOT monotonic (a clearing draft shrinks the
+// composer and pulls old scrollback - including an old identical echo -
+// into the window from the top), so the anchor is POSITIONAL: the last
+// stable (non-volatile) scrollback row above the composer at dispatch time.
+// Only rows rendered BELOW that row postdate dispatch. Queued evidence is
+// counted structurally (see countQueuedStructural) against the boundary.
 type ackAnchor struct {
-	echoes int // "› <message>" transcript rows before dispatch
-	queued int // message-text rows below the last working line, pre-dispatch
+	line   string // normalized last stable scrollback row at dispatch
+	queued int    // structural queued rows in the boundary capture
 }
 
 // awaitAck polls for positive acknowledgment after the submit keystroke.
 // Idle dispatch (submitted): the draft must be gone AND a NEW "› <message>"
-// echo row must exist beyond the pre-dispatch count, with turn evidence
-// below it (a running turn, tool output, or a finished-turn marker) or a
-// pane that positively classifies idle with the echo in scrollback (an
-// instantly-finished turn). Active-turn dispatch (queued): the draft must be
-// gone AND the message must render below the last working line beyond the
-// pre-dispatch count while the original turn still runs. Anything else fails
-// closed to unknown.
+// echo row must render BELOW the boundary's last stable scrollback row
+// (positional anchor - immune to capture-window shifts), with turn evidence
+// tied to that row below it, or post-echo completion evidence between the
+// row and the composer on a positively-idle pane (an instantly-finished
+// turn; every row in that gap postdates the boundary). Active-turn dispatch
+// (queued): the draft must be gone AND structural queued rows ("> "-prefixed,
+// full-text, below the last working line, ABOVE the composer region) must
+// exceed the boundary count while the original turn still runs. Anything
+// else fails closed to unknown.
 func (d *Deliverer) awaitAck(ctx context.Context, term PaneTerminal, message string, dispatchState PaneState, anchor ackAnchor) (DeliveryOutcome, bool, string) {
 	deadline := time.Now().Add(d.cfg.AckDeadline)
 	var lastCapture string
@@ -359,10 +364,10 @@ func (d *Deliverer) awaitAck(ctx context.Context, term PaneTerminal, message str
 				}
 			} else if !DraftPresent(capture, message) {
 				if dispatchState == PaneStateActiveTurn {
-					if state == PaneStateActiveTurn && countQueuedRegion(capture, message) > anchor.queued {
+					if state == PaneStateActiveTurn && countQueuedStructural(capture, message) > anchor.queued {
 						return DeliveryQueued, true, lastCapture
 					}
-				} else if submittedAck(capture, message, anchor.echoes, state) {
+				} else if submittedAck(capture, message, anchor, state) {
 					return DeliverySubmitted, true, lastCapture
 				}
 			}
@@ -377,55 +382,63 @@ func (d *Deliverer) awaitAck(ctx context.Context, term PaneTerminal, message str
 }
 
 // submittedAck reports whether the pane proves the message entered the turn
-// stream: a new scrollback echo beyond the pre-dispatch count plus
-// post-echo turn evidence (running turn, tool call, or finished-turn
-// marker) or a positively-idle pane showing the new echo.
-func submittedAck(capture, message string, preEchoes int, state PaneState) bool {
-	rows := echoRowIndices(capture, message)
-	if len(rows) <= preEchoes {
-		return false
-	}
-	last := rows[len(rows)-1]
-	if turnEvidenceBelowRow(capture, last) {
-		return true
-	}
-	return state == PaneStateIdle
-}
-
-// echoRowIndices returns the line indices of transcript rows echoing the
-// message as a submitted user turn ("› <first line of message>").
-func echoRowIndices(capture, message string) []int {
+// stream. The echo must render BELOW the boundary's last stable scrollback
+// row: an old identical echo entering the capture window (a clearing draft
+// shrinks the composer and reveals scrollback above) sits ABOVE the anchor
+// and never counts. Evidence must then be tied to the new row: a working
+// indicator, tool call, or finished-turn marker below it; or, for an
+// instantly-finished turn (idle pane), completion content between the new
+// row and the composer - every row in that gap postdates the boundary.
+func submittedAck(capture, message string, anchor ackAnchor, state PaneState) bool {
 	want := normalizeSpaces(firstLine(message))
 	if want == "" {
-		return nil
+		return false
 	}
-	var rows []int
-	for i, line := range strings.Split(capture, "\n") {
-		trimmed := strings.TrimLeft(line, " ")
+	lines := strings.Split(capture, "\n")
+	ci := composerRowIndex(lines)
+	if ci < 0 {
+		return false
+	}
+	anchorIdx := -1
+	if anchor.line != "" {
+		anchorIdx = -1
+		for i := len(lines) - 1; i >= 0; i-- {
+			if normalizeSpaces(strings.TrimSpace(lines[i])) == anchor.line {
+				anchorIdx = i
+				break
+			}
+		}
+		if anchorIdx < 0 {
+			return false // boundary evidence scrolled away: fail closed
+		}
+	}
+	newEcho := -1
+	for i := anchorIdx + 1; i < ci; i++ {
+		trimmed := strings.TrimLeft(lines[i], " ")
 		if !strings.HasPrefix(trimmed, "›") {
 			continue
 		}
 		body := normalizeSpaces(strings.TrimSpace(strings.TrimPrefix(trimmed, "›")))
 		if body == want {
-			rows = append(rows, i)
+			newEcho = i
 		}
 	}
-	return rows
-}
-
-func countEchoRows(capture, message string) int { return len(echoRowIndices(capture, message)) }
-
-// turnEvidenceBelowRow reports whether a line below row carries turn
-// evidence: the working indicator, a tool call/result, or a finished-turn
-// marker.
-func turnEvidenceBelowRow(capture string, row int) bool {
-	lines := strings.Split(capture, "\n")
-	for _, line := range lines[row+1:] {
-		if strings.Contains(line, "esc to interrupt") ||
-			strings.Contains(line, "• Called") ||
-			strings.Contains(line, "└ ") ||
-			doneMarker.MatchString(line) {
+	if newEcho < 0 {
+		return false
+	}
+	for j := newEcho + 1; j < len(lines); j++ {
+		if strings.Contains(lines[j], "esc to interrupt") ||
+			strings.Contains(lines[j], "• Called") ||
+			strings.Contains(lines[j], "└ ") ||
+			doneMarker.MatchString(lines[j]) {
 			return true
+		}
+	}
+	if state == PaneStateIdle {
+		for j := newEcho + 1; j < ci; j++ {
+			if strings.TrimSpace(lines[j]) != "" {
+				return true
+			}
 		}
 	}
 	return false
@@ -433,26 +446,81 @@ func turnEvidenceBelowRow(capture string, row int) bool {
 
 var doneMarker = regexp.MustCompile(`\bdone \d`)
 
-// countQueuedRegion counts message-text rows below the LAST working
-// indicator - the region where a queued steered message renders while the
-// original turn runs. Queued rendering is the least verified ground truth;
-// a mismatch fails closed to unknown rather than acking on the continuing
-// original turn alone.
-func countQueuedRegion(capture, message string) int {
+var workingTimer = regexp.MustCompile(`\bWorking \(\d`)
+
+// composerRowIndex returns the index of the bottom-most "›"-prefixed row -
+// the live composer's input row - or -1 when no composer renders.
+func composerRowIndex(lines []string) int {
+	ci := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimLeft(line, " "), "›") {
+			ci = i
+		}
+	}
+	return ci
+}
+
+// volatileRow reports whether a row's text mutates between captures (the
+// working indicator's elapsed timer), making it useless as an anchor.
+func volatileRow(line string) bool {
+	return strings.Contains(line, "esc to interrupt") || workingTimer.MatchString(line)
+}
+
+// lastStableScrollbackRow returns the normalized text of the last
+// non-empty, non-volatile row above the composer - the positional dispatch
+// anchor. Empty when the boundary shows no scrollback (every later row is
+// then post-boundary).
+func lastStableScrollbackRow(capture string) string {
+	lines := strings.Split(capture, "\n")
+	ci := composerRowIndex(lines)
+	if ci < 0 {
+		ci = len(lines)
+	}
+	for i := ci - 1; i >= 0; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" || volatileRow(lines[i]) {
+			continue
+		}
+		return normalizeSpaces(t)
+	}
+	return ""
+}
+
+// countQueuedStructural counts QUEUED-message renderings of the text: rows
+// that (a) sit below the LAST working indicator, (b) sit ABOVE the live
+// composer region, and (c) carry the provider's message structure (a
+// "›"-prefixed row whose body is the message's first line, exactly). The
+// composer region is excluded explicitly: a wrapped or truncated draft row
+// that evades DraftPresent must never count as queued rendering. Queued
+// rendering is the least verified ground truth; a mismatch fails closed to
+// unknown rather than acking on the continuing original turn alone.
+func countQueuedStructural(capture, message string) int {
 	want := normalizeSpaces(firstLine(message))
 	if want == "" {
 		return 0
 	}
 	lines := strings.Split(capture, "\n")
+	ci := composerRowIndex(lines)
+	if ci < 0 {
+		return 0
+	}
 	lastWorking := -1
 	for i, line := range lines {
 		if strings.Contains(line, "esc to interrupt") {
 			lastWorking = i
 		}
 	}
+	if lastWorking < 0 {
+		return 0
+	}
 	count := 0
-	for _, line := range lines[lastWorking+1:] {
-		if strings.Contains(normalizeSpaces(line), want) {
+	for i := lastWorking + 1; i < ci; i++ {
+		trimmed := strings.TrimLeft(lines[i], " ")
+		if !strings.HasPrefix(trimmed, "›") {
+			continue
+		}
+		body := normalizeSpaces(strings.TrimSpace(strings.TrimPrefix(trimmed, "›")))
+		if body == want {
 			count++
 		}
 	}
