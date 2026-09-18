@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type {
   CodexDiscoveryState,
   CodexPairingState,
@@ -6,42 +7,49 @@ import type {
 import { Button } from "../ui/button";
 import { SettingsSection } from "./SettingsSection";
 
-function message(
-  discovery: CodexDiscoveryState | null,
-  pairing: CodexPairingState | null,
-) {
-  if (pairing?.state === "connected")
-    return `Connected · generation ${pairing.generation ?? "unknown"}`;
-  if (pairing?.state === "pairing")
-    return "Proving the approved Codex connection…";
-  if (pairing?.state === "awaiting_confirmation")
-    return "Waiting for desktop confirmation";
-  if (pairing?.state === "action_needed")
-    return (
-      pairing.message ??
-      `Connection needs attention${pairing.reason ? `: ${pairing.reason}` : ""}`
-    );
-  if (pairing?.state === "error")
-    return (
-      pairing.message ??
-      "Pairing failed. Your previous connection was not changed."
-    );
-  if (discovery?.state === "installed")
-    return `Codex ${discovery.version} is installed`;
-  if (discovery) return discovery.message;
-  return "Checking this project for an installed Codex provider…";
-}
-
 export function CodexPairingSection({ projectId }: { projectId: string }) {
+  const { t } = useTranslation();
   const [discovery, setDiscovery] = useState<CodexDiscoveryState | null>(null);
   const [pairing, setPairing] = useState<CodexPairingState | null>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const operationEpoch = useRef(0);
   const bridge = window.kennel?.app;
+  const statusMessage = (
+    found: CodexDiscoveryState | null,
+    current: CodexPairingState | null,
+  ) => {
+    if (current?.state === "connected")
+      return t("settings.pairing.status.connected", {
+        generation:
+          current.generation ??
+          t("settings.pairing.status.generationUnknown"),
+      });
+    if (current?.state === "pairing")
+      return t("settings.pairing.status.proving");
+    if (current?.state === "awaiting_confirmation")
+      return t("settings.pairing.status.awaitingConfirmation");
+    if (current?.state === "action_needed")
+      return (
+        current.message ??
+        (current.reason
+          ? t("settings.pairing.status.needsAttentionWithReason", {
+              reason: current.reason,
+            })
+          : t("settings.pairing.status.needsAttention"))
+      );
+    if (current?.state === "error")
+      return current.message ?? t("settings.pairing.status.failed");
+    if (found?.state === "installed")
+      return t("settings.pairing.status.installed", {
+        version: found.version,
+      });
+    if (found) return found.message;
+    return t("settings.pairing.status.checking");
+  };
   const refresh = async () => {
     if (!bridge?.discoverCodex || !bridge.getCodexPairing) {
-      throw new Error("Provider pairing is unavailable in this build.");
+      throw new Error(t("settings.pairing.status.unavailable"));
     }
     const [found, current] = await Promise.all([
       bridge.discoverCodex({ projectId }),
@@ -68,16 +76,17 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
           message:
             error instanceof Error
               ? error.message
-              : "Provider discovery failed",
+              : t("settings.pairing.status.discoveryFailed"),
         });
         setPairing({
           state: "error",
-          message: "Pairing state could not be loaded.",
+          message: t("settings.pairing.status.stateLoadFailed"),
         });
       });
     return () => {
       operationEpoch.current += 1;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
   const retryRefresh = async () => {
     const epoch = ++operationEpoch.current;
@@ -92,7 +101,9 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
       setDiscovery({
         state: "error",
         message:
-          error instanceof Error ? error.message : "Provider discovery failed",
+          error instanceof Error
+            ? error.message
+            : t("settings.pairing.status.discoveryFailed"),
       });
     } finally {
       if (operationEpoch.current === epoch) setRefreshing(false);
@@ -117,7 +128,7 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
         message:
           error instanceof Error
             ? error.message
-            : "Pairing failed. Your previous connection was not changed.",
+            : t("settings.pairing.status.failed"),
       });
     } finally {
       if (operationEpoch.current === epoch) setBusy(false);
@@ -131,20 +142,20 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
     discovery?.state === "error" || pairing?.state === "error";
   const pairLabel =
     pairing?.state === "connected" || pairing?.repair === "reconnect_adapter"
-      ? "Reconnect"
+      ? t("settings.pairing.action.reconnect")
       : pairing?.repair === "retry_pairing"
-        ? "Retry pairing"
-        : "Pair Codex";
+        ? t("settings.pairing.action.retry")
+        : t("settings.pairing.action.pair");
   return (
-    <SettingsSection title="Codex provider" grouped>
+    <SettingsSection title={t("settings.pairing.title")} grouped>
       <div
         data-testid="codex-pairing"
         className="flex items-center justify-between gap-4 p-4"
       >
         <div>
-          <p className="text-sm font-medium">Codex</p>
+          <p className="text-sm font-medium">{t("settings.pairing.name")}</p>
           <p role="status" className="mt-1 text-xs text-muted-foreground">
-            {message(discovery, pairing)}
+            {statusMessage(discovery, pairing)}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -155,7 +166,7 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
               onClick={() => void retryRefresh()}
               variant="ghost"
             >
-              Refresh status
+              {t("settings.pairing.action.refresh")}
             </Button>
           ) : null}
           <Button
