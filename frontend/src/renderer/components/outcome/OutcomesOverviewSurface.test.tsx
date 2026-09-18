@@ -4,11 +4,11 @@ vi.mock("../../hooks/useMissionAttention", () => ({
 		new Map(
 			outcomes.map((outcome) => [outcome.id, outcome.id.startsWith("needs")
 				? { lane: "needsYou", reason: "The provider needs a decision about the requested permission." }
-				: { lane: outcome.id.startsWith("accepted") ? "accepted" : outcome.id.startsWith("review") ? "review" : "define" }]),
+				: { lane: outcome.id.startsWith("accepted") ? "accepted" : outcome.id.startsWith("review") ? "review" : outcome.id.startsWith("unavailable") ? "unavailable" : "define" }]),
 		),
 }));
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,8 +37,8 @@ function workspace(id: string, name: string): WorkspaceSummary {
 	return { id, name, kind: "single_repo", path: `/repo/${id}`, type: "main", sessions: [] };
 }
 
-function outcome(id: string, title: string, parentId?: string) {
-	return { id, title, currentRevisionNumber: 1, latestPlan: undefined, parentId } as never;
+function outcome(id: string, title: string, parentId?: string, updatedAt?: string) {
+	return { id, title, currentRevisionNumber: 1, latestPlan: undefined, parentId, updatedAt } as never;
 }
 
 function renderSurface(onOpenOutcome = vi.fn()) {
@@ -248,6 +248,47 @@ it("hosts the List/Board switch in the overview header, wired to the shared stor
 	expect(useUiStore.getState().outcomeRunViewMode).toBe("board");
 	await user.click(screen.getByRole("tab", { name: "List" }));
 	expect(useUiStore.getState().outcomeRunViewMode).toBe("list");
+});
+
+it("renders board cards with the project, relative activity time, and the lane's canon status color", async () => {
+	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Waldo Kennel")], isLoading: false });
+	const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+	projectOutcomesQueryMock.mockReturnValue({
+		outcomes: [outcome("review-1", "Review the drafted plan", undefined, twoHoursAgo)],
+		isLoading: false,
+		refetch: vi.fn(),
+	});
+	useUiStore.setState({ outcomeRunViewMode: "board" });
+	renderSurface();
+	const row = (await screen.findByText("Review the drafted plan")).closest("button") as HTMLElement;
+	// Top row: real project name, real relative activity time, revision authority.
+	expect(within(row).getByText("Waldo Kennel")).toBeInTheDocument();
+	expect(within(row).getByText("2h ago")).toBeInTheDocument();
+	// Status sentence carries the Ready lane's canon color.
+	const sentence = within(row).getByText("Review proof and decide");
+	expect(sentence.className).toContain("text-status-ready");
+	// List mode keeps the row compact: no project/time prefix.
+	act(() => useUiStore.setState({ outcomeRunViewMode: "list" }));
+	const listRow = screen.getByText("Review the drafted plan").closest("button") as HTMLElement;
+	expect(within(listRow).queryByText("2h ago")).not.toBeInTheDocument();
+});
+
+it("colors an unavailable Outcome's sentence with the lane it actually sits in", async () => {
+	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Project")], isLoading: false });
+	projectOutcomesQueryMock.mockReturnValue({
+		outcomes: [outcome("unavailable-1", "Status not yet known")],
+		isLoading: false,
+		refetch: vi.fn(),
+	});
+	useUiStore.setState({ outcomeRunViewMode: "board" });
+	renderSurface();
+	const row = (await screen.findByText("Status not yet known")).closest("button") as HTMLElement;
+	// Unavailable buckets into Needs input, so the sentence wears that lane's
+	// canon color instead of falling through to muted gray.
+	const needsInputHeading = await screen.findByRole("heading", { name: /Needs input/ });
+	expect(needsInputHeading.closest("section")!.textContent).toContain("Status not yet known");
+	const sentence = within(row).getByText("Refresh to read the current Outcome status.");
+	expect(sentence.className).toContain("text-status-in-review");
 });
 
 it("places review Outcomes in the Ready lane, separate from Needs input", async () => {

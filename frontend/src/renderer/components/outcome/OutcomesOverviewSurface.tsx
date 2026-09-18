@@ -9,6 +9,7 @@ import { useProjectOutcomes, type OutcomeRecord } from "../../hooks/useOutcome";
 import { useWorkspaceQuery } from "../../hooks/useWorkspaceQuery";
 import { cn } from "../../lib/utils";
 import { deriveOutcomeDashboardPresentation } from "../../lib/outcome-dashboard-presentation";
+import { formatTimeCompact } from "../../lib/format-time";
 import { buildOutcomeTree, outcomeDestinationStage, type OutcomeDestinationStage } from "../../lib/outcome-tree";
 import type { WorkspaceSummary } from "../../types/workspace";
 import { useUiStore } from "../../stores/ui-store";
@@ -168,10 +169,6 @@ function ProjectOutcomesGroup({
 
 	const visibleNodes = outcomeTree.slice(0, limit);
 	const attention = useMissionAttention(visibleNodes.map((node) => node.outcome), workspace.id);
-	// Board buckets group derived states; acceptance remains a daemon fact.
-	// Canon lanes (locked 2026-09-17, ruling 2026-09-18): review is its own
-	// "Ready" lane - finished work awaiting acceptance, not an input ask.
-	const boardLane = (lane?: string) => lane === "accepted" ? "accepted" : lane === "review" ? "review" : lane === "observe" ? "observe" : lane === "define" || lane === "authorize" ? "define" : "needsYou";
 	const filteredNodes = visibleNodes.filter((node) => {
 		const lane = attention.get(node.outcome.id)?.lane;
 		return attentionFilter === "history" || (attentionFilter === "needsYou"
@@ -216,18 +213,7 @@ function ProjectOutcomesGroup({
 									<h4 className="flex h-10 items-center gap-2 px-3 text-xs font-medium">
 										<span
 											aria-hidden="true"
-											className={cn(
-												"size-2 rounded-full",
-												lane === "define"
-													? "bg-status-needs-you"
-													: lane === "needsYou"
-														? "bg-status-in-review"
-														: lane === "review"
-															? "bg-status-ready"
-															: lane === "observe"
-																? "bg-status-working"
-																: "bg-muted-foreground",
-											)}
+											className={cn("size-2 rounded-full", BOARD_LANE_TONE[lane]?.dot ?? "bg-muted-foreground")}
 										/>
 										{t(`mission.boardLane.${lane}`)}
 										<span className="ml-auto tabular-nums text-muted-foreground">
@@ -242,6 +228,7 @@ function ProjectOutcomesGroup({
 											<Fragment key={node.outcome.id}>
 												<OutcomeOverviewRow
 													attention={attention.get(node.outcome.id)}
+													workspaceName={workspace.name}
 													selected={selectedOutcomeId === node.outcome.id}
 												onOpen={() => onOpenOutcome(workspace.id, node.outcome, outcomeDestinationStage(node, attention.get(node.outcome.id)?.lane))}
 												onOpenMissionControl={() => onOpenOutcome(workspace.id, node.outcome, outcomeDestinationStage(node, attention.get(node.outcome.id)?.lane))}
@@ -251,6 +238,7 @@ function ProjectOutcomesGroup({
 													node.contributors.map((contributor) => (
 														<OutcomeOverviewRow
 															contributor
+															workspaceName={workspace.name}
 															key={contributor.id}
 															onOpen={() => onOpenOutcome(workspace.id, contributor, "decide_authorize")}
 															outcome={contributor}
@@ -280,10 +268,37 @@ function ProjectOutcomesGroup({
 // `contributor` indents a contributing Outcome under the parent that claims
 // it. The Mission Control action sits outside the row's own button rather than
 // inside it — a button cannot nest, and the two go to different places.
+// Board buckets group derived states; acceptance remains a daemon fact.
+// Canon lanes (locked 2026-09-17, ruling 2026-09-18): review is its own
+// "Ready" lane - finished work awaiting acceptance, not an input ask.
+// Unrecognized lanes (including "unavailable") fall into needsYou, matching
+// the overview's filter behavior.
+const boardLane = (lane?: string) =>
+	lane === "accepted"
+		? "accepted"
+		: lane === "review"
+			? "review"
+			: lane === "observe"
+				? "observe"
+				: lane === "define" || lane === "authorize"
+					? "define"
+					: "needsYou";
+
+// One canon tone per board lane, shared by the lane heading dot and the card
+// status sentence so a card always reads its own lane's color.
+const BOARD_LANE_TONE: Record<string, { dot: string; text: string }> = {
+	define: { dot: "bg-status-needs-you", text: "text-status-needs-you" },
+	needsYou: { dot: "bg-status-in-review", text: "text-status-in-review" },
+	review: { dot: "bg-status-ready", text: "text-status-ready" },
+	observe: { dot: "bg-status-working", text: "text-status-working" },
+	accepted: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
+};
+
 function OutcomeOverviewRow({
 	attention,
 	selected,
 	outcome,
+	workspaceName,
 	contributor = false,
 	onOpen,
 	onOpenMissionControl,
@@ -291,6 +306,7 @@ function OutcomeOverviewRow({
 	outcome: OutcomeRecord;
 	attention?: MissionAttention;
 	selected?: boolean;
+	workspaceName?: string;
 	contributor?: boolean;
 	onOpen: () => void;
 	onOpenMissionControl?: () => void;
@@ -298,6 +314,11 @@ function OutcomeOverviewRow({
 	const { t } = useTranslation();
 	const presentation = deriveOutcomeDashboardPresentation(outcome);
 	const board = useUiStore((state) => state.outcomeRunViewMode === "board");
+	// Canon lane colors (locked 2026-09-18): the status sentence carries its
+	// lane's dot color, so a card reads its state before its words. Derived
+	// from the board bucket so unrecognized lanes (e.g. unavailable) match
+	// the lane the card actually sits in.
+	const statusTone = BOARD_LANE_TONE[boardLane(attention?.lane)].text;
 	return (
 		<li className={cn(contributor && "pl-6")}>
 			<div
@@ -318,22 +339,29 @@ function OutcomeOverviewRow({
 					onClick={onOpen}
 					type="button"
 				>
-					<span className="flex items-center gap-2 text-xs text-muted-foreground">
-						<Flag aria-hidden="true" className="size-icon-sm shrink-0" />
-						{t("mission.revisions", {
-							contract: outcome.currentRevisionNumber,
-							plan: outcome.latestPlan?.number ?? t("mission.noPlan"),
-						})}
+					{board && workspaceName ? (
+						<span className="flex w-full items-center gap-2 text-xs text-muted-foreground">
+							<Flag aria-hidden="true" className="size-icon-sm shrink-0" />
+							<span className="min-w-0 truncate">{workspaceName}</span>
+							<span className="ml-auto shrink-0 tabular-nums">{formatTimeCompact(outcome.updatedAt)}</span>
+						</span>
+					) : null}
+					<span className={cn("flex items-center gap-2 text-xs text-muted-foreground", board && "w-full")}>
+						{board ? null : <Flag aria-hidden="true" className="size-icon-sm shrink-0" />}
+						<span className="min-w-0 truncate">
+							{t("mission.revisions", {
+								contract: outcome.currentRevisionNumber,
+								plan: outcome.latestPlan?.number ?? t("mission.noPlan"),
+							})}
+						</span>
 					</span>
 					<span className={cn("flex min-w-0 flex-1 flex-col gap-2 text-foreground", board ? "text-base" : "text-sm")}>
-						<span className="line-clamp-3 break-words font-medium">{outcome.title}</span>
+						<span className={cn("break-words font-medium", board ? "line-clamp-2" : "line-clamp-3")}>{outcome.title}</span>
 						<span
 							className={cn(
 								"text-xs leading-relaxed",
 								board && "order-first",
-								attention?.lane === "needsYou" || attention?.lane === "authorize"
-									? "text-orange-400"
-									: "text-muted-foreground",
+								statusTone,
 							)}
 						>
 							{attention?.reason
