@@ -321,14 +321,15 @@ func osDenialPhrases(t *testing.T) []string {
 }
 
 // hasDeniedCommandEvent reports whether one item.completed command_execution
-// event records EXACTLY the canonical command the test constructed (a
-// wrapped, edited, or substituted command - `echo ...; false` - never
-// matches), with a present, nonzero exit code, whose captured output carries
-// a control-derived OS denial phrase. Without that event the run observed a
-// model choice, not the sandbox.
+// event records the canonical command the test constructed - byte-exact
+// against codex's recorded forms (bare or shell-wrapped via
+// matchesCanonical; an edited or substituted command - `echo ...; false` -
+// never matches), with a present, nonzero exit code, whose captured output
+// carries a control-derived OS denial phrase. Without that event the run
+// observed a model choice, not the sandbox.
 func hasDeniedCommandEvent(events []commandExecution, canonicalCommand string, denialPhrases []string) bool {
 	for _, event := range events {
-		if event.Command != canonicalCommand {
+		if !matchesCanonical(event.Command, canonicalCommand) {
 			continue
 		}
 		if event.ExitCode == nil || *event.ExitCode == 0 {
@@ -342,6 +343,67 @@ func hasDeniedCommandEvent(events []commandExecution, canonicalCommand string, d
 		}
 	}
 	return false
+}
+
+// recordedCommandForms enumerates the byte-exact strings codex 0.153.4 can
+// record for one canonical command. Codex records shlex_join(shell_argv) as
+// the command_execution item's command (app-server item_builders:
+// presentation.command = shlex_join(argv)), and the shell tool's argv is
+// [shell_path, -lc|-c, command] (core/src/shell.rs derive_exec_args), so the
+// recorded form is e.g. /bin/zsh -lc 'printf OUT > ...' with the canonical
+// command verbatim inside single quotes. Comparison stays byte-exact against
+// these constructed forms - no suffix or fuzzy matching, and a substituted
+// or edited command never matches.
+func recordedCommandForms(canonical string) []string {
+	forms := []string{canonical}
+	quoted := shlexQuote(canonical)
+	for _, shell := range []string{"/bin/zsh", "/bin/bash", "/bin/sh", "/usr/bin/zsh", "/usr/bin/bash", "/usr/bin/sh", "zsh", "bash", "sh"} {
+		for _, flag := range []string{"-lc", "-c"} {
+			forms = append(forms, shell+" "+flag+" "+quoted)
+		}
+	}
+	return forms
+}
+
+// shlexQuote mirrors the quoting shlex_join applies per argv element: a bare
+// word only when every byte sits in the unquoted-safe set, otherwise single
+// quotes with POSIX ”' escaping of embedded single quotes.
+func shlexQuote(s string) string {
+	bare := s != ""
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-._/:=@+%^,", r)) {
+			bare = false
+			break
+		}
+	}
+	if bare {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+// matchesCanonical reports whether a recorded command string is one of
+// codex's byte-exact recorded forms of the canonical command.
+func matchesCanonical(recorded, canonical string) bool {
+	for _, form := range recordedCommandForms(canonical) {
+		if recorded == form {
+			return true
+		}
+	}
+	return false
+}
+
+// recordedCommands renders the command strings a stream carried, for
+// self-diagnosing failure logs.
+func recordedCommands(events []commandExecution) string {
+	if len(events) == 0 {
+		return "(no command_execution events)"
+	}
+	parts := make([]string, 0, len(events))
+	for _, e := range events {
+		parts = append(parts, strconv.Quote(e.Command))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // parseThreadID extracts the thread_id from the thread.started event of a
@@ -373,14 +435,12 @@ func parseThreadID(out string) string {
 
 // hasSuccessfulCommandEvent reports whether one item.completed
 // command_execution event records the canonical control command succeeding
-// (present zero exit code). Unlike the denial bar it tolerates codex's
-// "sh -c" wrapping of the recorded command: the control only proves the
-// model really invoked the shell tool in this session. The denial bar in
-// hasDeniedCommandEvent stays exact - a wrapped or substituted probe
-// command never counts as boundary evidence.
+// (present zero exit code), matched byte-exact against codex's recorded
+// forms via matchesCanonical - the control only proves the model really
+// invoked the shell tool in this session.
 func hasSuccessfulCommandEvent(events []commandExecution, canonicalCommand string) bool {
 	for _, event := range events {
-		if event.Command != canonicalCommand && event.Command != "/bin/sh -c "+canonicalCommand && event.Command != "sh -c "+canonicalCommand {
+		if !matchesCanonical(event.Command, canonicalCommand) {
 			continue
 		}
 		if event.ExitCode != nil && *event.ExitCode == 0 {
@@ -415,7 +475,7 @@ func deniedProbe(t *testing.T, run func(*testing.T, string, ...string) (string, 
 		threadID := parseThreadID(primeOut)
 		raw, readErr := os.ReadFile(filepath.Join(workspace, controlName))
 		if threadID == "" || !hasSuccessfulCommandEvent(parseCommandExecutions(primeOut), controlCommand) || readErr != nil || !strings.Contains(string(raw), "PRIME") {
-			t.Logf("attempt %d: positive control produced no evidenced tool invocation (thread %q, control file err %v); retrying", attempt, threadID, readErr)
+			t.Logf("attempt %d: positive control produced no evidenced tool invocation (thread %q, control file err %v, recorded commands: %s); retrying", attempt, threadID, readErr, recordedCommands(parseCommandExecutions(primeOut)))
 			continue
 		}
 		out, _ = run(t, workspace, "exec", "resume", "--json", "--skip-git-repo-check", "-c", "check_for_update_on_startup=false", threadID,
@@ -426,7 +486,7 @@ func deniedProbe(t *testing.T, run func(*testing.T, string, ...string) (string, 
 		if hasDeniedCommandEvent(parseCommandExecutions(out), canonicalCommand, denialPhrases) {
 			return out
 		}
-		t.Logf("attempt %d: no evidenced denial event for %q; retrying", attempt, canonicalCommand)
+		t.Logf("attempt %d: no evidenced denial event for %q (recorded commands: %s); retrying", attempt, canonicalCommand, recordedCommands(parseCommandExecutions(out)))
 	}
 	t.Fatalf("probe, not falsifier: no item.completed command_execution event records exactly %q failing with an OS denial after 3 attempts (last output):\n%s", canonicalCommand, out)
 	return ""
