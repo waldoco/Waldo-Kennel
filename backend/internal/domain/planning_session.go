@@ -97,8 +97,8 @@ const (
 	// is a setup, harness, or Contract action routed from the readiness
 	// packet's route codes, not an owner answer to an ordinary question and
 	// never provider thinking.
-	PlanningWaitingSystem   PlanningWaitingOn = "system"
-	PlanningWaitingNone     PlanningWaitingOn = "none"
+	PlanningWaitingSystem PlanningWaitingOn = "system"
+	PlanningWaitingNone   PlanningWaitingOn = "none"
 )
 
 // Valid reports whether the waiting actor is supported.

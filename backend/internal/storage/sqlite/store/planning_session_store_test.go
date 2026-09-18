@@ -262,3 +262,40 @@ func TestPlanningSessionStore_RecoversCrashAfterOwnerTurnBeforeRunCreation(t *te
 		t.Fatalf("turns after recovery=%+v err=%v", turns, err)
 	}
 }
+
+func TestPlanStore_CurrentContractGuardRejectsSessionlessStaleBinding(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	revision := seedProviderPlanOutcome(t, s)
+	now := time.Date(2026, 9, 11, 12, 30, 0, 0, time.UTC)
+
+	// Control: a sessionless Plan bound to the current Contract inserts.
+	current := canonicalGraphPlan(t, revision)
+	current.ID = "plan-guard-current"
+	if _, err := s.AppendPlanRevision(ctx, revision.OutcomeID, current); err != nil {
+		t.Fatalf("append current-bound Plan: %v", err)
+	}
+
+	next := domain.ContractRevision{
+		ID: "plan-guard-contract-2", OutcomeID: revision.OutcomeID,
+		Goal: "Use the new Contract.", SuccessCriteria: []string{"Only current-Contract Plans persist."},
+		Review: "Inspect lineage.", AuthorityCeiling: revision.AuthorityCeiling, CreatedAt: now.Add(time.Second),
+	}
+	if _, err := s.AppendContractRevision(ctx, revision.OutcomeID, revision.Number, next); err != nil {
+		t.Fatal(err)
+	}
+
+	// A sessionless insert bound to the superseded revision must abort in the
+	// same transaction - the one-shot lane has no planning-source trigger.
+	stale := canonicalGraphPlan(t, revision)
+	stale.ID = "plan-guard-stale"
+	_, err := s.AppendPlanRevision(ctx, revision.OutcomeID, stale)
+	var staleErr *ports.PlanContractStaleError
+	if !errors.As(err, &staleErr) || staleErr.ContractRevision != revision.Number {
+		t.Fatalf("stale sessionless Plan error = %v, want PlanContractStaleError for revision %d", err, revision.Number)
+	}
+	latest, found, err := s.GetLatestPlanRevision(ctx, revision.OutcomeID)
+	if err != nil || !found || latest.ID != current.ID {
+		t.Fatalf("stale Plan survived: latest=%+v found=%v err=%v", latest, found, err)
+	}
+}

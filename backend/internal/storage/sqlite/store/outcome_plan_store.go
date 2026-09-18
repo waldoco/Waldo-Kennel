@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -93,6 +94,12 @@ func (s *Store) AppendPlanRevision(ctx context.Context, outcomeID domain.Outcome
 		assumptionsJSON, blockersJSON, plan.RunBriefCoreDigest, plan.RunBriefCompiledDigest,
 		nullString(plan.PlanningSessionID.String()), nullString(string(plan.SourceIntelligenceRunID)), string(routingJSON),
 	); err != nil {
+		// The current-contract guard trigger is the atomic authority fence: a
+		// Contract advance committed before this insert aborts it, never
+		// minting a Plan bound to a superseded Contract.
+		if strings.Contains(err.Error(), "plan revision must bind the current Contract revision") {
+			return domain.PlanRevision{}, &ports.PlanContractStaleError{OutcomeID: plan.OutcomeID, ContractRevision: plan.ContractRevisionNumber}
+		}
 		return domain.PlanRevision{}, fmt.Errorf("create plan revision %s: %w", plan.ID, err)
 	}
 

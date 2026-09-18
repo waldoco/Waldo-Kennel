@@ -45,14 +45,14 @@ type PlanningCandidate struct {
 
 // PlanningDiscussionRequest carries frozen lineage, context, and conversation.
 type PlanningDiscussionRequest struct {
-	Binding           domain.PlanningBinding
-	Outcome           domain.Outcome
-	Contract          domain.ContractRevision
-	CriterionAliases  map[string]domain.CriterionID
+	Binding          domain.PlanningBinding
+	Outcome          domain.Outcome
+	Contract         domain.ContractRevision
+	CriterionAliases map[string]domain.CriterionID
 	// Fence is the evaluation fence the readiness envelope's planner-declared
 	// issues are keyed under. Its RoutingSnapshotID is blank at request time;
 	// the readiness evaluator re-keys every issue under the snapshot it reads.
-	Fence domain.PlanningReadinessFence
+	Fence             domain.PlanningReadinessFence
 	RepositoryContext RepositoryContextSnapshot
 	// RepositoryToolUse comes from the PlanningSession's frozen, owner-approved
 	// repository_read grant. A repository packet alone never grants native tools.

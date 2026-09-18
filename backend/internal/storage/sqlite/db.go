@@ -161,6 +161,9 @@ func migrate(db *sql.DB) error {
 	if err := preparePlanningReadinessMigration(db); err != nil {
 		return fmt.Errorf("prepare planning-readiness migration: %w", err)
 	}
+	if err := preparePlanCurrentContractGuardMigration(db); err != nil {
+		return fmt.Errorf("prepare plan-current-contract-guard migration: %w", err)
+	}
 	if err := prepareWorkUnitPositionMigration(db); err != nil {
 		return fmt.Errorf("prepare work-unit-position migration: %w", err)
 	}
@@ -369,6 +372,45 @@ SELECT COALESCE((
 	return nil
 }
 
+// preparePlanCurrentContractGuardMigration lets a degraded profile whose
+// Outcome tables were never physically installed complete goose without
+// creating a trigger on an absent plan_revisions. The migration is recorded
+// as applied and reconcilePlanningPlanImmutability installs the trigger once
+// the table actually exists.
+func preparePlanCurrentContractGuardMigration(db *sql.DB) error {
+	var gooseTable int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'goose_db_version'`,
+	).Scan(&gooseTable); err != nil {
+		return err
+	}
+	if gooseTable == 0 {
+		return nil
+	}
+	var applied int
+	if err := db.QueryRow(`
+SELECT COALESCE((
+    SELECT is_applied FROM goose_db_version
+    WHERE version_id = 158 ORDER BY id DESC LIMIT 1
+), 0)`).Scan(&applied); err != nil {
+		return err
+	}
+	if applied != 0 {
+		return nil
+	}
+	var plansPresent int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'plan_revisions'`,
+	).Scan(&plansPresent); err != nil {
+		return err
+	}
+	if plansPresent == 0 {
+		_, err := db.Exec(`INSERT INTO goose_db_version (version_id, is_applied) VALUES (158, 1)`)
+		return err
+	}
+	return nil
+}
+
 // preparePlanReviewContextMigration lets a degraded profile with burned
 // Outcome migration versions complete goose without attempting ALTER TABLE on
 // an absent plan_revisions table. reconcilePlanReviewSchema below installs the
@@ -441,6 +483,19 @@ func reconcilePlanReviewSchema(db *sql.DB) error {
 		}
 	}
 	if _, err := db.Exec(`DROP TRIGGER IF EXISTS plan_revisions_immutable_update`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DROP TRIGGER IF EXISTS plan_revisions_current_contract_guard`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+CREATE TRIGGER plan_revisions_current_contract_guard
+BEFORE INSERT ON plan_revisions
+BEGIN
+    SELECT CASE WHEN NEW.contract_revision_number <> (
+        SELECT o.current_revision_number FROM outcomes o WHERE o.id = NEW.outcome_id
+    ) THEN RAISE(ABORT, 'plan revision must bind the current Contract revision') END;
+END`); err != nil {
 		return err
 	}
 	_, err := db.Exec(`

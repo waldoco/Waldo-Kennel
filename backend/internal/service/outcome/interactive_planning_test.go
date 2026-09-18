@@ -15,6 +15,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/artifactstore"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/service/intelligence/intelligencetest"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/service/outcome"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/sqlitetest"
@@ -909,5 +910,112 @@ func TestInteractivePlanning_EvaluationFailurePersistsNoClaimTurn(t *testing.T) 
 	})
 	if err != nil || retried.Readiness == nil || retried.Readiness.Status != domain.PlanningNeedsContext || len(retried.Turns) != 3 {
 		t.Fatalf("retry after evaluation failure: view=%+v err=%v", retried, err)
+	}
+}
+
+// reviseDuringSnapshotRouter advances the Contract inside the one inventory
+// snapshot read every evaluation performs - the exact window between the
+// pre-evaluation recheck and the Plan append.
+type reviseDuringSnapshotRouter struct {
+	*routingInventoryFake
+	revise func()
+}
+
+func (r *reviseDuringSnapshotRouter) RoutingSnapshot(ctx context.Context, projectID domain.ProjectID, preference *domain.RoutingPreference) (ports.RoutingInventorySnapshot, error) {
+	if r.revise != nil {
+		revise := r.revise
+		r.revise = nil
+		revise()
+	}
+	return r.routingInventoryFake.RoutingSnapshot(ctx, projectID, preference)
+}
+
+func TestInteractivePlanning_ContractAdvanceDuringEvaluationPersistsNoPlan(t *testing.T) {
+	ctx := context.Background()
+	store := sqlitetest.MustOpen(t)
+	project := domain.ProjectRecord{ID: "planning-evalrace-project", Path: initPlanningRepo(t), DisplayName: "Evaluation race", RegisteredAt: time.Now().UTC()}
+	if err := store.UpsertProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	provider := &interactivePlanningFake{}
+	provider.discussResult = func(ports.PlanningDiscussionRequest) domain.PlanningReadinessResult {
+		return domain.NewPlanningReadinessResult("The Plan is ready.", &domain.PlanDraftProposal{
+			Summary: "Make the bounded change.",
+			WorkUnits: []domain.PlanDraftWorkUnit{{
+				Key: "implement", Title: "Implement the change", Intent: domain.WorkUnitIntentModify, Role: domain.WorkUnitRoleImplement,
+				OutputSummary: "The change is ready.", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"inspect the diff"},
+			}},
+		}, nil)
+	}
+	router := &reviseDuringSnapshotRouter{routingInventoryFake: &routingInventoryFake{snapshotIDs: []string{"snap-evalrace"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}}
+	svc := outcome.New(store, nil).WithPlanning(provider, router)
+	svc.AdmissionPolicy = testAdmissionPolicy()
+	created, err := svc.Create(ctx, outcome.CreateInput{
+		ProjectID: domain.ProjectID(project.ID), Title: "Evaluation race planning", Goal: "Never mint a Plan against a superseded Contract.",
+		SuccessCriteria: []string{"No stale Plan persists."}, Review: "Inspect lineage.",
+		AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true}, RequestKey: "planning-evalrace-outcome",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.StartPlanning(ctx, created.Outcome.ID, outcome.StartPlanningInput{ExpectedContractRevision: 1, CandidateID: "direct-openai-planner", RequestKey: "planning-evalrace-start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.revise = func() {
+		if _, reviseErr := svc.ReviseContract(ctx, created.Outcome.ID, outcome.ReviseContractInput{
+			ExpectedRevision: 1, Goal: "Revised mid-evaluation.", SuccessCriteria: []string{"No stale Plan persists."}, Review: "Inspect lineage.",
+			AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true},
+		}); reviseErr != nil {
+			t.Fatalf("revise during evaluation: %v", reviseErr)
+		}
+	}
+	_, err = svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, outcome.PlanningMessageInput{
+		ExpectedSessionRevision: view.Session.Revision, Text: "Propose it now.", RequestKey: "planning-evalrace-turn",
+	})
+	if code := requireAPICode(t, err); code != "PLANNING_CONTRACT_STALE" {
+		t.Fatalf("evaluation race code=%s err=%v", code, err)
+	}
+	if latest, found, latestErr := store.GetLatestPlanRevision(ctx, created.Outcome.ID); latestErr != nil || found {
+		t.Fatalf("stale Plan persisted: %+v found=%v err=%v", latest, found, latestErr)
+	}
+	current, err := svc.GetCurrentPlanning(ctx, created.Outcome.ID)
+	if err != nil || current.Session.Status != domain.PlanningSessionSuperseded {
+		t.Fatalf("session after evaluation race = %+v err=%v", current.Session, err)
+	}
+}
+
+func TestProposePlan_ContractAdvanceDuringEvaluationPersistsNoPlan(t *testing.T) {
+	ctx := context.Background()
+	store := sqlitetest.MustOpen(t)
+	project := domain.ProjectRecord{ID: "oneshot-evalrace-project", Path: initPlanningRepo(t), DisplayName: "One-shot race", RegisteredAt: time.Now().UTC()}
+	if err := store.UpsertProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	router := &reviseDuringSnapshotRouter{routingInventoryFake: &routingInventoryFake{snapshotIDs: []string{"snap-oneshot-race"}, candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}}
+	svc := outcome.New(store, nil).WithPlanning(intelligencetest.New(), router)
+	svc.AdmissionPolicy = testAdmissionPolicy()
+	created, err := svc.Create(ctx, outcome.CreateInput{
+		ProjectID: domain.ProjectID(project.ID), Title: "One-shot race", Goal: "Never mint a Plan against a superseded Contract.",
+		SuccessCriteria: []string{"No stale Plan persists."}, Review: "Inspect lineage.",
+		AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true, ExecuteLocal: true}, RequestKey: "oneshot-evalrace-outcome",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.revise = func() {
+		if _, reviseErr := svc.ReviseContract(ctx, created.Outcome.ID, outcome.ReviseContractInput{
+			ExpectedRevision: 1, Goal: "Revised mid-evaluation.", SuccessCriteria: []string{"No stale Plan persists."}, Review: "Inspect lineage.",
+			AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true, ExecuteLocal: true},
+		}); reviseErr != nil {
+			t.Fatalf("revise during evaluation: %v", reviseErr)
+		}
+	}
+	_, err = svc.ProposePlan(ctx, created.Outcome.ID, 1)
+	if code := requireAPICode(t, err); code != "PLANNING_CONTRACT_STALE" {
+		t.Fatalf("one-shot evaluation race code=%s err=%v", code, err)
+	}
+	if latest, found, latestErr := store.GetLatestPlanRevision(ctx, created.Outcome.ID); latestErr != nil || found {
+		t.Fatalf("stale one-shot Plan persisted: %+v found=%v err=%v", latest, found, latestErr)
 	}
 }

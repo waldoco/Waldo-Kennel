@@ -187,6 +187,13 @@ func (s *Service) proposePlan(ctx context.Context, outcomeID domain.OutcomeID, e
 	}
 	saved, err := s.store.AppendPlanRevision(ctx, outcomeID, proposal)
 	if err != nil {
+		// The Contract advanced between the entry recheck and the append; the
+		// current-contract guard refused the insert atomically. The owner
+		// reloads and proposes against the new revision.
+		var stale *ports.PlanContractStaleError
+		if errors.As(err, &stale) {
+			return PlanView{}, apierr.New(apierr.KindConflict, "PLANNING_CONTRACT_STALE", "The Contract changed while the Plan was drafted. Reload the Outcome and propose again.", nil)
+		}
 		return PlanView{}, err
 	}
 	return PlanView{Outcome: outcomeRecord, Plan: saved}, nil

@@ -328,6 +328,7 @@ func TestInteractivePlanningSchemaReconcilesBurnedMigration(t *testing.T) {
 		}
 	}
 	for _, trigger := range []string{
+		"plan_revisions_current_contract_guard",
 		"plan_revisions_planning_source_guard",
 		"planning_sessions_update_guard",
 		"planning_turns_immutable_update",

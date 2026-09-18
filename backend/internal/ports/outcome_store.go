@@ -106,6 +106,19 @@ func (e *AttemptRunIntentConflictError) Error() string {
 	return fmt.Sprintf("attempt admission lost run authorization for outcome %s: expected generation %d, current %d (%s)", e.OutcomeID, e.Expected, e.Current, e.Desired)
 }
 
+// PlanContractStaleError reports a Plan insert whose Contract binding stopped
+// being the Outcome's current revision before the append transaction
+// committed. The current-contract guard trigger raises it atomically with the
+// insert, so no Plan can be minted against a superseded Contract.
+type PlanContractStaleError struct {
+	OutcomeID        domain.OutcomeID
+	ContractRevision int64
+}
+
+func (e *PlanContractStaleError) Error() string {
+	return fmt.Sprintf("plan for outcome %s binds Contract revision %d, which is no longer current", e.OutcomeID, e.ContractRevision)
+}
+
 // OutcomeStore is the canonical durable boundary for Outcome control-plane
 // state. Implementations own atomic writes; services own policy and authority.
 type OutcomeStore interface {
