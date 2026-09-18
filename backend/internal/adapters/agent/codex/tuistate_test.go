@@ -62,6 +62,23 @@ const paneFixtureUnrecognized = `SomeOtherAgent v9.9
 
 ready>`
 
+// paneFixturePinned0153 is the real preserved pane from run 35307077099
+// (pinned 0.153.4, evidence artifact): the same stuck-draft failure with a
+// two-segment status footer (no session-title segment) and box-rule
+// separators - the footer shape must still classify idle.
+const paneFixturePinned0153 = `────────────────────────────
+
+• Created durable.txt and confirmed its content is exactly PERSISTENT through governed readback.
+
+  KENNEL_WORK_STATUS: reviewing
+
+────────────────────────────
+
+
+› Run this shell command: for i in 1 2 3 4 5 6; do echo b4-$i; sleep 3; done
+
+  gpt-6-astra default · /private/var/folders/fs/sqsvy0pn0n72nwp8px8pwg_h0000gn/T/worktrees/outcome-persistent5725-1`
+
 func TestClassifyPaneState(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -70,6 +87,7 @@ func TestClassifyPaneState(t *testing.T) {
 		reason  UnsteerableReason
 	}{
 		{"idle composer with unsubmitted draft (run 35303652394)", paneFixtureIdleWithDraft, PaneStateIdle, ""},
+		{"pinned 0.153.4 stuck draft, two-segment footer (run 35307077099)", paneFixturePinned0153, PaneStateIdle, ""},
 		{"active turn shows interrupt hint", paneFixtureActiveTurn, PaneStateActiveTurn, ""},
 		{"approval dialog is unsteerable", paneFixtureApproval, PaneStateUnsteerable, ReasonApprovalDialog},
 		{"compact overlay is unsteerable", paneFixtureCompacting, PaneStateUnsteerable, ReasonCompact},
