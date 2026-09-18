@@ -54,7 +54,7 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	// checkless. That check is also the only truthful success path after the
 	// owner kill below - the guard there asserts its recorded provenance.
 	d.mustCall("POST", "/projects/"+project+"/outcomes", http.StatusCreated, map[string]any{
-		"title": "Persistent governed session fixture", "goal": "Create durable.txt containing PERSISTENT and keep the same governed Codex session steerable.",
+		"title": "Persistent governed session fixture", "goal": "Create durable.txt containing exactly PERSISTENT.",
 		"successCriteria": []string{"durable.txt contains exactly PERSISTENT"}, "review": "Run test -f durable.txt and grep -Fx PERSISTENT durable.txt.",
 		"authorityCeiling": map[string]any{"readWorkspace": true, "writeWorkspace": true, "executeLocal": true}, "requestKey": "b4-create",
 	}, &created)
