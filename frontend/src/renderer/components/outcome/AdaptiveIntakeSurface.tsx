@@ -7,6 +7,7 @@ import { Trans, useTranslation } from "react-i18next";
 import type { components } from "../../../api/schema";
 import { intakeAnalysisRequestQueryKey, proposalProvenance, useIntakeAnalysisRequest } from "../../hooks/useIntakeAnalysisRequest";
 import { useWorkspaceQuery } from "../../hooks/useWorkspaceQuery";
+import { projectOutcomesQueryKey } from "../../hooks/useOutcome";
 import { apiClient, apiErrorMessage, hasTrustedApiBaseUrl } from "../../lib/api-client";
 import { usesPreviewWorkspaceData } from "../../lib/preview-mode";
 import { createPreviewOutcome } from "../../lib/preview-outcome-store";
@@ -182,6 +183,12 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 					review: t("outcome.intake.previewReviewMethod"),
 					requestKey: captureIntent.current.key,
 				});
+				// This preview write bypasses useCreateOutcome, whose invalidation
+				// is what refreshes the board's project Outcome queries. Without
+				// the same reconcile here the board keeps its pre-create cache and
+				// claims "No Outcomes match this view" beside the very Outcome the
+				// focused panel is showing.
+				void queryClient.invalidateQueries({ queryKey: projectOutcomesQueryKey(projectId) });
 				await openOutcome(outcome.id);
 				return;
 			}

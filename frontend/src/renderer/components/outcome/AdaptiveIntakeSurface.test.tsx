@@ -359,3 +359,18 @@ it("clears the box after a captured statement but keeps it after a rejected one"
  await userEvent.click(screen.getByRole("button",{name:"Review draft"}));
  expect(screen.getByText("Before Friday")).toBeInTheDocument();
  });
+
+it("preview capture reconciles the board's project Outcomes query", async () => {
+	vi.resetModules();
+	const previewMode = await import("../../lib/preview-mode");
+	vi.spyOn(previewMode, "usesPreviewWorkspaceData", "get").mockReturnValue(true);
+	const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+	const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+	const { AdaptiveIntakeSurface: PreviewSurface } = await import("./AdaptiveIntakeSurface");
+	render(<QueryClientProvider client={client}><PreviewSurface projectId="project-1" /></QueryClientProvider>);
+	const statement = screen.getByTestId("intake-statement-input");
+	await userEvent.type(statement, "Make the board honest after creation{Meta>}{Enter}{/Meta}");
+	await waitFor(() => {
+		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["project-outcomes", "project-1"] });
+	});
+});
