@@ -327,6 +327,16 @@ describe("GlobalSettingsForm", () => {
 		);
 	});
 
+	it("shows real download progress as an accessible progressbar", async () => {
+		updGetStatus.mockResolvedValue({ state: "downloading", percent: 42 });
+		renderForm();
+		const bar = await screen.findByRole("progressbar");
+		expect(bar).toHaveAttribute("aria-valuenow", "42");
+		expect(bar).toHaveAttribute("aria-label", "Downloading… 42%");
+		const fill = bar.firstElementChild as HTMLElement;
+		expect(fill.style.transform).toBe("scaleX(0.42)");
+	});
+
 	it("hides the nightly warning on the stable channel", async () => {
 		renderForm();
 		await screen.findByText("Updates");

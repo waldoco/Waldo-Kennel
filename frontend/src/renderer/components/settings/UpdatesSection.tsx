@@ -357,8 +357,36 @@ function UpdateStatusLine({ status }: { status: UpdateStatus }) {
 					{t("settings.updates.available", { version: status.version ? ` (v${status.version})` : "" })}
 				</span>
 			);
-		case "downloading":
-			return <span className="text-xs text-settings-muted">{t("settings.updates.downloading", { percent: status.percent ?? 0 })}</span>;
+		case "downloading": {
+			const percent = Math.min(100, Math.max(0, Math.round(status.percent ?? 0)));
+			return (
+				<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+					<span className="text-xs text-settings-muted">
+						{t("settings.updates.downloading", { percent })}
+					</span>
+					{/*
+					 * A progressbar rather than a bare span: the fill is the primary
+					 * encoding, so a screen reader has to get the same value sighted
+					 * users get from its length. The fill is a full-width bar scaled
+					 * down, not a bar whose width is animated: scaleX composites,
+					 * width relayouts the row on every progress event.
+					 */}
+					<div
+						role="progressbar"
+						aria-valuemin={0}
+						aria-valuemax={100}
+						aria-valuenow={percent}
+						aria-label={t("settings.updates.downloading", { percent })}
+						className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-border"
+					>
+						<div
+							className="block h-full w-full origin-left rounded-full bg-primary transition-transform duration-normal ease-out motion-reduce:transition-none"
+							style={{ transform: `scaleX(${Math.max(percent / 100, 0.02)})` }}
+						/>
+					</div>
+				</div>
+			);
+		}
 		case "downloaded":
 			return <span className="text-xs text-success">{t("settings.updates.downloaded")}</span>;
 		case "not-available":
