@@ -1170,3 +1170,87 @@ func (e commandError) Error() string {
 }
 
 func (e commandError) Unwrap() error { return e.err }
+
+// PasteBuffer delivers text to the pane as ONE atomic bracketed paste
+// (load-buffer from a daemon-managed temp file, then paste-buffer -p -d),
+// replacing per-chunk send-keys -l streaming. Ported from AWS
+// cli-agent-orchestrator's tmux delivery: an atomic paste cannot interleave
+// with a TUI's key handling, and -d drops the buffer so a retried delivery
+// never replays stale content.
+func (r *Runtime) PasteBuffer(ctx context.Context, handle ports.RuntimeHandle, text string) error {
+	id, err := handleID(handle)
+	if err != nil {
+		return err
+	}
+	buf, err := os.CreateTemp("", "kennel-paste-*")
+	if err != nil {
+		return fmt.Errorf("tmux runtime: stage paste buffer: %w", err)
+	}
+	defer os.Remove(buf.Name())
+	if _, err := buf.WriteString(text); err != nil {
+		buf.Close()
+		return fmt.Errorf("tmux runtime: stage paste buffer: %w", err)
+	}
+	if err := buf.Close(); err != nil {
+		return fmt.Errorf("tmux runtime: stage paste buffer: %w", err)
+	}
+	if _, err := r.run(ctx, loadBufferArgs(buf.Name())...); err != nil {
+		return fmt.Errorf("tmux runtime: load paste buffer %s: %w", id, err)
+	}
+	if _, err := r.run(ctx, pasteBufferArgs(id)...); err != nil {
+		return fmt.Errorf("tmux runtime: paste buffer %s: %w", id, err)
+	}
+	return nil
+}
+
+// CancelCopyMode best-effort cancels tmux copy mode before a delivery: copy
+// mode swallows submission keystrokes. A pane not in copy mode makes tmux
+// report an error, which is expected and ignored (ported behavior).
+func (r *Runtime) CancelCopyMode(ctx context.Context, handle ports.RuntimeHandle) {
+	id, err := handleID(handle)
+	if err != nil {
+		return
+	}
+	_, _ = r.run(ctx, cancelCopyModeArgs(id)...)
+}
+
+// SendEnter presses Enter with no preceding text (the hardened path's submit
+// keystroke, kept separate from text delivery per agent-conductor's split).
+func (r *Runtime) SendEnter(ctx context.Context, handle ports.RuntimeHandle) error {
+	id, err := handleID(handle)
+	if err != nil {
+		return err
+	}
+	if _, err := r.run(ctx, sendEnterArgs(id)...); err != nil {
+		return fmt.Errorf("tmux runtime: send enter %s: %w", id, err)
+	}
+	return nil
+}
+
+// SendTab presses Tab - the Codex TUI keymap's queue-request key while a task
+// is running.
+func (r *Runtime) SendTab(ctx context.Context, handle ports.RuntimeHandle) error {
+	id, err := handleID(handle)
+	if err != nil {
+		return err
+	}
+	if _, err := r.run(ctx, sendTabArgs(id)...); err != nil {
+		return fmt.Errorf("tmux runtime: send tab %s: %w", id, err)
+	}
+	return nil
+}
+
+// PaneDead reports whether the pane's process has exited while the pane
+// remains (remain-on-exit). The hardened path refuses to type into a dead
+// provider instead of silently succeeding (ported dead-provider guard).
+func (r *Runtime) PaneDead(ctx context.Context, handle ports.RuntimeHandle) (bool, error) {
+	id, err := handleID(handle)
+	if err != nil {
+		return false, err
+	}
+	out, err := r.run(ctx, paneDeadArgs(id)...)
+	if err != nil {
+		return false, fmt.Errorf("tmux runtime: probe pane liveness %s: %w", id, err)
+	}
+	return strings.TrimSpace(string(out)) == "1", nil
+}

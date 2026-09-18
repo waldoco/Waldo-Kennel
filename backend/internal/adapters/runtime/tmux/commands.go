@@ -146,12 +146,13 @@ func cancelCopyModeArgs(id string) []string {
 	return []string{"send-keys", "-t", id, "-X", "cancel"}
 }
 
-// loadBufferArgs builds args for `tmux load-buffer -` reading the buffer
-// content from stdin. Buffer delivery replaces keystroke streaming for prompt
-// text: one paste-buffer applies the whole message atomically, immune to
-// per-chunk key interleaving.
-func loadBufferArgs() []string {
-	return []string{"load-buffer", "-"}
+// loadBufferArgs builds args for `tmux load-buffer <path>` reading the buffer
+// content from a daemon-managed temp file (the command runner has no stdin
+// plumbing; a temp file keeps the runner interface untouched). Buffer
+// delivery replaces keystroke streaming for prompt text: one paste-buffer
+// applies the whole message atomically, immune to per-chunk key interleaving.
+func loadBufferArgs(path string) []string {
+	return []string{"load-buffer", path}
 }
 
 // pasteBufferArgs builds args for `tmux paste-buffer -p -d -t <id>`.
