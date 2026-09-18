@@ -2475,36 +2475,41 @@ func TestSaveTeardownDefersCredentialCleanupWhenDestroyFails(t *testing.T) {
 	}
 }
 
-// Both no-runtime states are confirmed-death conditions under the reaper's own
-// semantics and must discharge a retained cleanup obligation.
-func TestReconcileReapCleansAgentSessionHomeWhenRuntimeIsCertainlyGone(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		handle   string
-		aliveErr error
-	}{
-		{name: "no runtime handle", handle: ""},
-		{name: "runtime server unavailable", handle: "h1", aliveErr: ports.ErrRuntimeUnavailable},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cleaner := &cleanerAgent{}
-			m, st, rt, _ := newCleanerManager(cleaner)
-			rt.aliveErr = tc.aliveErr
-			rec := domain.SessionRecord{
-				ID:           "mer-1",
-				ProjectID:    "mer",
-				Kind:         domain.KindWorker,
-				Metadata:     domain.SessionMetadata{RuntimeHandleID: tc.handle},
-				IsTerminated: true,
-			}
-			st.sessions["mer-1"] = rec
-			if err := m.reconcileReap(ctx, rec); err != nil {
-				t.Fatalf("reconcileReap err = %v", err)
-			}
-			if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
-				t.Fatalf("reaper cleanups = %v, want [mer-1]", cleaner.cleaned)
-			}
-		})
+// A terminated row with no runtime handle is confirmed-dead (an in-process
+// controller dies with the daemon), so the reaper discharges a retained
+// cleanup obligation there. Infrastructure-unavailable probes are
+// inconclusive and retain the obligation.
+func TestReconcileReapCleansAgentSessionHomeWithoutRuntimeHandle(t *testing.T) {
+	cleaner := &cleanerAgent{}
+	m, st, rt, _ := newCleanerManager(cleaner)
+	rec := domain.SessionRecord{
+		ID:           "mer-1",
+		ProjectID:    "mer",
+		Kind:         domain.KindWorker,
+		Metadata:     domain.SessionMetadata{RuntimeHandleID: ""},
+		IsTerminated: true,
+	}
+	st.sessions["mer-1"] = rec
+	if err := m.reconcileReap(ctx, rec); err != nil {
+		t.Fatalf("reconcileReap err = %v", err)
+	}
+	if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
+		t.Fatalf("reaper cleanups = %v, want [mer-1]", cleaner.cleaned)
+	}
+
+	// An inconclusive probe (runtime server unavailable) must NOT discharge
+	// the obligation: a dead tmux server can leave a live orphan.
+	rt.aliveErr = ports.ErrRuntimeUnavailable
+	cleaner.cleaned = nil
+	orphan := rec
+	orphan.ID = "mer-2"
+	orphan.Metadata = domain.SessionMetadata{RuntimeHandleID: "h2"}
+	st.sessions["mer-2"] = orphan
+	if err := m.reconcileReap(ctx, orphan); err != nil {
+		t.Fatalf("reconcileReap err = %v", err)
+	}
+	if len(cleaner.cleaned) != 0 {
+		t.Fatalf("inconclusive probe cleaned %v, want obligation retained", cleaner.cleaned)
 	}
 }
 

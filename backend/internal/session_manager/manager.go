@@ -2365,9 +2365,10 @@ func (m *Manager) reconcileReap(ctx context.Context, rec domain.SessionRecord) e
 	alive, err := m.runtime.IsAlive(ctx, handle)
 	if err != nil {
 		if errors.Is(err, ports.ErrRuntimeUnavailable) {
-			// No server means no leaked session: the process is conclusively
-			// gone, so the cleanup obligation is discharged too.
-			m.cleanAgentSessionHomeBestEffort(&rec)
+			// ErrRuntimeUnavailable is an inconclusive probe (a dead tmux
+			// server can leave a live orphan), so death is unproven: retain
+			// the cleanup obligation and retry when IsAlive later returns
+			// false or Destroy succeeds.
 			return nil
 		}
 		return fmt.Errorf("reconcile reap %s: probe: %w", rec.ID, err)
