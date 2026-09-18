@@ -2373,10 +2373,14 @@ func TestSpawn_WorkspaceProjectRollsBackWhenWorktreeRowsFail(t *testing.T) {
 type cleanerAgent struct {
 	fakeAgent
 	cleaned []string
+	onClean func(sessionID string)
 }
 
 func (a *cleanerAgent) CleanSessionHome(_, sessionID string) error {
 	a.cleaned = append(a.cleaned, sessionID)
+	if a.onClean != nil {
+		a.onClean(sessionID)
+	}
 	return nil
 }
 
@@ -2392,10 +2396,13 @@ func newCleanerManager(cleaner *cleanerAgent) (*Manager, *fakeStore, *fakeRuntim
 
 // Shutdown: a graceful save/teardown is a durable termination, so the
 // session's credential home must be deleted with it (restore re-seeds
-// just-in-time on the next launch).
+// just-in-time on the next launch) - and deleted only AFTER the runtime is
+// gone, so no live tail of the agent outlives its auth copy.
 func TestSaveTeardownCleansAgentSessionHome(t *testing.T) {
-	cleaner := &cleanerAgent{}
-	m, st, _, ws := newCleanerManager(cleaner)
+	var order []string
+	cleaner := &cleanerAgent{onClean: func(sessionID string) { order = append(order, "clean:"+sessionID) }}
+	m, st, rt, ws := newCleanerManager(cleaner)
+	rt.onDestroy = func(_ int, handle ports.RuntimeHandle) { order = append(order, "destroy:"+handle.ID) }
 	ws.stashRef = "refs/kennel/preserved/mer-1"
 	st.sessions["mer-1"] = domain.SessionRecord{
 		ID:        "mer-1",
@@ -2412,6 +2419,21 @@ func TestSaveTeardownCleansAgentSessionHome(t *testing.T) {
 	}
 	if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
 		t.Fatalf("session home cleanups = %v, want [mer-1]", cleaner.cleaned)
+	}
+	destroyIdx, cleanIdx := -1, -1
+	for i, call := range order {
+		switch call {
+		case "destroy:h1":
+			destroyIdx = i
+		case "clean:mer-1":
+			cleanIdx = i
+		}
+	}
+	if destroyIdx == -1 || cleanIdx == -1 {
+		t.Fatalf("missing destroy or cleanup in teardown order: %v", order)
+	}
+	if destroyIdx >= cleanIdx {
+		t.Fatalf("credential cleanup must follow runtime teardown; order = %v", order)
 	}
 }
 

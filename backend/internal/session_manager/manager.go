@@ -2254,9 +2254,6 @@ func (m *Manager) saveAndTeardownOne(ctx context.Context, rec domain.SessionReco
 	if err := m.lcm.MarkTerminated(ctx, rec.ID); err != nil {
 		return fmt.Errorf("save %s: mark terminated: %w", rec.ID, err)
 	}
-	// The credential copy must not outlive the terminal row: restore re-seeds
-	// the session home just-in-time on the next launch.
-	m.cleanAgentSessionHomeBestEffort(&rec)
 
 	// 5. Runtime teardown (best-effort; same pattern as Kill).
 	handle := runtimeHandle(rec.Metadata)
@@ -2273,6 +2270,10 @@ func (m *Manager) saveAndTeardownOne(ctx context.Context, rec domain.SessionReco
 	} else {
 		m.cleanupAgentWorkspace(ctx, rec, ws.Path)
 	}
+	// 7. Delete the credential copy LAST: no live tail of the agent may
+	// outlive its auth. The copy must not outlive the terminal row either -
+	// restore re-seeds the session home just-in-time on the next launch.
+	m.cleanAgentSessionHomeBestEffort(&rec)
 	return nil
 }
 
@@ -2785,7 +2786,6 @@ func (m *Manager) saveAndTeardownWorkspaceProject(ctx context.Context, rec domai
 	if err := m.lcm.MarkTerminated(ctx, rec.ID); err != nil {
 		return fmt.Errorf("save %s: mark terminated: %w", rec.ID, err)
 	}
-	m.cleanAgentSessionHomeBestEffort(&rec)
 	handle := runtimeHandle(rec.Metadata)
 	if destroyRuntime && handle.ID != "" {
 		if err := m.runtime.Destroy(ctx, handle); err != nil {
@@ -2804,6 +2804,9 @@ func (m *Manager) saveAndTeardownWorkspaceProject(ctx context.Context, rec domai
 	if rootDestroyed {
 		m.cleanupAgentWorkspace(ctx, rec, rec.Metadata.WorkspacePath)
 	}
+	// Credential cleanup runs after all runtime/worktree teardown (see
+	// saveAndTeardownOne step 7).
+	m.cleanAgentSessionHomeBestEffort(&rec)
 	return nil
 }
 
