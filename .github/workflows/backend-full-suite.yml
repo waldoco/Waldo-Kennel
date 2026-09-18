@@ -35,7 +35,9 @@ jobs:
 
   go-test-macos:
     name: go-test-full-macos
-    if: github.ref == 'refs/heads/outcome-loop'
+    # Runs on outcome-loop AND candidate branches: a darwin-only failure must
+    # block promotion, not surface after it. The push trigger already limits
+    # this workflow to outcome-loop and instinct/*candidate* refs.
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
