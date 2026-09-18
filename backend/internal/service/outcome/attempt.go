@@ -309,7 +309,8 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 		OutcomeID: outcomeID, PlanRevisionID: plan.ID, WorkUnitID: unit.ID,
 		ContractRevisionNumber: plan.ContractRevisionNumber,
 		RunIntentGeneration:    runIntentGeneration,
-		RequestKey:             strings.TrimSpace(in.RequestKey), FenceSubject: domain.FenceSubjectForProject(projectID), At: now,
+		RequestKey:             strings.TrimSpace(in.RequestKey), FenceSubject: domain.FenceSubjectForProject(projectID),
+		FenceReadOnly: !unit.RequiresExclusiveWorktreeAccess(), At: now,
 	})
 	if err != nil {
 		var replayConflict *ports.AttemptReplayConflictError
@@ -632,10 +633,22 @@ func (s *Service) readModel(ctx context.Context, outcomeRecord domain.Outcome, a
 	}
 	var fence *domain.AttemptFence
 	if ok {
-		if open, held, err := s.store.OpenFenceForSubject(ctx, domain.FenceSubjectForProject(subjectProject)); err != nil {
+		exclusiveSubject := domain.FenceSubjectForProject(subjectProject)
+		if open, held, err := s.store.OpenFenceForSubject(ctx, exclusiveSubject); err != nil {
 			return AttemptView{}, err
 		} else if held && open.AttemptID == attempt.ID {
 			fence = &open
+		}
+		if fence == nil {
+			// A read-only Attempt (ADR 0009 §6) holds its fence under a
+			// non-exclusive per-Attempt subject rather than the project's
+			// exclusive one; check that subject too before reporting no fence.
+			readSubject := domain.FenceSubjectForReadOnlyAttempt(exclusiveSubject, attempt.ID)
+			if open, held, err := s.store.OpenFenceForSubject(ctx, readSubject); err != nil {
+				return AttemptView{}, err
+			} else if held && open.AttemptID == attempt.ID {
+				fence = &open
+			}
 		}
 	}
 	// Provenance rides the same read as the rest of the attempt's evidence so

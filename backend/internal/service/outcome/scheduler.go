@@ -70,7 +70,17 @@ const (
 	// certain to refuse. The Contract criterion is satisfied; the successor
 	// still has nothing to build on.
 	BlockedUpstreamArtifactUnavailable WorkUnitBlockedReason = "upstream_artifact_unavailable"
+	// BlockedReadConcurrencyBudget means this read-only unit is otherwise
+	// admissible, but the plan's concurrent read-only Attempt budget (ADR
+	// 0009 §9) is already fully spent. This is distinct from custody held by
+	// an exclusive write/exec Attempt.
+	BlockedReadConcurrencyBudget WorkUnitBlockedReason = "read_concurrency_budget"
 )
+
+// MaxConcurrentReadOnlyAttempts bounds how many read-only WorkUnits (ADR 0009
+// §6) may run concurrently for one Plan. This is a first-cut operational
+// budget, not the final resource model called for by ADR 0009 §9.
+const MaxConcurrentReadOnlyAttempts = 3
 
 // ScheduleNoRunnableReason explains an empty runnable set.
 //
@@ -132,33 +142,54 @@ func attemptActiveForScheduling(status domain.AttemptStatus) bool {
 	}
 }
 
-// nextRunnableWorkUnit is the pure serial scheduler decision. It uses the same
+// nextRunnableWorkUnit is the scheduler decision for a zero-requested Start:
+// the first admissible unit in topological order. It uses the same
 // criterionReady evaluator as Prove & Close after narrowing facts to the exact
 // dependency WorkUnit/Attempt lineage.
 func nextRunnableWorkUnit(plan domain.PlanRevision, attempts []domain.Attempt, proof ProofView) (domain.WorkUnit, bool, error) {
-	if proof.OutcomeID != plan.OutcomeID {
-		return domain.WorkUnit{}, false, fmt.Errorf("scheduler proof outcome %s does not match plan outcome %s", proof.OutcomeID, plan.OutcomeID)
-	}
-	if proof.Contract.Number != plan.ContractRevisionNumber {
-		return domain.WorkUnit{}, false, fmt.Errorf("scheduler proof contract revision %d does not match plan revision binding %d", proof.Contract.Number, plan.ContractRevisionNumber)
-	}
-	ordered, err := plan.TopologicalWorkUnits()
+	admissible, err := admissibleWorkUnits(plan, attempts, proof)
 	if err != nil {
 		return domain.WorkUnit{}, false, err
 	}
+	if len(admissible) == 0 {
+		return domain.WorkUnit{}, false, nil
+	}
+	return admissible[0], true, nil
+}
+
+// admissibleWorkUnits returns every currently-admissible WorkUnit in
+// topological order: an exclusive write/exec-capable Attempt anywhere in the
+// plan blocks all admission (today's guarantee, unchanged); otherwise a
+// read-only candidate is admissible up to MaxConcurrentReadOnlyAttempts, and
+// a write/exec-capable candidate is admissible only while no Attempt at all
+// (read or write) is active.
+func admissibleWorkUnits(plan domain.PlanRevision, attempts []domain.Attempt, proof ProofView) ([]domain.WorkUnit, error) {
+	if proof.OutcomeID != plan.OutcomeID {
+		return nil, fmt.Errorf("scheduler proof outcome %s does not match plan outcome %s", proof.OutcomeID, plan.OutcomeID)
+	}
+	if proof.Contract.Number != plan.ContractRevisionNumber {
+		return nil, fmt.Errorf("scheduler proof contract revision %d does not match plan revision binding %d", proof.Contract.Number, plan.ContractRevisionNumber)
+	}
+	ordered, err := plan.TopologicalWorkUnits()
+	if err != nil {
+		return nil, err
+	}
 	currentAttempts := attemptsForPlan(plan, attempts)
-	for _, attempt := range currentAttempts {
-		if attemptActiveForScheduling(attempt.Status) {
-			return domain.WorkUnit{}, false, nil
-		}
+	activeByUnit, writeActive, readActiveCount := activeAttemptState(plan, currentAttempts)
+	if writeActive {
+		return nil, nil
 	}
 
 	proven := make(map[domain.WorkUnitID]bool, len(ordered))
 	for _, unit := range ordered {
 		proven[unit.ID] = workUnitProven(plan, unit, currentAttempts, proof)
 	}
+	var admissible []domain.WorkUnit
 	for _, unit := range ordered {
 		if proven[unit.ID] {
+			continue
+		}
+		if _, active := activeByUnit[unit.ID]; active {
 			continue
 		}
 		ready := true
@@ -168,11 +199,54 @@ func nextRunnableWorkUnit(plan domain.PlanRevision, attempts []domain.Attempt, p
 				break
 			}
 		}
-		if ready {
-			return unit, true, nil
+		if !ready {
+			continue
+		}
+		if unit.RequiresExclusiveWorktreeAccess() {
+			if readActiveCount > 0 {
+				continue
+			}
+		} else if readActiveCount >= MaxConcurrentReadOnlyAttempts {
+			continue
+		}
+		admissible = append(admissible, unit)
+	}
+	return admissible, nil
+}
+
+// planUnitByID finds a WorkUnit by id within its own Plan. A caller sees this
+// return false only for a corrupt lineage (an Attempt bound to a WorkUnit id
+// absent from its own Plan), which is treated as exclusive/write for safety.
+func planUnitByID(plan domain.PlanRevision, id domain.WorkUnitID) (domain.WorkUnit, bool) {
+	for _, unit := range plan.WorkUnits {
+		if unit.ID == id {
+			return unit, true
 		}
 	}
-	return domain.WorkUnit{}, false, nil
+	return domain.WorkUnit{}, false
+}
+
+// activeAttemptState summarizes concurrency-relevant facts about the plan's
+// currently active Attempts: which WorkUnit each belongs to, whether any
+// active Attempt is write/exec-capable (or unclassified — fail closed), and
+// how many read-only Attempts are currently active.
+func activeAttemptState(plan domain.PlanRevision, attempts []domain.Attempt) (map[domain.WorkUnitID]domain.Attempt, bool, int) {
+	activeByUnit := make(map[domain.WorkUnitID]domain.Attempt, len(attempts))
+	writeActive := false
+	readActiveCount := 0
+	for _, attempt := range attempts {
+		if !attemptActiveForScheduling(attempt.Status) {
+			continue
+		}
+		activeByUnit[attempt.WorkUnitID] = attempt
+		unit, ok := planUnitByID(plan, attempt.WorkUnitID)
+		if !ok || unit.RequiresExclusiveWorktreeAccess() {
+			writeActive = true
+			continue
+		}
+		readActiveCount++
+	}
+	return activeByUnit, writeActive, readActiveCount
 }
 
 func attemptsForPlan(plan domain.PlanRevision, attempts []domain.Attempt) []domain.Attempt {
@@ -329,9 +403,22 @@ func deriveSchedule(plan domain.PlanRevision, attempts []domain.Attempt, proof P
 	}
 	currentAttempts := attemptsForPlan(plan, attempts)
 	view := ScheduleView{Plan: plan}
+	activeByUnit, writeActive, readActiveCount := activeAttemptState(plan, currentAttempts)
+	// ActiveAttempt/CustodyHeldBy name the single exclusive-custody holder,
+	// preserved as singular fields for existing API/frontend contracts. When
+	// only read-only Attempts are active (ADR 0009 §6), there is no single
+	// exclusive holder to name here; each such unit's own view entry still
+	// reports Executing/Paused below via activeByUnit.
 	var active *domain.Attempt
-	for i := range currentAttempts {
-		if attemptActiveForScheduling(currentAttempts[i].Status) {
+	if writeActive {
+		for i := range currentAttempts {
+			if !attemptActiveForScheduling(currentAttempts[i].Status) {
+				continue
+			}
+			unit, ok := planUnitByID(plan, currentAttempts[i].WorkUnitID)
+			if ok && !unit.RequiresExclusiveWorktreeAccess() {
+				continue
+			}
 			attemptCopy := currentAttempts[i]
 			active = &attemptCopy
 			break
@@ -368,11 +455,13 @@ func deriveSchedule(plan domain.PlanRevision, attempts []domain.Attempt, proof P
 		switch {
 		case proven[unit.ID]:
 			entry.State = WorkUnitScheduleProven
-		case active != nil && active.WorkUnitID == unit.ID:
-			// This unit's own attempt holds custody. Paused and unaccounted
-			// are reported as themselves rather than as "executing", because
-			// neither is making progress and both need the owner.
-			if active.Status == domain.AttemptPaused {
+		case !activeByUnit[unit.ID].ID.IsZero():
+			// This unit's own attempt holds custody (exclusively, or as one
+			// of several concurrent read-only Attempts). Paused and
+			// unaccounted are reported as themselves rather than as
+			// "executing", because neither is making progress and both need
+			// the owner.
+			if activeByUnit[unit.ID].Status == domain.AttemptPaused {
 				entry.State = WorkUnitSchedulePaused
 			} else {
 				entry.State = WorkUnitScheduleExecuting
@@ -392,9 +481,17 @@ func deriveSchedule(plan domain.PlanRevision, attempts []domain.Attempt, proof P
 				// admission is certain to refuse.
 				entry.State, entry.BlockedReason = WorkUnitScheduleBlocked, BlockedUpstreamArtifactUnavailable
 				entry.BlockedDetail = artifactBlocks[unit.ID]
-			case active != nil:
-				// Ready on its own terms, waiting only for the serial fence.
+			case writeActive:
+				// An exclusive write/exec Attempt is active; nothing else may
+				// start until it finishes.
 				entry.State, entry.BlockedReason = WorkUnitScheduleBlocked, BlockedCustodyHeld
+			case unit.RequiresExclusiveWorktreeAccess() && readActiveCount > 0:
+				// This write/exec-capable unit must wait for concurrent
+				// read-only Attempts to finish before it may take the
+				// exclusive fence.
+				entry.State, entry.BlockedReason = WorkUnitScheduleBlocked, BlockedCustodyHeld
+			case !unit.RequiresExclusiveWorktreeAccess() && readActiveCount >= MaxConcurrentReadOnlyAttempts:
+				entry.State, entry.BlockedReason = WorkUnitScheduleBlocked, BlockedReadConcurrencyBudget
 			case len(entry.Attempts) > 0:
 				entry.State = WorkUnitScheduleRetryable
 				if view.NextRunnableID.IsZero() {
@@ -412,18 +509,35 @@ func deriveSchedule(plan domain.PlanRevision, attempts []domain.Attempt, proof P
 	if active != nil {
 		view.CustodyHeldBy = active.WorkUnitID
 	}
-	view.NoRunnableReason = noRunnableReason(view, active)
+	view.NoRunnableReason = noRunnableReason(view, active, activeByUnit)
 	return view, nil
 }
 
 // noRunnableReason explains an empty runnable set, so the Mission can name the
-// owner's next move instead of showing an indefinite spinner.
-func noRunnableReason(view ScheduleView, active *domain.Attempt) ScheduleNoRunnableReason {
+// owner's next move instead of showing an indefinite spinner. active names the
+// single exclusive-custody holder when one exists; activeByUnit also covers
+// the case where only concurrent read-only Attempts (no exclusive holder) are
+// running.
+func noRunnableReason(view ScheduleView, active *domain.Attempt, activeByUnit map[domain.WorkUnitID]domain.Attempt) ScheduleNoRunnableReason {
 	if !view.NextRunnableID.IsZero() {
 		return ""
 	}
 	if active != nil {
 		if active.Status == domain.AttemptPaused {
+			return NoRunnablePaused
+		}
+		return NoRunnableExecuting
+	}
+	anyPaused := false
+	anyActive := len(activeByUnit) > 0
+	for _, attempt := range activeByUnit {
+		if attempt.Status == domain.AttemptPaused {
+			anyPaused = true
+			break
+		}
+	}
+	if anyActive {
+		if anyPaused {
 			return NoRunnablePaused
 		}
 		return NoRunnableExecuting
@@ -438,9 +552,10 @@ func noRunnableReason(view ScheduleView, active *domain.Attempt) ScheduleNoRunna
 	return NoRunnableAllProven
 }
 
-// selectWorkUnitForAttempt enforces the serial scheduler decision. A zero
-// request means the daemon selects its derived next runnable unit; a named
-// request remains an assertion that must match that same decision.
+// selectWorkUnitForAttempt enforces the scheduler admission decision. A zero
+// request means the daemon selects the first admissible unit; a named
+// request must be one of the currently admissible units — which, for
+// read-only WorkUnits (ADR 0009 §6), may include more than one at a time.
 func (s *Service) selectWorkUnitForAttempt(ctx context.Context, outcomeID domain.OutcomeID, plan domain.PlanRevision, requested domain.WorkUnitID) (domain.WorkUnit, error) {
 	attempts, err := s.store.ListAttempts(ctx, outcomeID)
 	if err != nil {
@@ -450,18 +565,20 @@ func (s *Service) selectWorkUnitForAttempt(ctx context.Context, outcomeID domain
 	if err != nil {
 		return domain.WorkUnit{}, err
 	}
-	next, ok, err := nextRunnableWorkUnit(plan, attempts, proof)
+	admissible, err := admissibleWorkUnits(plan, attempts, proof)
 	if err != nil {
 		return domain.WorkUnit{}, err
 	}
-	if !ok {
+	if len(admissible) == 0 {
 		return domain.WorkUnit{}, apierr.Conflict(CodeNoRunnableWorkUnit, "No WorkUnit is runnable until the active work or required proof is resolved", map[string]any{"planId": plan.ID})
 	}
 	if requested.IsZero() {
-		return next, nil
+		return admissible[0], nil
 	}
-	if next.ID != requested {
-		return domain.WorkUnit{}, apierr.Conflict("WORK_UNIT_NOT_RUNNABLE", "That WorkUnit is not the next dependency-ready unit", map[string]any{"requestedWorkUnitId": requested, "nextRunnableWorkUnitId": next.ID})
+	for _, unit := range admissible {
+		if unit.ID == requested {
+			return unit, nil
+		}
 	}
-	return next, nil
+	return domain.WorkUnit{}, apierr.Conflict("WORK_UNIT_NOT_RUNNABLE", "That WorkUnit is not currently admissible", map[string]any{"requestedWorkUnitId": requested, "nextRunnableWorkUnitId": admissible[0].ID})
 }
