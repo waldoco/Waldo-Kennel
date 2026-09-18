@@ -337,7 +337,11 @@ func (d *daemon) tailLog() string {
 
 /* ---- HTTP -------------------------------------------------------------- */
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+// The governed send is synchronous over bounded delivery waits: up to 30s
+// pre-dispatch classification hold + 3s settle + 30s pre-submit hold + 10s
+// ack + one recovery round (DefaultDelivererConfig). A steering e2e races
+// the TUI boot every run, so the client must outlive the ~90s worst case.
+var httpClient = &http.Client{Timeout: 150 * time.Second}
 
 func (d *daemon) call(method, path string, body, out any) (int, error) {
 	var reader io.Reader
