@@ -322,6 +322,38 @@ func TestPlanningReadinessIssueKeyAndDigestFences(t *testing.T) {
 	}
 }
 
+func TestNewPlanningReadinessIssueConstructor(t *testing.T) {
+	fence := readinessFence()
+
+	// The key is derived from the fence and identity inputs; a supplied key
+	// is never trusted or retained.
+	raw := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	raw.Key = "pri-supplied-never-trusted"
+	built, err := NewPlanningReadinessIssue(fence, raw)
+	if err != nil {
+		t.Fatalf("NewPlanningReadinessIssue err = %v", err)
+	}
+	if built.Key == "pri-supplied-never-trusted" {
+		t.Fatalf("constructor retained a supplied key")
+	}
+	want := CanonicalPlanningIssueKey(fence, validIssue(ReadinessConnectorMissing, RouteConfigureConnector))
+	if built.Key != want {
+		t.Fatalf("constructor key = %q, want canonical %q", built.Key, want)
+	}
+
+	// The closed contract gates construction: an invalid issue never gets a key.
+	invalid := validIssue(ReadinessConnectorMissing, RouteConfigureConnector)
+	invalid.Kind = "invented_kind"
+	if _, err := NewPlanningReadinessIssue(fence, invalid); err == nil {
+		t.Fatalf("constructor accepted an unknown kind")
+	}
+	plannerOverclaim := validIssue(ReadinessWorkerUnavailable, RouteChooseHarness)
+	plannerOverclaim.Source = ReadinessSourcePlannerDeclared
+	if _, err := NewPlanningReadinessIssue(fence, plannerOverclaim); err == nil {
+		t.Fatalf("constructor let the planner claim a control-plane kind")
+	}
+}
+
 func TestPlanningReadinessIssueSetDigestStable(t *testing.T) {
 	fence := readinessFence()
 	first := validIssue(ReadinessFactMissing, RouteAnswerContext)

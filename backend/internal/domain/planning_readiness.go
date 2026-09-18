@@ -459,6 +459,20 @@ func (issue PlanningReadinessIssue) Validate() error {
 	return nil
 }
 
+// NewPlanningReadinessIssue is the only way the readiness evaluator builds an
+// issue: the key is derived from the fence and the issue's canonical identity
+// (never supplied), then the closed contract validates the result. The
+// exported fields exist for persistence and projection, but an issue that has
+// not passed through this constructor or the strict envelope parser is
+// unnormalized and must never reach a packet.
+func NewPlanningReadinessIssue(fence PlanningReadinessFence, issue PlanningReadinessIssue) (PlanningReadinessIssue, error) {
+	issue.Key = CanonicalPlanningIssueKey(fence, issue)
+	if err := issue.Validate(); err != nil {
+		return PlanningReadinessIssue{}, err
+	}
+	return issue, nil
+}
+
 // PlanningReadinessResult is the exhaustive planning envelope. Exactly one
 // shape is legal per status, and a non-ready result never carries a proposal.
 type PlanningReadinessResult struct {
