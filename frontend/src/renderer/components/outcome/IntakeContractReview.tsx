@@ -147,7 +147,7 @@ export function IntakeContractReview({
 	}
 
 	return (
-		<div className="flex min-w-0 flex-col gap-3" data-testid="intake-contract-review">
+		<div className="flex min-w-0 flex-col gap-2" data-testid="intake-contract-review">
 			<Block title={t("outcome.intake.section.identity")}>
 				<EditorField
 					label={t("outcome.intake.titleField")}
@@ -327,7 +327,7 @@ export function IntakeProposalSummary({ draft }: { draft: ProposalInput }) {
 			<p className="text-sm text-muted-foreground">{t("mission.none")}</p>
 		);
 	return (
-		<div className="flex flex-col gap-3" data-testid="intake-proposal-summary">
+		<div className="flex flex-col gap-2" data-testid="intake-proposal-summary">
 			<Block title={t("outcome.intake.section.identity")}>
 				<h2 className="text-base font-medium">{draft.title}</h2>
 				<p className="mt-2 whitespace-pre-wrap text-sm">{draft.desiredState}</p>
@@ -416,7 +416,7 @@ export function IntakeAuthorityEditor({
 
 function Block({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
 	return (
-		<section className="flex flex-col rounded-group hairline border-border bg-card px-4.5 py-3.5">
+		<section className="flex flex-col rounded-lg hairline border-border bg-card px-4 py-3">
 			<h3 className="text-xs font-medium text-foreground">{title}</h3>
 			{hint ? <p className="mt-0.5 text-2xs leading-body text-passive">{hint}</p> : null}
 			<div className="mt-2 flex flex-col">{children}</div>

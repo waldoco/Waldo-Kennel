@@ -1627,10 +1627,10 @@
 	"outcome.decide.badgeApproved": "Plan #{{number}} · autorisé",
 	"outcome.decide.badgeProposed": "Plan #{{number}} · proposé",
 	"outcome.decide.factsDesiredState": "État souhaité",
-	"outcome.decide.factsEvidence": "Ce que la preuve doit montrer",
-	"outcome.decide.factsVerification": "Comment ce sera vérifié",
-	"outcome.decide.factsStops": "S'arrête immédiatement si",
-	"outcome.decide.factsGrants": "Ce que l'agent peut faire",
+	"outcome.decide.factsEvidence": "Preuves",
+	"outcome.decide.factsVerification": "Vérifié par",
+	"outcome.decide.factsStops": "Déclencheur de pause",
+	"outcome.decide.factsGrants": "Autorisations de l'agent",
 	"outcome.decide.factsBrief": "Empreinte du brief d'exécution",
 	"outcome.decide.bindingNote": "Figé contre la révision {{contractRevision}} du contrat. Tout changement matériel exige un nouveau plan.",
 	"outcome.decide.criteriaNotRecorded": "not recorded",
@@ -2724,5 +2724,8 @@
 	"mission.criteria.position": "Criterion {{position}}",
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
-	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}"
+	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"outcome.decide.factsSummary": "Résumé",
+	"outcome.decide.authorizeCta": "Autoriser ce plan d'Outcome",
+	"outcome.decide.notReported": "Non signalé"
 }

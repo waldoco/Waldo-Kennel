@@ -1593,10 +1593,10 @@
 	"outcome.decide.badgeApproved": "计划 #{{number}} · 已授权",
 	"outcome.decide.badgeProposed": "计划 #{{number}} · 待定",
 	"outcome.decide.factsDesiredState": "期望状态",
-	"outcome.decide.factsEvidence": "证据必须表明",
-	"outcome.decide.factsVerification": "如何进行验证",
-	"outcome.decide.factsStops": "出现以下情况立即停止",
-	"outcome.decide.factsGrants": "代理可以做什么",
+	"outcome.decide.factsEvidence": "证据",
+	"outcome.decide.factsVerification": "验证方式",
+	"outcome.decide.factsStops": "暂停触发器",
+	"outcome.decide.factsGrants": "代理权限",
 	"outcome.decide.factsBrief": "运行简报摘要",
 	"outcome.decide.bindingNote": "已针对契约修订 {{contractRevision}} 冻结。任何实质变更都需要重新制定计划。",
 	"outcome.decide.criteriaNotRecorded": "not recorded",
@@ -2690,5 +2690,8 @@
 	"mission.criteria.position": "Criterion {{position}}",
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
-	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}"
+	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"outcome.decide.factsSummary": "摘要",
+	"outcome.decide.authorizeCta": "授权此成果计划",
+	"outcome.decide.notReported": "未报告"
 }

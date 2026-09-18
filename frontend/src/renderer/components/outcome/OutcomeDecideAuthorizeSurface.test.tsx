@@ -274,6 +274,65 @@ describe("OutcomeDecideAuthorizeSurface", () => {
 		expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
 	});
 
+
+	it("renders the stacked review cards in the contract anatomy order with expand/collapse", async () => {
+		getMock.mockImplementation(async (url: string) => {
+			if (url === "/api/v1/outcomes/{outcomeId}") return { data: outcomeEnvelope(1), error: undefined };
+			if (url === "/api/v1/outcomes/{outcomeId}/plan") return { data: planEnvelope(), error: undefined };
+			return { data: undefined, error: undefined };
+		});
+		renderSurface();
+
+		const details = await screen.findByTestId("outcome-plan-details");
+		const headings = ["Summary", "Desired state", "Evidence", "Verification through", "Pause Trigger", "Agent Permissions", "Run Brief Digest"];
+		const rendered = headings.map((label) => screen.getByRole("button", { name: new RegExp(label) }));
+		for (let i = 0; i < rendered.length - 1; i += 1) {
+			expect(rendered[i].compareDocumentPosition(rendered[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		}
+		// Every card starts expanded and still toggles closed.
+		const evidence = screen.getByRole("button", { name: /Evidence/ });
+		expect(evidence).toHaveAttribute("aria-expanded", "true");
+		await userEvent.click(evidence);
+		expect(evidence).toHaveAttribute("aria-expanded", "false");
+	});
+
+	it("keeps Update on the revise path and Authorize on the approve mutation", async () => {
+		const onReviewContract = vi.fn();
+		getMock.mockImplementation(async (url: string) => {
+			if (url === "/api/v1/outcomes/{outcomeId}") return { data: outcomeEnvelope(1), error: undefined };
+			if (url === "/api/v1/outcomes/{outcomeId}/plan") return { data: planEnvelope(), error: undefined };
+			return { data: undefined, error: undefined };
+		});
+		postMock.mockResolvedValue({ data: planEnvelope({ status: "approved" }), error: undefined });
+		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={queryClient}>
+				<OutcomeDecideAuthorizeSurface onReviewContract={onReviewContract} outcomeId="out-1" />
+			</QueryClientProvider>,
+		);
+
+		await userEvent.click(await screen.findByTestId("outcome-plan-update"));
+		expect(onReviewContract).toHaveBeenCalledOnce();
+		expect(postMock).not.toHaveBeenCalled();
+
+		await userEvent.click(screen.getByTestId("outcome-approve-plan"));
+		const [url, init] = postMock.mock.calls[0];
+		expect(url).toBe("/api/v1/outcomes/{outcomeId}/plans/{planId}/approval");
+		expect(init.body).toEqual({ expectedContractRevision: 1 });
+	});
+
+	it("reports missing grants honestly instead of fabricating permissions", async () => {
+		getMock.mockImplementation(async (url: string) => {
+			if (url === "/api/v1/outcomes/{outcomeId}") return { data: outcomeEnvelope(1), error: undefined };
+			if (url === "/api/v1/outcomes/{outcomeId}/plan") return { data: planEnvelope({ grants: [] }), error: undefined };
+			return { data: undefined, error: undefined };
+		});
+		renderSurface();
+
+		expect(await screen.findByTestId("outcome-plan-grants-empty")).toHaveTextContent("Not reported");
+		expect(screen.queryByText("worktree.read")).not.toBeInTheDocument();
+	});
+
 	it("shows an already-authorized plan without proposal or approval controls", async () => {
 		const onReviewWork = vi.fn();
 		getMock.mockImplementation(async (url: string) => {

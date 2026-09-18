@@ -1611,10 +1611,10 @@
 	"outcome.decide.badgeApproved": "계획 #{{number}} · 승인됨",
 	"outcome.decide.badgeProposed": "계획 #{{number}} · 제안",
 	"outcome.decide.factsDesiredState": "원하는 상태",
-	"outcome.decide.factsEvidence": "증거가 보여야 할 것",
+	"outcome.decide.factsEvidence": "증거",
 	"outcome.decide.factsVerification": "검증 방법",
-	"outcome.decide.factsStops": "다음 경우 즉시 중지",
-	"outcome.decide.factsGrants": "에이전트가 할 수 있는 일",
+	"outcome.decide.factsStops": "일시 중지 트리거",
+	"outcome.decide.factsGrants": "에이전트 권한",
 	"outcome.decide.factsBrief": "실행 브리프 다이제스트",
 	"outcome.decide.bindingNote": "계약 리비전 {{contractRevision}} 기준으로 고정되었습니다. 중요한 변경에는 새 계획이 필요합니다.",
 	"outcome.decide.criteriaNotRecorded": "not recorded",
@@ -2708,5 +2708,8 @@
 	"mission.criteria.position": "Criterion {{position}}",
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
-	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}"
+	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"outcome.decide.factsSummary": "요약",
+	"outcome.decide.authorizeCta": "이 Outcome 계획 승인",
+	"outcome.decide.notReported": "보고되지 않음"
 }

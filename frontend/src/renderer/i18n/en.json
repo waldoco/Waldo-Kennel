@@ -1841,11 +1841,11 @@
 	"outcome.decide.badgeApproved": "Plan #{{number}} · authorized",
 	"outcome.decide.badgeProposed": "Plan #{{number}} · proposed",
 	"outcome.decide.factsDesiredState": "Desired state",
-	"outcome.decide.factsEvidence": "Evidence must show",
-	"outcome.decide.factsVerification": "How it will be verified",
-	"outcome.decide.factsStops": "Stops immediately if",
-	"outcome.decide.factsGrants": "What the agent may do",
-	"outcome.decide.factsBrief": "Run brief digest",
+	"outcome.decide.factsEvidence": "Evidence",
+	"outcome.decide.factsVerification": "Verification through",
+	"outcome.decide.factsStops": "Pause Trigger",
+	"outcome.decide.factsGrants": "Agent Permissions",
+	"outcome.decide.factsBrief": "Run Brief Digest",
 	"outcome.decide.bindingNote": "Frozen against contract revision {{contractRevision}}. Any material change requires a fresh plan.",
 	"outcome.decide.criteriaNotRecorded": "not recorded",
 	"outcome.decide.dependsOnNone": "nothing — can start first",
@@ -2689,5 +2689,8 @@
 	"mission.criteria.position": "Criterion {{position}}",
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
-	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}"
+	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"outcome.decide.factsSummary": "Summary",
+	"outcome.decide.authorizeCta": "Authorize this Outcome plan",
+	"outcome.decide.notReported": "Not reported"
 }

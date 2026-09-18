@@ -1611,10 +1611,10 @@
 	"outcome.decide.badgeApproved": "計画 #{{number}} · 承認済み",
 	"outcome.decide.badgeProposed": "計画 #{{number}} · 提案",
 	"outcome.decide.factsDesiredState": "望ましい状態",
-	"outcome.decide.factsEvidence": "エビデンスが示すべきこと",
-	"outcome.decide.factsVerification": "検証の方法",
-	"outcome.decide.factsStops": "次の場合は即座に停止",
-	"outcome.decide.factsGrants": "エージェントができること",
+	"outcome.decide.factsEvidence": "エビデンス",
+	"outcome.decide.factsVerification": "検証方法",
+	"outcome.decide.factsStops": "一時停止トリガー",
+	"outcome.decide.factsGrants": "エージェントの権限",
 	"outcome.decide.factsBrief": "ランブリーフ ダイジェスト",
 	"outcome.decide.bindingNote": "契約リビジョン {{contractRevision}} に対して凍結済み。重要な変更には新しい計画が必要です。",
 	"outcome.decide.criteriaNotRecorded": "not recorded",
@@ -2708,5 +2708,8 @@
 	"mission.criteria.position": "Criterion {{position}}",
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
-	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}"
+	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"outcome.decide.factsSummary": "概要",
+	"outcome.decide.authorizeCta": "このOutcomeプランを承認",
+	"outcome.decide.notReported": "未報告"
 }
