@@ -418,50 +418,10 @@ func (m *Manager) RecordSupervisedProcessExit(ctx context.Context, id domain.Ses
 	return m.store.UpdateSession(ctx, rec)
 }
 
-// RecordOwnerTermination records the daemon-observed origin of an
-// owner-initiated kill of a governed session, before any teardown begins.
-// It writes only the transient pending marker: the final owner_killed fact
-// is promoted atomically with the session's termination in MarkTerminated,
-// so a kill that fails before termination leaves a still-live provider with
-// no owner-killed fact (ClearOwnerTermination), and an authenticated
-// supervisor report can overwrite the pending marker at any point — a real
-// observed exit for the launch outranks unproven intent, before attempt
-// settlement, in every lock order. Precedence for an already-recorded exit
-// report is unchanged: if the provider already died on its own, the crash
-// facts are kept and the attempt still settles failed. Non-governed sessions
-// carry no attempt, so there is nothing to mark.
-func (m *Manager) RecordOwnerTermination(ctx context.Context, id domain.SessionID) error {
-	return m.mutate(ctx, id, func(cur domain.SessionRecord, _ time.Time) (domain.SessionRecord, bool) {
-		if strings.TrimSpace(cur.Metadata.GovernedExecutionPolicyDigest) == "" ||
-			strings.TrimSpace(cur.Metadata.SupervisedProcessExitReason) != "" {
-			return cur, false
-		}
-		next := cur
-		next.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKillPending
-		return next, true
-	})
-}
-
-// ClearOwnerTermination retracts the transient pending marker when an owner
-// kill fails before the termination boundary. It clears only the pending
-// marker itself: a promoted owner_killed fact belongs to a proven
-// termination, and an authenticated exit report belongs to the supervisor.
-func (m *Manager) ClearOwnerTermination(ctx context.Context, id domain.SessionID) error {
-	return m.mutate(ctx, id, func(cur domain.SessionRecord, _ time.Time) (domain.SessionRecord, bool) {
-		if cur.Metadata.SupervisedProcessExitReason != domain.SupervisedExitReasonOwnerKillPending {
-			return cur, false
-		}
-		next := cur
-		next.Metadata.SupervisedProcessExitReason = ""
-		return next, true
-	})
-}
-
 func (m *Manager) governedProcessExitCanTerminate(ctx context.Context, rec domain.SessionRecord) bool {
 	if strings.TrimSpace(rec.Metadata.GovernedExecutionPolicyDigest) == "" ||
 		strings.TrimSpace(rec.Metadata.SupervisorCapabilityVerifier) == "" ||
-		strings.TrimSpace(rec.Metadata.SupervisedProcessExitReason) == "" ||
-		rec.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
+		strings.TrimSpace(rec.Metadata.SupervisedProcessExitReason) == "" {
 		return false
 	}
 	store, ok := m.store.(governedSessionEvidenceStore)
@@ -1243,6 +1203,22 @@ func (m *Manager) ActivateAgentSwitchTarget(
 // session's Docker containers via the optional ContainerReaper (#2652) as its one
 // built-in external side effect.
 func (m *Manager) MarkTerminated(ctx context.Context, id domain.SessionID) error {
+	return m.markTerminated(ctx, id, false)
+}
+
+// MarkTerminatedOwnerInitiated is MarkTerminated for an owner-initiated kill
+// of a governed session. The single atomic write that proves termination
+// also records the owner_killed origin — but only when no authenticated exit
+// report exists, so observed crash facts always win — and closes the
+// supervisor reporting channel for the dead launch generation (the
+// capability verifier is dropped), so a late or in-flight report for that
+// generation is rejected and can never overwrite the origin after the
+// attempt settles. Non-governed sessions behave exactly like MarkTerminated.
+func (m *Manager) MarkTerminatedOwnerInitiated(ctx context.Context, id domain.SessionID) error {
+	return m.markTerminated(ctx, id, true)
+}
+
+func (m *Manager) markTerminated(ctx context.Context, id domain.SessionID, ownerInitiated bool) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -1283,13 +1259,19 @@ func (m *Manager) MarkTerminated(ctx context.Context, id domain.SessionID) error
 			default:
 				cur.IsTerminated = true
 				cur.Activity = domain.Activity{State: domain.ActivityExited, LastActivityAt: now}
-				// Cross the proven termination boundary: an owner kill's
-				// pending intent becomes the final owner_killed fact in the
-				// same atomic write as the termination itself. A crash report
-				// that landed in between replaced the pending marker, so the
-				// promotion cannot overwrite authenticated exit facts.
-				if cur.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
-					cur.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+				if ownerInitiated && strings.TrimSpace(cur.Metadata.GovernedExecutionPolicyDigest) != "" {
+					// Owner kill of a governed session: record the origin in
+					// the same atomic write as the termination itself — but
+					// never over an authenticated exit report; a provider that
+					// already died on its own keeps its crash facts. Dropping
+					// the capability verifier closes the reporting channel
+					// for the dead launch generation: RecordSupervisedProcessExit
+					// validates against the current record under the same lock,
+					// so no late report can land after this write.
+					if strings.TrimSpace(cur.Metadata.SupervisedProcessExitReason) == "" {
+						cur.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+					}
+					cur.Metadata.SupervisorCapabilityVerifier = ""
 				}
 				delete(m.flights, id) // runs under m.mu (mutate holds it)
 				outcome = terminationApplied

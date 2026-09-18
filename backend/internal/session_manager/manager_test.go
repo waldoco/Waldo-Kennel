@@ -247,28 +247,6 @@ func (l *fakeLCM) ActivateAgentSwitchTarget(ctx context.Context, activation doma
 	}
 	return store.ActivateAgentSwitchTarget(ctx, activation)
 }
-func (l *fakeLCM) RecordOwnerTermination(_ context.Context, id domain.SessionID) error {
-	if l.ownerTerminations == nil {
-		l.ownerTerminations = map[domain.SessionID]int{}
-	}
-	l.ownerTerminations[id]++
-	rec := l.store.sessions[id]
-	if rec.Metadata.GovernedExecutionPolicyDigest != "" && rec.Metadata.SupervisedProcessExitReason == "" {
-		rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKillPending
-		l.store.sessions[id] = rec
-	}
-	return nil
-}
-
-func (l *fakeLCM) ClearOwnerTermination(_ context.Context, id domain.SessionID) error {
-	rec := l.store.sessions[id]
-	if rec.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
-		rec.Metadata.SupervisedProcessExitReason = ""
-		l.store.sessions[id] = rec
-	}
-	return nil
-}
-
 func (l *fakeLCM) MarkTerminated(_ context.Context, id domain.SessionID) error {
 	if l.terminated == nil {
 		l.terminated = map[domain.SessionID]int{}
@@ -277,8 +255,23 @@ func (l *fakeLCM) MarkTerminated(_ context.Context, id domain.SessionID) error {
 	rec := l.store.sessions[id]
 	rec.IsTerminated = true
 	rec.Activity = domain.Activity{State: domain.ActivityExited, LastActivityAt: time.Now()}
-	if rec.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
-		rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+	l.store.sessions[id] = rec
+	return nil
+}
+
+func (l *fakeLCM) MarkTerminatedOwnerInitiated(_ context.Context, id domain.SessionID) error {
+	if l.ownerTerminations == nil {
+		l.ownerTerminations = map[domain.SessionID]int{}
+	}
+	l.ownerTerminations[id]++
+	rec := l.store.sessions[id]
+	rec.IsTerminated = true
+	rec.Activity = domain.Activity{State: domain.ActivityExited, LastActivityAt: time.Now()}
+	if rec.Metadata.GovernedExecutionPolicyDigest != "" {
+		if rec.Metadata.SupervisedProcessExitReason == "" {
+			rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+		}
+		rec.Metadata.SupervisorCapabilityVerifier = ""
 	}
 	l.store.sessions[id] = rec
 	return nil
@@ -2657,8 +2650,8 @@ func TestKill_TearsDownRuntimeAndWorkspace(t *testing.T) {
 
 // TestKill_RecordsOwnerTerminationForGovernedSession covers the owner-kill
 // origin record: killing a governed attempt session marks its exit facts
-// with the owner_killed reason before teardown, so the attempt settles
-// reconciled rather than failed.
+// with the owner_killed reason at the proven termination boundary, so the
+// attempt settles reconciled rather than failed.
 func TestKill_RecordsOwnerTerminationForGovernedSession(t *testing.T) {
 	m, st, _, _ := newManager()
 	rec := mkLive("mer-1")
@@ -2678,9 +2671,9 @@ func TestKill_RecordsOwnerTerminationForGovernedSession(t *testing.T) {
 
 // TestKill_FailedTeardownClearsOwnerTerminationIntent covers every
 // pre-termination failure path: when Kill fails before the termination
-// boundary, the transient owner-kill intent must be retracted so the
-// still-live session carries no owner-killed fact and a later real crash is
-// settled by its own authenticated facts.
+// boundary, no owner-kill fact may be recorded, so the still-live session
+// carries no owner-killed fact and a later real crash is settled by its own
+// authenticated facts.
 func TestKill_FailedTeardownClearsOwnerTerminationIntent(t *testing.T) {
 	attachmentBlocker := filepath.Join(t.TempDir(), "blocked-workspace")
 	if err := os.WriteFile(attachmentBlocker, []byte("not a dir"), 0o644); err != nil {
@@ -2727,9 +2720,8 @@ func TestKill_FailedTeardownClearsOwnerTerminationIntent(t *testing.T) {
 
 // TestKill_DirtyWorkspacePromotesOwnerTermination covers the termination
 // boundary on the dirty-workspace refusal path: the runtime is destroyed and
-// the session marked terminated, so the pending owner-kill intent is
-// promoted to the final owner_killed fact even though the worktree is
-// preserved.
+// the session marked terminated, so the owner_killed origin is recorded at
+// that proven boundary even though the worktree is preserved.
 func TestKill_DirtyWorkspacePromotesOwnerTermination(t *testing.T) {
 	m, st, _, ws := newManager()
 	rec := mkLive("mer-1")
