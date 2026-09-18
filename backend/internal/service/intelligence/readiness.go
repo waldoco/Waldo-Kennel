@@ -182,14 +182,37 @@ func parsePlanningReadinessReply(
 				return invalid("waldo referenced a blank criterion alias (%s)", domain.ReadinessIssueInvalid)
 			}
 		}
+		// Every raw reference must satisfy the closed identifier contract
+		// BEFORE any partitioning: "unresolvable" means a well-formed
+		// identifier absent from the envelope's definitions. Malformed
+		// (oversized, control-char, out-of-alphabet) nonblank identifiers are
+		// rejected, never laundered into degrade prose or logs.
+		for _, key := range issue.WorkUnitKeys {
+			if err := domain.ValidateReadinessIdentifier(key); err != nil {
+				return invalid("waldo referenced a malformed work unit key: %v (%s)", err, domain.ReadinessIssueInvalid)
+			}
+		}
+		for _, alias := range issue.CriterionAliases {
+			if err := domain.ValidateReadinessIdentifier(alias); err != nil {
+				return invalid("waldo referenced a malformed criterion alias: %v (%s)", err, domain.ReadinessIssueInvalid)
+			}
+		}
+		// Duplicates are malformed, not unresolvable: detect them on the raw
+		// lists, before unknown references are stripped, so ["ghost","ghost"]
+		// cannot degrade into a valid envelope.
+		if dup := firstDuplicate(issue.WorkUnitKeys); dup != "" {
+			return invalid("waldo referenced work unit key %q more than once (%s)", dup, domain.ReadinessIssueDuplicate)
+		}
+		if dup := firstDuplicate(issue.CriterionAliases); dup != "" {
+			return invalid("waldo referenced criterion alias %q more than once (%s)", dup, domain.ReadinessIssueDuplicate)
+		}
 		// Degrade, don't invalidate: the one-shot lane has no conversation to
 		// repair an unresolvable reference through, and planner output is
 		// non-authoritative. Strip keys/aliases the envelope itself does not
 		// define (a no-proposal envelope defines none) so no invented
 		// reference can ride an issue into the evaluated result, and surface
 		// ONE control-plane issue per envelope so the owner still sees the
-		// drop. Blank and duplicate references remain hard-invalid: those are
-		// malformed, not unresolvable.
+		// drop.
 		issue.WorkUnitKeys, droppedUnits = partitionRefs(issue.WorkUnitKeys, allowedUnits)
 		issue.CriterionAliases, droppedAliases = partitionRefs(issue.CriterionAliases, allowedAliases)
 		droppedUnitsAll = append(droppedUnitsAll, droppedUnits...)
@@ -290,4 +313,16 @@ func quotedJoin(values []string) string {
 		quoted = append(quoted, fmt.Sprintf("%q", v))
 	}
 	return strings.Join(quoted, ", ")
+}
+
+// firstDuplicate returns the first value appearing more than once, or "".
+func firstDuplicate(values []string) string {
+	seen := make(map[string]bool, len(values))
+	for _, v := range values {
+		if seen[v] {
+			return v
+		}
+		seen[v] = true
+	}
+	return ""
 }

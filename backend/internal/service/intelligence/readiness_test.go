@@ -2,6 +2,8 @@ package intelligence
 
 import (
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -406,5 +408,67 @@ func TestParsePlanningReadinessSelectiveDegrade(t *testing.T) {
 	}
 	if degrades != 1 {
 		t.Fatalf("degrade issues = %d, want 1", degrades)
+	}
+}
+
+// TestParsePlanningReadinessDuplicateUnknownRefsRejected: duplicates are
+// malformed, not unresolvable - they must be caught on the RAW reference
+// lists before stripping, so ["ghost","ghost"] cannot degrade into a valid
+// envelope (review MEDIUM on d9e45405).
+func TestParsePlanningReadinessDuplicateUnknownRefsRejected(t *testing.T) {
+	dupUnknown := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"workUnitKeys": ["ghost", "ghost"], "criterionAliases": ["C1"]`, 1)
+	_, err := parsePlanningReadinessReply([]byte(dupUnknown), readinessTestFence(), []string{"C1", "C2"})
+	if err == nil || !strings.Contains(err.Error(), string(domain.ReadinessIssueDuplicate)) {
+		t.Fatalf("duplicate unknown unit keys must be hard-invalid, err = %v", err)
+	}
+	// Mixed: a duplicate formed across known and unknown refs is still a dup.
+	dupMixed := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"criterionAliases": ["C1", "ghost", "C1"]`, 1)
+	_, err = parsePlanningReadinessReply([]byte(dupMixed), readinessTestFence(), []string{"C1", "C2"})
+	if err == nil || !strings.Contains(err.Error(), string(domain.ReadinessIssueDuplicate)) {
+		t.Fatalf("mixed known/unknown duplicate aliases must be hard-invalid, err = %v", err)
+	}
+}
+
+// TestParsePlanningReadinessMalformedRefsRejected: nonblank references that
+// violate the closed identifier contract (control chars, oversized,
+// out-of-alphabet) are rejected by ValidateReadinessIdentifier BEFORE
+// partitioning - never laundered into degrade prose or logs (review
+// adversarial note on d9e45405).
+func TestParsePlanningReadinessMalformedRefsRejected(t *testing.T) {
+	cases := map[string]string{
+		"control character": `"workUnitKeys": ["bad\nkey"], "criterionAliases": ["C1"]`,
+		"out of alphabet":   `"workUnitKeys": ["bad key!"], "criterionAliases": ["C1"]`,
+		"oversized":         `"workUnitKeys": ["` + strings.Repeat("a", domain.MaxPlanningReadinessIdentifierLength+1) + `"], "criterionAliases": ["C1"]`,
+	}
+	for name, refs := range cases {
+		t.Run(name, func(t *testing.T) {
+			env := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, refs, 1)
+			if _, err := parsePlanningReadinessReply([]byte(env), readinessTestFence(), []string{"C1", "C2"}); err == nil {
+				t.Fatal("malformed reference must be rejected, not degraded")
+			}
+		})
+	}
+}
+
+// TestLogReadinessInvalidNeverLogsProviderContent (review HIGH on d9e45405):
+// the invalid-envelope WARN carries the typed error plus structural metadata
+// (byte length, truncated digest) and NEVER raw model output.
+func TestLogReadinessInvalidNeverLogsProviderContent(t *testing.T) {
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	secret := "sk-live-secret-bearer-token-value"
+	logReadinessInvalid([]byte(`{"status":"ready","token":"`+secret+`"}`), errors.New("typed validation error"))
+
+	out := buf.String()
+	if strings.Contains(out, secret) || strings.Contains(out, `"status"`) {
+		t.Fatalf("provider-controlled content reached the log: %s", out)
+	}
+	for _, want := range []string{"typed validation error", "envelope_bytes", "envelope_sha256"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("log line missing %q: %s", want, out)
+		}
 	}
 }

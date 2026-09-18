@@ -2,6 +2,8 @@ package intelligence
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -700,16 +702,15 @@ func planDraftInputs(values []struct {
 	return out
 }
 
-// logReadinessInvalid WARN-logs a bounded prefix of a rejected readiness
-// envelope so the next planner/schema inconsistency is diagnosable from
-// preserved daemon logs (the e2e artifact path keeps them on failure).
+// logReadinessInvalid WARN-logs a rejected readiness envelope WITHOUT any
+// provider-controlled content: the typed validation error, the byte length,
+// and a truncated SHA-256 digest so a preserved artifact can be matched to
+// the log line without raw model output (which may carry credential-shaped
+// or otherwise sensitive strings) ever reaching durable logs.
 func logReadinessInvalid(raw []byte, err error) {
-	const maxEnvelope = 2000
-	excerpt := string(raw)
-	if len(excerpt) > maxEnvelope {
-		excerpt = excerpt[:maxEnvelope]
-	}
-	slog.Default().Warn("waldo readiness envelope rejected", "error", err, "envelope_prefix", excerpt)
+	sum := sha256.Sum256(raw)
+	slog.Default().Warn("waldo readiness envelope rejected",
+		"error", err, "envelope_bytes", len(raw), "envelope_sha256", hex.EncodeToString(sum[:])[:16])
 }
 
 // logUnresolvableRefs WARN-logs degrade issues: the plan survives, but the
