@@ -284,6 +284,7 @@ describe("OutcomeDecideAuthorizeSurface", () => {
 		renderSurface();
 
 		const details = await screen.findByTestId("outcome-plan-details");
+		expect(details).toBeInTheDocument();
 		const headings = ["Summary", "Desired state", "Evidence", "Verification through", "Pause Trigger", "Agent Permissions", "Run Brief Digest"];
 		const rendered = headings.map((label) => screen.getByRole("button", { name: new RegExp(label) }));
 		for (let i = 0; i < rendered.length - 1; i += 1) {
