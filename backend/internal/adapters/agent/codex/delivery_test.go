@@ -186,10 +186,10 @@ func TestDeliverIdleHappyPath(t *testing.T) {
 	if term.enters != 1 || term.tabs != 0 || len(term.pastes) != 1 {
 		t.Fatalf("enters=%d tabs=%d pastes=%d, want 1/0/1", term.enters, term.tabs, len(term.pastes))
 	}
-	// Ordering contract: liveness probes BEFORE dispatch, cancel copy mode
-	// BEFORE paste BEFORE enter. The second probe is the mandatory post-wait
-	// re-probe (round-5.2).
-	want := []string{"probe", "probe", "cancel", "paste", "enter"}
+	// Ordering contract: liveness probes BEFORE dispatch and again after the
+	// pre-submit wait (rounds 5.2/5.3), cancel copy mode BEFORE paste BEFORE
+	// enter.
+	want := []string{"probe", "probe", "cancel", "paste", "probe", "enter"}
 	if strings.Join(term.ops, ",") != strings.Join(want, ",") {
 		t.Fatalf("ops = %v, want %v", term.ops, want)
 	}
@@ -392,6 +392,55 @@ func TestDeliverPreSubmitPersistentUnknownFailsClosed(t *testing.T) {
 	}
 	if term.enters != 0 || term.tabs != 0 {
 		t.Fatalf("submit keystroke sent against an unrecognizable pane: %v", term.ops)
+	}
+	if unk.Capture == "" {
+		t.Fatal("DeliveryUnknownError must preserve the pane evidence")
+	}
+}
+
+// TestDeliverPreSubmitWaitReProbesLiveness is the review round-5.3 HIGH-1:
+// the redraw wait resolves into a steerable-looking pane whose provider has
+// exited (tmux remain-on-exit retains content). The mandatory post-wait
+// probe must stop the delivery: zero Enter/Tab, no extra paste.
+func TestDeliverPreSubmitWaitReProbesLiveness(t *testing.T) {
+	term := &fakeTerminal{
+		captures: []string{
+			paneIdleNoDraft,          // pre-dispatch: idle
+			paneIdleNoDraft,          // boundary snapshot
+			paneIdleWithSteeredDraft, // settle: draft visible
+			paneBootBanner,           // pre-submit: redraw unknown
+			paneIdleWithSteeredDraft, // poll resolves: steerable-looking, provider dead
+		},
+		deadAfterCaptures: 5,
+	}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	if !errors.Is(err, ErrPaneDead) {
+		t.Fatalf("err = %v, want ErrPaneDead", err)
+	}
+	if term.enters != 0 || term.tabs != 0 || len(term.pastes) != 1 {
+		t.Fatalf("keystrokes around a dead retained pane: ops=%v pastes=%d", term.ops, len(term.pastes))
+	}
+}
+
+// TestDeliverPreSubmitWaitRequiresDraftProof is the review round-5.3 HIGH-2:
+// the draft cleared while the pane was unrecognizable, so the poll resolves
+// into a recognizable EMPTY idle composer. No bare Enter, no re-paste - the
+// message may have moved; honest unknown with the capture attached.
+func TestDeliverPreSubmitWaitRequiresDraftProof(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneIdleNoDraft,          // pre-dispatch: idle
+		paneIdleNoDraft,          // boundary snapshot
+		paneIdleWithSteeredDraft, // settle: draft visible
+		paneBootBanner,           // pre-submit: redraw unknown
+		paneIdleNoDraft,          // poll resolves: idle but the draft is GONE
+	}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError", err)
+	}
+	if term.enters != 0 || term.tabs != 0 || len(term.pastes) != 1 {
+		t.Fatalf("bare Enter or re-paste after the draft vanished: ops=%v pastes=%d", term.ops, len(term.pastes))
 	}
 	if unk.Capture == "" {
 		t.Fatal("DeliveryUnknownError must preserve the pane evidence")

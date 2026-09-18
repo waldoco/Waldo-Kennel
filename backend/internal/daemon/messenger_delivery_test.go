@@ -86,7 +86,8 @@ func newCodexTUISession(t *testing.T, store *sqlite.Store, harness domain.AgentH
 // TestWiring_CodexTUISendUsesStateAwareDelivery asserts a codex TUI session
 // on a pane-capable runtime goes through the orchestrated path (liveness
 // probes, copy-mode cancel, atomic paste, Enter) and that SendMessage never
-// fires. The second probe is the mandatory post-wait liveness re-probe.
+// fires. The later probes are the mandatory post-wait liveness re-probes
+// (pre-dispatch and pre-submit, rounds 5.2/5.3).
 func TestWiring_CodexTUISendUsesStateAwareDelivery(t *testing.T) {
 	store, err := sqlitetest.Open(t.TempDir())
 	if err != nil {
@@ -110,7 +111,7 @@ func TestWiring_CodexTUISendUsesStateAwareDelivery(t *testing.T) {
 	if rt.sent != "" {
 		t.Fatalf("fire-and-forget SendMessage fired for a codex TUI session: %q", rt.sent)
 	}
-	want := []string{"probe", "probe", "cancel", "paste:" + wiringTestMsg, "enter"}
+	want := []string{"probe", "probe", "cancel", "paste:" + wiringTestMsg, "probe", "enter"}
 	if strings.Join(rt.ops, ",") != strings.Join(want, ",") {
 		t.Fatalf("ops = %v, want %v", rt.ops, want)
 	}

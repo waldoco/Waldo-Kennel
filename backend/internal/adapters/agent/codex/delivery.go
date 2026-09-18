@@ -252,6 +252,24 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 		// unknown, NOT a retryable pending hold.
 		return DeliveryNone, &DeliveryUnknownError{Phase: "post-injection unsteerable (" + string(freshReason) + ")", Capture: freshCapture}
 	}
+
+	// Review round-5.3 gates: the tolerated redraw wait can span provider
+	// death (tmux remain-on-exit retains a steerable-looking pane), and the
+	// injected draft can clear or move while the pane was unrecognizable.
+	// Prove liveness and this exact draft's presence before the keystroke.
+	dead, err = term.PaneDead(ctx)
+	if err != nil {
+		return DeliveryNone, &DeliveryUnknownError{Phase: "pre-submit post-wait liveness probe", Capture: freshCapture}
+	}
+	if dead {
+		return DeliveryNone, ErrPaneDead
+	}
+	if message != "" && !DraftPresent(freshCapture, message) {
+		// Injected-but-unsubmitted unknown: the message may have moved, so
+		// no re-paste and no bare Enter into an unaccounted composer.
+		return DeliveryNone, &DeliveryUnknownError{Phase: "draft not provable after pre-submit wait", Capture: freshCapture}
+	}
+
 	submit := term.SendEnter
 	if freshState == PaneStateActiveTurn {
 		submit = term.SendTab
