@@ -94,12 +94,19 @@ jobs:
           mkdir -p "$(dirname "$KENNEL_E2E_DAEMON_OUTPUT")"
           go test ./e2e -run '^TestOutcomeLaunchCut' -count=1 -v -timeout 20m
 
+      - name: Run governed Codex sandbox falsifiers
+        shell: bash
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go test ./e2e -run '^TestGovernedCodexSandboxFalsifiers' -count=1 -v -timeout 20m
+
       - name: Run remaining model-backed chat E2E
         shell: bash
         working-directory: backend
         run: |
           set -euo pipefail
-          go test ./e2e -skip '^TestOutcomeLaunchCut' -count=1 -v -timeout 45m
+          go test ./e2e -skip '^TestOutcomeLaunchCut|^TestGovernedCodexSandboxFalsifiers' -count=1 -v -timeout 45m
 
       - name: Remove model-backed E2E processes and files
         if: always()

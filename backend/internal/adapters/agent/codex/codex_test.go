@@ -1371,3 +1371,114 @@ func TestDoctorLaunchProbesMirrorLaunchFlags(t *testing.T) {
 		}
 	}
 }
+
+func governedTestPolicy(t *testing.T, workspace string) domain.AttemptExecutionPolicy {
+	t.Helper()
+	policy := domain.AttemptExecutionPolicy{
+		OutcomeID: "out-1", PlanRevisionID: "plan-1", WorkUnitID: "wu-1", ContractRevisionNumber: 1,
+		RunBriefCoreDigest:   "brief",
+		RequiredCapabilities: []string{domain.CapabilityWorktreeRead},
+		Grants:               []domain.CapabilityGrant{{ID: "read", Name: domain.CapabilityWorktreeRead, Scope: "worktree/*"}},
+	}
+	bound, err := policy.BindWorkspaceRoot(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bound
+}
+
+func TestProvisionGovernedCodexHomeDistinctPerSession(t *testing.T) {
+	workspace := canonicalTempDir(t)
+	dataDir := canonicalTempDir(t)
+	userHome := t.TempDir()
+	t.Setenv("CODEX_HOME", userHome)
+	if err := os.WriteFile(filepath.Join(userHome, "auth.json"), []byte(`{"token":"user-secret"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	policy := governedTestPolicy(t, workspace)
+	homeA, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	homeB, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if homeA == homeB {
+		t.Fatalf("two sessions share one home: %q", homeA)
+	}
+	for _, home := range []string{homeA, homeB} {
+		if _, err := os.Stat(filepath.Join(home, "config.toml")); err != nil {
+			t.Fatalf("home %q missing config.toml: %v", home, err)
+		}
+		if raw, err := os.ReadFile(filepath.Join(home, "auth.json")); err != nil || string(raw) != `{"token":"user-secret"}` {
+			t.Fatalf("home %q auth seed = %q, %v", home, raw, err)
+		}
+	}
+	// No cross-inheritance: writing into one home must not appear in the other.
+	if err := os.WriteFile(filepath.Join(homeA, "auth.json"), []byte(`{"token":"rotated"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(homeB, "auth.json")); string(raw) != `{"token":"user-secret"}` {
+		t.Fatalf("session-b inherited session-a credential state: %q", raw)
+	}
+}
+
+func TestProvisionGovernedCodexHomeRejectsForeignAndSymlinkPaths(t *testing.T) {
+	workspace := canonicalTempDir(t)
+	dataDir := canonicalTempDir(t)
+	policy := governedTestPolicy(t, workspace)
+	// Foreign pre-existing directory (no our config.toml) must fail closed.
+	foreign := filepath.Join(dataDir, "codex-home", "session-foreign")
+	if err := os.MkdirAll(foreign, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-foreign"); err == nil {
+		t.Fatal("adopted a foreign pre-existing home")
+	}
+	// Symlinked home must fail closed.
+	target := t.TempDir()
+	link := filepath.Join(dataDir, "codex-home", "session-link")
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-link"); err == nil {
+		t.Fatal("followed a symlinked home")
+	}
+	// Same-session re-provisioning (restore) is accepted.
+	if _, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProvisionGovernedCodexHome(policy, workspace, dataDir, "session-a"); err != nil {
+		t.Fatalf("same-session re-provisioning refused: %v", err)
+	}
+}
+
+func TestCleanSessionHomeRemovesOnlyOurs(t *testing.T) {
+	plugin := &Plugin{}
+	dataDir := canonicalTempDir(t)
+	home := filepath.Join(dataDir, "codex-home", "session-a")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "auth.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := plugin.CleanSessionHome(dataDir, "session-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(home); !os.IsNotExist(err) {
+		t.Fatalf("home survived cleanup: %v", err)
+	}
+	// Missing home is benign.
+	if err := plugin.CleanSessionHome(dataDir, "session-a"); err != nil {
+		t.Fatal(err)
+	}
+	// Unsafe identities and symlinked homes are refused, not removed.
+	if err := plugin.CleanSessionHome(dataDir, "../escape"); err == nil {
+		t.Fatal("accepted an unsafe session identity")
+	}
+}

@@ -263,30 +263,11 @@ func governedRepositoryArgs(policy domain.AttemptExecutionPolicy, workspace, dat
 	if sessionID != filepath.Base(sessionID) || sessionID == "." || sessionID == ".." {
 		return nil, nil, fmt.Errorf("codex governed repository tools require a path-safe session identity, got %q", sessionID)
 	}
-	binary, err := os.Executable()
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve Kennel executable: %w", err)
-	}
-	raw, err := json.Marshal(policy)
-	if err != nil {
-		return nil, nil, fmt.Errorf("marshal governed repository policy: %w", err)
-	}
-	encoded := base64.RawURLEncoding.EncodeToString(raw)
-	enabledTools := []string{"list_repository", "read_text_file"}
-	if policy.Has(domain.CapabilityWorktreeWrite) {
-		enabledTools = append(enabledTools, "write_text_file")
-	}
 	// Approved checks are daemon-owned post-termination work. Do not expose a
 	// provider-side executor: it would race the durable Attempt/check/artifact
 	// reservation path and could run the same exact check twice.
-	home := filepath.Join(dataDir, "codex-home", sessionID)
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		return nil, nil, fmt.Errorf("provision governed Codex home: %w", err)
-	}
-	if err := seedCodexAuth(home); err != nil {
-		return nil, nil, err
-	}
-	if err := writeGovernedCodexConfig(home, sandbox, binary, canonicalWorkspace, encoded, filepath.Clean(dataDir), sessionID, enabledTools); err != nil {
+	home, err := ProvisionGovernedCodexHome(policy, canonicalWorkspace, dataDir, sessionID)
+	if err != nil {
 		return nil, nil, err
 	}
 	args = []string{
@@ -305,6 +286,98 @@ func governedRepositoryArgs(policy domain.AttemptExecutionPolicy, workspace, dat
 		args = append(args, "--disable", feature)
 	}
 	return []string{"env", "CODEX_HOME=" + home}, args, nil
+}
+
+// ProvisionGovernedCodexHome creates (or verifies, for the same session) the
+// session-scoped CODEX_HOME carrying the generated config.toml for a governed
+// Attempt and reseeds credentials just-in-time. Exposed so the sandbox
+// falsifiers exercise the exact launch provisioning path.
+func ProvisionGovernedCodexHome(policy domain.AttemptExecutionPolicy, canonicalWorkspace, dataDir, sessionID string) (string, error) {
+	sandbox, err := codexpolicy.SandboxFor(policy)
+	if err != nil {
+		return "", err
+	}
+	binary, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolve Kennel executable: %w", err)
+	}
+	raw, err := json.Marshal(policy)
+	if err != nil {
+		return "", fmt.Errorf("marshal governed repository policy: %w", err)
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(raw)
+	enabledTools := []string{"list_repository", "read_text_file"}
+	if policy.Has(domain.CapabilityWorktreeWrite) {
+		enabledTools = append(enabledTools, "write_text_file")
+	}
+	home := filepath.Join(filepath.Clean(dataDir), "codex-home", sessionID)
+	if err := prepareGovernedHome(home); err != nil {
+		return "", err
+	}
+	if err := seedCodexAuth(home); err != nil {
+		return "", err
+	}
+	if err := writeGovernedCodexConfig(home, sandbox, binary, canonicalWorkspace, encoded, filepath.Clean(dataDir), sessionID, enabledTools); err != nil {
+		return "", err
+	}
+	return home, nil
+}
+
+// prepareGovernedHome exclusively creates the session home, or accepts an
+// existing one only when it is verifiably ours (a real directory already
+// carrying our config.toml - i.e. the same session re-provisioning). Symlinks
+// and foreign paths fail closed.
+func prepareGovernedHome(home string) error {
+	info, err := os.Lstat(home)
+	switch {
+	case os.IsNotExist(err):
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			return fmt.Errorf("provision governed Codex home: %w", err)
+		}
+		// MkdirAll silently succeeds through a symlinked component; re-lstat
+		// so a planted link can never redirect credential writes.
+		if info, err := os.Lstat(home); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("governed Codex home %q is not a plain directory", home)
+		}
+		return nil
+	case err != nil:
+		return fmt.Errorf("inspect governed Codex home: %w", err)
+	case info.Mode()&os.ModeSymlink != 0:
+		return fmt.Errorf("governed Codex home %q must not be a symlink", home)
+	case !info.IsDir():
+		return fmt.Errorf("governed Codex home %q is not a directory", home)
+	}
+	if _, err := os.Lstat(filepath.Join(home, "config.toml")); err != nil {
+		return fmt.Errorf("governed Codex home %q already exists without our config: refusing to adopt a foreign path", home)
+	}
+	return nil
+}
+
+// writeFileAtomic writes mode-0600 content via a same-directory temp file and
+// rename, so a crashed or raced write never leaves a partial config or
+// credential behind.
+func writeFileAtomic(path string, content []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return fmt.Errorf("stage %s: %w", filepath.Base(path), err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("protect %s: %w", filepath.Base(path), err)
+	}
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write %s: %w", filepath.Base(path), err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", filepath.Base(path), err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("install %s: %w", filepath.Base(path), err)
+	}
+	return nil
 }
 
 // writeGovernedCodexConfig generates the session-scoped config.toml for a
@@ -335,7 +408,7 @@ func writeGovernedCodexConfig(home, sandbox, binary, canonicalWorkspace, encoded
 	b.WriteString("required = true\n")
 	b.WriteString("enabled_tools = [" + strings.Join(quotedTools, ", ") + "]\n")
 	b.WriteString("default_tools_approval_mode = \"approve\"\n")
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(b.String()), 0o600); err != nil {
+	if err := writeFileAtomic(filepath.Join(home, "config.toml"), []byte(b.String())); err != nil {
 		return fmt.Errorf("write governed Codex config: %w", err)
 	}
 	return nil
@@ -364,8 +437,35 @@ func seedCodexAuth(home string) error {
 	if err != nil {
 		return fmt.Errorf("read Codex auth: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "auth.json"), auth, 0o600); err != nil {
+	// Rotation: Codex refreshes this copy in place inside the session home;
+	// refreshed tokens deliberately never flow back into the user's real home.
+	// Each new governed session re-seeds from the user's current auth.json.
+	if err := writeFileAtomic(filepath.Join(home, "auth.json"), auth); err != nil {
 		return fmt.Errorf("seed governed Codex auth: %w", err)
+	}
+	return nil
+}
+
+// CleanSessionHome removes a session-scoped CODEX_HOME when the session is
+// durably terminated so its credential copy never outlives the session. It is
+// part of the ports.AgentSessionHomeCleaner contract.
+func (p *Plugin) CleanSessionHome(dataDir, sessionID string) error {
+	if strings.TrimSpace(sessionID) == "" || sessionID != filepath.Base(sessionID) || sessionID == "." || sessionID == ".." {
+		return fmt.Errorf("refusing to clean a Codex home for unsafe session identity %q", sessionID)
+	}
+	home := filepath.Join(filepath.Clean(dataDir), "codex-home", sessionID)
+	info, err := os.Lstat(home)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect governed Codex home: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("governed Codex home %q is not a plain directory; refusing removal", home)
+	}
+	if err := os.RemoveAll(home); err != nil {
+		return fmt.Errorf("remove governed Codex home: %w", err)
 	}
 	return nil
 }

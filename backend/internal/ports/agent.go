@@ -121,6 +121,14 @@ type AgentBinaryResolver interface {
 	ResolveBinary(ctx context.Context) (path string, err error)
 }
 
+// AgentSessionHomeCleaner is an OPTIONAL capability for an adapter that
+// provisions per-session credential homes. The session manager invokes it when
+// a session is durably terminated so credential copies never outlive the
+// session. Cleanup is best-effort: a failure is logged, never fatal to Kill.
+type AgentSessionHomeCleaner interface {
+	CleanSessionHome(dataDir, sessionID string) error
+}
+
 // AgentInterfaceHandoff is an OPTIONAL capability for a TUI adapter whose
 // native resume identity is also understood by its structured Chat driver.
 // Merely supporting GetRestoreCommand is not enough: some harnesses expose a

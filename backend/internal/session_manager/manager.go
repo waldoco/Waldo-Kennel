@@ -1514,6 +1514,27 @@ func (m *Manager) RollbackSpawn(ctx context.Context, id domain.SessionID) (delet
 // failed partway, handle lost after a crash) is still terminated after the
 // available destroy steps are skipped so it can be cleaned up from the
 // dashboard.
+// cleanAgentSessionHomeBestEffort removes any per-session credential home the
+// harness adapter provisioned (ports.AgentSessionHomeCleaner). Best-effort: a
+// failure is logged, never fatal to termination. Restore re-seeds the home
+// just-in-time, so an over-eager cleanup is self-healing.
+func (m *Manager) cleanAgentSessionHomeBestEffort(rec *ports.SessionRecord) {
+	if rec == nil || m.agents == nil {
+		return
+	}
+	agent, ok := m.agents.Agent(rec.Harness)
+	if !ok {
+		return
+	}
+	cleaner, ok := agent.(ports.AgentSessionHomeCleaner)
+	if !ok {
+		return
+	}
+	if err := cleaner.CleanSessionHome(m.dataDir, string(rec.ID)); err != nil {
+		m.logger.Warn("kill: clean agent session home failed", "sessionID", rec.ID, "error", err)
+	}
+}
+
 func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 	if err := m.beginAgentOperation(ctx, id, agentOperationKill); err != nil {
 		if errors.Is(err, errAgentOperationInProgress) {
@@ -1590,6 +1611,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 				return false, fmt.Errorf("kill %s: %w", id, err)
 			}
 			m.cleanupSystemPromptDir(id)
+		m.cleanAgentSessionHomeBestEffort(rec)
 			return false, nil
 		}
 		if release != nil {
@@ -1605,6 +1627,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 					return false, fmt.Errorf("kill %s: %w", id, err)
 				}
 				m.cleanupSystemPromptDir(id)
+		m.cleanAgentSessionHomeBestEffort(rec)
 				return false, nil
 			}
 			return false, fmt.Errorf("kill %s: workspace: %w", id, err)
@@ -1623,6 +1646,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 					return false, fmt.Errorf("kill %s: %w", id, err)
 				}
 				m.cleanupSystemPromptDir(id)
+		m.cleanAgentSessionHomeBestEffort(rec)
 				return false, nil
 			}
 			return false, fmt.Errorf("kill %s: workspace: %w", id, err)
@@ -1641,6 +1665,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 		return false, fmt.Errorf("kill %s: %w", id, err)
 	}
 	m.cleanupSystemPromptDir(id)
+	m.cleanAgentSessionHomeBestEffort(rec)
 	return freed, nil
 }
 
