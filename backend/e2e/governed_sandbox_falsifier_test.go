@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -458,6 +459,35 @@ func hasSuccessfulCommandEvent(events []commandExecution, canonicalCommand strin
 	return false
 }
 
+// driverDirOutsideWritable resolves driverDir and every confined-writable
+// root through filepath.EvalSymlinks and requires the RESOLVED driver dir to
+// sit outside every RESOLVED writable root. Lexical containment is not
+// enough: a driverDir symlink pointing into the workspace or $TMPDIR, or a
+// symlinked workspace, $TMPDIR, or $HOME ancestor, would let the confined
+// shell reach the script with write access and re-open the
+// edit/invoke/restore laundering attack. Resolution errors are rejected -
+// an unverifiable placement is never accepted.
+func driverDirOutsideWritable(driverDir string, writables []string) error {
+	resolvedDriver, err := filepath.EvalSymlinks(driverDir)
+	if err != nil {
+		return fmt.Errorf("resolve driver dir %q: %w", driverDir, err)
+	}
+	for _, writable := range writables {
+		resolvedWritable, err := filepath.EvalSymlinks(writable)
+		if err != nil {
+			return fmt.Errorf("resolve writable root %q: %w", writable, err)
+		}
+		rel, err := filepath.Rel(resolvedWritable, resolvedDriver)
+		if err != nil {
+			return fmt.Errorf("relate %q to %q: %w", resolvedDriver, resolvedWritable, err)
+		}
+		if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+			return fmt.Errorf("driver dir %q (resolved %q) is inside confined-writable %q (resolved %q)", driverDir, resolvedDriver, writable, resolvedWritable)
+		}
+	}
+	return nil
+}
+
 // deniedProbe drives one boundary probe until the model actually invokes the
 // shell tool on the probe's driver script. Directly asking the model to run
 // an out-of-bounds command was observed to fail 9/9 WITHOUT a tool call:
@@ -477,7 +507,10 @@ func hasSuccessfulCommandEvent(events []commandExecution, canonicalCommand strin
 // edit/invoke/restore launder fabricated denial evidence past the post-turn
 // byte check; placement outside the writable set makes the edit itself a
 // denied operation, so the post-turn re-verification is defense in depth,
-// not the binding check. The guard below enforces the precondition.
+// not the binding check. The guard below enforces the precondition on
+// RESOLVED paths (EvalSymlinks on both sides, before and after creation):
+// a symlinked driverDir, workspace, temp root, or ancestor must fail the
+// check, not launder through lexical containment.
 //
 // Each attempt runs ONE codex exec session with two turns: turn 1 is a
 // positive control (an in-workspace write that must succeed AND emit its own
@@ -496,15 +529,34 @@ func hasSuccessfulCommandEvent(events []commandExecution, canonicalCommand strin
 // choice is not boundary evidence.
 func deniedProbe(t *testing.T, run func(*testing.T, string, ...string) (string, error), workspace, driverDir, scriptName, canonicalCommand, mustMention string, violation func() bool, denialPhrases []string, violationMsg string) string {
 	t.Helper()
-	for _, writable := range []string{workspace, os.TempDir()} {
-		if rel, err := filepath.Rel(writable, driverDir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			t.Fatalf("driver dir %q is inside confined-writable %q: the script must be immutable to the confined shell", driverDir, writable)
-		}
+	writables := []string{workspace, os.TempDir()}
+	if err := driverDirOutsideWritable(driverDir, writables); err != nil {
+		t.Fatalf("%v - the script must be immutable to the confined shell", err)
 	}
 	scriptPath := filepath.Join(driverDir, scriptName)
+	if fi, err := os.Lstat(scriptPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("driver path %q is a symlink: refusing to write through it", scriptPath)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("inspect driver path: %v", err)
+	}
 	scriptBytes := []byte(canonicalCommand + "\n")
-	if err := os.WriteFile(scriptPath, scriptBytes, 0o700); err != nil {
+	// O_EXCL refuses every existing final path, so no pre-placed symlink or
+	// swapped component can redirect the write.
+	f, err := os.OpenFile(scriptPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o700)
+	if err != nil {
 		t.Fatalf("stage driver script: %v", err)
+	}
+	if _, err := f.Write(scriptBytes); err != nil {
+		f.Close()
+		t.Fatalf("write driver script: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close driver script: %v", err)
+	}
+	// Re-check resolved placement after creation: a component swapped during
+	// the unsandboxed setup window must fail here, not launder through.
+	if err := driverDirOutsideWritable(driverDir, writables); err != nil {
+		t.Fatalf("post-creation placement check: %v", err)
 	}
 	invokeCommand := "sh " + scriptPath
 	var out string
