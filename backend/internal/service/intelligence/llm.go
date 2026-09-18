@@ -703,23 +703,52 @@ func planDraftInputs(values []struct {
 }
 
 // logReadinessInvalid WARN-logs a rejected readiness envelope WITHOUT any
-// provider-controlled content: the typed validation error, the byte length,
-// and a truncated SHA-256 digest so a preserved artifact can be matched to
-// the log line without raw model output (which may carry credential-shaped
-// or otherwise sensitive strings) ever reaching durable logs.
+// provider-controlled content. Parser errors embed provider values verbatim
+// (a duplicate error quotes the key; the identifier contract quotes the
+// offending identifier), so the error itself is never logged: only the
+// closed-set validation code it carries, the byte length, and a truncated
+// SHA-256 digest so a preserved artifact can be matched to the log line.
 func logReadinessInvalid(raw []byte, err error) {
 	sum := sha256.Sum256(raw)
 	slog.Default().Warn("waldo readiness envelope rejected",
-		"error", err, "envelope_bytes", len(raw), "envelope_sha256", hex.EncodeToString(sum[:])[:16])
+		"code", readinessValidationCode(err), "envelope_bytes", len(raw), "envelope_sha256", hex.EncodeToString(sum[:])[:16])
 }
 
-// logUnresolvableRefs WARN-logs degrade issues: the plan survives, but the
-// dropped planner references stay visible in the daemon log as well as in
-// the owner-facing issue.
+// readinessValidationCode extracts the closed-set validation code from a
+// parser error. Codes are compile-time constants, never provider content; an
+// error carrying none of them logs as uncategorized.
+func readinessValidationCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	for _, code := range []string{
+		string(domain.ReadinessStatusInvalid),
+		string(domain.ReadinessPayloadInvalid),
+		string(domain.ReadinessIssueInvalid),
+		string(domain.ReadinessIssueDuplicate),
+		string(domain.ReadinessAuthorityClaim),
+	} {
+		if strings.Contains(msg, code) {
+			return code
+		}
+	}
+	return "UNCATEGORIZED"
+}
+
+// logUnresolvableRefs WARN-logs that degrade happened: the plan survives and
+// the owner sees the generated degrade issue. The log line carries only the
+// count - the degrade issue's Prompt embeds every dropped provider-supplied
+// reference verbatim, and credential-shaped strings fit the identifier
+// alphabet, so the Prompt never reaches durable logs.
 func logUnresolvableRefs(issues []domain.PlanningReadinessIssue) {
+	drops := 0
 	for _, issue := range issues {
 		if issue.Kind == domain.ReadinessReferenceUnresolvable {
-			slog.Default().Warn("planner-declared issue referenced undefined units or criteria; references dropped", "detail", issue.Prompt)
+			drops++
 		}
+	}
+	if drops > 0 {
+		slog.Default().Warn("planner-declared issues referenced undefined units or criteria; references dropped", "degrade_issues", drops)
 	}
 }

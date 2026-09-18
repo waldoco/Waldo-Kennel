@@ -2,7 +2,6 @@ package intelligence
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -450,25 +449,84 @@ func TestParsePlanningReadinessMalformedRefsRejected(t *testing.T) {
 	}
 }
 
-// TestLogReadinessInvalidNeverLogsProviderContent (review HIGH on d9e45405):
-// the invalid-envelope WARN carries the typed error plus structural metadata
-// (byte length, truncated digest) and NEVER raw model output.
-func TestLogReadinessInvalidNeverLogsProviderContent(t *testing.T) {
+// captureLogs routes the package's default slog output into a buffer.
+func captureLogs(t *testing.T) *strings.Builder {
+	t.Helper()
 	var buf strings.Builder
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
 
-	secret := "sk-live-secret-bearer-token-value"
-	logReadinessInvalid([]byte(`{"status":"ready","token":"`+secret+`"}`), errors.New("typed validation error"))
-
-	out := buf.String()
-	if strings.Contains(out, secret) || strings.Contains(out, `"status"`) {
-		t.Fatalf("provider-controlled content reached the log: %s", out)
+// TestLogReadinessInvalidNeverLogsProviderContent (review HIGH, rounds
+// 2-3): the invalid-envelope WARN carries only the closed-set validation
+// code plus structural metadata (byte length, truncated digest) - never raw
+// model output and never the parser error, which itself embeds provider
+// values. Uses REAL parser errors, not synthetic ones.
+func TestLogReadinessInvalidNeverLogsProviderContent(t *testing.T) {
+	// A duplicate error quotes the provider-supplied key verbatim.
+	secretKey := "sk-live-secret-bearer-token-value" // fits the identifier alphabet
+	dup := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"workUnitKeys": ["`+secretKey+`", "`+secretKey+`"], "criterionAliases": ["C1"]`, 1)
+	raw := []byte(dup)
+	_, err := parsePlanningReadinessReply(raw, readinessTestFence(), []string{"C1", "C2"})
+	if err == nil || !strings.Contains(err.Error(), secretKey) {
+		t.Fatalf("precondition: real duplicate parser error must embed the key, got %v", err)
 	}
-	for _, want := range []string{"typed validation error", "envelope_bytes", "envelope_sha256"} {
+	buf := captureLogs(t)
+	logReadinessInvalid(raw, err)
+	out := buf.String()
+	if strings.Contains(out, secretKey) {
+		t.Fatalf("provider-supplied key reached the log via the error: %s", out)
+	}
+	for _, want := range []string{string(domain.ReadinessIssueDuplicate), "envelope_bytes", "envelope_sha256"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("log line missing %q: %s", want, out)
 		}
+	}
+
+	// A malformed-identifier error quotes the offending identifier verbatim.
+	raw2 := []byte(strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"workUnitKeys": ["bad key with spaces"], "criterionAliases": ["C1"]`, 1))
+	_, err2 := parsePlanningReadinessReply(raw2, readinessTestFence(), []string{"C1", "C2"})
+	if err2 == nil || !strings.Contains(err2.Error(), "bad key with spaces") {
+		t.Fatalf("precondition: identifier error must embed the identifier, got %v", err2)
+	}
+	buf2 := captureLogs(t)
+	logReadinessInvalid(raw2, err2)
+	if strings.Contains(buf2.String(), "bad key with spaces") {
+		t.Fatalf("provider-supplied identifier reached the log: %s", buf2.String())
+	}
+}
+
+// TestLogUnresolvableRefsNeverLogsDroppedRefs (review HIGH round 3): the
+// degrade WARN carries counts only - the degrade issue's Prompt embeds every
+// dropped provider-supplied reference verbatim and must never reach logs.
+func TestLogUnresolvableRefsNeverLogsDroppedRefs(t *testing.T) {
+	secretKey := "sk-live-secret-bearer-token-value"
+	env := strings.Replace(needsContextEnvelope, `"criterionAliases": ["C1"]`, `"workUnitKeys": ["`+secretKey+`"], "criterionAliases": ["C1"]`, 1)
+	res, err := parsePlanningReadinessReply([]byte(env), readinessTestFence(), []string{"C1", "C2"})
+	if err != nil {
+		t.Fatalf("precondition: envelope must degrade cleanly, got %v", err)
+	}
+	found := false
+	for _, issue := range res.Issues {
+		if issue.Kind == domain.ReadinessReferenceUnresolvable {
+			found = true
+			if !strings.Contains(issue.Prompt, secretKey) {
+				t.Fatal("precondition: degrade issue prompt must name the dropped key")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("precondition: degrade issue missing")
+	}
+	buf := captureLogs(t)
+	logUnresolvableRefs(res.Issues)
+	out := buf.String()
+	if strings.Contains(out, secretKey) {
+		t.Fatalf("dropped provider reference reached the log: %s", out)
+	}
+	if !strings.Contains(out, "degrade_issues=1") {
+		t.Fatalf("log line missing the degrade count: %s", out)
 	}
 }
