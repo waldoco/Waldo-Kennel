@@ -344,7 +344,7 @@ function OutcomeOverviewRow({
 		<li className={cn(contributor && "pl-6")}>
 			<div
 				className={cn(
-					"group/outcome-overview-row flex w-full min-w-0 items-center hairline border-border bg-card transition-colors duration-150 motion-reduce:transition-none hover:bg-interactive-hover focus-within:bg-interactive-hover",
+					"group/outcome-overview-row flex w-full min-w-0 items-center hairline border-border bg-card transition-[background-color,transform] duration-fast ease-out motion-reduce:transition-none hover:bg-interactive-hover focus-within:bg-interactive-hover active:scale-press",
 					board ? "rounded-[18px]" : "rounded-lg",
 					selected && "ring-1 ring-ring/60",
 				)}
@@ -381,10 +381,19 @@ function OutcomeOverviewRow({
 						<span
 							className={cn(
 								"text-xs leading-relaxed",
-								board && "order-first",
+								board ? "order-first" : "flex items-center gap-1.5",
 								statusTone,
 							)}
 						>
+							{board ? null : (
+								<span
+									aria-hidden="true"
+									className={cn(
+										"size-1.5 shrink-0 rounded-full",
+										BOARD_LANE_TONE[boardLane(attention?.lane)].dot,
+									)}
+								/>
+							)}
 							{attention?.reason
 								? t(`mission.reason.${attention.reason}`, { defaultValue: attention.reason })
 								: attention
@@ -392,9 +401,16 @@ function OutcomeOverviewRow({
 									: t(presentation.nextActionKey)}
 						</span>
 					</span>
-					<span className="text-xs text-muted-foreground">
-						{attention ? t(`mission.lane.${attention.lane}`) : t(presentation.stateKey)}
-					</span>
+					{board ? (
+						<span className="text-xs text-muted-foreground">
+							{attention ? t(`mission.lane.${attention.lane}`) : t(presentation.stateKey)}
+						</span>
+					) : (
+						<span className="flex shrink-0 flex-col items-end gap-0.5 text-xs text-muted-foreground">
+							<span className="tabular-nums">{formatTimeCompact(outcome.updatedAt)}</span>
+							<span>{attention ? t(`mission.lane.${attention.lane}`) : t(presentation.stateKey)}</span>
+						</span>
+					)}
 				</button>
 				{onOpenMissionControl ? (
 					<button

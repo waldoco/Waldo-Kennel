@@ -270,10 +270,16 @@ it("renders board cards with the project, relative activity time, and the lane's
 	// Status sentence carries the Ready lane's canon color.
 	const sentence = within(row).getByText("Review proof and decide");
 	expect(sentence.className).toContain("text-status-ready");
-	// List mode keeps the row compact: no project/time prefix.
+	// List mode shows the same activity time beside the lane label, and the
+	// status sentence carries the lane's canon dot - the row's only lane cue.
 	act(() => useUiStore.setState({ outcomeRunViewMode: "list" }));
 	const listRow = screen.getByText("Review the drafted plan").closest("button") as HTMLElement;
-	expect(within(listRow).queryByText("2h ago")).not.toBeInTheDocument();
+	expect(within(listRow).getByText("2h ago")).toBeInTheDocument();
+	expect(within(listRow).queryByText("Waldo Kennel")).not.toBeInTheDocument();
+	const listSentence = within(listRow).getByText("Review proof and decide");
+	expect(listSentence.className).toContain("text-status-ready");
+	const dot = listSentence.querySelector("span[aria-hidden]");
+	expect(dot?.className).toContain("bg-status-ready");
 });
 
 it("colors an unavailable Outcome's sentence with the lane it actually sits in", async () => {
