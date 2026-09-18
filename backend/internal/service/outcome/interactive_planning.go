@@ -481,20 +481,8 @@ func (s *Service) runPlanningTurn(ctx context.Context, outcomeID domain.OutcomeI
 	if err := s.intelligenceRuns.UpdateIntelligenceRunStatus(ctx, run.ID, domain.IntelligenceRunFulfilled, domain.DigestSHA256(encodedResult), "", "", &completed); err != nil {
 		return PlanningView{}, err
 	}
-	plannerKind, err := planningTurnKind(response.Result)
-	if err != nil {
-		return PlanningView{}, err
-	}
-	plannerTurn := domain.PlanningTurn{
-		ID: domain.PlanningTurnID("planning-turn-" + uuid.NewString()), PlanningSessionID: sessionID,
-		ReplyToTurnID: storedOwner.ID, Role: domain.PlanningTurnPlanner, Kind: plannerKind,
-		Text: strings.TrimSpace(response.Result.Message), StructuredPayload: encodedResult, IntelligenceRunID: run.ID, CreatedAt: completed,
-	}
-	session, err = s.planningSessions.AppendPlanningProviderTurn(ctx, sessionID, session.Revision, plannerTurn,
-		response.Provenance.EffectiveProvider, response.Provenance.EffectiveModel, response.Provenance.NativeSessionRef)
-	if err != nil {
-		return PlanningView{}, planningAPIError(err)
-	}
+	// The Contract may have moved while the provider thought; re-fence before
+	// anything derived from this reply becomes durable.
 	currentOutcome, found, err := s.store.GetOutcome(ctx, outcomeID)
 	if err != nil {
 		return PlanningView{}, err
@@ -509,7 +497,47 @@ func (s *Service) runPlanningTurn(ctx context.Context, outcomeID domain.OutcomeI
 	if session.Status == domain.PlanningSessionSuperseded {
 		return PlanningView{}, apierr.New(apierr.KindConflict, "PLANNING_CONTRACT_STALE", "The Contract changed. Start a new planning conversation.", map[string]any{"currentRevision": currentOutcome.CurrentRevisionNumber})
 	}
-	return s.finishPlanningEvaluation(ctx, currentOutcome, revision, session, run.ID, fence, response.Result)
+	// Evaluate before persisting: the durable turn records the derived packet
+	// and kind, never the planner's raw claim. A failed evaluation persists no
+	// turn; the session returns to the owner with a typed failure so a retry
+	// is a fresh turn under a fresh request identity.
+	evaluated, err := s.evaluatePlanningReply(ctx, currentOutcome, revision, fence, response.Result)
+	if err != nil {
+		code, detail := planningEvaluationFailureReason(err)
+		_, _ = s.planningSessions.SetPlanningSessionFailure(ctx, sessionID, session.Revision, code, detail)
+		return PlanningView{}, err
+	}
+	plannerKind, err := planningTurnKind(evaluated.result)
+	if err != nil {
+		return PlanningView{}, err
+	}
+	waitingOn := domain.PlanningWaitingOwner
+	if evaluated.result.Status == domain.PlanningBlocked && !readinessPacketWaitsOnOwner(evaluated.result) {
+		waitingOn = domain.PlanningWaitingSystem
+	}
+	payload, err = json.Marshal(domain.PlanningEvaluatedReply{Result: evaluated.result, Fence: evaluated.fence})
+	if err != nil {
+		return PlanningView{}, fmt.Errorf("encode evaluated planning reply: %w", err)
+	}
+	plannerTurn := domain.PlanningTurn{
+		ID: domain.PlanningTurnID("planning-turn-" + uuid.NewString()), PlanningSessionID: sessionID,
+		ReplyToTurnID: storedOwner.ID, Role: domain.PlanningTurnPlanner, Kind: plannerKind,
+		Text: strings.TrimSpace(evaluated.result.Message), StructuredPayload: payload, IntelligenceRunID: run.ID, CreatedAt: completed,
+	}
+	session, err = s.planningSessions.AppendPlanningProviderTurn(ctx, sessionID, session.Revision, plannerTurn, waitingOn,
+		response.Provenance.EffectiveProvider, response.Provenance.EffectiveModel, response.Provenance.NativeSessionRef)
+	if err != nil {
+		return PlanningView{}, planningAPIError(err)
+	}
+	if evaluated.result.Status == domain.PlanningReady {
+		return s.finishPlanningProposal(ctx, currentOutcome, revision, session, run.ID, *evaluated.result.Proposal, evaluated.snapshot, evaluated.preference)
+	}
+	view, err = s.planningView(ctx, currentOutcome, session)
+	if err != nil {
+		return PlanningView{}, err
+	}
+	view.Readiness = &evaluated.result
+	return view, nil
 }
 
 func (s *Service) beginPlanningTurn(parent context.Context, sessionID domain.PlanningSessionID) (context.Context, *planningTurnCancellation) {
@@ -555,76 +583,86 @@ func (s *Service) resumePlanningReply(ctx context.Context, outcomeRecord domain.
 		if turn.ReplyToTurnID != owner.ID {
 			continue
 		}
-		if turn.Kind != domain.PlanningTurnPlanProposal || session.Status != domain.PlanningSessionActive {
-			return s.planningView(ctx, outcomeRecord, session)
-		}
-		var result domain.PlanningReadinessResult
-		if err := json.Unmarshal(turn.StructuredPayload, &result); err != nil {
+		// Replay is verbatim: the durable payload is the evaluated reply
+		// (canonical packet plus the fence it was minted under). A replay
+		// never re-runs the evaluation - no fresh snapshot, no re-keyed
+		// packet, no Plan attempted under the old request identity.
+		reply, ok := domain.DecodePlanningEvaluatedReply(turn.StructuredPayload)
+		if !ok {
 			return PlanningView{}, apierr.Internal("PLANNING_REPLY_CORRUPT", "The saved planning reply could not be read")
 		}
-		revision, err := s.currentRevision(ctx, outcomeRecord)
+		view, err := s.planningView(ctx, outcomeRecord, session)
 		if err != nil {
 			return PlanningView{}, err
 		}
-		// Replay re-runs the same evaluation the original turn ran; the fence
-		// rebuilds from durable session state.
-		fence := domain.PlanningReadinessFence{
-			PlanningSessionID: session.ID, SessionRevision: session.Revision,
-			ContractRevisionID: session.ContractRevisionID, ContextDigest: session.ContextDigest,
+		if view.ProposedPlan == nil {
+			packet := reply.Result
+			view.Readiness = &packet
 		}
-		return s.finishPlanningEvaluation(ctx, outcomeRecord, revision, session, turn.IntelligenceRunID, fence, result)
+		return view, nil
 	}
 	return s.planningView(ctx, outcomeRecord, session)
 }
 
-// finishPlanningEvaluation is the S3 seam every interactive planning result
-// passes: the strict envelope is evaluated against the confirmed Contract and
-// one normalized inventory snapshot, and only a zero-issue ready packet enters
-// the canonical compiler. needs_context keeps the session waiting on the
-// owner; a blocked packet marks the session waiting on system setup, never on
-// owner silence. No Plan is written for a non-ready packet.
-func (s *Service) finishPlanningEvaluation(ctx context.Context, outcomeRecord domain.Outcome, revision domain.ContractRevision, session domain.PlanningSession, runID domain.IntelligenceRunID, fence domain.PlanningReadinessFence, envelope domain.PlanningReadinessResult) (PlanningView, error) {
+// evaluatedPlanningReply bundles one evaluated envelope: the canonical packet,
+// the inventory snapshot it was minted against, the fence with the snapshot
+// identity bound, and the routing preference the proposal compiler reuses on
+// the ready path.
+type evaluatedPlanningReply struct {
+	result     domain.PlanningReadinessResult
+	snapshot   ports.RoutingInventorySnapshot
+	fence      domain.PlanningReadinessFence
+	preference *domain.RoutingPreference
+}
+
+// evaluatePlanningReply is the S3 seam every interactive planning result
+// passes before it becomes durable: the strict envelope is evaluated against
+// the confirmed Contract and one normalized inventory snapshot, and only a
+// zero-issue ready packet enters the canonical compiler. needs_context keeps
+// the session waiting on the owner; a blocked packet marks the session waiting
+// on system setup unless an issue route waits on the owner. No Plan is
+// written for a non-ready packet.
+func (s *Service) evaluatePlanningReply(ctx context.Context, outcomeRecord domain.Outcome, revision domain.ContractRevision, fence domain.PlanningReadinessFence, envelope domain.PlanningReadinessResult) (evaluatedPlanningReply, error) {
 	projectID, project, err := s.projectForOutcome(ctx, outcomeRecord.ID)
 	if err != nil {
-		return PlanningView{}, err
+		return evaluatedPlanningReply{}, err
 	}
 	preference, hasPreference, err := domain.ResolveEffectiveExecutionPreference(revision.ExecutionPreference, project.Config)
 	if err != nil {
-		return PlanningView{}, apierr.Invalid("PLAN_PREFERENCE_INVALID", err.Error(), nil)
+		return evaluatedPlanningReply{}, apierr.Invalid("PLAN_PREFERENCE_INVALID", err.Error(), nil)
 	}
 	routingPreference := routingPreferenceFromExecution(preference, hasPreference)
 	evaluated, snapshot, err := s.EvaluatePlanReadiness(ctx, fence, projectID, revision, routingPreference, envelope.Proposal, envelope.Issues, envelope.Message)
 	if err != nil {
-		return PlanningView{}, err
+		return evaluatedPlanningReply{}, err
 	}
-	if evaluated.Status == domain.PlanningReady {
-		return s.finishPlanningProposal(ctx, outcomeRecord, revision, session, runID, *evaluated.Proposal, snapshot, routingPreference)
-	}
-	// A blocked packet waits on system setup by default. It claims the owner
-	// only when at least one issue route is an owner decision - the appended
-	// planner turn already left the session waiting on the owner in that
-	// case, so there is nothing to change.
-	if evaluated.Status == domain.PlanningBlocked && session.WaitingOn != domain.PlanningWaitingSystem {
-		waitsOnOwner := false
-		for _, issue := range evaluated.Issues {
-			if issue.Route.WaitsOnOwner() {
-				waitsOnOwner = true
-				break
-			}
-		}
-		if !waitsOnOwner {
-			session, err = s.planningSessions.SetPlanningSessionWaitingSystem(ctx, session.ID, session.Revision)
-			if err != nil {
-				return PlanningView{}, planningAPIError(err)
-			}
+	// Bind the snapshot identity the evaluator minted this packet's keys under
+	// so the durable reply record carries it.
+	fence.RoutingSnapshotID = snapshot.SnapshotID
+	return evaluatedPlanningReply{result: evaluated, snapshot: snapshot, fence: fence, preference: routingPreference}, nil
+}
+
+// readinessPacketWaitsOnOwner reports whether a blocked packet claims an owner
+// decision; every other blocked packet waits on system setup, never on owner
+// silence.
+func readinessPacketWaitsOnOwner(packet domain.PlanningReadinessResult) bool {
+	for _, issue := range packet.Issues {
+		if issue.Route.WaitsOnOwner() {
+			return true
 		}
 	}
-	view, err := s.planningView(ctx, outcomeRecord, session)
-	if err != nil {
-		return PlanningView{}, err
+	return false
+}
+
+// planningEvaluationFailureReason classifies an evaluation failure for the
+// durable session failure fields so a retry stays distinguishable from a
+// provider transport failure.
+func planningEvaluationFailureReason(err error) (string, string) {
+	var apiErr *apierr.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code, apiErr.Message
 	}
-	view.Readiness = &evaluated
-	return view, nil
+	return "PLANNING_READINESS_EVALUATION_FAILED", "The planning reply could not be evaluated safely"
 }
 
 func (s *Service) finishPlanningProposal(ctx context.Context, outcomeRecord domain.Outcome, revision domain.ContractRevision, session domain.PlanningSession, runID domain.IntelligenceRunID, draft domain.PlanDraftProposal, proposalSnapshot ports.RoutingInventorySnapshot, routingPreference *domain.RoutingPreference) (PlanningView, error) {
@@ -807,11 +845,11 @@ func planningStartFingerprint(outcomeID domain.OutcomeID, revision int64, candid
 	return domain.DigestSHA256(payload)
 }
 
-// planningTurnKind records what the planner's envelope claimed. A ready claim
-// is a proposal turn; needs_context is a clarification turn; a blocked packet
-// is a readiness_blocked turn whatever its routes - the packet payload and
-// the session wait state carry the detail, never a fabricated kind. The
-// envelope schema admits nothing else.
+// planningTurnKind records the evaluated packet's derived status, never the
+// planner's claim: ready is a proposal turn, needs_context is a clarification
+// turn, and a blocked packet is a readiness_blocked turn whatever its
+// routes - the packet payload and the session wait state carry the detail,
+// never a fabricated kind. The envelope schema admits nothing else.
 func planningTurnKind(result domain.PlanningReadinessResult) (domain.PlanningTurnKind, error) {
 	switch result.Status {
 	case domain.PlanningNeedsContext:

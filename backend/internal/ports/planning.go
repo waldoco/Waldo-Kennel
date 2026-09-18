@@ -84,9 +84,11 @@ type PlanningSessionStore interface {
 	GetCurrentPlanningSession(context.Context, domain.OutcomeID) (domain.PlanningSession, bool, error)
 	ListPlanningTurns(context.Context, domain.PlanningSessionID) ([]domain.PlanningTurn, error)
 	AppendPlanningOwnerTurn(context.Context, domain.PlanningSessionID, int64, domain.PlanningTurn) (domain.PlanningSession, domain.PlanningTurn, bool, error)
-	AppendPlanningProviderTurn(context.Context, domain.PlanningSessionID, int64, domain.PlanningTurn, domain.IntelligenceProviderID, string, string) (domain.PlanningSession, error)
+	// AppendPlanningProviderTurn records one evaluated reply and advances the
+	// session to its post-evaluation wait state - owner or system - in one
+	// transaction, so durable history always reflects the derived outcome.
+	AppendPlanningProviderTurn(context.Context, domain.PlanningSessionID, int64, domain.PlanningTurn, domain.PlanningWaitingOn, domain.IntelligenceProviderID, string, string) (domain.PlanningSession, error)
 	SetPlanningSessionFailure(context.Context, domain.PlanningSessionID, int64, string, string) (domain.PlanningSession, error)
-	SetPlanningSessionWaitingSystem(context.Context, domain.PlanningSessionID, int64) (domain.PlanningSession, error)
 	ClosePlanningSession(context.Context, domain.PlanningSessionID, int64, domain.PlanningSessionStatus) (domain.PlanningSession, error)
 	LinkPlanningSessionPlan(context.Context, domain.PlanningSessionID, int64, domain.PlanRevisionID, domain.IntelligenceRunID) (domain.PlanningSession, error)
 	GetPlanRevisionByPlanningSession(context.Context, domain.OutcomeID, domain.PlanningSessionID) (domain.PlanRevision, bool, error)

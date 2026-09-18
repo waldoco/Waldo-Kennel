@@ -30,6 +30,7 @@ type interactivePlanningFake struct {
 	effectiveModel            string
 	nativeRefs                []string
 	beforeDiscuss             func()
+	discussResult             func(ports.PlanningDiscussionRequest) domain.PlanningReadinessResult
 	discussStarted            chan struct{}
 	discussRelease            chan struct{}
 	ignoreCancellation        bool
@@ -110,6 +111,9 @@ func (f *interactivePlanningFake) DiscussPlan(ctx context.Context, request ports
 		nativeRef = f.nativeRefs[f.discussCalls-1]
 	}
 	provenance := ports.IntelligenceProvenance{EffectiveProvider: request.Binding.Provider, EffectiveModel: effectiveModel, NativeSessionRef: nativeRef}
+	if f.discussResult != nil {
+		return ports.PlanningDiscussionResponse{Provenance: provenance, Result: f.discussResult(request)}, nil
+	}
 	latest := request.Turns[len(request.Turns)-1].Text
 	if request.Finalize {
 		return ports.PlanningDiscussionResponse{Provenance: provenance, Result: domain.NewPlanningReadinessResult(
@@ -675,5 +679,235 @@ func TestInteractivePlanning_PartialRepositoryContextStillStartsPlanning(t *test
 	}
 	if !provider.repositoryObserved {
 		t.Fatal("provider did not receive the inspected README content despite a usable partial snapshot")
+	}
+}
+
+func TestInteractivePlanning_ControlPlaneBlockedTurnPersistsEvaluatedPacket(t *testing.T) {
+	ctx := context.Background()
+	store := sqlitetest.MustOpen(t)
+	project := domain.ProjectRecord{ID: "planning-blocked-project", Path: initPlanningRepo(t), DisplayName: "Blocked", RegisteredAt: time.Now().UTC()}
+	if err := store.UpsertProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	provider := &interactivePlanningFake{}
+	provider.discussResult = func(ports.PlanningDiscussionRequest) domain.PlanningReadinessResult {
+		// The planner CLAIMS ready; the control plane derives blocked because
+		// no inventory candidate can execute the unit.
+		return domain.NewPlanningReadinessResult("The Plan is ready.", &domain.PlanDraftProposal{
+			Summary: "Run the verified command.",
+			WorkUnits: []domain.PlanDraftWorkUnit{{
+				Key: "run", Title: "Run the verified command", Intent: domain.WorkUnitIntentExecute, Role: domain.WorkUnitRoleImplement,
+				OutputSummary: "The command ran.", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"inspect the output"},
+			}},
+		}, nil)
+	}
+	weak := readyClaudeCandidate()
+	weak.Capabilities[domain.CapabilityWorktreeExec] = domain.CapabilityUnsupported
+	router := &routingInventoryFake{snapshotIDs: []string{"snap-blocked"}, candidates: []domain.RoutingCandidate{weak}}
+	svc := outcome.New(store, nil).WithPlanning(provider, router)
+	created, err := svc.Create(ctx, outcome.CreateInput{
+		ProjectID: domain.ProjectID(project.ID), Title: "Blocked planning", Goal: "Derive the durable truth.",
+		SuccessCriteria: []string{"The blocked packet is the durable reply."}, Review: "Inspect the session.",
+		AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true, WriteWorkspace: true, ExecuteLocal: true}, RequestKey: "planning-blocked-outcome",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.StartPlanning(ctx, created.Outcome.ID, outcome.StartPlanningInput{ExpectedContractRevision: 1, CandidateID: "direct-openai-planner", RequestKey: "planning-blocked-start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := outcome.PlanningMessageInput{ExpectedSessionRevision: view.Session.Revision, Text: "Propose it now.", RequestKey: "planning-blocked-turn"}
+	view, err = svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, input)
+	if err != nil {
+		t.Fatalf("blocked turn: %v", err)
+	}
+	// HIGH-2: the derived packet lands atomically - readiness_blocked kind and
+	// waiting_on=system in one write, never a stored plan_proposal claim.
+	if view.Session.WaitingOn != domain.PlanningWaitingSystem || view.ProposedPlan != nil {
+		t.Fatalf("blocked session = waiting %q plan %v", view.Session.WaitingOn, view.ProposedPlan != nil)
+	}
+	if view.Readiness == nil || view.Readiness.Status != domain.PlanningBlocked || len(view.Readiness.Issues) != 1 || view.Readiness.Issues[0].Route != domain.RouteChooseHarness {
+		t.Fatalf("blocked packet = %+v", view.Readiness)
+	}
+	if len(view.Turns) != 2 || view.Turns[1].Kind != domain.PlanningTurnReadinessBlocked {
+		t.Fatalf("turns = %+v", view.Turns)
+	}
+	reply, ok := domain.DecodePlanningEvaluatedReply(view.Turns[1].StructuredPayload)
+	if !ok || reply.Result.Status != domain.PlanningBlocked || reply.Result.Issues[0].Key != view.Readiness.Issues[0].Key {
+		t.Fatalf("durable reply does not carry the evaluated packet: ok=%v %+v", ok, reply.Result)
+	}
+	if reply.Fence.RoutingSnapshotID != "snap-blocked" || reply.Fence.PlanningSessionID != view.Session.ID || reply.Fence.ContractRevisionID != view.Session.ContractRevisionID {
+		t.Fatalf("durable reply lost the snapshot-bound fence: %+v", reply.Fence)
+	}
+	if _, found, err := store.GetPlanRevisionByPlanningSession(ctx, created.Outcome.ID, view.Session.ID); err != nil || found {
+		t.Fatalf("blocked turn wrote a Plan: found=%v err=%v", found, err)
+	}
+
+	// MEDIUM: replay is verbatim - no fresh snapshot, no re-keyed packet, no
+	// second provider call under the old request identity.
+	replayed, err := svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, input)
+	if err != nil {
+		t.Fatalf("replay blocked turn: %v", err)
+	}
+	if provider.discussCalls != 1 || router.calls != 1 {
+		t.Fatalf("replay re-evaluated: discuss=%d snapshots=%d", provider.discussCalls, router.calls)
+	}
+	if replayed.Session.WaitingOn != domain.PlanningWaitingSystem || replayed.Readiness == nil ||
+		replayed.Readiness.Status != domain.PlanningBlocked || replayed.Readiness.Issues[0].Key != view.Readiness.Issues[0].Key {
+		t.Fatalf("replay packet = %+v session=%+v", replayed.Readiness, replayed.Session)
+	}
+}
+
+func TestInteractivePlanning_OwnerRoutedBlockedTurnWaitsOnOwner(t *testing.T) {
+	ctx := context.Background()
+	store := sqlitetest.MustOpen(t)
+	project := domain.ProjectRecord{ID: "planning-authority-project", Path: initPlanningRepo(t), DisplayName: "Authority", RegisteredAt: time.Now().UTC()}
+	if err := store.UpsertProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	provider := &interactivePlanningFake{}
+	provider.discussResult = func(ports.PlanningDiscussionRequest) domain.PlanningReadinessResult {
+		// Ready claim whose write intent exceeds the read-only ceiling: the
+		// evaluator blocks it with an owner-routed revise_contract issue.
+		return domain.NewPlanningReadinessResult("The Plan is ready.", &domain.PlanDraftProposal{
+			Summary: "Make the bounded change.",
+			WorkUnits: []domain.PlanDraftWorkUnit{{
+				Key: "implement", Title: "Implement the change", Intent: domain.WorkUnitIntentModify, Role: domain.WorkUnitRoleImplement,
+				OutputSummary: "The change is ready.", CriteriaCovered: []string{"C1"}, EvidenceIdeas: []string{"inspect the diff"},
+			}},
+		}, nil)
+	}
+	router := &routingInventoryFake{snapshotIDs: []string{"snap-authority"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+	svc := outcome.New(store, nil).WithPlanning(provider, router)
+	created, err := svc.Create(ctx, outcome.CreateInput{
+		ProjectID: domain.ProjectID(project.ID), Title: "Authority planning", Goal: "Keep authority derived.",
+		SuccessCriteria: []string{"Above-ceiling claims block."}, Review: "Inspect the session.",
+		AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true}, RequestKey: "planning-authority-outcome",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.StartPlanning(ctx, created.Outcome.ID, outcome.StartPlanningInput{ExpectedContractRevision: 1, CandidateID: "direct-openai-planner", RequestKey: "planning-authority-start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err = svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, outcome.PlanningMessageInput{
+		ExpectedSessionRevision: view.Session.Revision, Text: "Propose it now.", RequestKey: "planning-authority-turn",
+	})
+	if err != nil {
+		t.Fatalf("authority turn: %v", err)
+	}
+	if view.Session.WaitingOn != domain.PlanningWaitingOwner || view.ProposedPlan != nil {
+		t.Fatalf("owner-routed blocked session = waiting %q plan %v", view.Session.WaitingOn, view.ProposedPlan != nil)
+	}
+	if view.Readiness == nil || view.Readiness.Status != domain.PlanningBlocked || len(view.Readiness.Issues) != 1 ||
+		view.Readiness.Issues[0].Route != domain.RouteReviseContract || view.Readiness.Issues[0].Kind != domain.ReadinessAuthorityInsufficient {
+		t.Fatalf("authority packet = %+v", view.Readiness)
+	}
+	if view.Turns[len(view.Turns)-1].Kind != domain.PlanningTurnReadinessBlocked {
+		t.Fatalf("turn kind = %q", view.Turns[len(view.Turns)-1].Kind)
+	}
+}
+
+func TestInteractivePlanning_ReplayReturnsStoredPacketWithoutReevaluation(t *testing.T) {
+	ctx := context.Background()
+	store := sqlitetest.MustOpen(t)
+	project := domain.ProjectRecord{ID: "planning-replay-packet-project", Path: initPlanningRepo(t), DisplayName: "Replay packet", RegisteredAt: time.Now().UTC()}
+	if err := store.UpsertProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	provider := &interactivePlanningFake{}
+	router := &routingInventoryFake{snapshotIDs: []string{"snap-replay"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
+	svc := outcome.New(store, nil).WithPlanning(provider, router)
+	created, err := svc.Create(ctx, outcome.CreateInput{
+		ProjectID: domain.ProjectID(project.ID), Title: "Replay planning", Goal: "Replay the stored packet.",
+		SuccessCriteria: []string{"A replay never re-evaluates."}, Review: "Inspect the session.",
+		AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true}, RequestKey: "planning-replay-packet-outcome",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.StartPlanning(ctx, created.Outcome.ID, outcome.StartPlanningInput{ExpectedContractRevision: 1, CandidateID: "direct-openai-planner", RequestKey: "planning-replay-packet-start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := outcome.PlanningMessageInput{ExpectedSessionRevision: view.Session.Revision, Text: "What stays ambiguous?", RequestKey: "planning-replay-packet-turn"}
+	view, err = svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, input)
+	if err != nil {
+		t.Fatalf("clarification turn: %v", err)
+	}
+	if view.Readiness == nil || view.Readiness.Status != domain.PlanningNeedsContext || len(view.Readiness.Issues) != 1 {
+		t.Fatalf("needs_context packet = %+v", view.Readiness)
+	}
+	if view.Turns[1].Kind != domain.PlanningTurnClarification {
+		t.Fatalf("turn kind = %q", view.Turns[1].Kind)
+	}
+	reply, ok := domain.DecodePlanningEvaluatedReply(view.Turns[1].StructuredPayload)
+	if !ok || reply.Fence.RoutingSnapshotID != "snap-replay" || reply.Fence.SessionRevision != view.Session.Revision-1 {
+		t.Fatalf("clarification reply lost the fence: ok=%v %+v", ok, reply.Fence)
+	}
+
+	// A replay must surface the stored needs_context packet (the old code
+	// dropped it) and must never re-evaluate under the old request identity.
+	replayed, err := svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, input)
+	if err != nil {
+		t.Fatalf("replay clarification: %v", err)
+	}
+	if provider.discussCalls != 1 || router.calls != 1 {
+		t.Fatalf("replay re-evaluated: discuss=%d snapshots=%d", provider.discussCalls, router.calls)
+	}
+	if replayed.Readiness == nil || replayed.Readiness.Status != domain.PlanningNeedsContext ||
+		replayed.Readiness.Issues[0].Key != view.Readiness.Issues[0].Key {
+		t.Fatalf("replay dropped or re-keyed the stored packet: %+v", replayed.Readiness)
+	}
+}
+
+func TestInteractivePlanning_EvaluationFailurePersistsNoClaimTurn(t *testing.T) {
+	ctx := context.Background()
+	store := sqlitetest.MustOpen(t)
+	project := domain.ProjectRecord{ID: "planning-evalfail-project", Path: initPlanningRepo(t), DisplayName: "Evaluation failure", RegisteredAt: time.Now().UTC()}
+	if err := store.UpsertProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	provider := &interactivePlanningFake{}
+	router := &routingInventoryFake{err: errors.New("inventory down")}
+	svc := outcome.New(store, nil).WithPlanning(provider, router)
+	created, err := svc.Create(ctx, outcome.CreateInput{
+		ProjectID: domain.ProjectID(project.ID), Title: "Evaluation failure planning", Goal: "Never persist an un-evaluated claim.",
+		SuccessCriteria: []string{"A failed evaluation persists no planner turn."}, Review: "Inspect the session.",
+		AuthorityCeiling: domain.ProposedAuthority{ReadWorkspace: true}, RequestKey: "planning-evalfail-outcome",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.StartPlanning(ctx, created.Outcome.ID, outcome.StartPlanningInput{ExpectedContractRevision: 1, CandidateID: "direct-openai-planner", RequestKey: "planning-evalfail-start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, outcome.PlanningMessageInput{
+		ExpectedSessionRevision: view.Session.Revision, Text: "Propose it now.", RequestKey: "planning-evalfail-turn",
+	}); err == nil || !strings.Contains(err.Error(), "inventory down") {
+		t.Fatalf("evaluation failure err = %v", err)
+	}
+	current, err := svc.GetCurrentPlanning(ctx, created.Outcome.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No un-evaluated claim became durable; the session is back with the owner
+	// carrying a typed failure so a retry is a fresh turn.
+	if current.Session.WaitingOn != domain.PlanningWaitingOwner || current.Session.LastFailureCode != "PLANNING_READINESS_EVALUATION_FAILED" {
+		t.Fatalf("failed-evaluation session = %+v", current.Session)
+	}
+	if len(current.Turns) != 1 || current.Turns[0].Role != domain.PlanningTurnOwner {
+		t.Fatalf("failed evaluation persisted turns: %+v", current.Turns)
+	}
+	router.err = nil
+	router.candidates = []domain.RoutingCandidate{readyClaudeCandidate()}
+	retried, err := svc.ContinuePlanning(ctx, created.Outcome.ID, view.Session.ID, outcome.PlanningMessageInput{
+		ExpectedSessionRevision: current.Session.Revision, Text: "Propose it now.", RequestKey: "planning-evalfail-retry",
+	})
+	if err != nil || retried.Readiness == nil || retried.Readiness.Status != domain.PlanningNeedsContext || len(retried.Turns) != 3 {
+		t.Fatalf("retry after evaluation failure: view=%+v err=%v", retried, err)
 	}
 }

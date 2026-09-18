@@ -184,8 +184,14 @@ func (s *Store) AppendPlanningOwnerTurn(ctx context.Context, sessionID domain.Pl
 	return result, stored, replay, nil
 }
 
-// AppendPlanningProviderTurn atomically records one reply and its provenance.
-func (s *Store) AppendPlanningProviderTurn(ctx context.Context, sessionID domain.PlanningSessionID, expectedRevision int64, turn domain.PlanningTurn, effectiveProvider domain.IntelligenceProviderID, effectiveModel, nativeRef string) (domain.PlanningSession, error) {
+// AppendPlanningProviderTurn atomically records one evaluated reply, its
+// provenance, and the post-evaluation wait state. waitingOn must be owner or
+// system: a provider turn always ends the provider wait, and the evaluated
+// packet decides who holds the next move.
+func (s *Store) AppendPlanningProviderTurn(ctx context.Context, sessionID domain.PlanningSessionID, expectedRevision int64, turn domain.PlanningTurn, waitingOn domain.PlanningWaitingOn, effectiveProvider domain.IntelligenceProviderID, effectiveModel, nativeRef string) (domain.PlanningSession, error) {
+	if waitingOn != domain.PlanningWaitingOwner && waitingOn != domain.PlanningWaitingSystem {
+		return domain.PlanningSession{}, fmt.Errorf("planning provider turn cannot advance to wait state %q", waitingOn)
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	var result domain.PlanningSession
@@ -231,7 +237,7 @@ func (s *Store) AppendPlanningProviderTurn(ctx context.Context, sessionID domain
 			return err
 		}
 		changed, err := q.AdvancePlanningSessionForProviderTurn(ctx, gen.AdvancePlanningSessionForProviderTurnParams{
-			LatestTurnSequence: turn.Sequence, EffectiveProvider: string(effectiveProvider), EffectiveModel: persistedModel,
+			LatestTurnSequence: turn.Sequence, WaitingOn: string(waitingOn), EffectiveProvider: string(effectiveProvider), EffectiveModel: persistedModel,
 			NativeConversationRef: persistedNativeRef, UpdatedAt: turn.CreatedAt.UTC(), ID: sessionID.String(), Revision: expectedRevision,
 		})
 		if err != nil {
@@ -242,7 +248,7 @@ func (s *Store) AppendPlanningProviderTurn(ctx context.Context, sessionID domain
 		}
 		current.Revision++
 		current.LatestTurnSequence = turn.Sequence
-		current.WaitingOn = domain.PlanningWaitingOwner
+		current.WaitingOn = waitingOn
 		current.EffectiveProvider = effectiveProvider
 		current.EffectiveModel = persistedModel
 		current.NativeConversationRef = persistedNativeRef
@@ -261,15 +267,6 @@ func (s *Store) AppendPlanningProviderTurn(ctx context.Context, sessionID domain
 func (s *Store) SetPlanningSessionFailure(ctx context.Context, sessionID domain.PlanningSessionID, expectedRevision int64, code, detail string) (domain.PlanningSession, error) {
 	return s.updatePlanningSession(ctx, sessionID, expectedRevision, func(q *gen.Queries, now time.Time) (int64, error) {
 		return q.SetPlanningSessionFailure(ctx, gen.SetPlanningSessionFailureParams{LastFailureCode: code, LastFailureDetail: detail, UpdatedAt: now, ID: sessionID.String(), Revision: expectedRevision})
-	})
-}
-
-// SetPlanningSessionWaitingSystem marks an active session blocked on setup,
-// harness, or Contract action routed from a readiness packet - never provider
-// thinking and never an ordinary owner answer.
-func (s *Store) SetPlanningSessionWaitingSystem(ctx context.Context, sessionID domain.PlanningSessionID, expectedRevision int64) (domain.PlanningSession, error) {
-	return s.updatePlanningSession(ctx, sessionID, expectedRevision, func(q *gen.Queries, now time.Time) (int64, error) {
-		return q.SetPlanningSessionWaitingSystem(ctx, gen.SetPlanningSessionWaitingSystemParams{UpdatedAt: now, ID: sessionID.String(), Revision: expectedRevision})
 	})
 }
 

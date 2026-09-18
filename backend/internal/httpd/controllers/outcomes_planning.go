@@ -198,16 +198,16 @@ func planningResponse(view outcomevc.PlanningView) PlanningResponse {
 func planningTurnResponse(turn domain.PlanningTurn) PlanningTurnResponse {
 	response := PlanningTurnResponse{ID: string(turn.ID), Sequence: turn.Sequence, ReplyToTurnID: string(turn.ReplyToTurnID), Role: string(turn.Role), Kind: string(turn.Kind), Text: turn.Text, IntelligenceRunID: string(turn.IntelligenceRunID), CreatedAt: turn.CreatedAt}
 	if turn.Role == domain.PlanningTurnPlanner && len(turn.StructuredPayload) > 0 {
-		// The planner turn payload is the readiness envelope. A needs_context
-		// envelope adapts to the owner-decision card from its message and first
-		// owner-routed issue; ready envelopes surface through ProposedPlan, and
-		// blocked envelopes carry their issues in the packet (S3: one path, no
+		// The planner turn payload is the evaluated readiness reply: the
+		// canonical packet plus the fence it was minted under. A needs_context
+		// packet adapts to the owner-decision card from its message and first
+		// owner-routed issue; ready packets surface through ProposedPlan, and
+		// blocked packets carry their issues in the packet (S3: one path, no
 		// legacy clarification/contract-change payload).
-		var result domain.PlanningReadinessResult
-		if json.Unmarshal(turn.StructuredPayload, &result) == nil && result.Status == domain.PlanningNeedsContext {
-			card := &PlanningClarificationResponse{Question: result.Message}
-			if len(result.Issues) > 0 {
-				issue := result.Issues[0]
+		if reply, ok := domain.DecodePlanningEvaluatedReply(turn.StructuredPayload); ok && reply.Result.Status == domain.PlanningNeedsContext {
+			card := &PlanningClarificationResponse{Question: reply.Result.Message}
+			if len(reply.Result.Issues) > 0 {
+				issue := reply.Result.Issues[0]
 				card.Reason = issue.Reason
 				card.Recommendation = issue.Recommendation
 				for _, choice := range issue.Choices {

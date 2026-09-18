@@ -69,7 +69,7 @@ func TestPlanningSessionStore_IdempotentTurnsAndCanonicalPlanLink(t *testing.T) 
 		StructuredPayload: []byte(`{"Kind":"plan_proposal","Message":"A two-step Plan is ready for review."}`),
 		IntelligenceRunID: run.ID, CreatedAt: now.Add(3 * time.Second),
 	}
-	current, err = s.AppendPlanningProviderTurn(ctx, session.ID, 2, planner, "openai", "planner-test", "")
+	current, err = s.AppendPlanningProviderTurn(ctx, session.ID, 2, planner, domain.PlanningWaitingOwner, "openai", "planner-test", "")
 	if err != nil || current.Revision != 3 || current.WaitingOn != domain.PlanningWaitingOwner {
 		t.Fatalf("append planner turn session=%+v err=%v", current, err)
 	}
@@ -131,7 +131,7 @@ func TestPlanningSessionStore_NativePacketTurnsDoNotClaimSingleConversationRef(t
 			StructuredPayload: []byte(`{"Kind":"clarification"}`), IntelligenceRunID: run.ID,
 			CreatedAt: now.Add(time.Duration(index*2+2) * time.Second),
 		}
-		current, err := s.AppendPlanningProviderTurn(ctx, session.ID, waiting.Revision, planner, session.Binding.Provider, "gpt-live", nativeRef)
+		current, err := s.AppendPlanningProviderTurn(ctx, session.ID, waiting.Revision, planner, domain.PlanningWaitingOwner, session.Binding.Provider, "gpt-live", nativeRef)
 		if err != nil {
 			t.Fatalf("append native reply %d: %v", index+1, err)
 		}
@@ -173,7 +173,7 @@ func TestPlanningSessionStore_RejectsPlanWhenContractChangesBeforeAtomicFinalize
 		Kind: domain.PlanningTurnPlanProposal, Text: "A Plan is ready.", StructuredPayload: []byte(`{"Kind":"plan_proposal"}`),
 		IntelligenceRunID: run.ID, CreatedAt: now.Add(3 * time.Second),
 	}
-	if _, err := s.AppendPlanningProviderTurn(ctx, session.ID, waiting.Revision, planner, "openai", "planner-test", ""); err != nil {
+	if _, err := s.AppendPlanningProviderTurn(ctx, session.ID, waiting.Revision, planner, domain.PlanningWaitingOwner, "openai", "planner-test", ""); err != nil {
 		t.Fatal(err)
 	}
 	next := domain.ContractRevision{

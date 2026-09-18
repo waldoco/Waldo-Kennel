@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -598,6 +599,32 @@ func NewPlanningReadinessResult(
 		Proposal: proposal,
 		Issues:   issues,
 	}
+}
+
+// PlanningEvaluatedReply is the durable payload of one planner turn: the
+// canonical readiness packet the control plane derived - never the planner's
+// raw claim - plus the evaluation fence it was minted under, so the routing
+// snapshot identity survives with the packet. Replays read this record
+// verbatim and never re-evaluate under the old request identity.
+type PlanningEvaluatedReply struct {
+	Result PlanningReadinessResult
+	Fence  PlanningReadinessFence
+}
+
+// DecodePlanningEvaluatedReply reads a durable planner turn payload. Payloads
+// written before the evaluated-reply record hold the raw readiness envelope
+// alone; those decode as a claim-only reply with no fence. Either shape is
+// replayed verbatim - decoding never re-derives or re-evaluates anything.
+func DecodePlanningEvaluatedReply(payload json.RawMessage) (PlanningEvaluatedReply, bool) {
+	var reply PlanningEvaluatedReply
+	if err := json.Unmarshal(payload, &reply); err == nil && reply.Result.Status.Valid() {
+		return reply, true
+	}
+	var legacy PlanningReadinessResult
+	if err := json.Unmarshal(payload, &legacy); err == nil && legacy.Status.Valid() {
+		return PlanningEvaluatedReply{Result: legacy}, true
+	}
+	return PlanningEvaluatedReply{}, false
 }
 
 // PlanningReadinessFence binds one packet to the exact frozen inputs of its

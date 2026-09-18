@@ -42,7 +42,7 @@ func (q *Queries) AdvancePlanningSessionForOwnerTurn(ctx context.Context, arg Ad
 
 const advancePlanningSessionForProviderTurn = `-- name: AdvancePlanningSessionForProviderTurn :execrows
 UPDATE planning_sessions
-SET revision = revision + 1, latest_turn_sequence = ?, waiting_on = 'owner',
+SET revision = revision + 1, latest_turn_sequence = ?, waiting_on = ?,
     effective_provider = ?, effective_model = ?, native_conversation_ref = ?,
     last_failure_code = '', last_failure_detail = '', updated_at = ?
 WHERE id = ? AND revision = ? AND status = 'active' AND waiting_on = 'provider'
@@ -50,6 +50,7 @@ WHERE id = ? AND revision = ? AND status = 'active' AND waiting_on = 'provider'
 
 type AdvancePlanningSessionForProviderTurnParams struct {
 	LatestTurnSequence    int64
+	WaitingOn             string
 	EffectiveProvider     string
 	EffectiveModel        string
 	NativeConversationRef string
@@ -61,6 +62,7 @@ type AdvancePlanningSessionForProviderTurnParams struct {
 func (q *Queries) AdvancePlanningSessionForProviderTurn(ctx context.Context, arg AdvancePlanningSessionForProviderTurnParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, advancePlanningSessionForProviderTurn,
 		arg.LatestTurnSequence,
+		arg.WaitingOn,
 		arg.EffectiveProvider,
 		arg.EffectiveModel,
 		arg.NativeConversationRef,
@@ -603,30 +605,6 @@ WHERE status = 'active' AND waiting_on = 'provider'
 
 func (q *Queries) RecoverInterruptedPlanningSessions(ctx context.Context, updatedAt time.Time) (int64, error) {
 	result, err := q.db.ExecContext(ctx, recoverInterruptedPlanningSessions, updatedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const setPlanningSessionWaitingSystem = `-- name: SetPlanningSessionWaitingSystem :execrows
-UPDATE planning_sessions
-SET revision = revision + 1, waiting_on = 'system', updated_at = ?
-WHERE id = ? AND revision = ? AND status = 'active'
-`
-
-type SetPlanningSessionWaitingSystemParams struct {
-	UpdatedAt time.Time
-	ID        string
-	Revision  int64
-}
-
-func (q *Queries) SetPlanningSessionWaitingSystem(ctx context.Context, arg SetPlanningSessionWaitingSystemParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setPlanningSessionWaitingSystem,
-		arg.UpdatedAt,
-		arg.ID,
-		arg.Revision,
-	)
 	if err != nil {
 		return 0, err
 	}
