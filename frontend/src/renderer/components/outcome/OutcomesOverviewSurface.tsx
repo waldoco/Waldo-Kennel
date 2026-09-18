@@ -135,9 +135,20 @@ export function OutcomesOverviewSurface({
 			</div>
 
 			{workspaceQuery.isLoading ? (
-				<p className="text-muted-foreground text-sm" data-testid="outcomes-overview-loading">
-					{t("outcome.overview.loading")}
-				</p>
+				<div
+					aria-label={t("outcome.overview.loading")}
+					className="flex flex-col gap-5"
+					data-testid="outcomes-overview-loading"
+					role="status"
+				>
+					{[0, 1].map((groupIndex) => (
+						<div className="flex flex-col gap-2" key={groupIndex}>
+							<SkeletonBlock className="h-3.5 w-40" />
+							<OutcomeCardSkeleton board={view === "board"} />
+							<OutcomeCardSkeleton board={view === "board"} />
+						</div>
+					))}
+				</div>
 			) : workspaces.length === 0 ? (
 				<p className="text-muted-foreground text-sm" data-testid="outcomes-overview-empty">
 					{t("outcome.overview.noProjects")}
@@ -220,7 +231,31 @@ function ProjectOutcomesGroup({
 					</button>
 				</div>
 			) : outcomesQuery.isLoading ? (
-				<p className="text-muted-foreground text-xs">{t("outcome.overview.loading")}</p>
+				// Skeleton cards inside the real lane shells: lane names and dots
+				// are static canon, so the board's shape is honest before the
+				// counts arrive. No pulse - the motion vocabulary bans endless
+				// shimmer, so the skeleton is static and content simply appears.
+				<div aria-label={t("outcome.overview.loading")} className="flex flex-col gap-2" role="status">
+					{view === "board" ? (
+						<div className="flex gap-3 overflow-x-auto pb-2">
+							{(["define", "needsYou", "observe", "review", "accepted"] as const).map((lane) => (
+								<section className="min-h-80 min-w-[220px] flex-1 rounded-2xl bg-surface/50 p-1" key={lane}>
+									<h4 className="flex h-10 items-center gap-2 px-3 text-xs font-medium">
+										<span aria-hidden="true" className={cn("size-2 rounded-full", BOARD_LANE_TONE[lane]?.dot ?? "bg-muted-foreground")} />
+										{t(`mission.boardLane.${lane}`)}
+									</h4>
+									<OutcomeCardSkeleton board />
+								</section>
+							))}
+						</div>
+					) : (
+						<>
+							<OutcomeCardSkeleton board={false} />
+							<OutcomeCardSkeleton board={false} />
+							<OutcomeCardSkeleton board={false} />
+						</>
+					)}
+				</div>
 			) : outcomes.length === 0 ? (
 				// A project with zero Outcomes gets an invitation, not five empty
 				// columns: the Figma creation frame (8572) is a single centered
@@ -444,6 +479,35 @@ export function ProjectOutcomesEmptyState({
 				<Plus aria-hidden="true" className="size-icon-sm" />
 				{t("outcome.dashboard.newOutcome")}
 			</Button>
+		</div>
+	);
+}
+
+function SkeletonBlock({ className }: { className: string }) {
+	return <div aria-hidden="true" className={cn("rounded-md bg-secondary", className)} />;
+}
+
+export function OutcomeCardSkeleton({ board }: { board: boolean }) {
+	return (
+		<div
+			aria-hidden="true"
+			className={cn(
+				"hairline border-border bg-card",
+				board ? "rounded-[18px] p-[18px]" : "rounded-lg px-3.5 py-3",
+			)}
+		>
+			<div className="flex flex-col gap-2.5">
+				{board ? (
+					<div className="flex items-center gap-2">
+						<SkeletonBlock className="size-3 rounded-full" />
+						<SkeletonBlock className="h-2.5 w-24" />
+						<SkeletonBlock className="ml-auto h-2.5 w-8" />
+					</div>
+				) : null}
+				<SkeletonBlock className="h-2.5 w-3/4" />
+				<SkeletonBlock className="h-3.5 w-full" />
+				{board ? <SkeletonBlock className="h-3.5 w-2/3" /> : null}
+			</div>
 		</div>
 	);
 }
