@@ -863,6 +863,7 @@
 	"shell.openSession": "打开{{title}}",
 	"shell.openOrchestrator": "打开编排器",
 	"shell.orchestrator": "编排器",
+	"shell.brandHome": "Kennel home",
 	"shell.orchestratorBoard": "编排器看板",
 	"shell.orchestratorWithActivity": "编排器，{{activity}}",
 	"shell.pinned": "已固定",

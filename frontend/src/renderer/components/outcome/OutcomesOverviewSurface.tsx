@@ -13,6 +13,8 @@ import { buildOutcomeTree, outcomeDestinationStage, type OutcomeDestinationStage
 import type { WorkspaceSummary } from "../../types/workspace";
 import { useUiStore } from "../../stores/ui-store";
 
+import { SessionsViewSwitch } from "@pin4sf/kennel-product-ui";
+
 type OutcomesOverviewSurfaceProps = {
 	projectId?: string;
 	onProjectFilterChange?: (id?: string) => void;
@@ -30,6 +32,7 @@ export function OutcomesOverviewSurface({
 	const workspaceQuery = useWorkspaceQuery();
 	const workspaces = workspaceQuery.data ?? [];
 	const view = useUiStore((state) => state.outcomeRunViewMode);
+	const setView = useUiStore((state) => state.setOutcomeRunViewMode);
 
 	const [attentionFilter, setAttentionFilter] = useState("history");
 	const [includeContributors, setIncludeContributors] = useState(false);
@@ -50,6 +53,15 @@ export function OutcomesOverviewSurface({
 					<h2 className="text-base font-medium">{t("outcome.overview.heading")}</h2>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
+					<SessionsViewSwitch
+						labels={{
+							ariaLabel: t("mission.portfolioView"),
+							board: t("outcome.run.viewBoard"),
+							list: t("outcome.run.viewList"),
+						}}
+						onChange={setView}
+						value={view}
+					/>
 					<input
 						aria-label={t("shell.search")}
 						className="h-8 rounded-md border border-border bg-card px-2 text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-ring/70"

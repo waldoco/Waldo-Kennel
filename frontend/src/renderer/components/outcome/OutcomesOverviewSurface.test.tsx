@@ -233,6 +233,23 @@ it("groups the board into the canon columns and keeps the same Outcomes in List"
 	expect(screen.getByText("Current work")).toBeInTheDocument();
 });
 
+it("hosts the List/Board switch in the overview header, wired to the shared store slice", async () => {
+	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Project")], isLoading: false });
+	projectOutcomesQueryMock.mockReturnValue({
+		outcomes: [outcome("active", "Being defined")],
+		isLoading: false, refetch: vi.fn(),
+	});
+	useUiStore.setState({ outcomeRunViewMode: "list" });
+	renderSurface();
+	const user = userEvent.setup();
+	const switchEl = await screen.findByTestId("sessions-view-switch");
+	expect(switchEl).toBeInTheDocument();
+	await user.click(screen.getByRole("tab", { name: "Board" }));
+	expect(useUiStore.getState().outcomeRunViewMode).toBe("board");
+	await user.click(screen.getByRole("tab", { name: "List" }));
+	expect(useUiStore.getState().outcomeRunViewMode).toBe("list");
+});
+
 it("places review Outcomes in the Ready lane, separate from Needs input", async () => {
 	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Project")], isLoading: false });
 	projectOutcomesQueryMock.mockReturnValue({

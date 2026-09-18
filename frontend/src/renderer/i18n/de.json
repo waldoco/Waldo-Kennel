@@ -879,6 +879,7 @@
 	"shell.openSession": "{{title}} öffnen",
 	"shell.openOrchestrator": "Orchestrator öffnen",
 	"shell.orchestrator": "Orchestrator",
+	"shell.brandHome": "Kennel home",
 	"shell.orchestratorBoard": "Orchestrator-Board",
 	"shell.orchestratorWithActivity": "Orchestrator, {{activity}}",
 	"shell.pinned": "Angeheftet",

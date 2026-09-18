@@ -1,4 +1,3 @@
-import { SessionsViewSwitch } from "@pin4sf/kennel-product-ui";
 import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Flag, HelpCircle, PanelLeft, Search, Terminal, Waypoints } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
@@ -60,14 +59,6 @@ export function WorkShell({ projectId, outcomeId, stage, children }: WorkShellPr
 	const setCommandPaletteOpen = useUiStore((state) => state.setCommandPaletteOpen);
 	const setKeyboardShortcutsOpen = useUiStore((state) => state.setKeyboardShortcutsOpen);
 
-	const outcomeRunViewMode = useUiStore((state) => state.outcomeRunViewMode);
-	const setOutcomeRunViewMode = useUiStore((state) => state.setOutcomeRunViewMode);
-	// Act & Observe's Mission graph is List-only in this slice — Canvas is not
-	// built (`@xyflow/react` is not an approved/installed dependency), so
-	// there is no second view behind Board here. A control a click on this
-	// stage would silently do nothing to is a dead end, not an inert
-	// placeholder — disable it outright rather than leave it clickable.
-	const missionViewIsListOnly = stage === "act_observe";
 	const isAttemptPanelOpen = useUiStore((state) => state.isOutcomeAttemptPanelOpen);
 	const panelAttemptId = useUiStore((state) => state.outcomeAttemptPanelAttemptId);
 	const toggleAttemptPanel = useUiStore((state) => state.toggleOutcomeAttemptPanel);
@@ -176,17 +167,6 @@ export function WorkShell({ projectId, outcomeId, stage, children }: WorkShellPr
 				</div>
 
 				<div className="min-w-0 flex-1" />
-
-				<SessionsViewSwitch
-					disabled={missionViewIsListOnly}
-					labels={{
-						ariaLabel: t("mission.portfolioView"),
-						board: t("outcome.run.viewBoard"),
-						list: t("outcome.run.viewList"),
-					}}
-					onChange={setOutcomeRunViewMode}
-					value={missionViewIsListOnly ? "list" : outcomeRunViewMode}
-				/>
 
 				<div className="min-w-0 flex-1" />
 

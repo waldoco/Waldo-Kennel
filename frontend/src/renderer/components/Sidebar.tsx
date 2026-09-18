@@ -325,7 +325,7 @@ export function Sidebar({
 			>
 				{figmaBoard ? (
 					<button
-						aria-label={t(usesWorkLaunchMode ? "work.shell.outcomesButton" : "shell.orchestratorBoard")}
+						aria-label={t(usesWorkLaunchMode ? "shell.brandHome" : "shell.orchestratorBoard")}
 						className="figma-board-sidebar__brand"
 						onClick={selection.goWork}
 						style={noDragStyle}
@@ -345,7 +345,7 @@ export function Sidebar({
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<button
-								aria-label={t(usesWorkLaunchMode ? "work.shell.outcomesButton" : "shell.orchestratorBoard")}
+								aria-label={t(usesWorkLaunchMode ? "shell.brandHome" : "shell.orchestratorBoard")}
 								className={cn(
 									"grid h-5.5 w-5.5 shrink-0 place-items-center",
 									"group-data-[collapsible=icon]:size-control-board group-data-[collapsible=icon]:rounded-lg",
@@ -367,12 +367,12 @@ export function Sidebar({
 							</button>
 						</TooltipTrigger>
 						<TooltipContent side="right" hidden={state !== "collapsed"}>
-							{t(usesWorkLaunchMode ? "work.shell.outcomesButton" : "shell.orchestratorBoard")}
+							{t(usesWorkLaunchMode ? "shell.brandHome" : "shell.orchestratorBoard")}
 						</TooltipContent>
 					</Tooltip>
 					{isWindows ? (
 						<span
-							aria-label={t(usesWorkLaunchMode ? "work.shell.outcomesButton" : "shell.orchestratorBoard")}
+							aria-label={t(usesWorkLaunchMode ? "shell.brandHome" : "shell.orchestratorBoard")}
 							className="sidebar-expanded-chrome min-w-0 flex-1 truncate text-sm font-bold leading-tight tracking-tight-lg text-foreground group-data-[collapsible=icon]:hidden"
 							onClick={selection.goWork}
 							onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {

@@ -343,7 +343,7 @@ describe("Sidebar", () => {
 		mockPathname.current = "/work";
 		renderSidebar();
 
-		expect(screen.getByRole("button", { name: "Outcomes" })).toHaveClass(
+		expect(screen.getByRole("button", { name: "Kennel home" })).toHaveClass(
 			"group-data-[collapsible=icon]:bg-interactive-active",
 		);
 	});
