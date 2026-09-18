@@ -65,3 +65,19 @@ selected/canonical split is a reporting concern, not launch authority.
   BindingAfterProjectChange asserts the restore/relaunch attestation line.
   Both record version_error against fake argv binaries (success-path version
   logging stays covered by the helper tests).
+
+## Environmental noise: account-synced MCP connector (2026-09-19)
+
+- The model-backed-e2e stream can carry `ERROR rmcp::transport::worker ...
+  AuthRequired ... mcp.cloudflare.com`. Origin: an account-synced ChatGPT
+  connector that arrives with the signed-in Codex identity on the runner,
+  not from any local config. It survives both a job-scoped auth-only
+  CODEX_HOME (no config.toml) and `--disable apps` on the exec invocation at
+  0.153.4 (observed on runs 35380740916 and 35383383588).
+- Harmless to assertions: the falsifier and launch-cut evidence paths never
+  touch MCP servers; the connector's OAuth failure only closes its own
+  transport worker.
+- Open owner option (deliberately not taken 2026-09-18; production behavior
+  change): `apps._default.enabled = false` in the generated governed session
+  config (backend/internal/adapters/agent/codex/codex.go) would disable
+  connectors for every governed session.
