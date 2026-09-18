@@ -93,12 +93,25 @@ type SessionMetadata struct {
 // process exit may report.
 const SupervisedExitReasonExited = "exited"
 
-// SupervisedExitReasonOwnerKilled marks an owner-initiated termination of a
-// governed session. The daemon itself records it at kill time — the
-// supervisor never reports it and the wire never accepts it — so an
-// intentional, non-success end stays distinguishable from a provider crash:
-// the attempt settles reconciled (result unclassified), never failed.
+// SupervisedExitReasonOwnerKilled marks a proven owner-initiated termination
+// of a governed session. The daemon itself records it — the supervisor never
+// reports it and the wire never accepts it — so an intentional, non-success
+// end stays distinguishable from a provider crash: the attempt settles
+// reconciled (result unclassified), never failed. It is written only once
+// the kill has crossed the proven termination boundary (the session is
+// marked terminated); before that point the transient
+// SupervisedExitReasonOwnerKillPending marker holds the intent.
 const SupervisedExitReasonOwnerKilled = "owner_killed"
+
+// SupervisedExitReasonOwnerKillPending is the transient intent marker
+// recorded when an owner kill of a governed session begins. It is promoted
+// to SupervisedExitReasonOwnerKilled atomically with the session's
+// termination, and cleared when the kill fails before termination, so a
+// still-live provider never carries a final owner-killed fact. It carries no
+// classifying power: termination gates and attempt settlement must treat it
+// as "no exit facts yet", and an authenticated supervisor report always
+// overwrites it (a real observed exit outranks unproven intent).
+const SupervisedExitReasonOwnerKillPending = "owner_kill_pending"
 
 // SupervisedExitFactsConsistent reports whether an (exitCode, reason) pair is
 // internally consistent: a zero exit code and the "exited" reason must agree

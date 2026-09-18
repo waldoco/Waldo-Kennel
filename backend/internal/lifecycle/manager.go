@@ -420,13 +420,16 @@ func (m *Manager) RecordSupervisedProcessExit(ctx context.Context, id domain.Ses
 
 // RecordOwnerTermination records the daemon-observed origin of an
 // owner-initiated kill of a governed session, before any teardown begins.
-// The distinction lives in the same exit facts the attempt liveness pass
-// reads: an owner kill settles the attempt reconciled (an intentional,
-// non-success end), while a provider crash stays failed. An authenticated
-// supervisor report always outranks kill intent — if the provider already
-// died on its own, the recorded crash facts are kept and the attempt still
-// settles failed. Non-governed sessions carry no attempt, so there is
-// nothing to mark.
+// It writes only the transient pending marker: the final owner_killed fact
+// is promoted atomically with the session's termination in MarkTerminated,
+// so a kill that fails before termination leaves a still-live provider with
+// no owner-killed fact (ClearOwnerTermination), and an authenticated
+// supervisor report can overwrite the pending marker at any point — a real
+// observed exit for the launch outranks unproven intent, before attempt
+// settlement, in every lock order. Precedence for an already-recorded exit
+// report is unchanged: if the provider already died on its own, the crash
+// facts are kept and the attempt still settles failed. Non-governed sessions
+// carry no attempt, so there is nothing to mark.
 func (m *Manager) RecordOwnerTermination(ctx context.Context, id domain.SessionID) error {
 	return m.mutate(ctx, id, func(cur domain.SessionRecord, _ time.Time) (domain.SessionRecord, bool) {
 		if strings.TrimSpace(cur.Metadata.GovernedExecutionPolicyDigest) == "" ||
@@ -434,7 +437,22 @@ func (m *Manager) RecordOwnerTermination(ctx context.Context, id domain.SessionI
 			return cur, false
 		}
 		next := cur
-		next.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+		next.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKillPending
+		return next, true
+	})
+}
+
+// ClearOwnerTermination retracts the transient pending marker when an owner
+// kill fails before the termination boundary. It clears only the pending
+// marker itself: a promoted owner_killed fact belongs to a proven
+// termination, and an authenticated exit report belongs to the supervisor.
+func (m *Manager) ClearOwnerTermination(ctx context.Context, id domain.SessionID) error {
+	return m.mutate(ctx, id, func(cur domain.SessionRecord, _ time.Time) (domain.SessionRecord, bool) {
+		if cur.Metadata.SupervisedProcessExitReason != domain.SupervisedExitReasonOwnerKillPending {
+			return cur, false
+		}
+		next := cur
+		next.Metadata.SupervisedProcessExitReason = ""
 		return next, true
 	})
 }
@@ -442,7 +460,8 @@ func (m *Manager) RecordOwnerTermination(ctx context.Context, id domain.SessionI
 func (m *Manager) governedProcessExitCanTerminate(ctx context.Context, rec domain.SessionRecord) bool {
 	if strings.TrimSpace(rec.Metadata.GovernedExecutionPolicyDigest) == "" ||
 		strings.TrimSpace(rec.Metadata.SupervisorCapabilityVerifier) == "" ||
-		strings.TrimSpace(rec.Metadata.SupervisedProcessExitReason) == "" {
+		strings.TrimSpace(rec.Metadata.SupervisedProcessExitReason) == "" ||
+		rec.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
 		return false
 	}
 	store, ok := m.store.(governedSessionEvidenceStore)
@@ -1264,6 +1283,14 @@ func (m *Manager) MarkTerminated(ctx context.Context, id domain.SessionID) error
 			default:
 				cur.IsTerminated = true
 				cur.Activity = domain.Activity{State: domain.ActivityExited, LastActivityAt: now}
+				// Cross the proven termination boundary: an owner kill's
+				// pending intent becomes the final owner_killed fact in the
+				// same atomic write as the termination itself. A crash report
+				// that landed in between replaced the pending marker, so the
+				// promotion cannot overwrite authenticated exit facts.
+				if cur.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
+					cur.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+				}
 				delete(m.flights, id) // runs under m.mu (mutate holds it)
 				outcome = terminationApplied
 				return cur, true

@@ -199,6 +199,7 @@ type lifecycleRecorder interface {
 	ActivateAgentSwitchTarget(ctx context.Context, activation domain.AgentSwitchTargetActivation) (bool, error)
 	MarkTerminated(ctx context.Context, id domain.SessionID) error
 	RecordOwnerTermination(ctx context.Context, id domain.SessionID) error
+	ClearOwnerTermination(ctx context.Context, id domain.SessionID) error
 }
 
 // ShellTerminalCloser gates a session's scoped shell terminals around every
@@ -1564,11 +1565,30 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 		return false, nil // already gone: benign race
 	}
 	// An owner kill of a governed attempt session is an intentional,
-	// non-success end: record the origin before any teardown so the attempt
-	// settles reconciled, never failed. A provider that already crashed on
-	// its own keeps its authenticated crash facts — crash outranks intent.
+	// non-success end: record the pending origin intent before any teardown
+	// so the attempt settles reconciled, never failed. The intent is promoted
+	// to the final owner_killed fact only atomically with the session's
+	// termination (inside MarkTerminated); every failure return before that
+	// boundary clears it, so a still-live provider never carries an
+	// owner-killed fact. A provider that already crashed on its own keeps its
+	// authenticated crash facts — crash outranks intent.
 	if err := m.lcm.RecordOwnerTermination(ctx, id); err != nil {
 		return false, fmt.Errorf("kill %s: record owner termination: %w", id, err)
+	}
+	terminationProven := false
+	defer func() {
+		if !terminationProven {
+			if err := m.lcm.ClearOwnerTermination(ctx, id); err != nil {
+				m.logger.Warn("kill: clear owner termination intent failed", "sessionID", id, "error", err)
+			}
+		}
+	}()
+	markTerminated := func() error {
+		if err := m.lcm.MarkTerminated(ctx, id); err != nil {
+			return err
+		}
+		terminationProven = true
+		return nil
 	}
 	m.stopPreviewBestEffort(ctx, id)
 	m.destroyBrowserBestEffort(ctx, id)
@@ -1621,7 +1641,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 			if err := m.store.DeleteSessionWorktrees(ctx, id); err != nil {
 				m.logger.Warn("kill: delete restore marker failed", "sessionID", id, "error", err)
 			}
-			if err := m.lcm.MarkTerminated(ctx, id); err != nil {
+			if err := markTerminated(); err != nil {
 				return false, fmt.Errorf("kill %s: %w", id, err)
 			}
 			m.cleanupSystemPromptDir(id)
@@ -1637,7 +1657,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 		cleaned, err := m.destroyWorkspaceProjectRows(ctx, workspaceProjectRows)
 		if err != nil {
 			if errors.Is(err, ports.ErrWorkspaceDirty) {
-				if err := m.lcm.MarkTerminated(ctx, id); err != nil {
+				if err := markTerminated(); err != nil {
 					return false, fmt.Errorf("kill %s: %w", id, err)
 				}
 				m.cleanupSystemPromptDir(id)
@@ -1656,7 +1676,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 				if err := m.store.DeleteSessionWorktrees(ctx, id); err != nil {
 					m.logger.Warn("kill: delete restore marker failed", "sessionID", id, "error", err)
 				}
-				if err := m.lcm.MarkTerminated(ctx, id); err != nil {
+				if err := markTerminated(); err != nil {
 					return false, fmt.Errorf("kill %s: %w", id, err)
 				}
 				m.cleanupSystemPromptDir(id)
@@ -1675,7 +1695,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 	if err := m.store.DeleteSessionWorktrees(ctx, id); err != nil {
 		m.logger.Warn("kill: delete restore marker failed", "sessionID", id, "error", err)
 	}
-	if err := m.lcm.MarkTerminated(ctx, id); err != nil {
+	if err := markTerminated(); err != nil {
 		return false, fmt.Errorf("kill %s: %w", id, err)
 	}
 	m.cleanupSystemPromptDir(id)

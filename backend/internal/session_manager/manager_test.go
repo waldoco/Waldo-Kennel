@@ -254,7 +254,16 @@ func (l *fakeLCM) RecordOwnerTermination(_ context.Context, id domain.SessionID)
 	l.ownerTerminations[id]++
 	rec := l.store.sessions[id]
 	if rec.Metadata.GovernedExecutionPolicyDigest != "" && rec.Metadata.SupervisedProcessExitReason == "" {
-		rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+		rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKillPending
+		l.store.sessions[id] = rec
+	}
+	return nil
+}
+
+func (l *fakeLCM) ClearOwnerTermination(_ context.Context, id domain.SessionID) error {
+	rec := l.store.sessions[id]
+	if rec.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
+		rec.Metadata.SupervisedProcessExitReason = ""
 		l.store.sessions[id] = rec
 	}
 	return nil
@@ -268,6 +277,9 @@ func (l *fakeLCM) MarkTerminated(_ context.Context, id domain.SessionID) error {
 	rec := l.store.sessions[id]
 	rec.IsTerminated = true
 	rec.Activity = domain.Activity{State: domain.ActivityExited, LastActivityAt: time.Now()}
+	if rec.Metadata.SupervisedProcessExitReason == domain.SupervisedExitReasonOwnerKillPending {
+		rec.Metadata.SupervisedProcessExitReason = domain.SupervisedExitReasonOwnerKilled
+	}
 	l.store.sessions[id] = rec
 	return nil
 }
@@ -2660,6 +2672,82 @@ func TestKill_RecordsOwnerTerminationForGovernedSession(t *testing.T) {
 		t.Fatalf("RecordOwnerTermination calls = %d, want 1", lcm.ownerTerminations["mer-1"])
 	}
 	if got := st.sessions["mer-1"].Metadata.SupervisedProcessExitReason; got != domain.SupervisedExitReasonOwnerKilled {
+		t.Fatalf("exit reason = %q, want %q", got, domain.SupervisedExitReasonOwnerKilled)
+	}
+}
+
+// TestKill_FailedTeardownClearsOwnerTerminationIntent covers every
+// pre-termination failure path: when Kill fails before the termination
+// boundary, the transient owner-kill intent must be retracted so the
+// still-live session carries no owner-killed fact and a later real crash is
+// settled by its own authenticated facts.
+func TestKill_FailedTeardownClearsOwnerTerminationIntent(t *testing.T) {
+	attachmentBlocker := filepath.Join(t.TempDir(), "blocked-workspace")
+	if err := os.WriteFile(attachmentBlocker, []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name    string
+		setup   func(m *Manager, rt *fakeRuntime, ws *fakeWorkspace, rec *domain.SessionRecord)
+		wantErr string
+	}{
+		{"attachment import failure", func(_ *Manager, _ *fakeRuntime, _ *fakeWorkspace, rec *domain.SessionRecord) {
+			rec.Metadata.WorkspacePath = attachmentBlocker
+		}, "preserve attachments"},
+		{"runtime destroy failure", func(_ *Manager, rt *fakeRuntime, _ *fakeWorkspace, _ *domain.SessionRecord) {
+			rt.destroyErr = errors.New("runtime stuck")
+		}, "runtime"},
+		{"reviewer teardown failure", func(m *Manager, _ *fakeRuntime, _ *fakeWorkspace, _ *domain.SessionRecord) {
+			m.SetReviewerTerminator(&fakeReviewerTerminator{err: errors.New("reviewer still alive")})
+		}, "reviewer"},
+		{"workspace teardown failure", func(_ *Manager, _ *fakeRuntime, ws *fakeWorkspace, _ *domain.SessionRecord) {
+			ws.destroyErr = errors.New("disk on fire")
+		}, "workspace"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, st, rt, ws := newManager()
+			rec := mkLive("mer-1")
+			rec.Metadata.GovernedExecutionPolicyDigest = "digest-1"
+			tc.setup(m, rt, ws, &rec)
+			st.sessions["mer-1"] = rec
+			if _, err := m.Kill(ctx, "mer-1"); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("kill err = %v, want %q failure", err, tc.wantErr)
+			}
+			rec = st.sessions["mer-1"]
+			if rec.IsTerminated {
+				t.Fatal("failed kill must not terminate the session")
+			}
+			if got := rec.Metadata.SupervisedProcessExitReason; got != "" {
+				t.Fatalf("exit reason = %q, want empty (pending intent retracted)", got)
+			}
+		})
+	}
+}
+
+// TestKill_DirtyWorkspacePromotesOwnerTermination covers the termination
+// boundary on the dirty-workspace refusal path: the runtime is destroyed and
+// the session marked terminated, so the pending owner-kill intent is
+// promoted to the final owner_killed fact even though the worktree is
+// preserved.
+func TestKill_DirtyWorkspacePromotesOwnerTermination(t *testing.T) {
+	m, st, _, ws := newManager()
+	rec := mkLive("mer-1")
+	rec.Metadata.GovernedExecutionPolicyDigest = "digest-1"
+	st.sessions["mer-1"] = rec
+	ws.destroyErr = fmt.Errorf("gitworktree: refusing to remove: %w", ports.ErrWorkspaceDirty)
+	freed, err := m.Kill(ctx, "mer-1")
+	if err != nil {
+		t.Fatalf("kill dirty workspace err = %v, want nil", err)
+	}
+	if freed {
+		t.Fatal("freed = true, want false for preserved workspace")
+	}
+	rec = st.sessions["mer-1"]
+	if !rec.IsTerminated {
+		t.Fatal("session should be terminated even when the workspace is preserved")
+	}
+	if got := rec.Metadata.SupervisedProcessExitReason; got != domain.SupervisedExitReasonOwnerKilled {
 		t.Fatalf("exit reason = %q, want %q", got, domain.SupervisedExitReasonOwnerKilled)
 	}
 }

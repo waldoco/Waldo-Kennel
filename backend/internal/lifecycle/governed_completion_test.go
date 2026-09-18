@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,8 +116,9 @@ func TestRecordSupervisedProcessExitRejectsContradictoryFacts(t *testing.T) {
 
 // TestRecordOwnerTerminationMarksGovernedSession covers the owner-kill
 // origin record: the daemon marks the governed session's exit facts with the
-// owner_killed reason before teardown, so the attempt liveness pass can
-// settle the attempt reconciled instead of failed.
+// transient pending intent before teardown. The final owner_killed fact
+// appears only when the termination boundary is crossed (see
+// TestMarkTerminatedPromotesPendingOwnerTermination).
 func TestRecordOwnerTerminationMarksGovernedSession(t *testing.T) {
 	base := newFakeStore()
 	base.sessions["session-1"] = domain.SessionRecord{
@@ -129,8 +131,8 @@ func TestRecordOwnerTerminationMarksGovernedSession(t *testing.T) {
 	if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
 		t.Fatal(err)
 	}
-	if got := base.sessions["session-1"].Metadata.SupervisedProcessExitReason; got != domain.SupervisedExitReasonOwnerKilled {
-		t.Fatalf("reason = %q, want %q", got, domain.SupervisedExitReasonOwnerKilled)
+	if got := base.sessions["session-1"].Metadata.SupervisedProcessExitReason; got != domain.SupervisedExitReasonOwnerKillPending {
+		t.Fatalf("reason = %q, want pending %q", got, domain.SupervisedExitReasonOwnerKillPending)
 	}
 }
 
@@ -170,5 +172,162 @@ func TestRecordOwnerTerminationIgnoresNonGovernedSession(t *testing.T) {
 	}
 	if got := base.sessions["session-1"].Metadata.SupervisedProcessExitReason; got != "" {
 		t.Fatalf("reason = %q, want empty for a non-governed session", got)
+	}
+}
+
+// TestMarkTerminatedPromotesPendingOwnerTermination covers the proven
+// termination boundary: the pending owner-kill intent becomes the final
+// owner_killed fact atomically with the session's termination, so the
+// attempt liveness pass settles the attempt reconciled.
+func TestMarkTerminatedPromotesPendingOwnerTermination(t *testing.T) {
+	base := newFakeStore()
+	base.sessions["session-1"] = domain.SessionRecord{
+		ID: "session-1", Harness: domain.HarnessCodex,
+		Metadata: domain.SessionMetadata{
+			RuntimeLaunchID: "launch-1", GovernedExecutionPolicyDigest: "digest-1",
+		},
+	}
+	manager := New(base, nil)
+	if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.MarkTerminated(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	rec := base.sessions["session-1"]
+	if !rec.IsTerminated {
+		t.Fatal("session must be terminated")
+	}
+	if got := rec.Metadata.SupervisedProcessExitReason; got != domain.SupervisedExitReasonOwnerKilled {
+		t.Fatalf("reason = %q, want %q", got, domain.SupervisedExitReasonOwnerKilled)
+	}
+}
+
+// TestClearOwnerTerminationRetractsPendingMarker covers the failed-kill
+// retraction: the pending marker clears, the still-live session carries no
+// owner-killed fact, and a later authenticated crash report settles the exit
+// by its own facts (failed).
+func TestClearOwnerTerminationRetractsPendingMarker(t *testing.T) {
+	base := newFakeStore()
+	base.sessions["session-1"] = domain.SessionRecord{
+		ID: "session-1", Harness: domain.HarnessCodex,
+		Metadata: domain.SessionMetadata{
+			RuntimeLaunchID: "launch-1", GovernedExecutionPolicyDigest: "digest-1",
+			SupervisorCapabilityVerifier: "verifier-1",
+		},
+	}
+	manager := New(base, nil, WithSupervisorCapabilityValidator(fixedSupervisorValidator{}))
+	if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.ClearOwnerTermination(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	if got := base.sessions["session-1"].Metadata.SupervisedProcessExitReason; got != "" {
+		t.Fatalf("reason after clear = %q, want empty", got)
+	}
+	code := 1
+	exit := ports.SupervisedProcessExit{LaunchID: "launch-1", ExitCode: &code, Reason: "failed"}
+	if err := manager.RecordSupervisedProcessExit(ctx, "session-1", exit, "token-1"); err != nil {
+		t.Fatal(err)
+	}
+	rec := base.sessions["session-1"]
+	if rec.Metadata.SupervisedProcessExitReason != "failed" || rec.Metadata.SupervisedProcessExitCode == nil || *rec.Metadata.SupervisedProcessExitCode != 1 {
+		t.Fatalf("post-clear crash facts = %+v, want failed/1", rec.Metadata)
+	}
+}
+
+// TestCrashReportInFlightDuringOwnerKillKeepsFailedFacts covers the
+// concurrent-crash race deterministically: an authenticated crash report
+// that lands between the owner-kill intent and the termination boundary
+// replaces the pending marker, so the promotion cannot overwrite it and the
+// exit stays failed.
+func TestCrashReportInFlightDuringOwnerKillKeepsFailedFacts(t *testing.T) {
+	base := newFakeStore()
+	base.sessions["session-1"] = domain.SessionRecord{
+		ID: "session-1", Harness: domain.HarnessCodex,
+		Metadata: domain.SessionMetadata{
+			RuntimeLaunchID: "launch-1", GovernedExecutionPolicyDigest: "digest-1",
+			SupervisorCapabilityVerifier: "verifier-1",
+		},
+	}
+	manager := New(base, nil, WithSupervisorCapabilityValidator(fixedSupervisorValidator{}))
+	if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	code := 1
+	exit := ports.SupervisedProcessExit{LaunchID: "launch-1", ExitCode: &code, Reason: "failed"}
+	if err := manager.RecordSupervisedProcessExit(ctx, "session-1", exit, "token-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.MarkTerminated(ctx, "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	rec := base.sessions["session-1"]
+	if rec.Metadata.SupervisedProcessExitReason != "failed" || rec.Metadata.SupervisedProcessExitCode == nil || *rec.Metadata.SupervisedProcessExitCode != 1 {
+		t.Fatalf("crash facts overwritten by owner-kill promotion: %+v", rec.Metadata)
+	}
+}
+
+// TestOwnerTerminationAndCrashReportRaceSettlesCrashFacts races the
+// authenticated crash report against the termination promotion across both
+// lock orders: in every interleaving the observed crash facts win, because
+// the promotion only rewrites the exact pending marker and the report
+// overwrites a promoted owner_killed before the attempt settles.
+// raceSafeStore serializes the fake store's map access for the goroutine
+// race test; the production store is sqlite, where concurrent statements are
+// safe without this.
+type raceSafeStore struct {
+	mu sync.Mutex
+	*fakeStore
+}
+
+func (s *raceSafeStore) GetSession(ctx context.Context, id domain.SessionID) (domain.SessionRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.fakeStore.GetSession(ctx, id)
+}
+
+func (s *raceSafeStore) UpdateSession(ctx context.Context, rec domain.SessionRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.fakeStore.UpdateSession(ctx, rec)
+}
+
+func TestOwnerTerminationAndCrashReportRaceSettlesCrashFacts(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		base := &raceSafeStore{fakeStore: newFakeStore()}
+		base.sessions["session-1"] = domain.SessionRecord{
+			ID: "session-1", Harness: domain.HarnessCodex,
+			Metadata: domain.SessionMetadata{
+				RuntimeLaunchID: "launch-1", GovernedExecutionPolicyDigest: "digest-1",
+				SupervisorCapabilityVerifier: "verifier-1",
+			},
+		}
+		manager := New(base, nil, WithSupervisorCapabilityValidator(fixedSupervisorValidator{}))
+		if err := manager.RecordOwnerTermination(ctx, "session-1"); err != nil {
+			t.Fatal(err)
+		}
+		code := 1
+		exit := ports.SupervisedProcessExit{LaunchID: "launch-1", ExitCode: &code, Reason: "failed"}
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = manager.RecordSupervisedProcessExit(ctx, "session-1", exit, "token-1")
+		}()
+		go func() {
+			defer wg.Done()
+			_ = manager.MarkTerminated(ctx, "session-1")
+		}()
+		wg.Wait()
+		rec, ok, err := base.GetSession(ctx, "session-1")
+		if err != nil || !ok {
+			t.Fatalf("iteration %d: reload: ok=%v err=%v", i, ok, err)
+		}
+		if rec.Metadata.SupervisedProcessExitReason != "failed" ||
+			rec.Metadata.SupervisedProcessExitCode == nil || *rec.Metadata.SupervisedProcessExitCode != 1 {
+			t.Fatalf("iteration %d: crash lost the race: %+v", i, rec.Metadata)
+		}
 	}
 }
