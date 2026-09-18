@@ -134,7 +134,7 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	// legitimately land between the two, so wait for the row before
 	// asserting on it.
 	awaitAttemptReceipt(t, dataDir, out, start.ID)
-	artifactVersion := retainedAttemptArtifact(t, dataDir, out, start.ID)
+	artifactVersion, artifactDigest := retainedAttemptArtifact(t, dataDir, out, start.ID)
 	criterionID := created.Outcome.CurrentRevision.Criteria[0].CriterionID
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
@@ -163,7 +163,7 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 		"criterionId": criterionID, "subjectType": "attempt", "subjectId": start.ID,
 		"subjectRevision": artifactVersion, "kind": "supporting", "sourceType": "deterministic_check",
 		"sourceRef": "grep-durable-txt", "producerType": "tool", "producerRef": "b4-real-daemon-e2e",
-		"summary": "retained durable.txt matched PERSISTENT", "contentDigest": digest("PERSISTENT\n"), "requestKey": "b4-evidence",
+		"summary": "retained durable.txt matched PERSISTENT", "contentDigest": artifactDigest, "requestKey": "b4-evidence",
 	}, nil)
 	pv := getProof(t, restarted, out)
 	criterion := criterionByID(pv, criterionID)
@@ -269,28 +269,33 @@ func awaitAttemptReceipt(t *testing.T, dataDir, outcomeID, attemptID string) {
 	t.Fatal("attempt receipt never appeared for the reconciled attempt")
 }
 
-func retainedAttemptArtifact(t *testing.T, dataDir, outcomeID, attemptID string) string {
+// retainedAttemptArtifact proves the retained bytes are the steered work
+// product. The criterion is "durable.txt contains exactly PERSISTENT" and the
+// check is grep -Fx, both of which accept a missing trailing newline, so the
+// helper pins the two exact byte forms that satisfy it and returns the digest
+// actually retained - attesting a hardcoded digest the steer instruction never
+// pinned would be a fixture flake, not a product fact.
+func retainedAttemptArtifact(t *testing.T, dataDir, outcomeID, attemptID string) (version, fileDigest string) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "kennel.db")+"?mode=ro")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	var version, state string
+	var state string
 	if err := db.QueryRow(`SELECT artifact_version, retention_state FROM attempt_receipts WHERE outcome_id=? AND attempt_id=?`, outcomeID, attemptID).Scan(&version, &state); err != nil {
 		t.Fatal(err)
 	}
 	if version == "" || state != "retained" {
 		t.Fatalf("receipt version/state=%q/%q", version, state)
 	}
-	var fileDigest string
 	if err := db.QueryRow(`SELECT content_digest FROM attempt_artifact_files WHERE attempt_id=? AND relative_path='durable.txt' AND change_kind IN ('added','modified','untracked')`, attemptID).Scan(&fileDigest); err != nil {
 		t.Fatal(err)
 	}
-	if fileDigest != digest("PERSISTENT\n") {
+	if fileDigest != digest("PERSISTENT\n") && fileDigest != digest("PERSISTENT") {
 		t.Fatalf("durable.txt digest=%q", fileDigest)
 	}
-	return version
+	return version, fileDigest
 }
 
 type approvedCheckView struct {
