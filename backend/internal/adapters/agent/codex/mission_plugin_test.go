@@ -2,6 +2,8 @@ package codex
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,5 +195,34 @@ func TestProvisionMissionCodexHome(t *testing.T) {
 	}
 	if _, err := ProvisionMissionCodexHome(dataDir, "../escape"); err == nil {
 		t.Fatal("unsafe space key must fail closed")
+	}
+}
+
+// The path the planning turn invokes must be the exact artifact the install
+// verified: after a real (fake-CLI) install, MissionSkillMDPath resolves to
+// the byte-verified SKILL.md inside the provider cache.
+func TestMissionSkillMDPathResolvesToVerifiedArtifact(t *testing.T) {
+	bin, _ := fakeCodex(t)
+	market := missionMarket(t)
+	home := filepath.Join(t.TempDir(), "home")
+	if err := EnsureMissionPlugin(context.Background(), bin, home, market); err != nil {
+		t.Fatal(err)
+	}
+	skillPath := MissionSkillMDPath(home)
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("the invoked skill path does not resolve after install: %v", err)
+	}
+	embedded, err := missionplugin.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, ok := embedded[missionplugin.SkillRelativePath]
+	if !ok {
+		t.Fatalf("the embedded manifest does not carry %s", missionplugin.SkillRelativePath)
+	}
+	sum := sha256.Sum256(content)
+	if hex.EncodeToString(sum[:]) != want {
+		t.Fatal("the invoked skill artifact differs from the shipped manifest")
 	}
 }

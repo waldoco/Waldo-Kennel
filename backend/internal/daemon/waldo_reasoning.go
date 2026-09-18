@@ -196,9 +196,17 @@ func newCodexReasoner(cfg reasoningConfig, log *slog.Logger, codexHome string) (
 	if log == nil {
 		log = slog.Default()
 	}
+	// The scoped home and the skill invocation travel together: a verified
+	// home without the mission skill's activation would plan with the skill's
+	// rules switched off, and a skill path without the verified home would
+	// invoke an unverified artifact.
+	skillPath := ""
+	if codexHome != "" {
+		skillPath = codex.MissionSkillMDPath(codexHome)
+	}
 	driver := codexappserver.New(codex.New(), log)
 	return codexappserver.NewIntelligenceClient(driver, codexappserver.IntelligenceConfig{
-		Model: cfg.Model, Effort: cfg.Effort, Timeout: 2 * time.Minute, CodexHome: codexHome,
+		Model: cfg.Model, Effort: cfg.Effort, Timeout: 2 * time.Minute, CodexHome: codexHome, MissionSkillPath: skillPath,
 	}), nil
 }
 

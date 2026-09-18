@@ -21,6 +21,11 @@ type skillsListResponse struct {
 		Cwd    string `json:"cwd"`
 		Skills []struct {
 			Name string `json:"name"`
+			// Path is the SKILL.md the provider resolved, and PluginID the
+			// installing plugin's selector. Both are provenance: a name match
+			// alone never proves the skill is Kennel's verified artifact.
+			Path     string `json:"path"`
+			PluginID string `json:"pluginId"`
 			// Description is the full trigger text from SKILL.md. It is written for
 			// the model, not for a menu, and routinely runs to a paragraph.
 			Description string `json:"description"`
@@ -86,6 +91,8 @@ func (c *conversation) ListSkills(ctx context.Context) ([]ports.ChatSkill, error
 				DisplayName: display,
 				Description: description,
 				Source:      entry.Scope,
+				Path:        entry.Path,
+				PluginID:    entry.PluginID,
 			})
 		}
 	}

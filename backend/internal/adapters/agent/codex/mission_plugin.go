@@ -128,11 +128,24 @@ func pluginRowHasVersion(row string) bool {
 	return false
 }
 
+// missionPluginCacheDir is the provider's install location for the shipped
+// plugin version inside one scoped home.
+func missionPluginCacheDir(home string) string {
+	return filepath.Join(home, "plugins", "cache", missionplugin.MarketplaceName, missionplugin.PluginName, missionplugin.Version)
+}
+
+// MissionSkillMDPath is the exact SKILL.md a planning turn must invoke: the
+// verified installed artifact, never a user-writable source tree. Callers pass
+// it to the harness launch so the mission command's rules govern the turn.
+func MissionSkillMDPath(home string) string {
+	return filepath.Join(missionPluginCacheDir(home), missionplugin.SkillRelativePath)
+}
+
 // verifyMissionPluginCache checks the installed plugin tree against the
 // embedded manifest: the provider cache is either byte-identical to what this
 // binary ships or mission start stays closed.
 func verifyMissionPluginCache(home string) error {
-	cacheDir := filepath.Join(home, "plugins", "cache", missionplugin.MarketplaceName, missionplugin.PluginName, missionplugin.Version)
+	cacheDir := missionPluginCacheDir(home)
 	if err := missionplugin.VerifyInstalled(cacheDir); err != nil {
 		return fmt.Errorf("verify the installed mission plugin: %w - repair: remove %s and retry mission start so Kennel reinstalls it", err, filepath.Join(home, "plugins"))
 	}

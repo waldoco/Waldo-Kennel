@@ -42,6 +42,13 @@ type IntelligenceConfig struct {
 	// that exact connection before any thread starts. Empty leaves the ambient
 	// home untouched.
 	CodexHome string
+	// MissionSkillPath is the exact installed SKILL.md the planning turn
+	// invokes through the provider's skill input item. Scoped mode requires
+	// both fields together: CodexHome without MissionSkillPath would verify
+	// presence but never activate the skill, and MissionSkillPath without
+	// CodexHome would invoke an unverified artifact. Both empty is the
+	// ambient-home path used by settings probes.
+	MissionSkillPath string
 }
 
 // IntelligenceClient is a bounded, one-shot structured reasoning client over
@@ -78,6 +85,11 @@ func (c *IntelligenceClient) Complete(ctx context.Context, request ports.LLMRequ
 	if c.driver.plugin == nil {
 		return ports.LLMResponse{}, ports.NewReasoningFailure(
 			ports.ReasoningUnavailable, "The Codex harness plugin is unavailable", ports.ErrChatDriverUnavailable)
+	}
+	if (c.cfg.CodexHome == "") != (c.cfg.MissionSkillPath == "") {
+		return ports.LLMResponse{}, ports.NewReasoningFailure(
+			ports.ReasoningNotConfigured,
+			"Scoped mission planning requires the verified home and the mission skill path together", nil)
 	}
 	if err := ctx.Err(); err != nil {
 		return ports.LLMResponse{}, ports.ClassifyReasoningTransport(ctx, 0, err)
@@ -117,7 +129,7 @@ func (c *IntelligenceClient) Complete(ctx context.Context, request ports.LLMRequ
 	}
 	defer cleanup()
 
-	conv, err := c.driver.startIntelligence(callCtx, workspace, request.System, c.cfg.Model, c.cfg.CodexHome)
+	conv, err := c.driver.startIntelligence(callCtx, workspace, request.System, c.cfg.Model, c.cfg.CodexHome, c.cfg.MissionSkillPath)
 	if err != nil {
 		return ports.LLMResponse{}, classifyCodexReasoningFailure(callCtx, err)
 	}
@@ -136,7 +148,15 @@ func (c *IntelligenceClient) Complete(ctx context.Context, request ports.LLMRequ
 			ports.ReasoningInvalidOutput, "Waldo's reasoning request is empty", nil)
 	}
 	text += "\n\nReturn only the JSON object required by the structured output schema. Do not use Markdown fences or commentary."
-	text += " Do not use tools, skills, MCP servers, or external effects."
+	if c.cfg.CodexHome != "" {
+		// Custody of behavior, not just presence: the mission skill is invoked
+		// on this exact turn, so its rules govern. The effectful surface stays
+		// banned - effectful tools, MCP servers, external effects - and every
+		// other skill stays off.
+		text += " The mission:mission skill is invoked on this turn: follow its rules exactly. Do not use any other skill. Do not use effectful tools, MCP servers, or external effects."
+	} else {
+		text += " Do not use tools, skills, MCP servers, or external effects."
+	}
 	if request.MaxTokens > 0 {
 		// Codex's app-server schema has no max-output-tokens field. Keep the
 		// existing port's bounded intent visible to the model, while native
@@ -215,7 +235,7 @@ func intelligenceWorkspace(access ports.ReasoningContextAccess) (string, func(),
 	return workspace, func() { _ = os.RemoveAll(workspace) }, nil
 }
 
-func (d *Driver) startIntelligence(ctx context.Context, workspace, system, model, codexHome string) (*conversation, error) {
+func (d *Driver) startIntelligence(ctx context.Context, workspace, system, model, codexHome, missionSkillPath string) (*conversation, error) {
 	if d == nil || d.plugin == nil {
 		return nil, ports.ErrChatUnsupported
 	}
@@ -242,17 +262,23 @@ func (d *Driver) startIntelligence(ctx context.Context, workspace, system, model
 			_ = conv.Close()
 			return nil, fmt.Errorf("list skills in the verified mission home: %w", skillErr)
 		}
+		// Name alone is not custody: the visible skill must be the mission
+		// plugin's own entry, resolved at the exact verified artifact path the
+		// turn will invoke. A lookalike skill from any other source closes the
+		// launch.
 		visible := false
 		for _, skill := range skills {
-			if skill.Name == missionplugin.SkillName {
+			if skill.Name == missionplugin.SkillName && skill.PluginID == missionplugin.PluginID && skill.Path == missionSkillPath {
 				visible = true
 				break
 			}
 		}
 		if !visible {
 			_ = conv.Close()
-			return nil, fmt.Errorf("the mission command %s is not visible to the Codex harness in the verified home %s - repair: remove %s and retry so Kennel reinstalls the mission plugin", missionplugin.SkillName, codexHome, filepath.Join(codexHome, "plugins"))
+			return nil, fmt.Errorf("the mission command %s from plugin %s at %s is not visible to the Codex harness in the verified home %s - repair: remove %s and retry so Kennel reinstalls the mission plugin", missionplugin.SkillName, missionplugin.PluginID, missionSkillPath, codexHome, filepath.Join(codexHome, "plugins"))
 		}
+		conv.intelligenceSkillName = missionplugin.SkillName
+		conv.intelligenceSkillPath = missionSkillPath
 	}
 
 	// Use Codex's native read-only profile rather than synthesizing a Kennel

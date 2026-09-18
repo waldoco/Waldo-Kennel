@@ -78,6 +78,12 @@ type conversation struct {
 	// from ordinary Chat permission modes.
 	intelligencePermissions string
 	intelligenceWorkspace   string
+	// intelligenceSkill, when set, is prepended to every turn input on this
+	// conversation: the provider-native skill invocation that makes the turn
+	// run under the skill's rules. The path names the exact verified installed
+	// artifact (the mission plugin's cached SKILL.md), not a source tree.
+	intelligenceSkillName string
+	intelligenceSkillPath string
 
 	mu      sync.Mutex
 	pending map[string]*parkedRequest
@@ -393,9 +399,18 @@ func (c *conversation) dispatchTurn(ctx context.Context, msg ports.ChatUserMessa
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
 
+	input := []any{}
+	if c.intelligenceSkillPath != "" {
+		// Provider-supported skill invocation: the harness expands the item
+		// into the skill's full instructions inside this turn's context.
+		input = append(input, map[string]any{
+			"type": "skill", "name": c.intelligenceSkillName, "path": c.intelligenceSkillPath,
+		})
+	}
+	input = append(input, map[string]any{"type": "text", "text": msg.Text})
 	params := map[string]any{
 		"threadId": c.threadID,
-		"input":    []any{map[string]any{"type": "text", "text": msg.Text}},
+		"input":    input,
 	}
 	if msg.ClientMessageID != "" {
 		// The provider's own idempotency handle: a retry carrying the same id

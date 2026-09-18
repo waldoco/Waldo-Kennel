@@ -315,8 +315,9 @@ func TestIntelligenceClientRequiresCodexAuth(t *testing.T) {
 }
 
 // The conflicting-homes falsifier: an ambient CODEX_HOME must never leak into
-// a scoped planning launch, and the mission skill must be verified visible on
-// the exact connection before any thread starts.
+// a scoped planning launch, and the mission skill must be verified visible -
+// by name, installing plugin, and exact artifact path - on the exact
+// connection before any thread starts.
 func TestStartIntelligenceScopedHomeBindsAndVerifiesMissionSkill(t *testing.T) {
 	t.Setenv("CODEX_HOME", "/user/ambient-home")
 	d, srv := newTestDriver(t)
@@ -326,9 +327,10 @@ func TestStartIntelligenceScopedHomeBindsAndVerifiesMissionSkill(t *testing.T) {
 		capturedEnv = append([]string(nil), env...)
 		return realSpawn(ctx, bin, workdir, env)
 	}
-	srv.reply("skills/list", `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","description":"Plan a mission.","enabled":true,"scope":"plugin"}]}]}`)
+	skillPath := scopedMissionSkillPath()
+	srv.reply("skills/list", scopedMissionSkillListJSON(skillPath))
 
-	conv, err := d.startIntelligence(context.Background(), t.TempDir(), "system", "", "/scoped/mission-home")
+	conv, err := d.startIntelligence(context.Background(), t.TempDir(), "system", "", "/scoped/mission-home", skillPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,17 +365,21 @@ func TestStartIntelligenceScopedHomeBindsAndVerifiesMissionSkill(t *testing.T) {
 	}
 }
 
-// A plugin whose skill the harness cannot see - absent or disabled - closes
-// the launch before any thread exists, however healthy its bytes on disk are.
+// The launch closes when the visible skill is not Kennel's verified artifact:
+// absent, disabled, installed by a different plugin, or resolved at a path
+// other than the byte-verified cache file all fail before any thread exists.
 func TestStartIntelligenceScopedHomeFailsClosedWhenMissionSkillInvisible(t *testing.T) {
+	skillPath := scopedMissionSkillPath()
 	for name, skillsJSON := range map[string]string{
-		"absent":   `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"other:thing","enabled":true,"scope":"plugin"}]}]}`,
-		"disabled": `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","enabled":false,"scope":"plugin"}]}]}`,
+		"absent":       `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"other:thing","enabled":true,"scope":"plugin"}]}]}`,
+		"disabled":     `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","enabled":false,"scope":"plugin","path":"` + skillPath + `","pluginId":"mission@kennel"}]}]}`,
+		"wrong-plugin": `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","enabled":true,"scope":"plugin","path":"` + skillPath + `","pluginId":"impostor@elsewhere"}]}]}`,
+		"wrong-path":   `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","enabled":true,"scope":"plugin","path":"/user/planted/skills/mission/SKILL.md","pluginId":"mission@kennel"}]}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			d, srv := newTestDriver(t)
 			srv.reply("skills/list", skillsJSON)
-			_, err := d.startIntelligence(context.Background(), t.TempDir(), "system", "", "/scoped/mission-home")
+			_, err := d.startIntelligence(context.Background(), t.TempDir(), "system", "", "/scoped/mission-home", skillPath)
 			if err == nil || !strings.Contains(err.Error(), "mission:mission") {
 				t.Fatalf("error = %v, want a closed launch naming mission:mission", err)
 			}
@@ -382,4 +388,78 @@ func TestStartIntelligenceScopedHomeFailsClosedWhenMissionSkillInvisible(t *test
 			}
 		})
 	}
+}
+
+// The custody falsifier: the actual turn/start request on the wire must carry
+// the provider-native skill invocation for mission:mission at the verified
+// artifact path, and the prompt must direct the model to follow the skill's
+// rules while keeping effectful tools, MCP servers, and external effects off.
+func TestIntelligenceClientScopedTurnInvokesMissionSkill(t *testing.T) {
+	d, srv := newTestDriver(t)
+	skillPath := scopedMissionSkillPath()
+	srv.reply("skills/list", scopedMissionSkillListJSON(skillPath))
+	client := NewIntelligenceClient(d, IntelligenceConfig{
+		Timeout: 5 * time.Second, CodexHome: "/scoped/mission-home", MissionSkillPath: skillPath,
+	})
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := client.Complete(context.Background(), testIntelligenceRequest())
+		result <- err
+	}()
+
+	turn := srv.awaitFrame(func(f frame) bool { return f.Method == "turn/start" })
+	var turnParams struct {
+		Input []map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(turn.Params, &turnParams); err != nil {
+		t.Fatalf("turn/start params: %v", err)
+	}
+	if len(turnParams.Input) != 2 {
+		t.Fatalf("turn input = %#v, want the skill item plus the text", turnParams.Input)
+	}
+	skill := turnParams.Input[0]
+	if skill["type"] != "skill" || skill["name"] != "mission:mission" || skill["path"] != skillPath {
+		t.Fatalf("turn skill item = %#v, want mission:mission at the verified path", skill)
+	}
+	text, _ := turnParams.Input[1]["text"].(string)
+	if !strings.Contains(text, "follow its rules exactly") {
+		t.Fatalf("scoped prompt did not direct the model to the mission skill's rules: %q", text)
+	}
+	if strings.Contains(text, "Do not use tools, skills") {
+		t.Fatalf("scoped prompt still carries the blanket no-skills ban: %q", text)
+	}
+	for _, ban := range []string{"Do not use any other skill", "effectful tools, MCP servers, or external effects"} {
+		if !strings.Contains(text, ban) {
+			t.Fatalf("scoped prompt lost the %q ban: %q", ban, text)
+		}
+	}
+
+	srv.push(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"msg-1","type":"agentMessage","text":"{\"summary\":\"bounded\"}"}}}`)
+	srv.push(`{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}`)
+	if err := <-result; err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+}
+
+// A scoped home without the skill path (or the reverse) is a wiring bug, not
+// a mode: the client refuses it rather than choosing a behavior.
+func TestIntelligenceClientRejectsHalfScopedConfiguration(t *testing.T) {
+	d, _ := newTestDriver(t)
+	scoped := NewIntelligenceClient(d, IntelligenceConfig{Timeout: time.Second, CodexHome: "/scoped/mission-home"})
+	if _, err := scoped.Complete(context.Background(), testIntelligenceRequest()); err == nil {
+		t.Fatal("a verified home without the skill path proceeded")
+	}
+	ambient := NewIntelligenceClient(d, IntelligenceConfig{Timeout: time.Second, MissionSkillPath: "/scoped/mission-home/plugins/cache/kennel/mission/0.1.0/skills/mission/SKILL.md"})
+	if _, err := ambient.Complete(context.Background(), testIntelligenceRequest()); err == nil {
+		t.Fatal("a skill path without the verified home proceeded")
+	}
+}
+
+func scopedMissionSkillPath() string {
+	return "/scoped/mission-home/plugins/cache/kennel/mission/0.1.0/skills/mission/SKILL.md"
+}
+
+func scopedMissionSkillListJSON(skillPath string) string {
+	return `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","description":"Plan a mission.","enabled":true,"scope":"user","path":"` + skillPath + `","pluginId":"mission@kennel"}]}]}`
 }

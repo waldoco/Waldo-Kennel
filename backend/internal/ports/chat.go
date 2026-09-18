@@ -568,6 +568,13 @@ type ChatSkill struct {
 	// Source says where it came from (built-in, a plugin, the project), so a user
 	// can tell an Kennel-provided skill from one the provider ships.
 	Source string
+	// Path is the provider-reported SKILL.md location, when the provider
+	// reports one. Verification code compares it against the exact installed
+	// artifact it expects; presentation code should not display it.
+	Path string
+	// PluginID is the installing plugin's selector (for example
+	// "mission@kennel"), when the skill came from a plugin. Empty otherwise.
+	PluginID string
 }
 
 // ChatCompactionResult reports what a compaction did.

@@ -38,6 +38,10 @@ const (
 // under it is digest-verified after installation.
 const pluginSubtree = "plugin/plugins/" + PluginName
 
+// SkillRelativePath is the SKILL.md location inside one installed plugin tree.
+// The provider's skill invocation names this exact file.
+const SkillRelativePath = "skills/mission/SKILL.md"
+
 //go:embed all:plugin
 var tree embed.FS
 
