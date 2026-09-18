@@ -62,6 +62,11 @@ func (s *Service) EvaluatePlanReadiness(
 	if err != nil {
 		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, err
 	}
+	// A snapshot without a stable identity cannot fence anything: fail before
+	// packet construction rather than mint keys bound to a blank generation.
+	if strings.TrimSpace(snapshot.SnapshotID) == "" || strings.TrimSpace(snapshot.GenerationID) == "" {
+		return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Internal("ROUTING_INVENTORY_MALFORMED", "routing inventory returned a snapshot without a stable identity")
+	}
 	fence.RoutingSnapshotID = snapshot.SnapshotID
 
 	draftsByKey := make(map[string]domain.PlanDraftWorkUnit, len(draft.WorkUnits))
@@ -79,8 +84,22 @@ func (s *Service) EvaluatePlanReadiness(
 		return nil
 	}
 
-	// Planner-declared issues re-keyed under the final fence.
+	// Planner-declared issues re-keyed under the final fence. Re-keying under
+	// the current evaluation is only sound if the issue still describes THIS
+	// draft and THIS Contract revision: every referenced work unit key and
+	// criterion alias must exist now, or a stale issue parsed for an earlier
+	// draft would surface fresh-keyed references to things that do not exist.
 	for _, issue := range plannerIssues {
+		for _, unitKey := range issue.WorkUnitKeys {
+			if _, ok := draftsByKey[strings.TrimSpace(unitKey)]; !ok {
+				return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLANNING_READINESS_ISSUE_STALE", "planner-declared readiness issue references a work unit the current draft does not carry", map[string]any{"workUnitKey": unitKey})
+			}
+		}
+		for _, alias := range issue.CriterionAliases {
+			if _, ok := aliases[strings.TrimSpace(alias)]; !ok {
+				return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLANNING_READINESS_ISSUE_STALE", "planner-declared readiness issue references a Contract criterion alias the current revision does not carry", map[string]any{"criterionAlias": alias})
+			}
+		}
 		if err := addIssue(issue); err != nil {
 			return domain.PlanningReadinessResult{}, ports.RoutingInventorySnapshot{}, apierr.Invalid("PLANNING_READINESS_ISSUE_INVALID", err.Error(), nil)
 		}

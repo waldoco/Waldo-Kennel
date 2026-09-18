@@ -341,6 +341,69 @@ func TestEvaluatePlanReadiness_PlannerIssuesRekeyedUnderSnapshotBoundFence(t *te
 	}
 }
 
+// ---- fence integrity: stale planner references and blank inventory identity ----
+
+func TestEvaluatePlanReadiness_StalePlannerIssueRejected(t *testing.T) {
+	draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", domain.WorkUnitIntentModify, "C1")}}
+	contract := readinessContract(fullLocalAuthority(), readinessCriterion(1))
+	base := domain.PlanningReadinessIssue{
+		Kind: domain.ReadinessContextInsufficient, Route: domain.RouteAnswerContext, Source: domain.ReadinessSourcePlannerDeclared,
+		Prompt: "Which service owns retry policy?", Reason: "The planner could not tell.", Recommendation: "Answer it.",
+	}
+	for name, mutate := range map[string]func(*domain.PlanningReadinessIssue){
+		"work unit from another draft":    func(i *domain.PlanningReadinessIssue) { i.WorkUnitKeys = []string{"ghost"} },
+		"criterion from another contract": func(i *domain.PlanningReadinessIssue) { i.CriterionAliases = []string{"C9"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := readinessService(&routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}})
+			issue := base
+			mutate(&issue)
+			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, []domain.PlanningReadinessIssue{issue}, "m")
+			var apiErr *apierr.Error
+			if !errors.As(err, &apiErr) || apiErr.Code != "PLANNING_READINESS_ISSUE_STALE" {
+				t.Fatalf("err = %v, want PLANNING_READINESS_ISSUE_STALE", err)
+			}
+			if result.Status != "" || len(result.Issues) != 0 {
+				t.Fatalf("stale planner issue must not produce a packet: %+v", result)
+			}
+		})
+	}
+
+	// A planner issue whose references all exist in the current draft still passes.
+	svc := readinessService(&routingInventoryFake{snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}})
+	issue := base
+	issue.WorkUnitKeys = []string{"u"}
+	issue.CriterionAliases = []string{"C1"}
+	result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, []domain.PlanningReadinessIssue{issue}, "m")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(result.Issues) != 1 || result.Issues[0].Prompt != base.Prompt {
+		t.Fatalf("current-referencing planner issue lost: %+v", result.Issues)
+	}
+}
+
+func TestEvaluatePlanReadiness_BlankSnapshotIdentityRejected(t *testing.T) {
+	draft := domain.PlanDraftProposal{Summary: "x", WorkUnits: []domain.PlanDraftWorkUnit{readinessUnit("u", domain.WorkUnitIntentModify, "C1")}}
+	contract := readinessContract(fullLocalAuthority(), readinessCriterion(1))
+	for name, router := range map[string]*routingInventoryFake{
+		"blank snapshot id":   {snapshotIDs: []string{""}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}},
+		"blank generation id": {generationIDs: []string{""}, snapshotIDs: []string{"snap-1"}, candidates: []domain.RoutingCandidate{readyClaudeCandidate()}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := readinessService(router)
+			result, _, err := svc.EvaluatePlanReadiness(context.Background(), readinessFence(), "p1", contract, nil, draft, nil, "m")
+			var apiErr *apierr.Error
+			if !errors.As(err, &apiErr) || apiErr.Code != "ROUTING_INVENTORY_MALFORMED" {
+				t.Fatalf("err = %v, want ROUTING_INVENTORY_MALFORMED", err)
+			}
+			if result.Status != "" || len(result.Issues) != 0 {
+				t.Fatalf("malformed inventory must not produce a packet with unfenced keys: %+v", result)
+			}
+		})
+	}
+}
+
 // ---- steps 10-11: one packet, deduplicated, deterministic ----
 
 func TestEvaluatePlanReadiness_DeterministicAndDeduplicated(t *testing.T) {
