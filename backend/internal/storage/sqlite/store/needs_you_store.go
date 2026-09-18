@@ -20,16 +20,11 @@ func (s *Store) ListCurrentNeedsYouQuestions(ctx context.Context, outcomeID doma
 		return nil, err
 	}
 	out := make([]domain.NeedsYouQuestion, 0, len(rows))
-	seen := map[domain.WorkUnitID]bool{}
 	for _, r := range rows {
 		q, err := projectNeedsYou(r.ID, r.ConversationID, r.RequestID, r.Generation, r.QuestionStatus, r.CreatedAt, r.UpdatedAt, r.Kind, r.Summary, r.DetailJson, r.ActivityStatus, r.OutcomeID, r.PlanRevisionID, r.WorkUnitID, r.AttemptID, r.AttemptStatus, r.SessionID, r.CommandID, r.CommandState)
 		if err != nil {
 			return nil, err
 		}
-		if seen[q.WorkUnitID] {
-			continue
-		}
-		seen[q.WorkUnitID] = true
 		out = append(out, q)
 	}
 	return out, nil

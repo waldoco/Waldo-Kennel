@@ -19,6 +19,19 @@ const MissionProjectionVersion = 1
 type MissionAttention struct {
 	Kind, Summary, QuestionID, Generation string
 }
+
+// missionProjectionSliceNote keeps a typed integration constraint beside the
+// projection that owns it without widening the public Stage 9 vocabulary.
+type missionProjectionSliceNote struct {
+	Consumer string
+	Rule     string
+}
+
+var missionProjection9PNote = missionProjectionSliceNote{
+	Consumer: "PR #188 host mapping if it consumes live MissionNode DTOs",
+	Rule:     "suppress nextAction while self-consistent unresolved attention exists",
+}
+
 type MissionSession struct {
 	RefID                            string
 	Seq                              int64
@@ -117,17 +130,13 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 			missionLabel = strings.TrimSpace(project.DisplayName)
 		}
 	}
-	attention := map[domain.WorkUnitID]domain.NeedsYouQuestion{}
+	attention := map[domain.WorkUnitID][]domain.NeedsYouQuestion{}
 	if s.needsYou != nil {
 		questions, err := s.needsYou.ListCurrentNeedsYouQuestions(ctx, outcomeID)
 		if err != nil {
 			return MissionProjection{}, err
 		}
-		for _, q := range questions {
-			if q.OutcomeID == outcomeID && q.PlanRevisionID == planID && !q.WorkUnitID.IsZero() {
-				attention[q.WorkUnitID] = q
-			}
-		}
+		attention = missionAttentionByWorkUnit(questions, outcomeID, planID)
 	}
 	view, err := composeMissionProjection(record, schedule, attention, func(id domain.AttemptID) (domain.AttemptSessionRef, bool, error) {
 		return s.store.LatestAttemptSessionRef(ctx, id)
@@ -224,7 +233,63 @@ func missionTopologyFingerprint(plan domain.PlanRevision) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func composeMissionProjection(record domain.Outcome, schedule ScheduleView, attention map[domain.WorkUnitID]domain.NeedsYouQuestion, latestRef func(domain.AttemptID) (domain.AttemptSessionRef, bool, error)) (MissionProjection, error) {
+func missionAttentionByWorkUnit(questions []domain.NeedsYouQuestion, outcomeID domain.OutcomeID, planID domain.PlanRevisionID) map[domain.WorkUnitID][]domain.NeedsYouQuestion {
+	attention := map[domain.WorkUnitID][]domain.NeedsYouQuestion{}
+	for _, q := range questions {
+		if q.OutcomeID == outcomeID && q.PlanRevisionID == planID && !q.WorkUnitID.IsZero() && missionQuestionUnresolved(q) {
+			attention[q.WorkUnitID] = append(attention[q.WorkUnitID], q)
+		}
+	}
+	return attention
+}
+
+func missionQuestionUnresolved(q domain.NeedsYouQuestion) bool {
+	// The store binds production rows to their latest Attempt/session. Generation == ID is therefore a self-integrity check for an unresolved record, not a claim of current controller authority. Legacy pre-Attempt rows are admitted only by the same self-consistency rule.
+	if strings.TrimSpace(q.Generation) == "" || q.Generation != q.ID {
+		return false
+	}
+	switch q.Status {
+	case domain.NeedsYouOpen, domain.NeedsYouAnswerQueued, domain.NeedsYouAnswerSent, domain.NeedsYouDeliveryUnknown:
+		return true
+	case domain.NeedsYouAcknowledged, domain.NeedsYouSuperseded, domain.NeedsYouRefused:
+		return false
+	default:
+		return false
+	}
+}
+
+func missionQuestionMatchesNode(q domain.NeedsYouQuestion, node MissionNode) bool {
+	if !missionQuestionUnresolved(q) {
+		return false
+	}
+	if !q.AttemptID.IsZero() {
+		if node.CurrentAttempt == nil || node.CurrentAttempt.ID != string(q.AttemptID) {
+			return false
+		}
+	}
+	if q.SessionID != "" {
+		if node.CurrentAttempt == nil || node.CurrentAttempt.Session == nil || node.CurrentAttempt.Session.SessionID != string(q.SessionID) {
+			return false
+		}
+	}
+	return true
+}
+
+func newestMissionQuestionForNode(candidates []domain.NeedsYouQuestion, node MissionNode) (domain.NeedsYouQuestion, bool) {
+	var selected domain.NeedsYouQuestion
+	found := false
+	for _, q := range candidates {
+		if !missionQuestionMatchesNode(q, node) {
+			continue
+		}
+		if !found || q.UpdatedAt.After(selected.UpdatedAt) || (q.UpdatedAt.Equal(selected.UpdatedAt) && q.ID > selected.ID) {
+			selected, found = q, true
+		}
+	}
+	return selected, found
+}
+
+func composeMissionProjection(record domain.Outcome, schedule ScheduleView, attention map[domain.WorkUnitID][]domain.NeedsYouQuestion, latestRef func(domain.AttemptID) (domain.AttemptSessionRef, bool, error)) (MissionProjection, error) {
 	view := MissionProjection{Version: MissionProjectionVersion, OutcomeID: record.ID, MissionID: record.SpaceID, ContractRevisionNumber: record.CurrentRevisionNumber, PlanRevisionID: schedule.Plan.ID, PlanRevisionNumber: schedule.Plan.Number, TopologyGeneration: schedule.Plan.Number, NextRunnableID: schedule.NextRunnableID, CustodyHeldBy: schedule.CustodyHeldBy, NoRunnableReason: string(schedule.NoRunnableReason)}
 	view.TopologyFingerprint = missionTopologyFingerprint(schedule.Plan)
 	for _, entry := range schedule.WorkUnits {
@@ -259,7 +324,7 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 				n.UpdatedAt = latest.UpdatedAt
 			}
 		}
-		if q, ok := attention[entry.WorkUnit.ID]; ok {
+		if q, ok := newestMissionQuestionForNode(attention[entry.WorkUnit.ID], n); ok {
 			kind := ""
 			if q.Kind == domain.NeedsYouApproval {
 				kind = "needs_approval"
@@ -277,7 +342,9 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 				n.UpdatedAt = q.UpdatedAt
 			}
 		}
-		if entry.WorkUnit.ID == schedule.NextRunnableID && (entry.State == WorkUnitScheduleRunnable || entry.State == WorkUnitScheduleRetryable) {
+		// One card presents one decision. Current unresolved Needs-You attention
+		// strictly outranks a runnable/retryable Start action.
+		if n.Attention == nil && entry.WorkUnit.ID == schedule.NextRunnableID && (entry.State == WorkUnitScheduleRunnable || entry.State == WorkUnitScheduleRetryable) {
 			n.NextAction = "start"
 		}
 		if n.UpdatedAt.After(view.UpdatedAt) {

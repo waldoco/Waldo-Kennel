@@ -95,3 +95,14 @@ func TestProjectNeedsYouPostRunCheckQuestionRemainsAnswerable(t *testing.T) {
 		t.Fatalf("question=%+v", q)
 	}
 }
+
+func TestProjectNeedsYouProductionGenerationBindsQuestionIdentityAndAttemptSession(t *testing.T) {
+	now := time.Now().UTC()
+	q, err := projectNeedsYou("question-generation", "conversation", "request", "question-generation", "pending", now, now, domain.ActivityKindApproval, "why", `{"decisions":[{"id":"yes"}]}`, domain.ActivityStatusPending, "outcome", "plan", "work", "attempt-current", domain.AttemptRunning, "session-current", sql.NullString{}, sql.NullString{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Generation != q.ID || q.AttemptID != "attempt-current" || q.SessionID != "session-current" || q.Status != domain.NeedsYouOpen {
+		t.Fatalf("production binding=%+v", q)
+	}
+}
