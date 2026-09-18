@@ -139,6 +139,12 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 	// Now bind independently recorded evidence and verification to this exact
 	// Attempt and retained artifact version. A later reconcile may classify the
 	// Attempt, but only from these durable facts.
+	// The status flip to reconciled is visible the instant the liveness half
+	// of a reconcile tick commits; the retained-artifact receipt lands in the
+	// classification half that immediately follows in the same tick. A direct
+	// read can legitimately land between the two, so wait for the row before
+	// asserting on it.
+	awaitAttemptReceipt(t, dataDir, out, start.ID)
 	artifactVersion := retainedAttemptArtifact(t, dataDir, out, start.ID)
 	criterionID := created.Outcome.CurrentRevision.Criteria[0].CriterionID
 	restarted.mustCall("POST", "/outcomes/"+out+"/evidence", http.StatusCreated, map[string]any{
@@ -196,6 +202,32 @@ func assertFrozenBudgetMatchesFixture(t *testing.T, dataDir, planRevisionID stri
 	if want := e2eAdmissionPolicy(t).Default; budget != want {
 		t.Fatalf("frozen WorkUnit budget=%+v, want fixture policy default %+v", budget, want)
 	}
+}
+
+// awaitAttemptReceipt waits for the classification half of the reconcile
+// tick to persist the attempt's artifact receipt. Two reconcile intervals
+// (the tick is 15s) cover a retried first pass; anything longer is a real
+// retention failure, surfaced by the receipt assertions that follow.
+func awaitAttemptReceipt(t *testing.T, dataDir, outcomeID, attemptID string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "kennel.db")+"?mode=ro")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		scanErr := db.QueryRow(`SELECT count(*) FROM attempt_receipts WHERE outcome_id=? AND attempt_id=?`, outcomeID, attemptID).Scan(&n)
+		_ = db.Close()
+		if scanErr != nil {
+			t.Fatal(scanErr)
+		}
+		if n > 0 {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatal("attempt receipt never appeared for the reconciled attempt")
 }
 
 func retainedAttemptArtifact(t *testing.T, dataDir, outcomeID, attemptID string) string {
