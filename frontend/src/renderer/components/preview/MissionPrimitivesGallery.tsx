@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Check, User, Users, X } from "lucide-react";
+import { Ban, Bot, Check, Circle, CircleAlert, CircleCheck, Loader2, User, Users, X } from "lucide-react";
 import {
 	ActivityChip,
 	ApprovalCard,
@@ -9,7 +9,6 @@ import {
 	SelectionActionBar,
 	SessionResponsibilityChip,
 	TaskRow,
-	type MissionStatusTone,
 } from "@pin4sf/kennel-product-ui";
 
 /**
@@ -18,12 +17,14 @@ import {
  * fixtures below, no data fetching, no host wiring.
  */
 
-const STATUS_TONES: { tone: MissionStatusTone; label: string }[] = [
-	{ tone: "neutral", label: "Idle" },
-	{ tone: "info", label: "Executing" },
-	{ tone: "positive", label: "Proven" },
-	{ tone: "warning", label: "Needs you" },
-	{ tone: "danger", label: "Blocked" },
+// The F2 chip takes pre-resolved presentation (classes + icon), so the gallery
+// resolves each fixture state here — the same adapter shape WorkUnitListRow uses.
+const STATUS_CHIPS: { label: string; className: string; indicatorClassName: string; icon: React.ReactNode }[] = [
+	{ label: "Idle", className: "text-status-idle", indicatorClassName: "bg-status-idle", icon: <Circle className="size-icon-2xs" /> },
+	{ label: "Executing", className: "text-status-working", indicatorClassName: "bg-status-working", icon: <Loader2 className="size-icon-2xs" /> },
+	{ label: "Proven", className: "text-status-merged", indicatorClassName: "bg-status-merged", icon: <CircleCheck className="size-icon-2xs" /> },
+	{ label: "Needs you", className: "text-status-needs-you", indicatorClassName: "bg-status-needs-you", icon: <CircleAlert className="size-icon-2xs" /> },
+	{ label: "Blocked", className: "text-status-idle", indicatorClassName: "bg-status-idle", icon: <Ban className="size-icon-2xs" /> },
 ];
 
 function GallerySection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -42,12 +43,23 @@ export function MissionPrimitivesGallery() {
 
 	return (
 		<div className="flex flex-col gap-6 bg-background p-6 text-foreground">
-			<GallerySection title="MissionStatusChip — tone + icon/text, never color alone">
+			<GallerySection title="MissionStatusChip — icon + text, never color alone">
 				<div className="flex flex-wrap gap-2">
-					{STATUS_TONES.map(({ tone, label }) => (
-						<MissionStatusChip key={tone} label={label} tone={tone} />
+					{STATUS_CHIPS.map((chip) => (
+						<MissionStatusChip
+							key={chip.label}
+							className={chip.className}
+							icon={chip.icon}
+							indicatorClassName={chip.indicatorClassName}
+							label={chip.label}
+						/>
 					))}
-					<MissionStatusChip icon={<Check className="size-icon-2xs" />} label="Verified" tone="positive" />
+					<MissionStatusChip
+						className="text-status-merged"
+						icon={<Check className="size-icon-2xs" />}
+						indicatorClassName="bg-status-merged"
+						label="Verified"
+					/>
 				</div>
 			</GallerySection>
 
@@ -71,16 +83,37 @@ export function MissionPrimitivesGallery() {
 					<TaskRow
 						freshnessLabel="2h ago"
 						nextAction={<button className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 text-2xs text-primary" type="button">Resume</button>}
-						statusChip={<MissionStatusChip label="Needs you" tone="warning" />}
+						statusChip={
+							<MissionStatusChip
+								className="text-status-needs-you"
+								icon={<CircleAlert className="size-icon-2xs" />}
+								indicatorClassName="bg-status-needs-you"
+								label="Needs you"
+							/>
+						}
 						title="Reconcile fixture (normal, with next action)"
 					/>
 					<TaskRow
 						freshnessLabel="3 weeks ago (stale)"
-						statusChip={<MissionStatusChip label="Blocked" tone="danger" />}
+						statusChip={
+							<MissionStatusChip
+								className="text-status-idle"
+								icon={<Ban className="size-icon-2xs" />}
+								indicatorClassName="bg-status-idle"
+								label="Blocked"
+							/>
+						}
 						title="Persist schema (stale, no next action)"
 					/>
 					<TaskRow
-						statusChip={<MissionStatusChip label="Unknown" tone="neutral" />}
+						statusChip={
+							<MissionStatusChip
+								className="text-status-unknown"
+								icon={<CircleAlert className="size-icon-2xs" />}
+								indicatorClassName="bg-status-unknown"
+								label="Unknown"
+							/>
+						}
 						title="Undated WorkUnit (unknown freshness)"
 					/>
 				</div>

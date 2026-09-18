@@ -3,12 +3,18 @@ import { describe, expect, it } from "vitest";
 import { MissionStatusChip } from "./MissionStatusChip";
 import { TaskRow } from "./TaskRow";
 
+// The F2 chip takes pre-resolved presentation; these tests assert TaskRow's
+// layout, not the chip, so one neutral resolved face stands in for all.
+function statusChip(label: string) {
+	return <MissionStatusChip className="text-status-idle" icon={<svg />} indicatorClassName="bg-status-idle" label={label} />;
+}
+
 describe("TaskRow", () => {
 	it("renders identity, status, and freshness", () => {
 		render(
 			<TaskRow
 				freshnessLabel="2h ago"
-				statusChip={<MissionStatusChip label="Blocked" tone="warning" />}
+				statusChip={statusChip("Blocked")}
 				title="Persist the parsed rows"
 			/>,
 		);
@@ -21,7 +27,7 @@ describe("TaskRow", () => {
 		render(
 			<TaskRow
 				nextAction={<button type="button">Resume</button>}
-				statusChip={<MissionStatusChip label="Paused" tone="neutral" />}
+				statusChip={statusChip("Paused")}
 				title="Migrate rows"
 			/>,
 		);
@@ -30,18 +36,18 @@ describe("TaskRow", () => {
 	});
 
 	it("renders with no next action when the host supplies none", () => {
-		render(<TaskRow statusChip={<MissionStatusChip label="Idle" tone="neutral" />} title="Document the format" />);
+		render(<TaskRow statusChip={statusChip("Idle")} title="Document the format" />);
 		expect(screen.queryByTestId("task-row-next-action")).not.toBeInTheDocument();
 	});
 
 	it("truncates a long title rather than wrapping the row", () => {
 		const longTitle = "A very long WorkUnit title that keeps going well past a reasonable row width";
-		render(<TaskRow statusChip={<MissionStatusChip label="Runnable" tone="info" />} title={longTitle} />);
+		render(<TaskRow statusChip={statusChip("Runnable")} title={longTitle} />);
 		expect(screen.getByText(longTitle)).toHaveClass("truncate");
 	});
 
 	it("renders with no freshness label when the host supplies none", () => {
-		render(<TaskRow statusChip={<MissionStatusChip label="Unknown" tone="neutral" />} title="Undated task" />);
+		render(<TaskRow statusChip={statusChip("Unknown")} title="Undated task" />);
 		expect(screen.queryByText(/ago$/)).not.toBeInTheDocument();
 	});
 });
