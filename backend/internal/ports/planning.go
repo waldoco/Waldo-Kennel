@@ -57,8 +57,14 @@ type PlanningDiscussionRequest struct {
 	// RepositoryToolUse comes from the PlanningSession's frozen, owner-approved
 	// repository_read grant. A repository packet alone never grants native tools.
 	RepositoryToolUse bool
-	Turns             []domain.PlanningTurn
-	Finalize          bool
+	// HarnessHome is the scoped, just-verified CODEX_HOME carrying the Kennel
+	// mission plugin for native-harness planning. The outcome service sets it
+	// from the mission-plugin provisioner's return at every turn, so the
+	// provider launch runs inside exactly the environment that was verified -
+	// never the user's ambient home. Empty for direct-API planning.
+	HarnessHome string
+	Turns       []domain.PlanningTurn
+	Finalize    bool
 }
 
 // PlanningDiscussionResponse pairs the strict readiness envelope with actual

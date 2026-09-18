@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/missionplugin"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 )
 
@@ -34,6 +35,13 @@ type IntelligenceConfig struct {
 	Model   string
 	Effort  string
 	Timeout time.Duration
+	// CodexHome binds this client's app-server to a scoped, verified CODEX_HOME
+	// (the Kennel mission-plugin home for native-harness planning). When set,
+	// the app-server spawns with CODEX_HOME overlaied onto the inherited
+	// environment and the mission skill's provider visibility is verified on
+	// that exact connection before any thread starts. Empty leaves the ambient
+	// home untouched.
+	CodexHome string
 }
 
 // IntelligenceClient is a bounded, one-shot structured reasoning client over
@@ -109,7 +117,7 @@ func (c *IntelligenceClient) Complete(ctx context.Context, request ports.LLMRequ
 	}
 	defer cleanup()
 
-	conv, err := c.driver.startIntelligence(callCtx, workspace, request.System, c.cfg.Model)
+	conv, err := c.driver.startIntelligence(callCtx, workspace, request.System, c.cfg.Model, c.cfg.CodexHome)
 	if err != nil {
 		return ports.LLMResponse{}, classifyCodexReasoningFailure(callCtx, err)
 	}
@@ -207,16 +215,44 @@ func intelligenceWorkspace(access ports.ReasoningContextAccess) (string, func(),
 	return workspace, func() { _ = os.RemoveAll(workspace) }, nil
 }
 
-func (d *Driver) startIntelligence(ctx context.Context, workspace, system, model string) (*conversation, error) {
+func (d *Driver) startIntelligence(ctx context.Context, workspace, system, model, codexHome string) (*conversation, error) {
 	if d == nil || d.plugin == nil {
 		return nil, ports.ErrChatUnsupported
 	}
 	if !strings.HasPrefix(workspace, string(os.PathSeparator)) {
 		return nil, fmt.Errorf("intelligence workspace must be absolute")
 	}
-	conv, err := d.connect(ctx, workspace, nil)
+	var env map[string]string
+	if codexHome != "" {
+		// The scoped home replaces any ambient CODEX_HOME (processenv overlay
+		// semantics), so this app-server sees only the verified plugin install.
+		env = map[string]string{"CODEX_HOME": codexHome}
+	}
+	conv, err := d.connect(ctx, workspace, env)
 	if err != nil {
 		return nil, err
+	}
+	if codexHome != "" {
+		// Provider-visible proof on the exact connection that will run the
+		// planning turn: the mission skill must be listed, enabled, from the
+		// verified scoped home. Plugin-list text and cache bytes alone never
+		// prove the harness actually exposes the /mission command.
+		skills, skillErr := conv.ListSkills(ctx)
+		if skillErr != nil {
+			_ = conv.Close()
+			return nil, fmt.Errorf("list skills in the verified mission home: %w", skillErr)
+		}
+		visible := false
+		for _, skill := range skills {
+			if skill.Name == missionplugin.SkillName {
+				visible = true
+				break
+			}
+		}
+		if !visible {
+			_ = conv.Close()
+			return nil, fmt.Errorf("the mission command %s is not visible to the Codex harness in the verified home %s - repair: remove %s and retry so Kennel reinstalls the mission plugin", missionplugin.SkillName, codexHome, filepath.Join(codexHome, "plugins"))
+		}
 	}
 
 	// Use Codex's native read-only profile rather than synthesizing a Kennel

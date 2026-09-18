@@ -313,3 +313,73 @@ func TestIntelligenceClientRequiresCodexAuth(t *testing.T) {
 		t.Fatalf("auth error = %q, want actionable sign-in guidance", failure.Error())
 	}
 }
+
+// The conflicting-homes falsifier: an ambient CODEX_HOME must never leak into
+// a scoped planning launch, and the mission skill must be verified visible on
+// the exact connection before any thread starts.
+func TestStartIntelligenceScopedHomeBindsAndVerifiesMissionSkill(t *testing.T) {
+	t.Setenv("CODEX_HOME", "/user/ambient-home")
+	d, srv := newTestDriver(t)
+	var capturedEnv []string
+	realSpawn := d.spawn
+	d.spawn = func(ctx context.Context, bin, workdir string, env []string) (*process, error) {
+		capturedEnv = append([]string(nil), env...)
+		return realSpawn(ctx, bin, workdir, env)
+	}
+	srv.reply("skills/list", `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","description":"Plan a mission.","enabled":true,"scope":"plugin"}]}]}`)
+
+	conv, err := d.startIntelligence(context.Background(), t.TempDir(), "system", "", "/scoped/mission-home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conv.Close() }()
+
+	scoped, leaked := false, false
+	for _, entry := range capturedEnv {
+		if entry == "CODEX_HOME=/scoped/mission-home" {
+			scoped = true
+		}
+		if entry == "CODEX_HOME=/user/ambient-home" {
+			leaked = true
+		}
+	}
+	if !scoped || leaked {
+		t.Fatalf("spawn env carries scoped=%v leaked-ambient=%v: %v", scoped, leaked, capturedEnv)
+	}
+
+	skillsAt, threadAt := -1, -1
+	srv.mu.Lock()
+	for i, f := range srv.seen {
+		if f.Method == "skills/list" && skillsAt < 0 {
+			skillsAt = i
+		}
+		if f.Method == "thread/start" && threadAt < 0 {
+			threadAt = i
+		}
+	}
+	srv.mu.Unlock()
+	if skillsAt < 0 || threadAt < 0 || skillsAt > threadAt {
+		t.Fatalf("mission skill visibility checked at %d, thread started at %d - want the check first", skillsAt, threadAt)
+	}
+}
+
+// A plugin whose skill the harness cannot see - absent or disabled - closes
+// the launch before any thread exists, however healthy its bytes on disk are.
+func TestStartIntelligenceScopedHomeFailsClosedWhenMissionSkillInvisible(t *testing.T) {
+	for name, skillsJSON := range map[string]string{
+		"absent":   `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"other:thing","enabled":true,"scope":"plugin"}]}]}`,
+		"disabled": `{"data":[{"cwd":"/tmp/ws","skills":[{"name":"mission:mission","enabled":false,"scope":"plugin"}]}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			d, srv := newTestDriver(t)
+			srv.reply("skills/list", skillsJSON)
+			_, err := d.startIntelligence(context.Background(), t.TempDir(), "system", "", "/scoped/mission-home")
+			if err == nil || !strings.Contains(err.Error(), "mission:mission") {
+				t.Fatalf("error = %v, want a closed launch naming mission:mission", err)
+			}
+			if srv.sentMethod("thread/start") {
+				t.Fatal("a planning thread started without the verified mission skill")
+			}
+		})
+	}
+}

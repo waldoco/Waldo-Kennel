@@ -108,6 +108,13 @@ func (s *Service) StartPlanning(ctx context.Context, outcomeID domain.OutcomeID,
 		if err != nil {
 			return PlanningView{}, err
 		}
+		// An idempotent replay is still a mission start being offered: the
+		// /mission command must verify now, not at the session's first open.
+		if existing.Binding.Mode == domain.PlanningModeNativeHarness {
+			if _, err := s.requireMissionPlugin(ctx, outcomeRecord.SpaceID); err != nil {
+				return PlanningView{}, err
+			}
+		}
 		return s.planningView(ctx, outcomeRecord, existing)
 	}
 	outcomeRecord, revision, err := s.planningLineage(ctx, outcomeID, in.ExpectedContractRevision)
@@ -147,15 +154,8 @@ func (s *Service) StartPlanning(ctx context.Context, outcomeID domain.OutcomeID,
 		return PlanningView{}, apierr.Unavailable(selected.UnavailableCode, selected.UnavailableDetail, map[string]any{"candidateId": selected.ID})
 	}
 	if selected.Binding.Mode == domain.PlanningModeNativeHarness {
-		// The /mission command must be a verified runtime artifact before
-		// mission start is offered: installed, enabled, and byte-identical to
-		// what this daemon ships. An unverifiable command fails closed.
-		if s.missionPlugins == nil {
-			return PlanningView{}, apierr.Unavailable("MISSION_PLUGIN_UNAVAILABLE",
-				"The mission planning command cannot be verified in this environment", nil)
-		}
-		if _, err := s.missionPlugins.EnsureMissionPlugin(ctx, outcomeRecord.SpaceID); err != nil {
-			return PlanningView{}, apierr.Unavailable("MISSION_PLUGIN_UNAVAILABLE", err.Error(), nil)
+		if _, err := s.requireMissionPlugin(ctx, outcomeRecord.SpaceID); err != nil {
+			return PlanningView{}, err
 		}
 	}
 	projectID, project, err := s.projectForOutcome(ctx, outcomeID)
@@ -352,6 +352,23 @@ func (s *Service) RecoverInterruptedPlanning(ctx context.Context) (int64, error)
 	return recovered, nil
 }
 
+// requireMissionPlugin proves the /mission command is a verified runtime
+// artifact - installed, enabled, and byte-identical to what this daemon
+// ships - and returns the scoped CODEX_HOME carrying it. The home identifies
+// the provisioning so the native-harness launch runs inside exactly what was
+// verified. An unverifiable command fails closed: MISSION_PLUGIN_UNAVAILABLE.
+func (s *Service) requireMissionPlugin(ctx context.Context, spaceID domain.ResponsibilitySpaceID) (string, error) {
+	if s.missionPlugins == nil {
+		return "", apierr.Unavailable("MISSION_PLUGIN_UNAVAILABLE",
+			"The mission planning command cannot be verified in this environment", nil)
+	}
+	home, err := s.missionPlugins.EnsureMissionPlugin(ctx, spaceID)
+	if err != nil {
+		return "", apierr.Unavailable("MISSION_PLUGIN_UNAVAILABLE", err.Error(), nil)
+	}
+	return home, nil
+}
+
 func (s *Service) runPlanningTurn(ctx context.Context, outcomeID domain.OutcomeID, sessionID domain.PlanningSessionID, expectedRevision int64, text, requestKey string, finalize bool) (PlanningView, error) {
 	if s.planningSessions == nil || s.planningDialogue == nil || s.intelligenceRuns == nil || s.routing == nil {
 		return PlanningView{}, apierr.Internal("PLANNING_UNWIRED", "Interactive planning is unavailable in this environment")
@@ -365,6 +382,18 @@ func (s *Service) runPlanningTurn(ctx context.Context, outcomeID domain.OutcomeI
 	}
 	if view.Outcome.CurrentRevisionNumber != view.Session.ContractRevisionNumber || view.Session.Status == domain.PlanningSessionSuperseded {
 		return PlanningView{}, apierr.New(apierr.KindConflict, "PLANNING_CONTRACT_STALE", "The Contract changed. Start a new planning conversation.", map[string]any{"currentRevision": view.Outcome.CurrentRevisionNumber})
+	}
+	// The /mission command is re-verified at every turn, not only at session
+	// start: a wiped or tampered plugin between turns closes the turn before
+	// any owner message becomes durable, and the just-verified scoped home -
+	// not the user's ambient CODEX_HOME - is what the provider launch runs in.
+	harnessHome := ""
+	if view.Session.Binding.Mode == domain.PlanningModeNativeHarness {
+		home, err := s.requireMissionPlugin(ctx, view.Outcome.SpaceID)
+		if err != nil {
+			return PlanningView{}, err
+		}
+		harnessHome = home
 	}
 	payload, _ := json.Marshal(struct {
 		SessionID string `json:"sessionId"`
@@ -433,7 +462,8 @@ func (s *Service) runPlanningTurn(ctx context.Context, outcomeID domain.OutcomeI
 		// provider. Native repository tools remain a separately conformed mode;
 		// this launch path never silently upgrades packet access into tool access.
 		RepositoryContext: snapshot, RepositoryToolUse: false,
-		Turns: turns, Finalize: finalize,
+		HarnessHome: harnessHome,
+		Turns:       turns, Finalize: finalize,
 	}
 	encodedRequest, _ := json.Marshal(request)
 	run := domain.IntelligenceRun{

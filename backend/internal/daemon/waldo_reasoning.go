@@ -139,7 +139,7 @@ func newReasoner(cfg reasoningConfig) (ports.LLMClient, error) {
 		}
 		return client, nil
 	case providerCodex:
-		return newCodexReasoner(cfg, slog.Default())
+		return newCodexReasoner(cfg, slog.Default(), "")
 	default:
 		client, err := llmanthropic.New(llmanthropic.Config{APIKey: cfg.APIKey, Model: cfg.Model, Effort: cfg.Effort, BaseURL: cfg.BaseURL, MaxRetries: 0})
 		if err != nil {
@@ -180,7 +180,7 @@ func (p *configuredIntelligenceProvider) client(ctx context.Context) (ports.LLMC
 		return nil, err
 	}
 	if cfg.Provider == providerCodex {
-		return newCodexReasoner(reasoningConfig{Provider: cfg.Provider, Model: cfg.Model, Effort: cfg.Effort}, p.log)
+		return newCodexReasoner(reasoningConfig{Provider: cfg.Provider, Model: cfg.Model, Effort: cfg.Effort}, p.log, "")
 	}
 	return newReasoner(reasoningConfig{
 		Provider: cfg.Provider, APIKey: cfg.APIKey, Model: cfg.Model, Effort: cfg.Effort,
@@ -188,13 +188,17 @@ func (p *configuredIntelligenceProvider) client(ctx context.Context) (ports.LLMC
 	})
 }
 
-func newCodexReasoner(cfg reasoningConfig, log *slog.Logger) (ports.LLMClient, error) {
+// newCodexReasoner builds the Codex-backed reasoning client. codexHome binds
+// the launch to a scoped, verified CODEX_HOME (native-harness planning turns
+// pass the home the mission-plugin provisioner just verified); empty runs
+// against the ambient home (probes and settings verification).
+func newCodexReasoner(cfg reasoningConfig, log *slog.Logger, codexHome string) (ports.LLMClient, error) {
 	if log == nil {
 		log = slog.Default()
 	}
 	driver := codexappserver.New(codex.New(), log)
 	return codexappserver.NewIntelligenceClient(driver, codexappserver.IntelligenceConfig{
-		Model: cfg.Model, Effort: cfg.Effort, Timeout: 2 * time.Minute,
+		Model: cfg.Model, Effort: cfg.Effort, Timeout: 2 * time.Minute, CodexHome: codexHome,
 	}), nil
 }
 
@@ -280,7 +284,17 @@ func (p *configuredIntelligenceProvider) DiscussPlan(ctx context.Context, reques
 	}
 	var client ports.LLMClient
 	if cfg.Provider == providerCodex {
-		client, err = newCodexReasoner(reasoningConfig{Provider: cfg.Provider, Model: cfg.Model, Effort: cfg.Effort}, p.log)
+		// The planning turn provably runs inside the environment the outcome
+		// service just verified: request.HarnessHome is the mission-plugin
+		// provisioner's own return for this session's space. A native-harness
+		// turn without it is refused rather than silently run in the ambient
+		// home, because there the /mission command is unverified.
+		if request.Binding.Mode == domain.PlanningModeNativeHarness && strings.TrimSpace(request.HarnessHome) == "" {
+			return ports.PlanningDiscussionResponse{}, ports.NewReasoningFailure(
+				ports.ReasoningUnavailable,
+				"Native-harness planning requires the verified mission-plugin home from the planning service", nil)
+		}
+		client, err = newCodexReasoner(reasoningConfig{Provider: cfg.Provider, Model: cfg.Model, Effort: cfg.Effort}, p.log, request.HarnessHome)
 	} else {
 		client, err = newReasoner(reasoningConfig{
 			Provider: cfg.Provider, APIKey: cfg.APIKey, Model: cfg.Model, Effort: cfg.Effort, BaseURL: cfg.BaseURL,
@@ -315,7 +329,7 @@ func probeReasoning(ctx context.Context, cfg settingssvc.ReasoningConfig) error 
 	var client ports.LLMClient
 	var err error
 	if cfg.Provider == providerCodex {
-		client, err = newCodexReasoner(reasoningConfig{Provider: cfg.Provider, Model: cfg.Model, Effort: cfg.Effort}, slog.Default())
+		client, err = newCodexReasoner(reasoningConfig{Provider: cfg.Provider, Model: cfg.Model, Effort: cfg.Effort}, slog.Default(), "")
 	} else {
 		client, err = newReasoner(reasoningConfig{
 			Provider: cfg.Provider, APIKey: cfg.APIKey, Model: cfg.Model, Effort: cfg.Effort,
