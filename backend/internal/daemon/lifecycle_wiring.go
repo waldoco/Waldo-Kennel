@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/activitydispatch"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/codex"
 	agentregistry "github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/registry"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/container/dockerreap"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/reviewer"
@@ -276,12 +278,48 @@ type runtimeMessageSender interface {
 	SendMessage(ctx context.Context, handle ports.RuntimeHandle, message string) error
 }
 
+// paneTerminalRuntime is the state-aware delivery capability: everything the
+// Codex TUI delivery policy needs that SendMessage does not expose. tmux
+// implements it; runtimes that do not (conpty today) take the SendMessage
+// fallback, which is the pre-hardening fire-and-forget contract and is logged
+// as such.
+type paneTerminalRuntime interface {
+	GetOutput(ctx context.Context, handle ports.RuntimeHandle, lines int) (string, error)
+	PasteBuffer(ctx context.Context, handle ports.RuntimeHandle, text string) error
+	SendEnter(ctx context.Context, handle ports.RuntimeHandle) error
+	SendTab(ctx context.Context, handle ports.RuntimeHandle) error
+	CancelCopyMode(ctx context.Context, handle ports.RuntimeHandle)
+	PaneDead(ctx context.Context, handle ports.RuntimeHandle) (bool, error)
+}
+
+// boundPaneTerminal adapts a handle-bound runtime to codex.PaneTerminal.
+type boundPaneTerminal struct {
+	rt     paneTerminalRuntime
+	handle ports.RuntimeHandle
+}
+
+func (b boundPaneTerminal) Capture(ctx context.Context, lines int) (string, error) {
+	return b.rt.GetOutput(ctx, b.handle, lines)
+}
+func (b boundPaneTerminal) CancelCopyMode(ctx context.Context) { b.rt.CancelCopyMode(ctx, b.handle) }
+func (b boundPaneTerminal) PasteBuffer(ctx context.Context, text string) error {
+	return b.rt.PasteBuffer(ctx, b.handle, text)
+}
+func (b boundPaneTerminal) SendEnter(ctx context.Context) error {
+	return b.rt.SendEnter(ctx, b.handle)
+}
+func (b boundPaneTerminal) SendTab(ctx context.Context) error { return b.rt.SendTab(ctx, b.handle) }
+func (b boundPaneTerminal) PaneDead(ctx context.Context) (bool, error) {
+	return b.rt.PaneDead(ctx, b.handle)
+}
+
 // runtimeMessenger sends the user's message directly to the session's live
 // runtime pane. The HTTP controller has already validated and sanitized the
 // message body; this adapter only resolves the stored runtime handle.
 type runtimeMessenger struct {
 	store   *sqlite.Store
 	runtime runtimeMessageSender
+	log     *slog.Logger
 }
 
 func (m runtimeMessenger) Send(ctx context.Context, id domain.SessionID, message string) error {
@@ -299,13 +337,49 @@ func (m runtimeMessenger) Send(ctx context.Context, id domain.SessionID, message
 	if handleID == "" {
 		return fmt.Errorf("session %s: %w", id, sessionmanager.ErrIncompleteHandle)
 	}
-	return m.runtime.SendMessage(ctx, ports.RuntimeHandle{ID: handleID}, message)
+	handle := ports.RuntimeHandle{ID: handleID}
+
+	// Codex TUI sessions on a pane-terminal runtime take the state-aware
+	// delivery path: classify the pane, dispatch with the keymap-correct
+	// submit key, and report success only on positive acknowledgment. A send
+	// that cannot prove delivery fails honestly instead of returning 200 on
+	// accepted keystrokes (run 35303652394: the draft sat unsubmitted while
+	// the daemon believed the steer landed).
+	if rec.Harness == domain.HarnessCodex && rec.Mode == domain.SessionModeTUI {
+		if pt, ok := m.runtime.(paneTerminalRuntime); ok {
+			outcome, err := codex.NewDeliverer(codex.DefaultDelivererConfig()).Deliver(ctx, boundPaneTerminal{rt: pt, handle: handle}, message)
+			if err != nil {
+				var unk *codex.DeliveryUnknownError
+				if errors.As(err, &unk) && unk.Capture != "" {
+					m.log.Warn("codex tui delivery unknown; pane evidence", "session", id, "phase", unk.Phase, "pane_tail", tailFor(unk.Capture, 2000))
+				} else {
+					m.log.Warn("codex tui delivery failed", "session", id, "error", err)
+				}
+				return err
+			}
+			m.log.Info("codex tui delivery acknowledged", "session", id, "outcome", outcome.String())
+			return nil
+		}
+		m.log.Warn("runtime lacks state-aware delivery; falling back to fire-and-forget send", "session", id)
+	}
+	return m.runtime.SendMessage(ctx, handle, message)
+}
+
+// tailFor bounds pane evidence written to the daemon log.
+func tailFor(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[len(s)-max:]
 }
 
 // newSessionMessenger assembles the per-daemon agent messenger. For now, ao
 // send is intentionally minimal: submit the message to the live runtime pane.
-func newSessionMessenger(store *sqlite.Store, runtime runtimeMessageSender, _ *slog.Logger) ports.AgentMessenger {
-	return runtimeMessenger{store: store, runtime: runtime}
+func newSessionMessenger(store *sqlite.Store, runtime runtimeMessageSender, log *slog.Logger) ports.AgentMessenger {
+	if log == nil {
+		log = slog.Default()
+	}
+	return runtimeMessenger{store: store, runtime: runtime, log: log}
 }
 
 // modeAwareMessenger lets lifecycle start before the session manager while
