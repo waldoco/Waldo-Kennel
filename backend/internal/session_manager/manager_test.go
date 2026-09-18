@@ -2475,6 +2475,39 @@ func TestSaveTeardownDefersCredentialCleanupWhenDestroyFails(t *testing.T) {
 	}
 }
 
+// Both no-runtime states are confirmed-death conditions under the reaper's own
+// semantics and must discharge a retained cleanup obligation.
+func TestReconcileReapCleansAgentSessionHomeWhenRuntimeIsCertainlyGone(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		handle   string
+		aliveErr error
+	}{
+		{name: "no runtime handle", handle: ""},
+		{name: "runtime server unavailable", handle: "h1", aliveErr: ports.ErrRuntimeUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cleaner := &cleanerAgent{}
+			m, st, rt, _ := newCleanerManager(cleaner)
+			rt.aliveErr = tc.aliveErr
+			rec := domain.SessionRecord{
+				ID:           "mer-1",
+				ProjectID:    "mer",
+				Kind:         domain.KindWorker,
+				Metadata:     domain.SessionMetadata{RuntimeHandleID: tc.handle},
+				IsTerminated: true,
+			}
+			st.sessions["mer-1"] = rec
+			if err := m.reconcileReap(ctx, rec); err != nil {
+				t.Fatalf("reconcileReap err = %v", err)
+			}
+			if !reflect.DeepEqual(cleaner.cleaned, []string{"mer-1"}) {
+				t.Fatalf("reaper cleanups = %v, want [mer-1]", cleaner.cleaned)
+			}
+		})
+	}
+}
+
 // The reaper also discharges the obligation when it has to kill the leaked
 // runtime itself: after its destroy succeeds, death is confirmed.
 func TestReconcileReapCleansAgentSessionHomeAfterKill(t *testing.T) {

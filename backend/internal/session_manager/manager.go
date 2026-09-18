@@ -2356,12 +2356,19 @@ func (m *Manager) reconcileLive(ctx context.Context, rec domain.SessionRecord) e
 func (m *Manager) reconcileReap(ctx context.Context, rec domain.SessionRecord) error {
 	handle := runtimeHandle(rec.Metadata)
 	if handle.ID == "" {
+		// No runtime handle means no agent process can exist (an in-process
+		// chat controller dies with the daemon): confirmed-death, so any
+		// retained credential-cleanup obligation is discharged here.
+		m.cleanAgentSessionHomeBestEffort(&rec)
 		return nil
 	}
 	alive, err := m.runtime.IsAlive(ctx, handle)
 	if err != nil {
 		if errors.Is(err, ports.ErrRuntimeUnavailable) {
-			return nil // no server means no leaked session to reap
+			// No server means no leaked session: the process is conclusively
+			// gone, so the cleanup obligation is discharged too.
+			m.cleanAgentSessionHomeBestEffort(&rec)
+			return nil
 		}
 		return fmt.Errorf("reconcile reap %s: probe: %w", rec.ID, err)
 	}
