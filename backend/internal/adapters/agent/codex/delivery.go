@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -52,8 +53,10 @@ func (o DeliveryOutcome) String() string {
 	}
 }
 
-// DeliveryPendingError: the pane stayed unsteerable past the hold deadline;
-// the message was never injected and must stay queued kennel-side.
+// DeliveryPendingError: the pane stayed unsteerable past the hold deadline
+// BEFORE any injection; the message was never injected and must stay queued
+// kennel-side. An unsteerable pane discovered after the paste is NOT
+// pending - it is injected-but-unsubmitted unknown (DeliveryUnknownError).
 type DeliveryPendingError struct {
 	Reason UnsteerableReason
 }
@@ -62,9 +65,10 @@ func (e *DeliveryPendingError) Error() string {
 	return fmt.Sprintf("codex pane unsteerable (%s); message held, not injected", e.Reason)
 }
 
-// DeliveryUnknownError: keystrokes were sent but no acknowledgment was
-// observed inside the bounded window, or the pane failed closed before
-// dispatch. Capture preserves the pane evidence at decision time.
+// DeliveryUnknownError: the message may have been injected but no
+// acknowledgment was observed inside the bounded window, or the pane failed
+// closed mid-dispatch. Callers must NOT retry: a retry pastes a duplicate.
+// Capture preserves the pane evidence at decision time.
 type DeliveryUnknownError struct {
 	Phase   string
 	Capture string
@@ -156,6 +160,18 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 		return DeliveryNone, &DeliveryPendingError{Reason: reason}
 	}
 
+	// Pre-dispatch boundary: snapshot the pane so acknowledgment can be
+	// anchored to evidence that POSTDATES this delivery. A cleared composer
+	// alone never acks - the pane could have lost the draft spuriously.
+	boundary, err := term.Capture(ctx, d.cfg.CaptureLines)
+	if err != nil {
+		return DeliveryNone, &DeliveryUnknownError{Phase: "boundary capture: " + err.Error()}
+	}
+	anchor := ackAnchor{
+		echoes: countEchoRows(boundary, message),
+		queued: countQueuedRegion(boundary, message),
+	}
+
 	// Dispatch boundary: cancel copy mode, paste atomically, then WAIT FOR
 	// THE COMPOSER TO HOLD THE DRAFT before submitting. The wait is the
 	// ported issue-#28167 fix: the submit key fires only against observed
@@ -201,7 +217,9 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 	case PaneStateUnknown:
 		return DeliveryNone, &DeliveryUnknownError{Phase: "pre-submit classification", Capture: freshCapture}
 	case PaneStateUnsteerable:
-		return DeliveryNone, &DeliveryPendingError{Reason: freshReason}
+		// Injection already happened: this is injected-but-unsubmitted
+		// unknown, NOT a retryable pending hold.
+		return DeliveryNone, &DeliveryUnknownError{Phase: "post-injection unsteerable (" + string(freshReason) + ")", Capture: freshCapture}
 	}
 	submit := term.SendEnter
 	if freshState == PaneStateActiveTurn {
@@ -211,20 +229,57 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 		return DeliveryNone, &DeliveryUnknownError{Phase: "submit keystroke: " + err.Error()}
 	}
 
-	outcome, acked, lastCapture := d.awaitAck(ctx, term, message, freshState)
+	outcome, acked, lastCapture := d.awaitAck(ctx, term, message, freshState, anchor)
 	if acked {
 		return outcome, nil
 	}
-	// Bounded recovery: one nudge Enter (the existing sendConfirm contract),
-	// then stop guessing.
-	if err := term.SendEnter(ctx); err != nil {
-		return DeliveryNone, &DeliveryUnknownError{Phase: "recovery nudge: " + err.Error(), Capture: lastCapture}
+
+	// Bounded recovery, HIGH-2: NO unconditional Enter. Re-probe liveness and
+	// re-classify first; a retry keystroke fires only against observed safe
+	// state.
+	//
+	//  - Modal/overlay: a keystroke would answer it. Injected-but-unsubmitted
+	//    unknown; stop.
+	//  - Draft still in the composer: proof the first keystroke never landed
+	//    (nothing it could have submitted). Retry the keymap-correct key for
+	//    the LIVE state - Enter when idle, Tab mid-turn.
+	//  - Draft gone with no ack evidence: the first keystroke may have
+	//    submitted into a state we cannot confirm. Retyping Enter could
+	//    queue a duplicate or answer a dialog. Honestly unknown; stop.
+	dead, err = term.PaneDead(ctx)
+	if err != nil {
+		return DeliveryNone, &DeliveryUnknownError{Phase: "recovery liveness probe: " + err.Error(), Capture: lastCapture}
 	}
-	outcome, acked, lastCapture = d.awaitAck(ctx, term, message, freshState)
+	if dead {
+		return DeliveryNone, ErrPaneDead
+	}
+	recCapture, err := term.Capture(ctx, d.cfg.CaptureLines)
+	if err != nil {
+		return DeliveryNone, &DeliveryUnknownError{Phase: "recovery capture: " + err.Error(), Capture: lastCapture}
+	}
+	recState, recReason := ClassifyPaneState(recCapture)
+	switch recState {
+	case PaneStateUnsteerable:
+		return DeliveryNone, &DeliveryUnknownError{Phase: "post-submit unsteerable (" + string(recReason) + ")", Capture: recCapture}
+	case PaneStateUnknown:
+		return DeliveryNone, &DeliveryUnknownError{Phase: "post-submit classification", Capture: recCapture}
+	}
+	retryable := message == "" || DraftPresent(recCapture, message)
+	if !retryable {
+		return DeliveryNone, &DeliveryUnknownError{Phase: "no acknowledgment; draft gone (may have submitted)", Capture: recCapture}
+	}
+	retry := term.SendEnter
+	if message != "" && recState == PaneStateActiveTurn {
+		retry = term.SendTab
+	}
+	if err := retry(ctx); err != nil {
+		return DeliveryNone, &DeliveryUnknownError{Phase: "recovery keystroke: " + err.Error(), Capture: recCapture}
+	}
+	outcome, acked, lastCapture = d.awaitAck(ctx, term, message, recState, anchor)
 	if acked {
 		return outcome, nil
 	}
-	return DeliveryNone, &DeliveryUnknownError{Phase: "no acknowledgment after submit + recovery nudge", Capture: lastCapture}
+	return DeliveryNone, &DeliveryUnknownError{Phase: "no acknowledgment after submit + bounded retry", Capture: lastCapture}
 }
 
 // awaitSteerable polls classification until the pane is steerable or the
@@ -270,26 +325,44 @@ func (d *Deliverer) awaitDraft(ctx context.Context, term PaneTerminal, message s
 	}
 }
 
-// awaitAck polls for positive acknowledgment after the submit keystroke:
-// the draft must be gone, and the pane must show turn evidence (a running
-// turn) or a cleared idle composer (an instantly-finished turn). A queued
-// message is acknowledged when the draft clears while the turn runs.
-func (d *Deliverer) awaitAck(ctx context.Context, term PaneTerminal, message string, dispatchState PaneState) (DeliveryOutcome, bool, string) {
+// ackAnchor snapshots message-render evidence BEFORE dispatch so the ack
+// can require post-boundary evidence. Without it, a cleared composer plus an
+// idle footer - or a continuing original turn - would false-positive as
+// acknowledgment of a message that never entered the turn stream.
+type ackAnchor struct {
+	echoes int // "› <message>" transcript rows before dispatch
+	queued int // message-text rows below the last working line, pre-dispatch
+}
+
+// awaitAck polls for positive acknowledgment after the submit keystroke.
+// Idle dispatch (submitted): the draft must be gone AND a NEW "› <message>"
+// echo row must exist beyond the pre-dispatch count, with turn evidence
+// below it (a running turn, tool output, or a finished-turn marker) or a
+// pane that positively classifies idle with the echo in scrollback (an
+// instantly-finished turn). Active-turn dispatch (queued): the draft must be
+// gone AND the message must render below the last working line beyond the
+// pre-dispatch count while the original turn still runs. Anything else fails
+// closed to unknown.
+func (d *Deliverer) awaitAck(ctx context.Context, term PaneTerminal, message string, dispatchState PaneState, anchor ackAnchor) (DeliveryOutcome, bool, string) {
 	deadline := time.Now().Add(d.cfg.AckDeadline)
 	var lastCapture string
 	for {
 		capture, err := term.Capture(ctx, d.cfg.CaptureLines)
 		if err == nil {
 			lastCapture = capture
-			if message == "" || !DraftPresent(capture, message) {
-				state, _ := ClassifyPaneState(capture)
-				switch state {
-				case PaneStateActiveTurn:
-					if dispatchState == PaneStateActiveTurn {
+			state, _ := ClassifyPaneState(capture)
+			if message == "" {
+				// Bare nudge: acknowledgment is a turn starting on a pane
+				// that was idle at dispatch.
+				if dispatchState == PaneStateIdle && state == PaneStateActiveTurn {
+					return DeliverySubmitted, true, lastCapture
+				}
+			} else if !DraftPresent(capture, message) {
+				if dispatchState == PaneStateActiveTurn {
+					if state == PaneStateActiveTurn && countQueuedRegion(capture, message) > anchor.queued {
 						return DeliveryQueued, true, lastCapture
 					}
-					return DeliverySubmitted, true, lastCapture
-				case PaneStateIdle:
+				} else if submittedAck(capture, message, anchor.echoes, state) {
 					return DeliverySubmitted, true, lastCapture
 				}
 			}
@@ -301,6 +374,89 @@ func (d *Deliverer) awaitAck(ctx context.Context, term PaneTerminal, message str
 			return DeliveryNone, false, lastCapture
 		}
 	}
+}
+
+// submittedAck reports whether the pane proves the message entered the turn
+// stream: a new scrollback echo beyond the pre-dispatch count plus
+// post-echo turn evidence (running turn, tool call, or finished-turn
+// marker) or a positively-idle pane showing the new echo.
+func submittedAck(capture, message string, preEchoes int, state PaneState) bool {
+	rows := echoRowIndices(capture, message)
+	if len(rows) <= preEchoes {
+		return false
+	}
+	last := rows[len(rows)-1]
+	if turnEvidenceBelowRow(capture, last) {
+		return true
+	}
+	return state == PaneStateIdle
+}
+
+// echoRowIndices returns the line indices of transcript rows echoing the
+// message as a submitted user turn ("› <first line of message>").
+func echoRowIndices(capture, message string) []int {
+	want := normalizeSpaces(firstLine(message))
+	if want == "" {
+		return nil
+	}
+	var rows []int
+	for i, line := range strings.Split(capture, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		if !strings.HasPrefix(trimmed, "›") {
+			continue
+		}
+		body := normalizeSpaces(strings.TrimSpace(strings.TrimPrefix(trimmed, "›")))
+		if body == want {
+			rows = append(rows, i)
+		}
+	}
+	return rows
+}
+
+func countEchoRows(capture, message string) int { return len(echoRowIndices(capture, message)) }
+
+// turnEvidenceBelowRow reports whether a line below row carries turn
+// evidence: the working indicator, a tool call/result, or a finished-turn
+// marker.
+func turnEvidenceBelowRow(capture string, row int) bool {
+	lines := strings.Split(capture, "\n")
+	for _, line := range lines[row+1:] {
+		if strings.Contains(line, "esc to interrupt") ||
+			strings.Contains(line, "• Called") ||
+			strings.Contains(line, "└ ") ||
+			doneMarker.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+var doneMarker = regexp.MustCompile(`\bdone \d`)
+
+// countQueuedRegion counts message-text rows below the LAST working
+// indicator - the region where a queued steered message renders while the
+// original turn runs. Queued rendering is the least verified ground truth;
+// a mismatch fails closed to unknown rather than acking on the continuing
+// original turn alone.
+func countQueuedRegion(capture, message string) int {
+	want := normalizeSpaces(firstLine(message))
+	if want == "" {
+		return 0
+	}
+	lines := strings.Split(capture, "\n")
+	lastWorking := -1
+	for i, line := range lines {
+		if strings.Contains(line, "esc to interrupt") {
+			lastWorking = i
+		}
+	}
+	count := 0
+	for _, line := range lines[lastWorking+1:] {
+		if strings.Contains(normalizeSpaces(line), want) {
+			count++
+		}
+	}
+	return count
 }
 
 // DraftPresent reports whether the pane still shows the message as an

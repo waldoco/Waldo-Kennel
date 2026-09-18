@@ -146,21 +146,33 @@ func cancelCopyModeArgs(id string) []string {
 	return []string{"send-keys", "-t", id, "-X", "cancel"}
 }
 
-// loadBufferArgs builds args for `tmux load-buffer <path>` reading the buffer
-// content from a daemon-managed temp file (the command runner has no stdin
-// plumbing; a temp file keeps the runner interface untouched). Buffer
-// delivery replaces keystroke streaming for prompt text: one paste-buffer
-// applies the whole message atomically, immune to per-chunk key interleaving.
-func loadBufferArgs(path string) []string {
-	return []string{"load-buffer", path}
+// loadBufferArgs builds args for `tmux load-buffer -b <name> <path>` reading
+// the buffer content from a daemon-managed temp file (the command runner has
+// no stdin plumbing; a temp file keeps the runner interface untouched). The
+// buffer name is MANDATORY and unique per delivery: the unnamed buffer is a
+// single global stack slot, so concurrent sessions could interleave
+// A-load, B-load, A-paste and deliver B's text into A's provider
+// (cross-session injection) - the named buffer makes the load/paste pair
+// atomic per delivery. Buffer delivery replaces keystroke streaming for
+// prompt text: one paste-buffer applies the whole message atomically,
+// immune to per-chunk key interleaving.
+func loadBufferArgs(name, path string) []string {
+	return []string{"load-buffer", "-b", name, path}
 }
 
-// pasteBufferArgs builds args for `tmux paste-buffer -p -d -t <id>`.
-// -p wraps the paste in bracketed-paste framing so the target TUI treats it
-// as one paste event; -d deletes the buffer after pasting so a retried
-// delivery never replays stale content.
-func pasteBufferArgs(id string) []string {
-	return []string{"paste-buffer", "-p", "-d", "-t", id}
+// pasteBufferArgs builds args for `tmux paste-buffer -b <name> -p -d -t <id>`.
+// -b pastes exactly the named buffer this delivery loaded (never the global
+// stack top); -p wraps the paste in bracketed-paste framing so the target
+// TUI treats it as one paste event; -d deletes the named buffer after
+// pasting so a retried delivery never replays stale content.
+func pasteBufferArgs(name, id string) []string {
+	return []string{"paste-buffer", "-b", name, "-p", "-d", "-t", id}
+}
+
+// deleteBufferArgs builds args for `tmux delete-buffer -b <name>`, the
+// cleanup path when a load succeeded but the paste never ran.
+func deleteBufferArgs(name string) []string {
+	return []string{"delete-buffer", "-b", name}
 }
 
 // paneDeadArgs builds args for `tmux display-message -p -t <id> #{pane_dead}`:

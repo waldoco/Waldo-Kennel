@@ -95,9 +95,10 @@ func TestWiring_CodexTUISendUsesStateAwareDelivery(t *testing.T) {
 
 	rt := &fakePaneTerminalRuntime{captures: []string{
 		wiringPaneIdleNoDraft, // classify: idle
+		wiringPaneIdleNoDraft, // pre-dispatch boundary snapshot (no echo yet)
 		wiringPaneDraft,       // settle: draft visible
 		wiringPaneDraft,       // pre-submit re-classify
-		wiringPaneSubmitted,   // ack: turn running, draft gone
+		wiringPaneSubmitted,   // ack: new echo + turn running, draft gone
 	}}
 	messenger := newSessionMessenger(store, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	id := newCodexTUISession(t, store, domain.HarnessCodex, domain.SessionModeTUI)
@@ -124,8 +125,9 @@ func TestWiring_CodexTUISendSurfacesDeliveryUnknown(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	rt := &fakePaneTerminalRuntime{captures: []string{
-		wiringPaneIdleNoDraft,
-		wiringPaneDraft, // settle + pre-submit + every ack poll: draft stuck
+		wiringPaneIdleNoDraft, // classify: idle
+		wiringPaneIdleNoDraft, // pre-dispatch boundary snapshot
+		wiringPaneDraft,       // settle + pre-submit + ack polls + recovery probe: draft stuck
 	}}
 	messenger := newSessionMessenger(store, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	id := newCodexTUISession(t, store, domain.HarnessCodex, domain.SessionModeTUI)

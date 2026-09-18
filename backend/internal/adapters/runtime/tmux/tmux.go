@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -1171,12 +1172,19 @@ func (e commandError) Error() string {
 
 func (e commandError) Unwrap() error { return e.err }
 
-// PasteBuffer delivers text to the pane as ONE atomic bracketed paste
-// (load-buffer from a daemon-managed temp file, then paste-buffer -p -d),
-// replacing per-chunk send-keys -l streaming. Ported from AWS
-// cli-agent-orchestrator's tmux delivery: an atomic paste cannot interleave
-// with a TUI's key handling, and -d drops the buffer so a retried delivery
-// never replays stale content.
+// pasteBufferSeq names each delivery's tmux buffer uniquely (per process),
+// so concurrent sessions can never interleave one global buffer slot.
+var pasteBufferSeq atomic.Int64
+
+// PasteBuffer delivers text to the pane as ONE atomic bracketed paste from a
+// UNIQUELY NAMED buffer (load-buffer -b from a daemon temp file, then
+// paste-buffer -b -p -d), replacing per-chunk send-keys -l streaming. Ported
+// from AWS cli-agent-orchestrator's tmux delivery: an atomic paste cannot
+// interleave with a TUI's key handling, and -d drops the buffer so a retried
+// delivery never replays stale content. The named buffer is load-bearing for
+// correctness under concurrent sessions: with the unnamed global stack,
+// A-load, B-load, A-paste delivers B's text into A's provider. If the paste
+// fails after a successful load, the named buffer is deleted explicitly.
 func (r *Runtime) PasteBuffer(ctx context.Context, handle ports.RuntimeHandle, text string) error {
 	id, err := handleID(handle)
 	if err != nil {
@@ -1194,10 +1202,12 @@ func (r *Runtime) PasteBuffer(ctx context.Context, handle ports.RuntimeHandle, t
 	if err := buf.Close(); err != nil {
 		return fmt.Errorf("tmux runtime: stage paste buffer: %w", err)
 	}
-	if _, err := r.run(ctx, loadBufferArgs(buf.Name())...); err != nil {
+	bufferName := fmt.Sprintf("kennel-paste-%d-%d", os.Getpid(), pasteBufferSeq.Add(1))
+	if _, err := r.run(ctx, loadBufferArgs(bufferName, buf.Name())...); err != nil {
 		return fmt.Errorf("tmux runtime: load paste buffer %s: %w", id, err)
 	}
-	if _, err := r.run(ctx, pasteBufferArgs(id)...); err != nil {
+	if _, err := r.run(ctx, pasteBufferArgs(bufferName, id)...); err != nil {
+		_, _ = r.run(ctx, deleteBufferArgs(bufferName)...)
 		return fmt.Errorf("tmux runtime: paste buffer %s: %w", id, err)
 	}
 	return nil

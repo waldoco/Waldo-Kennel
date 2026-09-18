@@ -23,6 +23,8 @@ type fakeTerminal struct {
 	// independent of how many ack polls a wall-clock window happens to span.
 	afterEnters   int
 	afterEntersTo string
+	afterTabs     int
+	afterTabsTo   string
 }
 
 func (f *fakeTerminal) Capture(ctx context.Context, lines int) (string, error) {
@@ -36,7 +38,10 @@ func (f *fakeTerminal) Capture(ctx context.Context, lines int) (string, error) {
 	return out, nil
 }
 
-func (f *fakeTerminal) CancelCopyMode(ctx context.Context) { f.cancels++; f.ops = append(f.ops, "cancel") }
+func (f *fakeTerminal) CancelCopyMode(ctx context.Context) {
+	f.cancels++
+	f.ops = append(f.ops, "cancel")
+}
 func (f *fakeTerminal) PasteBuffer(ctx context.Context, text string) error {
 	f.pastes = append(f.pastes, text)
 	f.ops = append(f.ops, "paste")
@@ -50,7 +55,14 @@ func (f *fakeTerminal) SendEnter(ctx context.Context) error {
 	}
 	return nil
 }
-func (f *fakeTerminal) SendTab(ctx context.Context) error   { f.tabs++; f.ops = append(f.ops, "tab"); return nil }
+func (f *fakeTerminal) SendTab(ctx context.Context) error {
+	f.tabs++
+	f.ops = append(f.ops, "tab")
+	if f.afterTabs > 0 && f.tabs >= f.afterTabs {
+		f.captures = []string{f.afterTabsTo}
+	}
+	return nil
+}
 func (f *fakeTerminal) PaneDead(ctx context.Context) (bool, error) {
 	f.ops = append(f.ops, "probe")
 	return f.dead, nil
@@ -121,15 +133,39 @@ const paneSubmittedAck = `› Execute the following approved WorkUnit inside you
 
   gpt-6-astra default · /private/var/folders/x/worktrees/mer-1 · Create persistent fixt...`
 
-// idleClearedAck: instant-completion path - draft gone, pane back to idle.
+// paneQueuedAck: mid-turn queue acknowledgment - the original turn still
+// runs and the steered message renders below the working line, gone from
+// the composer input row.
+const paneQueuedAck = `› Execute the following approved WorkUnit inside your isolated worktree.
+
+• Called kennel_governed.list_repository({})
+  └ README.md
+
+  Working (14s, esc to interrupt)
+
+› Run this shell command: for i in 1 2 3 4 5 6; do echo b4-$i; sleep 3; done
+
+› Ask Codex to do anything
+
+  gpt-6-astra default · /tmp/worktrees/mer-1 · session title`
+
+// paneInstantAck: an instantly-finished turn - the echo row sits in the
+// scrollback and the pane is already back to idle, no working indicator.
+var paneInstantAck = strings.Replace(paneIdleNoDraft,
+	"› Ask Codex to do anything",
+	"› "+msg+"\n\n› Ask Codex to do anything", 1)
+
+// idleClearedAck: draft vanished with NO echo and NO turn evidence - the
+// HIGH-1 false-positive pane. Must never ack.
 var paneIdleClearedAck = paneIdleNoDraft
 
 func TestDeliverIdleHappyPath(t *testing.T) {
 	term := &fakeTerminal{captures: []string{
 		paneIdleNoDraft,          // pre-dispatch classification
+		paneIdleNoDraft,          // pre-dispatch boundary snapshot (no echo yet)
 		paneIdleWithSteeredDraft, // settle: draft visible
 		paneIdleWithSteeredDraft, // pre-submit re-classification (still idle)
-		paneSubmittedAck,         // ack: draft gone, turn running
+		paneSubmittedAck,         // ack: draft gone, new echo + turn running
 	}}
 	outcome, err := testDeliverer().Deliver(context.Background(), term, msg)
 	if err != nil {
@@ -151,9 +187,10 @@ func TestDeliverIdleHappyPath(t *testing.T) {
 func TestDeliverActiveTurnQueuesViaTab(t *testing.T) {
 	term := &fakeTerminal{captures: []string{
 		paneActive,          // pre-dispatch: active turn
+		paneActive,          // boundary snapshot (nothing queued yet)
 		paneActiveWithDraft, // settle: draft visible
 		paneActiveWithDraft, // pre-submit: still active
-		paneActive,          // ack: draft cleared while turn runs => queued
+		paneQueuedAck,       // ack: draft gone, message queued below the working line
 	}}
 	outcome, err := testDeliverer().Deliver(context.Background(), term, msg)
 	if err != nil {
@@ -195,6 +232,7 @@ func TestDeliverHoldsWhileUnsteerableThenProceeds(t *testing.T) {
 		paneFixtureApproval,      // approval dialog up
 		paneFixtureApproval,      // still up
 		paneIdleNoDraft,          // cleared -> idle
+		paneIdleNoDraft,          // boundary snapshot
 		paneIdleWithSteeredDraft, // settle
 		paneIdleWithSteeredDraft, // pre-submit
 		paneSubmittedAck,         // ack
@@ -250,9 +288,10 @@ func TestDeliverUnknownWhenPasteNeverLands(t *testing.T) {
 func TestDeliverUnknownWhenDraftNeverSubmits(t *testing.T) {
 	term := &fakeTerminal{captures: []string{
 		paneIdleNoDraft,          // classify: idle
+		paneIdleNoDraft,          // boundary snapshot
 		paneIdleWithSteeredDraft, // settle: draft visible
 		paneIdleWithSteeredDraft, // pre-submit: idle
-		paneIdleWithSteeredDraft, // ack polls: draft persists (script repeats)
+		paneIdleWithSteeredDraft, // ack polls + recovery: draft persists (script repeats)
 	}}
 	_, err := testDeliverer().Deliver(context.Background(), term, msg)
 	var unk *DeliveryUnknownError
@@ -275,8 +314,9 @@ func TestDeliverUnknownWhenDraftNeverSubmits(t *testing.T) {
 func TestDeliverRecoveryNudgeSucceeds(t *testing.T) {
 	term := &fakeTerminal{captures: []string{
 		paneIdleNoDraft,
+		paneIdleNoDraft,          // boundary snapshot
 		paneIdleWithSteeredDraft, // settle
-		paneIdleWithSteeredDraft, // pre-submit, then ack window repeats it: Enter absorbed
+		paneIdleWithSteeredDraft, // pre-submit, then ack window + recovery probe repeat it: Enter absorbed
 	}}
 	term.afterEnters = 2
 	term.afterEntersTo = paneSubmittedAck
@@ -310,6 +350,7 @@ func TestDraftPresentScrollbackEchoIsNotDraft(t *testing.T) {
 func TestDeliverEmptyMessageNudge(t *testing.T) {
 	term := &fakeTerminal{captures: []string{
 		paneIdleWithSteeredDraft, // classify: idle (draft from an earlier paste)
+		paneIdleWithSteeredDraft, // boundary snapshot
 		paneIdleWithSteeredDraft, // pre-submit
 		paneSubmittedAck,         // ack after nudge
 	}}
@@ -322,5 +363,117 @@ func TestDeliverEmptyMessageNudge(t *testing.T) {
 	}
 	if term.enters != 1 || len(term.pastes) != 0 {
 		t.Fatalf("enters=%d pastes=%d, want 1/0", term.enters, len(term.pastes))
+	}
+}
+
+// TestDeliverIdleInstantCompletion: the turn finishes inside the ack window
+// - echo row in scrollback, pane already idle. The new echo row beyond the
+// pre-dispatch boundary is what distinguishes this from a spuriously
+// cleared composer.
+func TestDeliverIdleInstantCompletion(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneIdleNoDraft,
+		paneIdleNoDraft,
+		paneIdleWithSteeredDraft,
+		paneIdleWithSteeredDraft,
+		paneInstantAck,
+	}}
+	outcome, err := testDeliverer().Deliver(context.Background(), term, msg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if outcome != DeliverySubmitted {
+		t.Fatalf("outcome = %v, want submitted", outcome)
+	}
+}
+
+// TestDeliverClearedComposerWithoutEchoIsUnknown pins the HIGH-1 false
+// positive: the draft vanished but NO new user-message echo or turn
+// evidence exists. A cleared composer plus an idle footer is NOT an ack,
+// and the recovery path must not fire a blind second Enter.
+func TestDeliverClearedComposerWithoutEchoIsUnknown(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneIdleNoDraft,
+		paneIdleNoDraft,
+		paneIdleWithSteeredDraft,
+		paneIdleWithSteeredDraft,
+		paneIdleClearedAck, // ack polls + recovery: draft gone, no echo (repeats)
+	}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError", err)
+	}
+	if term.enters != 1 {
+		t.Fatalf("enters = %d, want exactly 1 (no blind retry without draft proof)", term.enters)
+	}
+}
+
+// TestDeliverPostPasteModalIsUnknownNotPending pins HIGH-3: a modal that
+// appears AFTER injection is injected-but-unsubmitted unknown, never a
+// retryable pending hold - a caller retry would paste a duplicate.
+func TestDeliverPostPasteModalIsUnknownNotPending(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneIdleNoDraft,
+		paneIdleNoDraft,
+		paneIdleWithSteeredDraft,
+		paneFixtureApproval, // pre-submit re-classification: modal appeared
+	}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError", err)
+	}
+	var pend *DeliveryPendingError
+	if errors.As(err, &pend) {
+		t.Fatal("post-injection modal must not surface as retryable pending")
+	}
+	if term.enters != 0 || term.tabs != 0 {
+		t.Fatalf("keystroke sent into a modal: %v", term.ops)
+	}
+}
+
+// TestDeliverPostSubmitModalStopsRetry pins HIGH-2: the submit keystroke
+// fired, then a modal surfaced. Recovery must not press Enter into it.
+func TestDeliverPostSubmitModalStopsRetry(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneIdleNoDraft,
+		paneIdleNoDraft,
+		paneIdleWithSteeredDraft,
+		paneIdleWithSteeredDraft,
+		paneFixtureApproval, // ack polls + recovery: modal (repeats)
+	}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError", err)
+	}
+	if term.enters != 1 {
+		t.Fatalf("enters = %d, want exactly 1 (no Enter into the modal)", term.enters)
+	}
+}
+
+// TestDeliverRecoveryUsesTabMidTurn pins HIGH-2: when the first queue key
+// is absorbed and the draft still sits in the composer mid-turn, the
+// recovery keystroke is Tab - never Enter, which would not queue.
+func TestDeliverRecoveryUsesTabMidTurn(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneActive,
+		paneActive,
+		paneActiveWithDraft,
+		paneActiveWithDraft,
+		paneActiveWithDraft, // ack polls + recovery probe: Tab absorbed, draft persists (repeats)
+	}}
+	term.afterTabs = 2
+	term.afterTabsTo = paneQueuedAck
+	outcome, err := testDeliverer().Deliver(context.Background(), term, msg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if outcome != DeliveryQueued {
+		t.Fatalf("outcome = %v, want queued", outcome)
+	}
+	if term.tabs != 2 || term.enters != 0 {
+		t.Fatalf("tabs=%d enters=%d, want 2/0", term.tabs, term.enters)
 	}
 }

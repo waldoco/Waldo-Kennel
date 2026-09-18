@@ -82,8 +82,11 @@ func ClassifyPaneState(capture string) (PaneState, UnsteerableReason) {
 	}
 
 	// A running turn: codex renders the working status with an elapsed timer
-	// and the interrupt hint in the composer status area.
-	if strings.Contains(capture, "esc to interrupt") {
+	// and the interrupt hint in the composer status area. The hint is a
+	// bottom-anchored status token: scope it to the tail so an "esc to
+	// interrupt" line quoted in scrollback (e.g. an old turn still inside a
+	// 120-line capture) cannot pass as a live working indicator.
+	if strings.Contains(tailLines(capture, 10), "esc to interrupt") {
 		return PaneStateActiveTurn, ""
 	}
 
@@ -93,6 +96,15 @@ func ClassifyPaneState(capture string) (PaneState, UnsteerableReason) {
 		return PaneStateIdle, ""
 	}
 	return PaneStateUnknown, ""
+}
+
+// tailLines returns the last n lines of the capture.
+func tailLines(capture string, n int) string {
+	lines := strings.Split(capture, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // hasComposerPrompt reports whether a codex composer input line (rendered

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1395,13 +1396,130 @@ func TestStateAwareDeliveryArgs(t *testing.T) {
 	if got, want := cancelCopyModeArgs("sess-1"), []string{"send-keys", "-t", "sess-1", "-X", "cancel"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("cancelCopyModeArgs = %v, want %v", got, want)
 	}
-	if got, want := loadBufferArgs("/tmp/x"), []string{"load-buffer", "/tmp/x"}; !reflect.DeepEqual(got, want) {
+	if got, want := loadBufferArgs("kennel-paste-1-1", "/tmp/x"), []string{"load-buffer", "-b", "kennel-paste-1-1", "/tmp/x"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("loadBufferArgs = %v, want %v", got, want)
 	}
-	if got, want := pasteBufferArgs("sess-1"), []string{"paste-buffer", "-p", "-d", "-t", "sess-1"}; !reflect.DeepEqual(got, want) {
+	if got, want := pasteBufferArgs("kennel-paste-1-1", "sess-1"), []string{"paste-buffer", "-b", "kennel-paste-1-1", "-p", "-d", "-t", "sess-1"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("pasteBufferArgs = %v, want %v", got, want)
+	}
+	if got, want := deleteBufferArgs("kennel-paste-1-1"), []string{"delete-buffer", "-b", "kennel-paste-1-1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("deleteBufferArgs = %v, want %v", got, want)
 	}
 	if got, want := paneDeadArgs("sess-1"), []string{"display-message", "-p", "-t", "sess-1", "#{pane_dead}"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("paneDeadArgs = %v, want %v", got, want)
+	}
+}
+
+// -- PasteBuffer concurrency (review CRITICAL) --
+
+// tmuxBufferServer models the tmux server's buffer table for the paste
+// path: load-buffer stores file content under a name (the UNNAMED buffer is
+// a single global stack slot "_"), paste-buffer reads a named slot into a
+// target pane. A barrier forces the adversarial interleaving the review
+// called out: A-load, B-load, A-paste, B-paste.
+type tmuxBufferServer struct {
+	mu      sync.Mutex
+	buffers map[string]string
+	pasted  map[string]string // pane id -> delivered text
+	barrier chan struct{}
+	pastes  int
+}
+
+func newTmuxBufferServer() *tmuxBufferServer {
+	return &tmuxBufferServer{
+		buffers: make(map[string]string),
+		pasted:  make(map[string]string),
+		barrier: make(chan struct{}),
+	}
+}
+
+func (srv *tmuxBufferServer) Run(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	switch args[0] {
+	case "load-buffer":
+		bufName := "_"
+		path := args[len(args)-1]
+		for i, a := range args {
+			if a == "-b" && i+1 < len(args) {
+				bufName = args[i+1]
+			}
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		srv.buffers[bufName] = string(data)
+		// Hold the FIRST delivery's load until the SECOND delivery's load
+		// lands: forces A-load, B-load, A-paste ordering.
+		if len(srv.buffers) == 1 {
+			srv.mu.Unlock()
+			select {
+			case <-srv.barrier:
+			case <-ctx.Done():
+				srv.mu.Lock()
+				return nil, ctx.Err()
+			case <-time.After(5 * time.Second):
+				srv.mu.Lock()
+				return nil, errors.New("test barrier timed out waiting for the second load")
+			}
+			srv.mu.Lock()
+		} else {
+			close(srv.barrier)
+		}
+		return nil, nil
+	case "paste-buffer":
+		bufName := "_"
+		target := ""
+		for i, a := range args {
+			if a == "-b" && i+1 < len(args) {
+				bufName = args[i+1]
+			}
+			if a == "-t" && i+1 < len(args) {
+				target = args[i+1]
+			}
+		}
+		srv.pasted[target] = srv.buffers[bufName]
+		return nil, nil
+	case "delete-buffer":
+		return nil, nil
+	}
+	return nil, nil
+}
+
+// TestPasteBufferConcurrentDeliveriesNeverInterleave is the review-CRITICAL
+// regression: two concurrent deliveries MUST NOT cross-inject. The fake
+// server forces A-load, B-load, A-paste; with the old unnamed global buffer
+// A's paste would deliver B's text into A's pane.
+func TestPasteBufferConcurrentDeliveriesNeverInterleave(t *testing.T) {
+	srv := newTmuxBufferServer()
+	r := New(Options{Binary: "tmux-test", Timeout: time.Second, Shell: "/bin/sh"})
+	r.runner = srv
+	r.reapSessions = (&recordingReaper{}).reap
+
+	texts := map[string]string{
+		"sess-1": "ALPHA delivery: the first session's prompt text",
+		"sess-2": "BRAVO delivery: the second session's prompt text",
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for id, text := range texts {
+		wg.Add(1)
+		go func(id, text string) {
+			defer wg.Done()
+			errs <- r.PasteBuffer(context.Background(), ports.RuntimeHandle{ID: id}, text)
+		}(id, text)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("PasteBuffer: %v", err)
+		}
+	}
+	for id, want := range texts {
+		if got := srv.pasted[id]; got != want {
+			t.Fatalf("pane %s received %q, want its own text %q (cross-session injection)", id, got, want)
+		}
 	}
 }
