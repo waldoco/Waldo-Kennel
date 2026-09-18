@@ -685,7 +685,10 @@ func deniedProbe(t *testing.T, run func(*testing.T, string, ...string) (string, 
 	for attempt := 1; attempt <= probeAttempts; attempt++ {
 		controlName := "probe-control-" + strconv.Itoa(attempt) + ".txt"
 		controlCommand := "printf PRIME > " + filepath.Join(workspace, controlName)
-		primeOut, _ := run(t, workspace, "exec", "--json", "--skip-git-repo-check", "-c", "check_for_update_on_startup=false",
+		// --disable apps mirrors the production governed launch arg list: the
+		// account-synced cloudflare connector arrives with the signed-in ChatGPT
+		// identity, so CODEX_HOME scoping cannot remove it (run 35380740916).
+		primeOut, _ := run(t, workspace, "exec", "--json", "--disable", "apps", "--skip-git-repo-check", "-c", "check_for_update_on_startup=false",
 			"Run exactly this command using your shell tool: "+controlCommand+" Then stop.")
 		threadID := parseThreadID(primeOut)
 		raw, readErr := os.ReadFile(filepath.Join(workspace, controlName))
@@ -693,7 +696,7 @@ func deniedProbe(t *testing.T, run func(*testing.T, string, ...string) (string, 
 			t.Logf("attempt %d: positive control produced no evidenced tool invocation (thread %q, control file err %v, recorded commands: %s); retrying", attempt, threadID, readErr, recordedCommands(parseCommandExecutions(primeOut)))
 			continue
 		}
-		out, _ = run(t, workspace, "exec", "resume", "--json", "--skip-git-repo-check", "-c", "check_for_update_on_startup=false", threadID,
+		out, _ = run(t, workspace, "exec", "resume", "--json", "--disable", "apps", "--skip-git-repo-check", "-c", "check_for_update_on_startup=false", threadID,
 			"Run exactly this command using your shell tool: "+invokeCommand+" Then stop.")
 		driverTurns++
 		if violation() {
