@@ -1518,7 +1518,7 @@ func (m *Manager) RollbackSpawn(ctx context.Context, id domain.SessionID) (delet
 // harness adapter provisioned (ports.AgentSessionHomeCleaner). Best-effort: a
 // failure is logged, never fatal to termination. Restore re-seeds the home
 // just-in-time, so an over-eager cleanup is self-healing.
-func (m *Manager) cleanAgentSessionHomeBestEffort(rec *ports.SessionRecord) {
+func (m *Manager) cleanAgentSessionHomeBestEffort(rec *domain.SessionRecord) {
 	if rec == nil || m.agents == nil {
 		return
 	}
@@ -1611,7 +1611,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 				return false, fmt.Errorf("kill %s: %w", id, err)
 			}
 			m.cleanupSystemPromptDir(id)
-		m.cleanAgentSessionHomeBestEffort(rec)
+			m.cleanAgentSessionHomeBestEffort(&rec)
 			return false, nil
 		}
 		if release != nil {
@@ -1627,7 +1627,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 					return false, fmt.Errorf("kill %s: %w", id, err)
 				}
 				m.cleanupSystemPromptDir(id)
-		m.cleanAgentSessionHomeBestEffort(rec)
+				m.cleanAgentSessionHomeBestEffort(&rec)
 				return false, nil
 			}
 			return false, fmt.Errorf("kill %s: workspace: %w", id, err)
@@ -1646,7 +1646,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 					return false, fmt.Errorf("kill %s: %w", id, err)
 				}
 				m.cleanupSystemPromptDir(id)
-		m.cleanAgentSessionHomeBestEffort(rec)
+				m.cleanAgentSessionHomeBestEffort(&rec)
 				return false, nil
 			}
 			return false, fmt.Errorf("kill %s: workspace: %w", id, err)
@@ -1665,7 +1665,7 @@ func (m *Manager) Kill(ctx context.Context, id domain.SessionID) (bool, error) {
 		return false, fmt.Errorf("kill %s: %w", id, err)
 	}
 	m.cleanupSystemPromptDir(id)
-	m.cleanAgentSessionHomeBestEffort(rec)
+	m.cleanAgentSessionHomeBestEffort(&rec)
 	return freed, nil
 }
 
