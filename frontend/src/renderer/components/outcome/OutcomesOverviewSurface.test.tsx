@@ -300,6 +300,29 @@ it("colors an unavailable Outcome's sentence with the lane it actually sits in",
 	expect(sentence.className).toContain("text-status-in-review");
 });
 
+it("shows skeleton cards inside the real lane shells while a project's Outcomes load", async () => {
+	workspaceQueryMock.mockReturnValue({
+		data: [workspace("proj-1", "Waldo Kennel")],
+		isLoading: false,
+	});
+	projectOutcomesQueryMock.mockReturnValue({ outcomes: [], isLoading: true, refetch: vi.fn() });
+	useUiStore.setState({ outcomeRunViewMode: "board" });
+	renderSurface(vi.fn(), { projectId: "proj-1", onProjectFilterChange: vi.fn(), onNewOutcome: vi.fn() });
+	const status = await screen.findAllByRole("status");
+	expect(status.length).toBeGreaterThan(0);
+	// Lane names and dots are static canon, so the board's shape is already honest.
+	expect(screen.getByRole("heading", { name: /Needs choice/i })).toBeInTheDocument();
+	expect(screen.queryByText("Loading outcomes…")).not.toBeInTheDocument();
+});
+
+it("shows skeleton project groups while the workspace list loads", () => {
+	workspaceQueryMock.mockReturnValue({ data: undefined, isLoading: true });
+	renderSurface();
+	const status = screen.getByTestId("outcomes-overview-loading");
+	expect(status).toHaveAttribute("role", "status");
+	expect(screen.queryByText("Loading outcomes…")).not.toBeInTheDocument();
+});
+
 it("invites the first Outcome with a working CTA when the scoped project is empty", async () => {
 	workspaceQueryMock.mockReturnValue({
 		data: [workspace("proj-1", "Waldo Kennel"), workspace("proj-2", "Kennel Island")],
