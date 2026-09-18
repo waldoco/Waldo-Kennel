@@ -87,20 +87,20 @@ jobs:
           "$KENNEL_CODEX_BIN" login status >/dev/null 2>&1
           go version
 
-      - name: Run Outcome launch-cut proof first
-        shell: bash
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          mkdir -p "$(dirname "$KENNEL_E2E_DAEMON_OUTPUT")"
-          go test ./e2e -run '^TestOutcomeLaunchCut' -count=1 -v -timeout 20m
-
       - name: Run governed Codex sandbox falsifiers
         shell: bash
         working-directory: backend
         run: |
           set -euo pipefail
           go test ./e2e -run '^TestGovernedCodexSandboxFalsifiers' -count=1 -v -timeout 20m
+
+      - name: Run Outcome launch-cut proof
+        shell: bash
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$KENNEL_E2E_DAEMON_OUTPUT")"
+          go test ./e2e -run '^TestOutcomeLaunchCut' -count=1 -v -timeout 20m
 
       - name: Run remaining model-backed chat E2E
         shell: bash
