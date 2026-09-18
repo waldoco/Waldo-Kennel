@@ -186,6 +186,26 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 		"method": "grep -Fx PERSISTENT durable.txt", "independenceClass": "separate_session", "result": "passed",
 		"producerRef": "b4-real-daemon-e2e", "verifierRef": "b4-independent-check", "requestKey": "b4-verification",
 	}, nil)
+	// The attempt is already succeeded on the check's observation, so the
+	// final poll cannot prove this owner verification persisted; re-read the
+	// proof and require the exact owner-provenance row bound to the owner
+	// evidence selected above.
+	pv = getProof(t, restarted, out)
+	criterion = criterionByID(pv, criterionID)
+	ownerVerified := false
+	if criterion != nil {
+		for _, verification := range criterion.Verifications {
+			if verification["subjectId"] == start.ID && verification["subjectRevision"] == artifactVersion &&
+				verification["method"] == "grep -Fx PERSISTENT durable.txt" && verification["independenceClass"] == "separate_session" &&
+				verification["result"] == "passed" && verification["producerRef"] == "b4-real-daemon-e2e" &&
+				verification["verifierRef"] == "b4-independent-check" && stringListContains(verification["evidenceItemIds"], evidenceID) {
+				ownerVerified = true
+			}
+		}
+	}
+	if !ownerVerified {
+		t.Fatalf("owner-posted verification missing from proof: %+v", pv)
+	}
 	deadline = time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		reread = getOutcomeAttempt(t, restarted, out, start.ID)
@@ -291,25 +311,43 @@ func assertCheckEarnedSuccess(t *testing.T, d *daemon, outcomeID, criterionID, a
 		t.Fatalf("criterion %s missing from proof", criterionID)
 	}
 	for _, check := range checks {
+		if check.CriterionID != criterionID || len(check.Argv) == 0 {
+			continue
+		}
 		argv := strings.Join(check.Argv, " ")
-		evidenceOK, verificationOK := false, false
 		for _, item := range criterion.Evidence {
-			if item["subjectId"] == attemptID && item["subjectRevision"] == artifactVersion &&
-				item["sourceType"] == "deterministic_check" && item["sourceRef"] == argv && item["producerRef"] == attemptID {
-				evidenceOK = true
+			if item["subjectId"] != attemptID || item["subjectRevision"] != artifactVersion ||
+				item["sourceType"] != "deterministic_check" || item["sourceRef"] != argv || item["producerRef"] != attemptID {
+				continue
 			}
-		}
-		for _, verification := range criterion.Verifications {
-			if verification["subjectId"] == attemptID && verification["subjectRevision"] == artifactVersion &&
-				verification["method"] == argv && verification["independenceClass"] == "deterministic" && verification["result"] == "passed" {
-				verificationOK = true
+			evidenceID, _ := item["id"].(string)
+			if evidenceID == "" {
+				continue
 			}
-		}
-		if evidenceOK && verificationOK {
-			return
+			// The verification must name this exact evidence row: a detached
+			// passed verification with the same method proves nothing about
+			// this check's observation.
+			for _, verification := range criterion.Verifications {
+				if verification["subjectId"] == attemptID && verification["subjectRevision"] == artifactVersion &&
+					verification["method"] == argv && verification["independenceClass"] == "deterministic" &&
+					verification["result"] == "passed" && verification["producerRef"] == attemptID &&
+					stringListContains(verification["evidenceItemIds"], evidenceID) {
+					return
+				}
+			}
 		}
 	}
 	t.Fatalf("session exit fabricated success: succeeded with no approved-check observation bound to attempt %s artifact %s: %+v", attemptID, artifactVersion, criterion)
+}
+
+func stringListContains(v any, want string) bool {
+	items, _ := v.([]any)
+	for _, item := range items {
+		if s, _ := item.(string); s == want {
+			return true
+		}
+	}
+	return false
 }
 
 func assertSucceededEvidence(t *testing.T, dataDir, outcomeID, attemptID, artifactVersion string) {
