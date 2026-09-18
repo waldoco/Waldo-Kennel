@@ -283,8 +283,13 @@ func (d *Deliverer) Deliver(ctx context.Context, term PaneTerminal, message stri
 }
 
 // awaitSteerable polls classification until the pane is steerable or the
-// unsteerable hold deadline expires. Unknown fails immediately - there is no
-// safe wait for "becomes recognizable".
+// hold deadline expires. Unknown polls on the same bound as unsteerable: a
+// freshly launched TUI shows only its boot banner for the first seconds - no
+// composer, no status footer - so unknown at first sight is "no evidence
+// yet", not "never recognizable" (run 35311387153 failed a steer 26ms after
+// launch on exactly this). The fail-closed posture is unchanged: a pane
+// still unknown at the deadline returns unknown and Deliver refuses the
+// keystroke.
 func (d *Deliverer) awaitSteerable(ctx context.Context, term PaneTerminal) (PaneState, UnsteerableReason, error) {
 	deadline := time.Now().Add(d.cfg.UnsteerableDeadline)
 	for {
@@ -293,7 +298,7 @@ func (d *Deliverer) awaitSteerable(ctx context.Context, term PaneTerminal) (Pane
 			return PaneStateUnknown, "", &DeliveryUnknownError{Phase: "classification capture: " + err.Error()}
 		}
 		state, reason := ClassifyPaneState(capture)
-		if state != PaneStateUnsteerable {
+		if state != PaneStateUnsteerable && state != PaneStateUnknown {
 			return state, reason, nil
 		}
 		if time.Now().After(deadline) {

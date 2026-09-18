@@ -227,6 +227,60 @@ func TestDeliverFailsClosedOnUnknownLayout(t *testing.T) {
 	}
 }
 
+// paneBootBanner: the pinned 0.153.4 TUI mid-boot - banner and tip box only,
+// no composer row and no status footer yet. Classifies unknown.
+const paneBootBanner = `╭───────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                         │
+│                                                    │
+│ model:     gpt-6-astra   /model to change          │
+│ directory: /private/var/…/outcome-persistent9752-1 │
+╰───────────────────────────────────────────────────╯
+
+  Tip: This is GPT-6, a new generation of intelligence.`
+
+// TestDeliverWaitsThroughBootUnknown reproduces run 35311387153: the steer
+// raced the TUI boot (send 26ms after launch) and the first captures show
+// only the boot banner, classifying unknown. Unknown during boot is "no
+// evidence yet", so delivery polls on the same bound as an unsteerable hold
+// instead of failing in milliseconds; once the composer and footer render,
+// dispatch proceeds normally.
+func TestDeliverWaitsThroughBootUnknown(t *testing.T) {
+	term := &fakeTerminal{captures: []string{
+		paneBootBanner,           // TUI still booting: unknown
+		paneBootBanner,           // still booting
+		paneIdleNoDraft,          // booted: idle composer + footer
+		paneIdleNoDraft,          // boundary snapshot
+		paneIdleWithSteeredDraft, // settle: draft visible
+		paneIdleWithSteeredDraft, // pre-submit re-classification
+		paneSubmittedAck,         // ack: draft gone, echo + turn running
+	}}
+	outcome, err := testDeliverer().Deliver(context.Background(), term, msg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if outcome != DeliverySubmitted {
+		t.Fatalf("outcome = %v, want submitted", outcome)
+	}
+	if term.enters != 1 || len(term.pastes) != 1 {
+		t.Fatalf("enters=%d pastes=%d, want 1/1", term.enters, len(term.pastes))
+	}
+}
+
+// TestDeliverStillFailsClosedOnPersistentUnknown guards the fail-closed
+// posture: a pane that NEVER becomes recognizable within the hold deadline
+// still refuses the keystroke - the boot wait adds patience, not assumption.
+func TestDeliverStillFailsClosedOnPersistentUnknown(t *testing.T) {
+	term := &fakeTerminal{captures: []string{paneFixtureUnrecognized}}
+	_, err := testDeliverer().Deliver(context.Background(), term, msg)
+	var unk *DeliveryUnknownError
+	if !errors.As(err, &unk) {
+		t.Fatalf("err = %v, want DeliveryUnknownError", err)
+	}
+	if len(term.pastes) != 0 || term.enters != 0 || term.tabs != 0 {
+		t.Fatalf("keystrokes sent against persistently unknown layout: %v", term.ops)
+	}
+}
+
 func TestDeliverHoldsWhileUnsteerableThenProceeds(t *testing.T) {
 	term := &fakeTerminal{captures: []string{
 		paneFixtureApproval,      // approval dialog up
