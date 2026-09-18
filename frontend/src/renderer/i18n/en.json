@@ -2059,6 +2059,7 @@
 	"outcome.intake.continue": "Continue",
 	"outcome.intake.saving": "Saving…",
 	"outcome.intake.unsaved": "Your statement has not been saved.",
+	"outcome.intake.voiceUnavailable": "Voice input is not available yet",
 	"outcome.intake.loadingTitle": "Reading this intake",
 	"outcome.intake.loadingBody": "Loading durable state from the local daemon…",
 	"outcome.intake.unavailableTitle": "Intake unavailable",

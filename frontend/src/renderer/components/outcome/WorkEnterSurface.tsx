@@ -102,7 +102,7 @@ export function WorkEnterSurface() {
 
 	return (
 		<OutcomeLifecycleShell stage="enter">
-			<div className="flex flex-col gap-6">
+			<div className="mx-auto flex w-full max-w-3xl flex-col gap-8 py-8 sm:py-12">
 				{!daemonReady && (
 					<div data-testid="enter-blocked-daemon" className="rounded-md border border-border p-4">
 						<h3 className="text-sm font-medium">{t("work.enter.daemonOffline.title")}</h3>
@@ -128,8 +128,8 @@ export function WorkEnterSurface() {
 				)}
 
 				{destination === "work" && (
-					<div className="flex flex-col gap-4">
-						<h2 className="text-base font-medium">{t(usesWorkLaunchMode ? "work.enter.outcomeProject" : "work.enter.selectProject")}</h2>
+					<div className="flex flex-col gap-5">
+						<h2 className="text-balance text-center text-2xl font-medium leading-tight tracking-wide-sm sm:text-[28px]">{t(usesWorkLaunchMode ? "work.enter.outcomeProject" : "work.enter.selectProject")}</h2>
 
 						{!usesWorkLaunchMode && !providerReady && (
 							<div data-testid="enter-blocked-provider" className="rounded-md border border-border p-4">
@@ -138,13 +138,13 @@ export function WorkEnterSurface() {
 							</div>
 						)}
 
-						<ul className="flex flex-col gap-1">
+						<ul className="grid gap-2 rounded-lg border border-border bg-card p-2 shadow-sm">
 							{(projectsQuery.data ?? []).map((project) => (
 								<li key={project.id}>
 									{/* Selecting a project advances Enter -> Understand on the
 									    same /work route; the daemon owns everything else. */}
 									<button
-										className="flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-card"
+										className="flex min-h-control-form w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 										onClick={() => void navigate({ to: "/work", search: { project: project.id } })}
 										type="button"
 									>

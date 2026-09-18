@@ -42,6 +42,21 @@ it("starts with one Outcome statement prompt and supports keyboard submission", 
 	expect(navigateMock).toHaveBeenCalledWith({ to: "/work", search: { project: "project-1", intake: "intake-1" } });
 });
 
+it("places project selection above a large composer with context, voice, and send controls", async () => {
+	getMock.mockImplementation((path: string) =>
+		path === "/api/v1/projects"
+			? Promise.resolve({ data: { projects: [{ id: "project-1", name: "waldo-kennel", path: "/w/kennel" }] }, error: undefined })
+			: Promise.resolve({ data: { sessions: [] }, error: undefined }),
+	);
+	const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+	render(<QueryClientProvider client={client}><AdaptiveIntakeSurface projectId="project-1" /></QueryClientProvider>);
+
+	expect(await screen.findByRole("button", { name: "Switch project" })).toBeInTheDocument();
+	expect(screen.getByLabelText("Agent preferences")).toBeInTheDocument();
+	expect(screen.getByRole("button", { name: "Voice input is not available yet" })).toBeDisabled();
+	expect(screen.getByTestId("intake-capture-submit")).toBeDisabled();
+});
+
 it("keeps the statement visibly unsaved when the daemon rejects capture", async () => {
 	postMock.mockResolvedValueOnce({ data: undefined, error: { code: "DAEMON_UNAVAILABLE" } });
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
