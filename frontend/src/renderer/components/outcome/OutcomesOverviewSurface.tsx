@@ -1,4 +1,5 @@
 import { OutcomeTrash } from "./OutcomeDeletionControls";
+import { Button } from "../ui/button";
 import { useMissionAttention } from "../../hooks/useMissionAttention";
 import { type MissionAttention } from "../../lib/mission-attention";
 import { boardLane, BOARD_LANE_TONE } from "../../lib/mission-lane-tone";
@@ -146,6 +147,7 @@ export function OutcomesOverviewSurface({
 					{visibleWorkspaces.map((workspace) => (
 						<ProjectOutcomesGroup
 							key={workspace.id}
+							onNewOutcome={scopedWorkspace?.id === workspace.id ? onNewOutcome : undefined}
 							showEmpty={projectFilter !== "all"}
 							attentionFilter={attentionFilter}
 							includeContributors={includeContributors}
@@ -167,6 +169,7 @@ function ProjectOutcomesGroup({
 	includeContributors,
 	selectedOutcomeId,
 	workspace,
+	onNewOutcome,
 	onOpenOutcome,
 	query,
 	view,
@@ -176,6 +179,7 @@ function ProjectOutcomesGroup({
 	includeContributors: boolean;
 	attentionFilter: string;
 	selectedOutcomeId?: string;
+	onNewOutcome?: (projectId: string) => void;
 	onOpenOutcome: (projectId: string, outcome: OutcomeRecord, stage: OutcomeDestinationStage) => void;
 	query: string;
 	view: "board" | "list";
@@ -217,6 +221,17 @@ function ProjectOutcomesGroup({
 				</div>
 			) : outcomesQuery.isLoading ? (
 				<p className="text-muted-foreground text-xs">{t("outcome.overview.loading")}</p>
+			) : outcomes.length === 0 ? (
+				// A project with zero Outcomes gets an invitation, not five empty
+				// columns: the Figma creation frame (8572) is a single centered
+				// prompt, and "setup ends with a first Outcome". The CTA only
+				// renders where the scoped New Outcome entry point is established;
+				// everywhere else the compact line points at the project instead.
+				onNewOutcome ? (
+					<ProjectOutcomesEmptyState projectName={workspace.name} onNewOutcome={() => onNewOutcome(workspace.id)} />
+				) : (
+					<p className="px-3 py-2 text-xs text-muted-foreground">{t("outcome.empty.compact")}</p>
+				)
 			) : (
 				<div className="flex flex-col gap-2">
 					{filteredNodes.length === 0 && (
@@ -405,5 +420,30 @@ function OutcomeOverviewRow({
 				) : null}
 			</div>
 		</li>
+	);
+}
+
+export function ProjectOutcomesEmptyState({
+	projectName,
+	onNewOutcome,
+}: {
+	projectName: string;
+	onNewOutcome: () => void;
+}) {
+	const { t } = useTranslation();
+	return (
+		<div
+			className="flex flex-col items-center gap-2 rounded-2xl hairline border-border bg-surface/50 px-6 py-10 text-center"
+			data-testid="outcomes-empty-project"
+		>
+			<p className="text-sm font-medium text-foreground">{t("outcome.empty.title", { project: projectName })}</p>
+			<p className="max-w-md text-xs leading-body text-muted-foreground">
+				{t("outcome.empty.body", { project: projectName })}
+			</p>
+			<Button className="mt-2" onClick={onNewOutcome} size="sm" variant="primary">
+				<Plus aria-hidden="true" className="size-icon-sm" />
+				{t("outcome.dashboard.newOutcome")}
+			</Button>
+		</div>
 	);
 }

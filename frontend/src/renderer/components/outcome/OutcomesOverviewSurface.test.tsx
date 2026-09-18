@@ -300,6 +300,56 @@ it("colors an unavailable Outcome's sentence with the lane it actually sits in",
 	expect(sentence.className).toContain("text-status-in-review");
 });
 
+it("invites the first Outcome with a working CTA when the scoped project is empty", async () => {
+	workspaceQueryMock.mockReturnValue({
+		data: [workspace("proj-1", "Waldo Kennel"), workspace("proj-2", "Kennel Island")],
+		isLoading: false,
+	});
+	projectOutcomesQueryMock.mockImplementation((projectId: string) => ({
+		outcomes: projectId === "proj-1" ? [outcome("out-1", "Ship the release")] : [],
+		isLoading: false,
+		refetch: vi.fn(),
+	}));
+	const onNewOutcome = vi.fn();
+	renderSurface(vi.fn(), { projectId: "proj-2", onProjectFilterChange: vi.fn(), onNewOutcome });
+	const panel = await screen.findByTestId("outcomes-empty-project");
+	expect(within(panel).getByText("No Outcomes in Kennel Island yet")).toBeInTheDocument();
+	// The empty board lanes are noise next to the invitation, so they stay hidden.
+	expect(screen.queryByRole("heading", { name: /Needs choice/i })).not.toBeInTheDocument();
+	const buttons = screen.getAllByRole("button", { name: "New Outcome" });
+	await userEvent.click(buttons[buttons.length - 1]);
+	expect(onNewOutcome).toHaveBeenCalledWith("proj-2");
+});
+
+it("keeps a compact pointer instead of the invitation when the empty project is not scoped", async () => {
+	workspaceQueryMock.mockReturnValue({
+		data: [workspace("proj-1", "Waldo Kennel"), workspace("proj-2", "Kennel Island")],
+		isLoading: false,
+	});
+	projectOutcomesQueryMock.mockImplementation((projectId: string) => ({
+		outcomes: projectId === "proj-1" ? [outcome("out-1", "Ship the release")] : [],
+		isLoading: false,
+		refetch: vi.fn(),
+	}));
+	renderSurface(vi.fn(), { projectId: undefined, onProjectFilterChange: vi.fn(), onNewOutcome: vi.fn() });
+	await screen.findByText("Ship the release");
+	expect(screen.getByText("No Outcomes yet. Open the project to define one.")).toBeInTheDocument();
+	expect(screen.queryByTestId("outcomes-empty-project")).not.toBeInTheDocument();
+});
+
+it("keeps the filter-mismatch line when Outcomes exist but the search hides them", async () => {
+	workspaceQueryMock.mockReturnValue({
+		data: [workspace("proj-1", "Waldo Kennel")],
+		isLoading: false,
+	});
+	projectOutcomesQueryMock.mockReturnValue({ outcomes: [outcome("out-1", "Ship the release")], isLoading: false, refetch: vi.fn() });
+	renderSurface(vi.fn(), { projectId: "proj-1", onProjectFilterChange: vi.fn(), onNewOutcome: vi.fn() });
+	await screen.findByText("Ship the release");
+	await userEvent.type(screen.getByLabelText("Search"), "zzz");
+	expect(await screen.findByText(/No Outcomes match this view/)).toBeInTheDocument();
+	expect(screen.queryByTestId("outcomes-empty-project")).not.toBeInTheDocument();
+});
+
 it("offers New Outcome scoped to the project in view, and hides it across all projects", async () => {
 	workspaceQueryMock.mockReturnValue({
 		data: [workspace("proj-1", "Waldo Kennel"), workspace("proj-2", "Kennel Island")],
