@@ -2,7 +2,7 @@ import { OutcomeTrash } from "./OutcomeDeletionControls";
 import { useMissionAttention } from "../../hooks/useMissionAttention";
 import { type MissionAttention } from "../../lib/mission-attention";
 import { Fragment, useMemo, useState } from "react";
-import { Flag, Network } from "lucide-react";
+import { Flag, Network, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useProjectOutcomes, type OutcomeRecord } from "../../hooks/useOutcome";
@@ -21,6 +21,7 @@ type OutcomesOverviewSurfaceProps = {
 	onProjectFilterChange?: (id?: string) => void;
 	selectedOutcomeId?: string;
 	onOpenOutcome: (projectId: string, outcome: OutcomeRecord, stage: OutcomeDestinationStage) => void;
+	onNewOutcome?: (projectId: string) => void;
 };
 
 export function OutcomesOverviewSurface({
@@ -28,6 +29,7 @@ export function OutcomesOverviewSurface({
 	selectedOutcomeId,
 	projectId,
 	onProjectFilterChange,
+	onNewOutcome,
 }: OutcomesOverviewSurfaceProps) {
 	const { t } = useTranslation();
 	const workspaceQuery = useWorkspaceQuery();
@@ -46,6 +48,15 @@ export function OutcomesOverviewSurface({
 		() => workspaces.filter((workspace) => projectFilter === "all" || workspace.id === projectFilter),
 		[projectFilter, workspaces],
 	);
+	// The New Outcome entry point exists only when the view is scoped to one
+	// established project: the workspace query has settled and the filter id
+	// is that workspace's real id. A stale or unknown route id, a loading
+	// query, or the all-projects view must never launch intake for a project
+	// the query never established.
+	const scopedWorkspace =
+		!workspaceQuery.isLoading && visibleWorkspaces.length === 1 && visibleWorkspaces[0].id === projectFilter
+			? visibleWorkspaces[0]
+			: undefined;
 
 	return (
 		<div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto" data-testid="outcomes-overview-surface">
@@ -54,6 +65,16 @@ export function OutcomesOverviewSurface({
 					<h2 className="text-base font-medium">{t("outcome.overview.heading")}</h2>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
+					{scopedWorkspace && onNewOutcome ? (
+						<button
+							className="flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium transition-[background-color,transform] duration-fast ease-out hover:bg-interactive-hover active:scale-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 motion-reduce:transition-none"
+							onClick={() => onNewOutcome(scopedWorkspace.id)}
+							type="button"
+						>
+							<Plus aria-hidden="true" className="size-icon-sm" />
+							{t("outcome.dashboard.newOutcome")}
+						</button>
+					) : null}
 					<SessionsViewSwitch
 						labels={{
 							ariaLabel: t("mission.portfolioView"),

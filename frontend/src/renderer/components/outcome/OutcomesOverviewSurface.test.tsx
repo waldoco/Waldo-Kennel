@@ -41,11 +41,14 @@ function outcome(id: string, title: string, parentId?: string, updatedAt?: strin
 	return { id, title, currentRevisionNumber: 1, latestPlan: undefined, parentId, updatedAt } as never;
 }
 
-function renderSurface(onOpenOutcome = vi.fn()) {
+function renderSurface(
+	onOpenOutcome = vi.fn(),
+	props: Partial<Parameters<typeof OutcomesOverviewSurface>[0]> = {},
+) {
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	render(
 		<QueryClientProvider client={queryClient}>
-			<OutcomesOverviewSurface onOpenOutcome={onOpenOutcome} />
+			<OutcomesOverviewSurface onOpenOutcome={onOpenOutcome} {...props} />
 		</QueryClientProvider>,
 	);
 	return onOpenOutcome;
@@ -289,6 +292,50 @@ it("colors an unavailable Outcome's sentence with the lane it actually sits in",
 	expect(needsInputHeading.closest("section")!.textContent).toContain("Status not yet known");
 	const sentence = within(row).getByText("Refresh to read the current Outcome status.");
 	expect(sentence.className).toContain("text-status-in-review");
+});
+
+it("offers New Outcome scoped to the project in view, and hides it across all projects", async () => {
+	workspaceQueryMock.mockReturnValue({
+		data: [workspace("proj-1", "Waldo Kennel"), workspace("proj-2", "Kennel Island")],
+		isLoading: false,
+	});
+	projectOutcomesQueryMock.mockReturnValue({ outcomes: [outcome("out-1", "Ship the release")], isLoading: false, refetch: vi.fn() });
+
+	// Global view: creation stays with the sidebar's per-project plus, so no
+	// ambiguous all-projects entry point appears here.
+	renderSurface(vi.fn(), { projectId: undefined, onProjectFilterChange: vi.fn(), onNewOutcome: vi.fn() });
+	expect(screen.queryByRole("button", { name: "New Outcome" })).not.toBeInTheDocument();
+});
+
+it("hides New Outcome while workspaces are still loading", () => {
+	workspaceQueryMock.mockReturnValue({ data: undefined, isLoading: true });
+	projectOutcomesQueryMock.mockReturnValue({ outcomes: [], isLoading: false, refetch: vi.fn() });
+	renderSurface(vi.fn(), { projectId: "proj-1", onProjectFilterChange: vi.fn(), onNewOutcome: vi.fn() });
+	expect(screen.queryByRole("button", { name: "New Outcome" })).not.toBeInTheDocument();
+});
+
+it("hides New Outcome when the route names a project the query never established", () => {
+	workspaceQueryMock.mockReturnValue({
+		data: [workspace("proj-1", "Waldo Kennel")],
+		isLoading: false,
+	});
+	projectOutcomesQueryMock.mockReturnValue({ outcomes: [], isLoading: false, refetch: vi.fn() });
+	renderSurface(vi.fn(), { projectId: "ghost-project", onProjectFilterChange: vi.fn(), onNewOutcome: vi.fn() });
+	expect(screen.queryByRole("button", { name: "New Outcome" })).not.toBeInTheDocument();
+});
+
+it("starts a new Outcome in the scoped project from the project view", async () => {
+	workspaceQueryMock.mockReturnValue({
+		data: [workspace("proj-1", "Waldo Kennel"), workspace("proj-2", "Kennel Island")],
+		isLoading: false,
+	});
+	projectOutcomesQueryMock.mockReturnValue({ outcomes: [outcome("out-1", "Ship the release")], isLoading: false, refetch: vi.fn() });
+	const onNewOutcome = vi.fn();
+	renderSurface(vi.fn(), { projectId: "proj-2", onProjectFilterChange: vi.fn(), onNewOutcome });
+	const button = await screen.findByRole("button", { name: "New Outcome" });
+	await userEvent.click(button);
+	expect(onNewOutcome).toHaveBeenCalledTimes(1);
+	expect(onNewOutcome).toHaveBeenCalledWith("proj-2");
 });
 
 it("places review Outcomes in the Ready lane, separate from Needs input", async () => {

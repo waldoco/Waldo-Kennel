@@ -13,6 +13,7 @@ export function OutcomeMissionWorkspace({
 	projectId,
 	stage,
 	onOpenOutcome,
+	onNewOutcome,
 	onClose,
 }: {
 	portfolioProjectId?: string;
@@ -21,6 +22,7 @@ export function OutcomeMissionWorkspace({
 	projectId?: string;
 	stage?: OutcomeDestinationStage | "act_observe" | "prove_close";
 	onOpenOutcome: (project: string, outcome: OutcomeRecord, stage: OutcomeDestinationStage) => void;
+	onNewOutcome?: (projectId: string) => void;
 	onClose: () => void;
 }) {
 	const { t } = useTranslation();
@@ -69,6 +71,7 @@ export function OutcomeMissionWorkspace({
 				<OutcomesOverviewSurface
  projectId={portfolioProjectId}
  onProjectFilterChange={onProjectFilterChange}
+ onNewOutcome={onNewOutcome}
 					onOpenOutcome={(project, outcome, nextStage) => {
 						const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 						openerRef.current = active;

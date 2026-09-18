@@ -126,6 +126,11 @@ function renderStageBody({
 						search: { project: projectId, stage: openedStage, outcome: openedOutcome.id, portfolio },
 					});
 				}}
+				onNewOutcome={(newOutcomeProjectId: string) => {
+					// Same destination as the sidebar's per-project plus: the full
+					// intake loop (Understand) scoped to this project.
+					void navigate({ to: "/work", search: { project: newOutcomeProjectId } });
+				}}
 			/>
 		);
 	}
