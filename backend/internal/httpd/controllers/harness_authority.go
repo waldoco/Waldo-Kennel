@@ -66,7 +66,12 @@ func (c *HarnessAuthorityController) getIntent(w http.ResponseWriter, r *http.Re
 		envelope.WriteAPIError(w, r, 404, "not_found", "PAIRING_INTENT_NOT_FOUND", "Pairing intent was not found", nil)
 		return
 	}
-	receipts, _ := c.Svc.ListHarnessAuthorityReceipts(r.Context(), "pairing_intent", string(v.ID))
+	receipts, err := c.Svc.ListHarnessAuthorityReceipts(r.Context(), "pairing_intent", string(v.ID))
+	if err != nil {
+		internalHarnessError(w, r)
+		return
+	}
+	receipts = filterAuthorityReceipts(receipts, "pairing_intent", string(v.ID), v.Digest, v.ExpectedGeneration)
 	envelope.WriteJSON(w, 200, HarnessPairingIntentDetailResponse{Data: HarnessPairingIntentDetailData{Intent: c.intentView(r.Context(), v), Receipts: receiptViews(receipts)}})
 }
 func (c *HarnessAuthorityController) listConnections(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +102,17 @@ func (c *HarnessAuthorityController) getConnection(w http.ResponseWriter, r *htt
 		envelope.WriteAPIError(w, r, 404, "not_found", "HARNESS_CONNECTION_NOT_FOUND", "Harness connection was not found", nil)
 		return
 	}
-	receipts, _ := c.Svc.ListHarnessAuthorityReceipts(r.Context(), "harness_connection", string(v.ID))
+	receipts, err := c.Svc.ListHarnessAuthorityReceipts(r.Context(), "harness_connection", string(v.ID))
+	if err != nil {
+		internalHarnessError(w, r)
+		return
+	}
+	digest, err := v.AuthorityDigest()
+	if err != nil {
+		internalHarnessError(w, r)
+		return
+	}
+	receipts = filterAuthorityReceipts(receipts, "harness_connection", string(v.ID), digest, v.Generation)
 	envelope.WriteJSON(w, 200, HarnessConnectionDetailResponse{Data: HarnessConnectionDetailData{Connection: c.connection(r, v), Receipts: receiptViews(receipts)}})
 }
 
@@ -110,6 +125,16 @@ type AuthorityReceiptView struct {
 	ExpectedGeneration int64               `json:"expectedGeneration"`
 	Confirmed          bool                `json:"confirmed"`
 	CreatedAt          time.Time           `json:"createdAt"`
+}
+
+func filterAuthorityReceipts(in []domain.HarnessAuthorityReceipt, targetType, targetID string, targetDigest domain.SHA256Digest, generation int64) []domain.HarnessAuthorityReceipt {
+	out := make([]domain.HarnessAuthorityReceipt, 0, len(in))
+	for _, receipt := range in {
+		if receipt.TargetType == targetType && receipt.TargetID == targetID && receipt.TargetDigest == targetDigest && receipt.ExpectedGeneration == generation {
+			out = append(out, receipt)
+		}
+	}
+	return out
 }
 
 func receiptViews(in []domain.HarnessAuthorityReceipt) []AuthorityReceiptView {
