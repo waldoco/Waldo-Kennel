@@ -48,24 +48,55 @@ func TestOutcomeLaunchCutPersistentSessionProof(t *testing.T) {
 			} `json:"currentRevision"`
 		} `json:"outcome"`
 	}
+	// Verification is the manual owner journey this test exists to exercise:
+	// the owner inspects the result and posts criterion proof through the
+	// review API. The Contract deliberately names no executable check and
+	// forbids proposing one, so the planner has no approved context to ground
+	// a checkCommand in; an approved auto-check would let the daemon prove
+	// the criterion itself against the retained bytes and short-circuit the
+	// manual journey.
 	d.mustCall("POST", "/projects/"+project+"/outcomes", http.StatusCreated, map[string]any{
 		"title": "Persistent governed session fixture", "goal": "Create durable.txt containing PERSISTENT and keep the same governed Codex session steerable.",
-		"successCriteria": []string{"durable.txt contains exactly PERSISTENT"}, "review": "Run test -f durable.txt and grep -Fx PERSISTENT durable.txt.",
+		"successCriteria":  []string{"durable.txt contains exactly PERSISTENT"},
+		"review":           "The owner inspects durable.txt personally and posts criterion proof through the review API; no automated check verifies this outcome.",
+		"constraints":      []string{"Verification is manual owner review: never run or propose automated check commands; criterion proof arrives only as owner-posted evidence."},
 		"authorityCeiling": map[string]any{"readWorkspace": true, "writeWorkspace": true, "executeLocal": true}, "requestKey": "b4-create",
 	}, &created)
 	out := created.Outcome.ID
-	var plan struct {
+	type planEnvelope struct {
 		Plan struct {
 			ID, Status string
 			WorkUnits  []struct {
-				ID       string `json:"id"`
-				Provider string `json:"provider"`
+				ID             string `json:"id"`
+				Provider       string `json:"provider"`
+				ApprovedChecks []struct {
+					Argv []string `json:"argv"`
+				} `json:"approvedChecks"`
 			} `json:"workUnits"`
 		} `json:"plan"`
 	}
-	d.mustCall("POST", "/outcomes/"+out+"/plans", http.StatusCreated, map[string]any{"expectedContractRevision": 1}, &plan)
+	var plan planEnvelope
+	propose := func(feedback string) {
+		plan = planEnvelope{}
+		if feedback == "" {
+			d.mustCall("POST", "/outcomes/"+out+"/plans", http.StatusCreated, map[string]any{"expectedContractRevision": 1}, &plan)
+			return
+		}
+		d.mustCall("POST", "/outcomes/"+out+"/plans/replan", http.StatusCreated, map[string]any{"expectedContractRevision": 1, "feedback": feedback}, &plan)
+	}
+	propose("")
+	// If the planner attached an auto-runnable check despite the Contract's
+	// manual-verification constraint, replan with explicit feedback; a
+	// proposal that still carries checks is a fixture-conditioning failure,
+	// surfaced here rather than misread later as fabricated success.
+	for i := 0; i < 2 && len(plan.Plan.WorkUnits) == 1 && len(plan.Plan.WorkUnits[0].ApprovedChecks) != 0; i++ {
+		propose("Do not attach deterministic checkCommands to any work unit: this outcome's verification is manual owner review, and an approved check would short-circuit that journey. Propose the same single work unit with checkCommands empty.")
+	}
 	if plan.Plan.Status != "proposed" || len(plan.Plan.WorkUnits) != 1 {
 		t.Fatalf("proposal=%+v", plan.Plan)
+	}
+	if len(plan.Plan.WorkUnits[0].ApprovedChecks) != 0 {
+		t.Fatalf("planner attached approved checks despite the Contract's manual-verification constraint: %+v", plan.Plan.WorkUnits[0].ApprovedChecks)
 	}
 	if plan.Plan.WorkUnits[0].Provider != "codex" {
 		t.Fatalf("frozen plan provider=%q, want codex", plan.Plan.WorkUnits[0].Provider)
