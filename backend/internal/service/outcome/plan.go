@@ -137,8 +137,21 @@ func (s *Service) proposePlan(ctx context.Context, outcomeID domain.OutcomeID, e
 	if err != nil {
 		return PlanView{}, err
 	}
-	if evaluated.Status != domain.PlanningReady {
+	if evaluated.Status != domain.PlanningNeedsContext && evaluated.Status != domain.PlanningReady {
 		return PlanView{Outcome: outcomeRecord, Readiness: &evaluated}, nil
+	}
+	if evaluated.Status == domain.PlanningNeedsContext {
+		// The one-shot lane is sessionless: planner questions have no one to
+		// answer them, so this lane's contract (pre-S3.2) requires a proposal
+		// - uncertainties belong in the proposal's assumptions and blockers.
+		// A needs_context reply here is provider non-compliance, not a
+		// plannable state: fail loudly with the questions visible and point
+		// at interactive planning, which has a session that can answer.
+		// Blocked packets (control-plane derived, e.g. authority above the
+		// ceiling) stay typed.
+		return PlanView{}, apierr.New(apierr.KindConflict, "PLAN_NEEDS_INTERACTIVE_PLANNING",
+			"The planner needs answers before it can propose; one-shot planning has no one to ask - plan interactively instead",
+			map[string]any{"outcomeId": string(outcomeID), "questions": readinessIssuePrompts(evaluated.Issues)})
 	}
 	draft := *evaluated.Proposal
 	units, routingDecisions, proposalSnapshot, err := s.compileAndRoutePlan(ctx, projectID, revision, draft, aliases, routingPreference, snapshot)
@@ -208,6 +221,18 @@ func routingPreferenceFromExecution(preference domain.ExecutionPreference, ok bo
 		ModelSelection: preference.ModelSelection,
 		Model:          preference.Model,
 	}
+}
+
+// readinessIssuePrompts extracts the planner's questions for owner-visible
+// error detail.
+func readinessIssuePrompts(issues []domain.PlanningReadinessIssue) []string {
+	prompts := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		if p := strings.TrimSpace(issue.Prompt); p != "" {
+			prompts = append(prompts, p)
+		}
+	}
+	return prompts
 }
 
 func planUsesPreference(plan domain.PlanRevision, preference *domain.RoutingPreference) bool {

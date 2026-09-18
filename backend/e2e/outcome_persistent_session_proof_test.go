@@ -350,6 +350,9 @@ func TestOutcomeLaunchCutRejectsStaleAuthorizationWithoutCustody(t *testing.T) {
 		} `json:"plan"`
 	}
 	d.mustCall("POST", "/outcomes/"+created.Outcome.ID+"/plans", 201, map[string]any{"expectedContractRevision": 1}, &plan)
+	if len(plan.Plan.WorkUnits) == 0 {
+		t.Fatalf("plans returned 201 with no work units (plan id %q) - a readiness packet is not a plan", plan.Plan.ID)
+	}
 
 	// Starting an unapproved plan is an authority rejection, not an implicit
 	// approval. In particular it may not acquire custody or create a session.
