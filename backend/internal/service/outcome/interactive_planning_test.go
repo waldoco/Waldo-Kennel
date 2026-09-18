@@ -206,6 +206,7 @@ func TestInteractivePlanning_NativePacketTurnsProduceOnlyAProposedPlan(t *testin
 	}
 	router := &routingInventoryFake{candidates: []domain.RoutingCandidate{readyClaudeCandidate()}}
 	svc := outcome.New(store, nil).WithPlanning(provider, router)
+	svc.WithMissionPluginProvisioner(&fakeMissionPluginProvisioner{home: t.TempDir()})
 	svc.AdmissionPolicy = testAdmissionPolicy()
 	created, err := svc.Create(ctx, outcome.CreateInput{
 		ProjectID: domain.ProjectID(project.ID), Title: "Interactive planning", Goal: "Make one bounded local change.",

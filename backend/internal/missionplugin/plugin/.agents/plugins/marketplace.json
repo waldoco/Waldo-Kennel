@@ -1,0 +1,11 @@
+{
+  "name": "kennel",
+  "owner": { "name": "Kennel" },
+  "plugins": [
+    {
+      "name": "mission",
+      "source": "./plugins/mission",
+      "description": "Kennel mission planning command: opens mission planning against the frozen Contract."
+    }
+  ]
+}

@@ -146,6 +146,18 @@ func (s *Service) StartPlanning(ctx context.Context, outcomeID domain.OutcomeID,
 	if !selected.Ready {
 		return PlanningView{}, apierr.Unavailable(selected.UnavailableCode, selected.UnavailableDetail, map[string]any{"candidateId": selected.ID})
 	}
+	if selected.Binding.Mode == domain.PlanningModeNativeHarness {
+		// The /mission command must be a verified runtime artifact before
+		// mission start is offered: installed, enabled, and byte-identical to
+		// what this daemon ships. An unverifiable command fails closed.
+		if s.missionPlugins == nil {
+			return PlanningView{}, apierr.Unavailable("MISSION_PLUGIN_UNAVAILABLE",
+				"The mission planning command cannot be verified in this environment", nil)
+		}
+		if _, err := s.missionPlugins.EnsureMissionPlugin(ctx, outcomeRecord.SpaceID); err != nil {
+			return PlanningView{}, apierr.Unavailable("MISSION_PLUGIN_UNAVAILABLE", err.Error(), nil)
+		}
+	}
 	projectID, project, err := s.projectForOutcome(ctx, outcomeID)
 	if err != nil {
 		return PlanningView{}, err

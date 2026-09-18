@@ -110,6 +110,10 @@ type Service struct {
 	planningSessions ports.PlanningSessionStore
 	intelligenceRuns ports.IntelligenceRunStore
 	routing          ports.ExecutionRoutingInventory
+	// missionPlugins verifies the installed /mission planning command before a
+	// native-harness planning session may start. Nil is not a bypass: a
+	// native-harness candidate without a provisioner fails closed.
+	missionPlugins ports.MissionPluginProvisioner
 	// contextLimits resolves the owner-configurable bounds for
 	// BuildRepositoryContext. Optional: nil means DefaultRepositoryContextLimits.
 	contextLimits  intelligencesvc.RepositoryContextLimitsSource
@@ -287,6 +291,13 @@ func (s *Service) repositoryContextLimits(ctx context.Context) (intelligencesvc.
 // leaves the Attempt reconciled rather than classifying a manifest-only result.
 func (s *Service) WithAttemptRetainer(retainer ports.AttemptRetainer) *Service {
 	s.retainer = retainer
+	return s
+}
+
+// WithMissionPluginProvisioner attaches the fail-closed /mission command
+// verification gate for native-harness planning starts.
+func (s *Service) WithMissionPluginProvisioner(provisioner ports.MissionPluginProvisioner) *Service {
+	s.missionPlugins = provisioner
 	return s
 }
 

@@ -468,6 +468,7 @@ func Run() error {
 	}
 	outcomeSvc := outcomevc.New(store, nil).
 		WithPlanning(intelligenceProvider, agentSvc).
+		WithMissionPluginProvisioner(newMissionPluginProvisioner(cfg.DataDir, log)).
 		WithRepositoryContextLimits(settingsSvc).
 		WithExecution(attempts, store).
 		WithGovernedCheckUncertainty(governedCheckUncertainty).

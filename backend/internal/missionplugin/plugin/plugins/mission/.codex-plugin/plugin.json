@@ -1,0 +1,5 @@
+{
+  "name": "mission",
+  "version": "0.1.0",
+  "description": "Kennel mission planning command (/mission): plan against the frozen Contract, propose schema-validated Plans, never execute."
+}
