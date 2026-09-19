@@ -5,6 +5,6 @@
 	"type": "module",
 	"description": "Retained Daytona runner for a future Kennel release e2e gate; not part of foundation CI.",
 	"dependencies": {
-		"@daytona/sdk": "^0.196.0"
+		"@daytona/sdk": "^0.211.2"
 	}
 }
