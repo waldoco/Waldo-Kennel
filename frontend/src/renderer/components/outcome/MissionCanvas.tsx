@@ -240,9 +240,11 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	const handleInit = useCallback(
 		(instance: ReactFlowInstance<Node<FlowNodeData>, Edge>) => {
 			instanceRef.current = instance;
-			if (layout?.key === model?.topologyKey) {
+			const currentLayout = layout;
+			const currentModel = model;
+			if (currentLayout && currentModel && currentLayout.key === currentModel.topologyKey) {
 				instance.fitView({ duration: reducedMotion ? 0 : 200 });
-				fittedKeyRef.current = layout.key;
+				fittedKeyRef.current = currentLayout.key;
 			}
 			onInstanceReady?.(instance);
 		},

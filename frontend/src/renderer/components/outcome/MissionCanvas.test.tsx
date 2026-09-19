@@ -57,7 +57,10 @@ describe("MissionCanvas", () => {
 	it("never sends a missing-endpoint edge to React Flow", async () => {
 		let instance: ReactFlowInstance<any, any> | undefined;
 		const mission = dummyMissionProjection();
-		mission.edges = [...mission.edges, { fromWorkUnitId: mission.nodes[0].workUnitId, toWorkUnitId: "ghost-node" }];
+		const sourceWorkUnitId = mission.nodes[0]?.workUnitId;
+		expect(sourceWorkUnitId).toBeDefined();
+		if (!sourceWorkUnitId) throw new Error("dummy mission needs a source node");
+		mission.edges = [...mission.edges, { fromWorkUnitId: sourceWorkUnitId, toWorkUnitId: "ghost-node" }];
 		render(
 			<MissionCanvas
 				missionQuery={missionQuery({ mission })}
