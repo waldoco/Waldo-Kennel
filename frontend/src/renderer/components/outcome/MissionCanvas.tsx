@@ -131,7 +131,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	const [selectedWorkUnitId, setSelectedWorkUnitId] = useState<string | undefined>();
 	const selectedRef = useRef(selectedWorkUnitId);
 	selectedRef.current = selectedWorkUnitId;
-	const openerWorkUnitIdRef = useRef<string | undefined>();
+	const openerWorkUnitIdRef = useRef<string | undefined>(undefined);
 	const restoreFocusRef = useRef(false);
 
 	const lastConfirmedRef = useRef<ReturnType<typeof useOutcomeMission>["mission"] | undefined>(undefined);

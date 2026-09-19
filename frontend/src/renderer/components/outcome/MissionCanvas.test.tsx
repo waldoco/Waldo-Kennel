@@ -356,6 +356,9 @@ describe("MissionCanvas interactions", () => {
 		render(<MissionCanvas missionQuery={missionQuery()} onInstanceReady={(ready) => { instance = ready; exposeMeasuredNodes(ready); }} planApproved />);
 		await waitFor(() => expect(instance).toBeDefined());
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/)).toHaveLength(8));
+		// Let the initial measurement-aware auto-fit settle before observing the
+		// inspector window. Under a loaded full suite it can land after nodes render.
+		await new Promise((resolve) => setTimeout(resolve, 50));
 		const fitViewSpy = vi.spyOn(instance!, "fitView").mockResolvedValue(true);
 		fireEvent.click(screen.getByTestId("mission-node-face-wu-binding"));
 		const overlay = await screen.findByTestId("mission-canvas-inspector-overlay");
