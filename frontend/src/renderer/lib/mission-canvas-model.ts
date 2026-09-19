@@ -98,10 +98,26 @@ function sortEdges(edges: MissionCanvasEdge[]): MissionCanvasEdge[] {
 	return [...edges].sort((left, right) => `${left.from}:${left.to}`.localeCompare(`${right.from}:${right.to}`));
 }
 
+
+/** Deterministic first-wins de-duplication. The daemon projection should be
+ * unique, but the renderer must never create duplicate React Flow identities
+ * or duplicate topology edges from a malformed/replayed payload. */
+function firstByIdentity<T>(values: readonly T[], identity: (value: T) => string): T[] {
+	const seen = new Set<string>();
+	return values.filter((value) => {
+		const key = identity(value);
+		if (!key || seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
 /** Live path: the canonical daemon projection is the single source of truth. */
 export function modelFromMissionProjection(projection: MissionProjection): MissionCanvasModel {
-	const nodes: MissionCanvasNode[] = (projection.nodes ?? [])
-		.filter((node) => Boolean(node?.workUnitId))
+	const nodes: MissionCanvasNode[] = firstByIdentity(
+		(projection.nodes ?? []).filter((node) => Boolean(node?.workUnitId)),
+		(node) => node.workUnitId,
+	)
 		.map((node) => {
 			const { state, rawState } = normalizeState(node.scheduleState);
 			return {
@@ -126,7 +142,12 @@ export function modelFromMissionProjection(projection: MissionProjection): Missi
 		});
 	return {
 		nodes,
-		edges: sortEdges((projection.edges ?? []).map((edge) => ({ from: edge.from, to: edge.to }))),
+		edges: sortEdges(
+			firstByIdentity(
+				(projection.edges ?? []).map((edge) => ({ from: edge.from, to: edge.to })),
+				(edge) => `${edge.from}->${edge.to}`,
+			),
+		),
 		topologyKey: projection.topologyFingerprint ?? `projection:${projection.missionId}@${projection.topologyGeneration}`,
 		topologyGeneration: projection.topologyGeneration,
 		noRunnableReason: projection.noRunnableReason,
@@ -145,8 +166,10 @@ export function modelFromPlan(plan: PlanRevision, schedule?: Schedule): MissionC
 			.filter((entry) => Boolean(entry?.workUnit?.id))
 			.map((entry) => [entry.workUnit.id, entry]),
 	);
-	const nodes: MissionCanvasNode[] = [...(plan.workUnits ?? [])]
-		.filter((unit) => Boolean(unit?.id))
+	const nodes: MissionCanvasNode[] = firstByIdentity(
+		(plan.workUnits ?? []).filter((unit) => Boolean(unit?.id)),
+		(unit) => unit.id,
+	)
 		.sort((left, right) => left.position - right.position)
 		.map((unit) => {
 			const entry = entries.get(unit.id);
@@ -168,7 +191,12 @@ export function modelFromPlan(plan: PlanRevision, schedule?: Schedule): MissionC
 		});
 	return {
 		nodes,
-		edges: sortEdges(nodes.flatMap((node) => node.upstream.map((from) => ({ from, to: node.workUnitId })))),
+		edges: sortEdges(
+			firstByIdentity(
+				nodes.flatMap((node) => node.upstream.map((from) => ({ from, to: node.workUnitId }))),
+				(edge) => `${edge.from}->${edge.to}`,
+			),
+		),
 		topologyKey: `plan:${plan.id}@${plan.number}`,
 		noRunnableReason: schedule?.noRunnableReason,
 		source: "plan",

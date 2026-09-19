@@ -153,3 +153,37 @@ describe("dummy builders", () => {
 		expect(attempts.every((attempt) => attempt.workUnitId === "wu-handshake")).toBe(true);
 	});
 });
+
+describe("deterministic identity fences", () => {
+	it("keeps the first projection node and first edge for duplicate identities", () => {
+		const projection = dummyMissionProjection();
+		const firstNode = projection.nodes[0];
+		const firstEdge = projection.edges[0];
+		expect(firstNode).toBeDefined();
+		expect(firstEdge).toBeDefined();
+		if (!firstNode || !firstEdge) throw new Error("dummy mission needs a node and edge");
+		projection.nodes = [firstNode, { ...firstNode, title: "duplicate must lose" }, ...projection.nodes.slice(1)];
+		projection.edges = [firstEdge, { ...firstEdge }, ...projection.edges.slice(1)];
+
+		const model = modelFromMissionProjection(projection);
+		expect(model.nodes.filter((node) => node.workUnitId === firstNode.workUnitId)).toHaveLength(1);
+		expect(model.nodes.find((node) => node.workUnitId === firstNode.workUnitId)?.title).toBe(firstNode.title);
+		expect(model.edges.filter((edge) => edge.from === firstEdge.from && edge.to === firstEdge.to)).toHaveLength(1);
+	});
+
+	it("keeps the first Plan work unit and de-duplicates repeated dependencies", () => {
+		const plan = dummyPlanRevision();
+		const firstUnit = plan.workUnits[0];
+		const dependent = plan.workUnits.find((unit) => unit.dependsOn.length > 0);
+		expect(firstUnit).toBeDefined();
+		expect(dependent).toBeDefined();
+		if (!firstUnit || !dependent) throw new Error("dummy plan needs units and a dependency");
+		plan.workUnits = [firstUnit, { ...firstUnit, title: "duplicate must lose" }, ...plan.workUnits.slice(1)];
+		dependent.dependsOn = [dependent.dependsOn[0], dependent.dependsOn[0]];
+
+		const model = modelFromPlan(plan);
+		expect(model.nodes.filter((node) => node.workUnitId === firstUnit.id)).toHaveLength(1);
+		expect(model.nodes.find((node) => node.workUnitId === firstUnit.id)?.title).toBe(firstUnit.title);
+		expect(new Set(model.edges.map((edge) => `${edge.from}->${edge.to}`)).size).toBe(model.edges.length);
+	});
+});

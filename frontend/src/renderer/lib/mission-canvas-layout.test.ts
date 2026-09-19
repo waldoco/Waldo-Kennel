@@ -220,3 +220,35 @@ describe("requestCanvasLayout", () => {
 		expect(cachedCanvasPositions("topology-8")).toBeDefined();
 	});
 });
+
+describe("production-adapter scale harness", () => {
+	function planWithUnits(count: number) {
+		const plan = dummyPlanRevision();
+		plan.id = `plan-scale-${count}`;
+		plan.number = count;
+		plan.workUnits = Array.from({ length: count }, (_, index) => {
+			const template = plan.workUnits[index % plan.workUnits.length];
+			if (!template) throw new Error("dummy plan needs a template unit");
+			return {
+				...template,
+				id: `scale-wu-${index}`,
+				position: index + 1,
+				title: `Scale work unit ${index}`,
+				dependsOn: index === 0 ? [] : [`scale-wu-${index - 1}`],
+			};
+		});
+		return plan;
+	}
+
+	it.each([75, 250])("lays out %i nodes through modelFromPlan within the regression budget", async (count) => {
+		const started = performance.now();
+		const model = modelFromPlan(planWithUnits(count));
+		const result = await requestCanvasLayout(model);
+		const elapsed = performance.now() - started;
+		expect(result.status).toBe("ready");
+		expect(result.positions).toHaveLength(count);
+		// A regression alarm, not a product SLO: generous enough for shared CI,
+		// tight enough to catch accidental quadratic/exponential layout setup.
+		expect(elapsed).toBeLessThan(10_000);
+	}, 15_000);
+});
