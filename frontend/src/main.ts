@@ -452,7 +452,7 @@ async function createWindowInternal(): Promise<void> {
 		// deliberately short so the namespace/session suffix stays below macOS's
 		// 103-byte sockaddr_un limit; all AO state remains under ~/.kennel.
 		dataDir: path.join(os.homedir(), STATE_DIRECTORY_NAME, ...(app.isPackaged ? ["br"] : ["dev", "br"])),
-		log: (message) => console.log(`AO: ${message}`),
+		log: (message) => console.log(`Kennel: ${message}`),
 	});
 	await agentBrowserRuntime.prepare();
 	if (browserQuitRequested) {
@@ -495,7 +495,7 @@ async function createWindowInternal(): Promise<void> {
 	windowComposition = composition;
 	syncNativeWindowBackground();
 	const shellWebContents = getShellWebContents();
-	if (!shellWebContents) throw new Error("AO shell WebContents was not created");
+	if (!shellWebContents) throw new Error("Kennel shell WebContents was not created");
 
 	// On Windows the app paints its own title bar (WindowTitlebar), so the native
 	// menu bar is hidden (autoHideMenuBar above). The role-based menu is still
@@ -722,7 +722,7 @@ function ensureShellEnv(): Promise<void> {
 		shellEnvPromise = resolveShellEnv(process.env, runLoginShell).then((resolved) => {
 			cachedShellEnv = resolved;
 			if (!resolved) {
-				console.error("AO: could not read the login-shell environment; falling back to a static PATH floor.");
+				console.error("Kennel: could not read the login-shell environment; falling back to a static PATH floor.");
 			}
 		});
 	}
@@ -903,7 +903,7 @@ function establishBrowserRuntimeLink(): void {
 	if (!browserViewHost) return;
 	const rfp = runFilePath();
 	if (!rfp) {
-		console.warn("AO: browser runtime link skipped; run-file path unavailable");
+		console.warn("Kennel: browser runtime link skipped; run-file path unavailable");
 		return;
 	}
 	let runInfo: ReturnType<typeof parseRunFile> = null;
@@ -914,7 +914,7 @@ function establishBrowserRuntimeLink(): void {
 	}
 	const address = runInfo?.browserRuntimeAddress;
 	if (!address) {
-		console.warn("AO: browser runtime link skipped; daemon did not publish an address");
+		console.warn("Kennel: browser runtime link skipped; daemon did not publish an address");
 		return;
 	}
 	const token = browserRuntimeToken;
@@ -939,7 +939,7 @@ function establishBrowserRuntimeLink(): void {
 			}
 			return host.execute(command.sessionId, command.action, command.args, signal);
 		},
-		log: (message) => console.log(`AO: ${message}`),
+		log: (message) => console.log(`Kennel: ${message}`),
 	});
 	browserRuntimeLinkIdentity = identity;
 }
@@ -959,10 +959,10 @@ function establishSupervisorLink(): void {
 	if (addr) {
 		supervisorLink?.dispose();
 		supervisorLink = connectSupervisor(addr, {
-			log: (msg) => console.log(`AO: ${msg}`),
+			log: (msg) => console.log(`Kennel: ${msg}`),
 		});
 	} else {
-		console.warn("AO: supervisor link skipped; run-file path unavailable");
+		console.warn("Kennel: supervisor link skipped; run-file path unavailable");
 	}
 }
 
@@ -1307,7 +1307,7 @@ async function startDaemonInner(startEpoch: number): Promise<DaemonStatus> {
 			// Log redirect failed (e.g. ~/.kennel not creatable, permission denied):
 			// fall back to "ignore" so the daemon still runs, but warn — otherwise
 			// a long-lived keep-alive daemon would run with zero log output.
-			console.warn(`AO: keep-daemon log redirect failed; daemon will run with stdio disabled: ${logPath}`);
+			console.warn(`Kennel: keep-daemon log redirect failed; daemon will run with stdio disabled: ${logPath}`);
 			keepDaemonLogFd = undefined;
 			stdio = ["pipe", "ignore", "ignore"];
 		}
@@ -1357,7 +1357,7 @@ async function startDaemonInner(startEpoch: number): Promise<DaemonStatus> {
 		}), "utf8").toString("base64url");
 		child.stdin.end(`${startupSecrets}\n`);
 	} else {
-		console.warn("AO: browser runtime token handoff pipe was unavailable");
+		console.warn("Kennel: browser runtime token handoff pipe was unavailable");
 	}
 	if (keep) child.unref();
 	daemonProcess = child;
