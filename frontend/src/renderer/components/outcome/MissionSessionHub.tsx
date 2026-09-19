@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { useOutcomeMission } from "../../hooks/useOutcome";
+import { useEventsConnection } from "../../hooks/useEventsConnection";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -24,10 +25,12 @@ type SessionCard = {
 
 export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: MissionSessionHubProps) {
 	const { t } = useTranslation();
+	const connection = useEventsConnection();
 	const lastConfirmedRef = useRef(missionQuery.mission);
 	if (missionQuery.mission) lastConfirmedRef.current = missionQuery.mission;
 	const displayMission = missionQuery.mission ?? lastConfirmedRef.current;
-	const refreshFailed = Boolean(missionQuery.failure && displayMission);
+	const frozen = connection === "disconnected" && Boolean(displayMission);
+	const refreshFailed = !frozen && Boolean(missionQuery.failure && displayMission);
 	const cards = useMemo<SessionCard[]>(
 		() =>
 			(displayMission?.nodes ?? [])
@@ -67,6 +70,12 @@ export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: 
 
 	return (
 		<section className="flex min-h-0 flex-1 flex-col gap-3" data-testid="mission-session-hub">
+		{frozen ? (
+			<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-session-hub-stale">
+				<p className="text-muted-foreground text-xs">{t("mission.list.stale.banner", { time: displayMission?.updatedAt })}</p>
+				<Button data-testid="mission-session-hub-stale-refresh" onClick={missionQuery.refetch} size="sm" variant="outline">{t("mission.list.stale.refresh")}</Button>
+			</div>
+		) : null}
 		{refreshFailed ? (
 			<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-session-hub-refresh-failed">
 				<p className="text-muted-foreground text-xs">{t("mission.list.refreshFailed.banner", { message: missionQuery.failure?.message ?? "" })}</p>
@@ -99,7 +108,7 @@ export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: 
 						</button>
 						<div className="mt-3 flex items-center justify-between gap-2">
 							<Badge variant="outline">{card.harness}</Badge>
-							<Button aria-label={t("mission.sessionHub.openAria", { title: card.title })} onClick={() => onOpenSession(card.sessionId)} size="sm" variant="ghost">
+							<Button aria-label={t("mission.sessionHub.openAria", { title: card.title })} disabled={frozen} onClick={() => onOpenSession(card.sessionId)} size="sm" variant="ghost">
 								<ExternalLink aria-hidden="true" className="size-icon-sm" />
 								{t("mission.sessionHub.open")}
 							</Button>

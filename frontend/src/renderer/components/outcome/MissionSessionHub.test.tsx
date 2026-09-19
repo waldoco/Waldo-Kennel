@@ -1,5 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { connectionState } = vi.hoisted(() => ({ connectionState: { value: "connected" as "connected" | "disconnected" | "idle" } }));
+vi.mock("../../hooks/useEventsConnection", () => ({ useEventsConnection: () => connectionState.value }));
 
 import type { useOutcomeMission } from "../../hooks/useOutcome";
 import { dummyMissionProjection } from "../../lib/mission-canvas-dummy";
@@ -11,6 +14,7 @@ function query(): MissionQuery {
 }
 
 describe("MissionSessionHub", () => {
+	beforeEach(() => { connectionState.value = "connected"; });
 	it("keeps DAG drill-down and session navigation as separate one-click doors", () => {
 		const onDrillDown = vi.fn();
 		const onOpenSession = vi.fn();
@@ -51,6 +55,21 @@ describe("MissionSessionHub", () => {
 		expect(screen.getByTestId("mission-session-hub-refresh-failed")).toHaveTextContent("refresh failed");
 		expect(screen.getByText("Refuse duplicate resume for one session id")).toBeInTheDocument();
 		expect(screen.queryByTestId("mission-session-hub-empty")).not.toBeInTheDocument();
+	});
+
+	it("freezes cached cards on disconnect, suppresses refresh-failed and session doors", () => {
+		const initial = query();
+		const refetch = vi.fn();
+		const { rerender } = render(<MissionSessionHub missionQuery={{ ...initial, refetch }} onDrillDown={vi.fn()} onOpenSession={vi.fn()} />);
+		connectionState.value = "disconnected";
+		rerender(<MissionSessionHub missionQuery={{ ...initial, mission: undefined, failure: { message: "refresh also failed" } as MissionQuery["failure"], refetch }} onDrillDown={vi.fn()} onOpenSession={vi.fn()} />);
+		expect(screen.getByTestId("mission-session-hub-stale")).toHaveTextContent("showing the last confirmed Mission");
+		expect(screen.getByText("Refuse duplicate resume for one session id")).toBeInTheDocument();
+		expect(screen.queryByTestId("mission-session-hub-refresh-failed")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("mission-session-hub-empty")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /Open session for Refuse duplicate resume/ })).toBeDisabled();
+		fireEvent.click(screen.getByTestId("mission-session-hub-stale-refresh"));
+		expect(refetch).toHaveBeenCalledOnce();
 	});
 
 });
