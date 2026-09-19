@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
@@ -125,8 +126,12 @@ func (m *Manager) launchChatController(ctx context.Context, in chatSpawn) (domai
 	// provider passes its environment through to the shell commands it runs, so
 	// this is what makes `ao` resolvable to the agent.
 	env := m.runtimeEnv(id, in.cfg.ProjectID, in.cfg.IssueID, in.project.Config.Env)
-	var diffBaseSHA, diffBaseRef string
-	if in.projectKind == domain.ProjectKindSingleRepo {
+	// Governed sessions resolved the source-tree base before the
+	// provider-launch crash boundary and persisted it with the prelaunch
+	// evidence; reuse exactly that value so custody records and final
+	// metadata cannot diverge. Ungoverned sessions resolve here as before.
+	diffBaseSHA, diffBaseRef := in.record.Metadata.DiffBaseSHA, in.record.Metadata.DiffBaseRef
+	if in.projectKind == domain.ProjectKindSingleRepo && strings.TrimSpace(diffBaseSHA) == "" {
 		diffBaseSHA, diffBaseRef = resolveSpawnDiffBase(
 			ctx, in.workspace.Path, in.workspace.BaseRef)
 	}

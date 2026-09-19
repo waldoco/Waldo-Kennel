@@ -928,10 +928,19 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (rec domain.
 	// marker before either controller is allowed to start; the Attempt snapshot
 	// follows after Spawn returns and recovery treats a missing snapshot as
 	// ambiguous rather than as an ordinary ungoverned session.
+	// Resolve the source-tree base before the crash boundary, so the custody
+	// record sealed inside it and the final session metadata bind the same
+	// resolved base rather than whatever a later re-read would produce.
+	var spawnDiffBaseSHA, spawnDiffBaseRef string
+	if projectKind == domain.ProjectKindSingleRepo {
+		spawnDiffBaseSHA, spawnDiffBaseRef = resolveSpawnDiffBase(ctx, ws.Path, ws.BaseRef)
+	}
 	if cfg.ExecutionPolicy != nil {
 		rec.Metadata.Branch = ws.Branch
 		rec.Metadata.WorkspacePath = ws.Path
 		rec.Metadata.WorkspaceRepoPath = ws.RepoPath
+		rec.Metadata.DiffBaseSHA = spawnDiffBaseSHA
+		rec.Metadata.DiffBaseRef = spawnDiffBaseRef
 		rec.UpdatedAt = m.clock()
 		if err := m.store.UpdateSession(ctx, rec); err != nil {
 			m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
@@ -1074,9 +1083,10 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (rec domain.
 		SupervisorCapabilityVerifier:  supervisorVerifier,
 		GovernedExecutionPolicyDigest: rec.Metadata.GovernedExecutionPolicyDigest,
 	}
-	if projectKind == domain.ProjectKindSingleRepo {
-		metadata.DiffBaseSHA, metadata.DiffBaseRef = resolveSpawnDiffBase(ctx, ws.Path, ws.BaseRef)
-	}
+	// The base was resolved before the provider-launch crash boundary; reuse
+	// exactly that value so custody evidence and final metadata cannot
+	// diverge.
+	metadata.DiffBaseSHA, metadata.DiffBaseRef = spawnDiffBaseSHA, spawnDiffBaseRef
 	if err := m.lcm.MarkSpawned(ctx, id, metadata); err != nil {
 		runtimeDestroyed := m.runtime.Destroy(ctx, handle) == nil
 		m.rollbackPreparedSpawnWorkspace(ctx, rec, ws, workspaceProject, runtimeDestroyed)
