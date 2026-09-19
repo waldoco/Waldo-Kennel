@@ -664,7 +664,7 @@ WHERE conversation_id = ? AND requested_at <= ?
           state = 'failed'
           AND provider_turn_id = ''
           AND error_message = 'controller ended before the turn completed'
-          AND completed_at >= sqlc.arg(requested_at)
+          AND completed_at >= sqlc.arg(failed_completed_cutoff)
       )
   );
 

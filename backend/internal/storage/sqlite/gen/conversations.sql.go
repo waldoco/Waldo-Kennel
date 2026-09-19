@@ -337,15 +337,16 @@ WHERE conversation_id = ? AND requested_at <= ?
           state = 'failed'
           AND provider_turn_id = ''
           AND error_message = 'controller ended before the turn completed'
-          AND completed_at >= ?
+          AND completed_at >= ?4
       )
   )
 `
 
 type CancelQueuedConversationTurnsParams struct {
-	CompletedAt    sql.NullTime
-	ConversationID string
-	RequestedAt    time.Time
+	CompletedAt           sql.NullTime
+	ConversationID        string
+	RequestedAt           time.Time
+	FailedCompletedCutoff sql.NullTime
 }
 
 // Stopping the agent stops the queue with it: a brake that starts new work
@@ -353,7 +354,12 @@ type CancelQueuedConversationTurnsParams struct {
 // The cutoff is the moment the user pressed stop, so a message typed after that
 // is still delivered rather than swept up by a cancellation it predates.
 func (q *Queries) CancelQueuedConversationTurns(ctx context.Context, arg CancelQueuedConversationTurnsParams) error {
-	_, err := q.db.ExecContext(ctx, cancelQueuedConversationTurns, arg.CompletedAt, arg.ConversationID, arg.RequestedAt, arg.RequestedAt)
+	_, err := q.db.ExecContext(ctx, cancelQueuedConversationTurns,
+		arg.CompletedAt,
+		arg.ConversationID,
+		arg.RequestedAt,
+		arg.FailedCompletedCutoff,
+	)
 	return err
 }
 

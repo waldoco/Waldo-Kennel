@@ -1178,9 +1178,10 @@ func (s *Store) CancelQueuedTurns(
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if err := s.qw.CancelQueuedConversationTurns(ctx, gen.CancelQueuedConversationTurnsParams{
-		CompletedAt:    sql.NullTime{Time: now, Valid: true},
-		ConversationID: conversationID,
-		RequestedAt:    cutoff,
+		CompletedAt:           sql.NullTime{Time: now, Valid: true},
+		ConversationID:        conversationID,
+		RequestedAt:           cutoff,
+		FailedCompletedCutoff: sql.NullTime{Time: cutoff, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("cancel queued turns for %s: %w", conversationID, err)
 	}

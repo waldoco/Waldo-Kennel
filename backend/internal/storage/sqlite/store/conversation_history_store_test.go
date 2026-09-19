@@ -2,8 +2,10 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/sqlitetest"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/store"
 )
 
@@ -802,5 +805,90 @@ func TestFailPendingInputsDoesNotTouchApprovals(t *testing.T) {
 	}
 	if states["input"] != domain.ActivityStatusFailed || states["approval"] != domain.ActivityStatusPending {
 		t.Fatalf("activity states = %#v", states)
+	}
+}
+
+func TestCancelQueuedTurnsUsesOneCutoffWithNullableFailedCompletion(t *testing.T) {
+	dataDir := t.TempDir()
+	s := sqlitetest.MustOpenAt(t, dataDir)
+	ctx := context.Background()
+	seedProject(t, s, "cancel-cutoff")
+	rec := sampleRecord("cancel-cutoff")
+	rec.Mode = domain.SessionModeChat
+	session, err := s.CreateSession(ctx, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := s.CreateConversation(ctx, "cancel-cutoff-conversation", domain.ConversationScopeSession, "cancel-cutoff", session.ID, histClock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.CreateConversation(ctx, "cancel-cutoff-other", domain.ConversationScopeProject, "cancel-cutoff", session.ID, histClock)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "kennel.db")+"?_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	cutoff := histClock.Add(10 * time.Minute)
+	now := cutoff.Add(time.Minute)
+	type fixture struct {
+		id, conversation, state, provider, message string
+		requested                                  time.Time
+		completed                                  *time.Time
+	}
+	before, equal, after := cutoff.Add(-time.Second), cutoff, cutoff.Add(time.Second)
+	fixtures := []fixture{
+		{"queued-before", conversation.ID, "queued", "", "", before, nil},
+		{"queued-after", conversation.ID, "queued", "", "", after, nil},
+		{"failed-before", conversation.ID, "failed", "", "controller ended before the turn completed", before, &before},
+		{"failed-equal", conversation.ID, "failed", "", "controller ended before the turn completed", before, &equal},
+		{"failed-after", conversation.ID, "failed", "", "controller ended before the turn completed", before, &after},
+		{"failed-null", conversation.ID, "failed", "", "controller ended before the turn completed", before, nil},
+		{"failed-other-error", conversation.ID, "failed", "", "another error", before, &after},
+		{"failed-provider-bound", conversation.ID, "failed", "provider-turn", "controller ended before the turn completed", before, &after},
+		{"other-conversation", other.ID, "queued", "", "", before, nil},
+	}
+	for _, f := range fixtures {
+		var completed any
+		if f.completed != nil {
+			completed = *f.completed
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO conversation_turns(id,conversation_id,handled_by_session_id,provider_turn_id,state,error_message,requested_at,completed_at) VALUES(?,?,?,?,?,?,?,?)`, f.id, f.conversation, session.ID, f.provider, f.state, f.message, f.requested, completed); err != nil {
+			t.Fatalf("seed %s: %v", f.id, err)
+		}
+	}
+	if err := s.CancelQueuedTurns(ctx, conversation.ID, cutoff, now); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]string{"queued-before": "interrupted", "queued-after": "queued", "failed-before": "failed", "failed-equal": "interrupted", "failed-after": "interrupted", "failed-null": "failed", "failed-other-error": "failed", "failed-provider-bound": "failed", "other-conversation": "queued"}
+	for _, f := range fixtures {
+		var state, message string
+		var requested time.Time
+		var completed sql.NullTime
+		if err := db.QueryRowContext(ctx, `SELECT state,error_message,requested_at,completed_at FROM conversation_turns WHERE id=?`, f.id).Scan(&state, &message, &requested, &completed); err != nil {
+			t.Fatal(err)
+		}
+		if state != want[f.id] {
+			t.Errorf("%s state=%s want=%s", f.id, state, want[f.id])
+		}
+		if !requested.Equal(f.requested) {
+			t.Errorf("%s requested_at changed", f.id)
+		}
+		if state == "interrupted" {
+			if message != "" {
+				t.Errorf("%s error not cleared", f.id)
+			}
+			if f.completed == nil && (!completed.Valid || !completed.Time.Equal(now)) {
+				t.Errorf("%s completion=%v want now", f.id, completed)
+			}
+			if f.completed != nil && (!completed.Valid || !completed.Time.Equal(*f.completed)) {
+				t.Errorf("%s completion=%v want preserved %v", f.id, completed, *f.completed)
+			}
+		}
 	}
 }
