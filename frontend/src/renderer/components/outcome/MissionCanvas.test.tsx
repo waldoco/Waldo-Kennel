@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactFlowInstance } from "@xyflow/react";
 
@@ -50,7 +50,7 @@ describe("MissionCanvas", () => {
 		// reading shows first, never a half-laid-out graph.
 		expect(screen.getByTestId("mission-canvas-layout-pending")).toBeInTheDocument();
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
-		expect(screen.getByText("Bind resume to the same worktree lease")).toBeInTheDocument();
+		expect(screen.getByTestId("mission-node-face-wu-binding")).toHaveTextContent("Bind resume to the same worktree lease");
 		expect(screen.queryByTestId("mission-canvas-layout-pending")).not.toBeInTheDocument();
 	});
 
@@ -233,5 +233,93 @@ describe("MissionCanvas", () => {
 	it("renders nothing before a Plan is authorized", () => {
 		const { container } = render(<MissionCanvas missionQuery={missionQuery()} planApproved={false} />);
 		expect(container).toBeEmptyDOMElement();
+	});
+});
+
+describe("MissionCanvas interactions", () => {
+	it("reveals a bounded hover/focus preview on every node - title, status, attention reason, dependency counts", async () => {
+		render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
+		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
+		expect(screen.queryAllByTestId(/^mission-node-preview-/).length).toBe(8);
+
+		const preview = screen.getByTestId("mission-node-preview-wu-tests");
+		expect(preview).toHaveTextContent("Cover resume race in regression tests");
+		expect(preview).toHaveTextContent("Paused");
+		expect(preview).toHaveTextContent("Owner decision needed: keep the resume retry budget at 2?");
+		expect(preview).toHaveTextContent("1 upstream, 1 downstream");
+		// The preview never carries an action and never hides its facts from one
+		// input mode: reveal is CSS on the RF wrapper for BOTH pointer hover and
+		// keyboard focus-within.
+		expect(preview.className).toContain("group-hover:opacity-100");
+		expect(preview.className).toContain("group-focus-within:opacity-100");
+		expect(preview).toHaveAttribute("aria-hidden", "true");
+		expect(within(preview).queryByRole("button")).not.toBeInTheDocument();
+	});
+
+	it("moves focus by topology with the arrow keys, selects with Enter, returns focus with Escape", async () => {
+		const { container } = render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
+		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
+		const nodeEl = (id: string) => {
+			const el = container.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`);
+			expect(el, `node ${id}`).not.toBeNull();
+			return el as HTMLElement;
+		};
+		const focusedId = () => (document.activeElement instanceof HTMLElement ? document.activeElement.dataset.id : undefined);
+
+		// The RF node wrapper is the single focus owner.
+		nodeEl("wu-schema").focus();
+		expect(focusedId()).toBe("wu-schema");
+
+		// Right crosses into the successor layer; layer 0 holds exactly one node,
+		// so only the landing sibling is topology-dependent.
+		fireEvent.keyDown(nodeEl("wu-schema"), { key: "ArrowRight" });
+		const landed = focusedId();
+		expect(["wu-binding", "wu-handshake"]).toContain(landed);
+
+		// Down moves to the sibling inside the layer.
+		fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowDown" });
+		expect(["wu-binding", "wu-handshake"]).toContain(focusedId());
+		expect(focusedId()).not.toBe(landed);
+
+		// Left returns across layers; layer 0's single node makes the target exact.
+		fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowLeft" });
+		expect(focusedId()).toBe("wu-schema");
+
+		// The graph edge never wraps or jumps: no left layer, no sibling - focus stays.
+		fireEvent.keyDown(nodeEl("wu-schema"), { key: "ArrowLeft" });
+		fireEvent.keyDown(nodeEl("wu-schema"), { key: "ArrowUp" });
+		expect(focusedId()).toBe("wu-schema");
+
+		// Enter on a focused node performs the click's selection.
+		fireEvent.keyDown(nodeEl("wu-schema"), { key: "Enter" });
+		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
+
+		// Escape returns focus toward the pane; selection is untouched.
+		fireEvent.keyDown(nodeEl("wu-schema"), { key: "Escape" });
+		expect(focusedId()).not.toBe("wu-schema");
+		expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument();
+	});
+
+	it("highlights the selected node's lineage and dims the rest until selection clears", async () => {
+		const { container } = render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
+		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
+		fireEvent.click(screen.getByTestId("mission-node-face-wu-binding"));
+		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
+
+		const nodeClass = (id: string) => container.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ?? "";
+		// Lineage of wu-binding: ancestor wu-schema; descendants sweep, island, docs, doctor.
+		for (const id of ["wu-schema", "wu-binding", "wu-sweep", "wu-island", "wu-docs", "wu-doctor"]) {
+			expect(nodeClass(id), id).not.toContain("opacity-40");
+		}
+		// The handshake subtree is not on binding's lineage: it steps back.
+		for (const id of ["wu-handshake", "wu-tests"]) {
+			expect(nodeClass(id), id).toContain("opacity-40");
+		}
+		// Edge classification is pure (canvasLineage) and unit-tested in the
+		// navigation lib: jsdom renders no edge SVG, so there is no edge DOM to
+		// assert here.
+		fireEvent.click(screen.getByTestId("outcome-inspector-close"));
+		await waitFor(() => expect(screen.queryByTestId("outcome-inspector")).not.toBeInTheDocument());
+		expect(container.querySelector(".react-flow__node.opacity-40")).toBeNull();
 	});
 });

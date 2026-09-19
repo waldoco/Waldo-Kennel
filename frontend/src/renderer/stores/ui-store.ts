@@ -29,6 +29,8 @@ export type SettingsModal =
 export type WorkbenchTab = "changes" | "files" | "terminal";
 /** Board or List reading of the same session lanes. */
 export type SessionsViewMode = "board" | "list";
+/** List or Graph reading of the Mission WorkUnit projection. */
+export type MissionViewMode = "list" | "graph";
 export type InspectorView = "summary" | "reviews" | "browser" | "files";
 
 export type InspectorSessionState = {
@@ -53,6 +55,10 @@ type UiState = {
 	 *  Sticky across launches, same as sessionsViewMode, but scoped separately
 	 *  since it governs a different lane model (attempts, not sessions). */
 	outcomeRunViewMode: SessionsViewMode;
+	/** Which reading of the Mission graph is showing. Sticky across launches:
+	 *  List is the default until the canvas cutover; a stored preference is the
+	 *  only way Graph renders. */
+	missionViewMode: MissionViewMode;
 	/** The current attempt's drill-in terminal panel (Figma's terminal-toggle
 	 *  icon in the Work destination's persistent top bar). Ephemeral like the
 	 *  command palette: it opens on demand and never persists across launches,
@@ -113,6 +119,7 @@ type UiState = {
 	setWorkbenchTab: (tab: WorkbenchTab) => void;
 	setSessionsViewMode: (mode: SessionsViewMode) => void;
 	setOutcomeRunViewMode: (mode: SessionsViewMode) => void;
+	setMissionViewMode: (mode: MissionViewMode) => void;
 	openOutcomeAttemptPanel: (attemptId?: string) => void;
 	closeOutcomeAttemptPanel: () => void;
 	toggleOutcomeAttemptPanel: () => void;
@@ -155,6 +162,7 @@ export type OrchestratorReplacementFailure = {
 const sidebarStorageKey = "kennel.sidebar.open";
 const sessionsViewModeStorageKey = "kennel.sessions.viewMode";
 const outcomeRunViewModeStorageKey = "kennel.outcome.runViewMode";
+const missionViewModeStorageKey = "kennel.mission.viewMode";
 const defaultAgentStorageKey = "kennel.agent.default";
 const onboardingStorageKey = "kennel.onboarding.completed";
 const developerModeStorageKey = "kennel.developerMode";
@@ -173,6 +181,11 @@ function initialSessionsViewMode(): SessionsViewMode {
 
 function initialOutcomeRunViewMode(): SessionsViewMode {
 	return getLocalStorage()?.getItem(outcomeRunViewModeStorageKey) === "list" ? "list" : "board";
+}
+
+function initialMissionViewMode(): MissionViewMode {
+	// List-first by design: only an explicit stored "graph" opts into the canvas.
+	return getLocalStorage()?.getItem(missionViewModeStorageKey) === "graph" ? "graph" : "list";
 }
 
 function initialDefaultAgentId() {
@@ -198,6 +211,7 @@ export const useUiStore = create<UiState>((set, get) => ({
 	workbenchTab: "changes",
 	sessionsViewMode: initialSessionsViewMode(),
 	outcomeRunViewMode: initialOutcomeRunViewMode(),
+	missionViewMode: initialMissionViewMode(),
 	isOutcomeAttemptPanelOpen: false,
 	outcomeAttemptPanelAttemptId: null,
 	defaultAgentId: initialDefaultAgentId(),
@@ -228,6 +242,10 @@ export const useUiStore = create<UiState>((set, get) => ({
 	setOutcomeRunViewMode: (outcomeRunViewMode) => {
 		getLocalStorage()?.setItem(outcomeRunViewModeStorageKey, outcomeRunViewMode);
 		set({ outcomeRunViewMode });
+	},
+	setMissionViewMode: (missionViewMode) => {
+		getLocalStorage()?.setItem(missionViewModeStorageKey, missionViewMode);
+		set({ missionViewMode });
 	},
 	openOutcomeAttemptPanel: (outcomeAttemptPanelAttemptId) =>
 		set({ isOutcomeAttemptPanelOpen: true, outcomeAttemptPanelAttemptId: outcomeAttemptPanelAttemptId ?? null }),

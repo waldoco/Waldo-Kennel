@@ -2760,6 +2760,9 @@
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
 	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"mission.view.switchAria": "미션 보기",
+	"mission.view.graph": "그래프",
+	"mission.view.list": "목록",
 	"outcome.decide.factsSummary": "요약",
 	"outcome.decide.authorizeCta": "이 Outcome 계획 승인",
 	"outcome.decide.notReported": "보고되지 않음"

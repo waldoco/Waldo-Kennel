@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,6 +31,8 @@ vi.mock("../../lib/api-client", () => ({
 }));
 
 vi.mock("../../hooks/useEventsConnection", () => ({ useEventsConnection: () => "connected" }));
+
+import { useUiStore } from "../../stores/ui-store";
 
 import { OutcomeRunSurface } from "./OutcomeRunSurface";
 
@@ -168,6 +170,10 @@ function renderSurface(props: { onReviewProof?: () => void } = {}) {
 beforeEach(() => {
 	getMock.mockReset();
 	postMock.mockReset();
+	// The Mission List/Graph reading is sticky: every test starts from the
+	// List default with nothing stored.
+	useUiStore.setState({ missionViewMode: "list" });
+	window.localStorage.removeItem("kennel.mission.viewMode");
 });
 
 describe("OutcomeRunSurface", () => {
@@ -579,5 +585,50 @@ describe("OutcomeRunSurface", () => {
 		await user.click(await screen.findByTestId("outcome-run-start"));
 		const failure = await screen.findByRole("alert");
 		expect(failure.textContent).toContain("custody");
+	});
+});
+
+describe("Mission List/Graph switch", () => {
+	function mockApprovedRun() {
+		getMock.mockImplementation((url: string) => {
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/schedule") return Promise.resolve({ data: scheduleEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plans/{planId}/mission") return Promise.resolve({ data: missionEnvelope(), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/plan") return Promise.resolve({ data: planEnvelope("approved"), error: undefined });
+			if (url === "/api/v1/outcomes/{outcomeId}/attempts") return Promise.resolve({ data: { attempts: [] }, error: undefined });
+			return Promise.resolve({ data: undefined, error: { code: "NOT_FOUND", message: url } });
+		});
+	}
+
+	it("switches the Mission reading between List and Graph and remembers the choice", async () => {
+		mockApprovedRun();
+		renderSurface();
+
+		// List is the default reading; nothing is stored until a person chooses.
+		await screen.findByTestId("mission-work-unit-list");
+		expect(screen.getByTestId("mission-view-list")).toHaveAttribute("aria-selected", "true");
+		expect(window.localStorage.getItem("kennel.mission.viewMode")).toBeNull();
+
+		fireEvent.click(screen.getByTestId("mission-view-graph"));
+		expect(await screen.findByTestId("mission-canvas")).toBeInTheDocument();
+		expect(screen.queryByTestId("mission-work-unit-list")).not.toBeInTheDocument();
+		expect(window.localStorage.getItem("kennel.mission.viewMode")).toBe("graph");
+		expect(screen.getByTestId("mission-view-graph")).toHaveAttribute("aria-selected", "true");
+
+		// Switching back restores the complete List reading.
+		fireEvent.click(screen.getByTestId("mission-view-list"));
+		expect(await screen.findByTestId("mission-work-unit-list")).toBeInTheDocument();
+		expect(screen.queryByTestId("mission-canvas")).not.toBeInTheDocument();
+		expect(window.localStorage.getItem("kennel.mission.viewMode")).toBe("list");
+	});
+
+	it("opens on the remembered Graph reading when a preference is stored", async () => {
+		window.localStorage.setItem("kennel.mission.viewMode", "graph");
+		useUiStore.setState({ missionViewMode: "graph" });
+		mockApprovedRun();
+		renderSurface();
+
+		expect(await screen.findByTestId("mission-canvas")).toBeInTheDocument();
+		expect(screen.queryByTestId("mission-work-unit-list")).not.toBeInTheDocument();
+		expect(screen.getByTestId("mission-view-graph")).toHaveAttribute("aria-selected", "true");
 	});
 });

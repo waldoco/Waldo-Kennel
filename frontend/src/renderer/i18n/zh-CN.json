@@ -2742,6 +2742,9 @@
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
 	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"mission.view.switchAria": "任务视图",
+	"mission.view.graph": "图",
+	"mission.view.list": "列表",
 	"outcome.decide.factsSummary": "摘要",
 	"outcome.decide.authorizeCta": "授权此成果计划",
 	"outcome.decide.notReported": "未报告"

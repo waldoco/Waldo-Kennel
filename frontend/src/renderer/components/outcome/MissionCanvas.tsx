@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import type { MissionNodeRecord, useOutcomeMission } from "../../hooks/useOutcome";
 import type { MessageKey } from "../../i18n/messages";
 import { requestCanvasLayout, type CanvasPositions } from "../../lib/mission-canvas-layout";
+import { buildCanvasLayers, canvasLineage, canvasTopologyNeighbor, type CanvasNavigationDirection } from "../../lib/mission-canvas-navigation";
 import { modelFromMissionProjection } from "../../lib/mission-canvas-model";
 import { cn } from "../../lib/utils";
 import { useEventsConnection } from "../../hooks/useEventsConnection";
@@ -43,15 +44,42 @@ import { missionDeterministicSuccessor, missionGraphView, missionTopologyIdentit
 type FlowNodeData = { view: MissionNodeView };
 
 const MissionCanvasFlowNode = memo(function MissionCanvasFlowNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
+	const { t } = useTranslation();
+	const view = data.view;
 	return (
 		<>
 			{/* Anchor points only - routing edges needs handle positions even
 			    though nothing here is user-connectable (nodesConnectable=false). */}
 			<Handle className="opacity-0" position={Position.Left} type="target" />
+			{/* Hover/focus PREVIEW only: title, status, the concise attention
+			    reason, and dependency counts. It is never the only path to these
+			    facts - selection opens the same and more in the inspector - and
+			    no action ever lives here. Reveal is CSS on the RF node wrapper
+			    (the "group" class): hover for pointer, focus-within for keyboard,
+			    instant under reduced motion. */}
+			<div
+				aria-hidden="true"
+				className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-md hairline border-border bg-card px-3 py-2 opacity-0 shadow-lg motion-safe:transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+				data-testid={`mission-node-preview-${view.workUnitId}`}
+			>
+				<p className="truncate text-sm font-medium text-foreground">{view.title}</p>
+				<p className={cn("mt-0.5 text-xs", view.status.className)}>{view.status.label}</p>
+				{view.attention ? (
+					<p className="mt-0.5 line-clamp-2 text-muted-foreground text-xs">
+						{view.attention.label}: {view.attention.summary}
+					</p>
+				) : null}
+				<p className="mt-0.5 text-2xs text-passive">
+					{t("mission.row.dependencySummary" satisfies MessageKey, {
+						downstream: view.dependentCount,
+						upstream: view.dependencyCount,
+					})}
+				</p>
+			</div>
 			<WorkUnitFace
 				className={cn(selected && "ring-1 ring-ring", "focus-visible:outline-none")}
 				layout="node"
-				view={data.view}
+				view={view}
 			/>
 			<Handle className="opacity-0" position={Position.Right} type="source" />
 		</>
@@ -168,12 +196,20 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	const instanceRef = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
 	const fittedKeyRef = useRef<string | undefined>(undefined);
 
+	// Selecting a node lights up its full dependency lineage - every ancestor
+	// and every dependent over drawable edges - and dims the rest.
+	const lineage = useMemo(() => canvasLineage(model?.edges ?? [], selectedWorkUnitId), [model, selectedWorkUnitId]);
+
 	// Positioned nodes are derived synchronously from one model/layout pair.
 	// React never commits a new layout key alongside the previous topology.
 	const flowNodes = useMemo<Node<FlowNodeData>[]>(() => {
 		if (!model || !graph || !layout || layout.key !== model.topologyKey) return [];
 		return model.nodes.map((node) => ({
 			ariaLabel: `${node.title} - ${graph.nodesByWorkUnitId.get(node.workUnitId)?.status.label ?? node.state}`,
+			className: cn(
+				"group motion-safe:transition-opacity",
+				lineage && !lineage.related.has(node.workUnitId) && "opacity-40",
+			),
 			data: { view: graph.nodesByWorkUnitId.get(node.workUnitId) as MissionNodeView },
 			draggable: false,
 			connectable: false,
@@ -182,7 +218,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 			selected: node.workUnitId === selectedWorkUnitId,
 			type: "workunit" as const,
 		}));
-	}, [model, graph, layout, selectedWorkUnitId]);
+	}, [model, graph, layout, selectedWorkUnitId, lineage]);
 
 	// A controlled React Flow commits its external store after React commits the
 	// nodes prop. Wait until the instance reports the exact topology before
@@ -216,15 +252,70 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 		const nodeIds = new Set(model.nodes.map((node) => node.workUnitId));
 		return model.edges
 			.filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
-			.map((edge) => ({
-				focusable: false,
-				id: `${edge.from}->${edge.to}`,
-				selectable: false,
-				source: edge.from,
-				target: edge.to,
-				type: "smoothstep",
-			}));
-	}, [model, layout]);
+			.map((edge) => {
+				const id = `${edge.from}->${edge.to}`;
+				const related = lineage?.relatedEdgeIds.has(id);
+				return {
+					className: lineage ? (related ? "mission-edge-related" : "mission-edge-dimmed") : undefined,
+					focusable: false,
+					id,
+					selectable: false,
+					source: edge.from,
+					target: edge.to,
+					type: "smoothstep",
+				};
+			});
+	}, [model, layout, lineage]);
+
+	// Arrow-key movement follows the drawn topology, never arbitrary DOM order.
+	const canvasLayers = useMemo(
+		() => (model && layout && layout.key === model.topologyKey ? buildCanvasLayers(layout.positions) : []),
+		[model, layout],
+	);
+	const viewportRef = useRef<HTMLDivElement>(null);
+	const handleCanvasKeyDown = useCallback(
+		(event: React.KeyboardEvent<HTMLDivElement>) => {
+			const focusedId =
+				document.activeElement instanceof Element
+					? (document.activeElement.closest(".react-flow__node")?.getAttribute("data-id") ?? undefined)
+					: undefined;
+			if (event.key === "Escape") {
+				if (focusedId && document.activeElement instanceof HTMLElement) {
+					document.activeElement.blur();
+					viewportRef.current?.querySelector<HTMLElement>(".react-flow__pane")?.focus();
+					event.preventDefault();
+					event.stopPropagation();
+				}
+				return;
+			}
+			const direction: CanvasNavigationDirection | undefined =
+				event.key === "ArrowLeft"
+					? "left"
+					: event.key === "ArrowRight"
+						? "right"
+						: event.key === "ArrowUp"
+							? "up"
+							: event.key === "ArrowDown"
+								? "down"
+								: undefined;
+			if (direction) {
+				if (!focusedId) return;
+				const next = canvasTopologyNeighbor(canvasLayers, focusedId, direction);
+				if (next) {
+					viewportRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${next}"]`)?.focus();
+					event.preventDefault();
+					event.stopPropagation();
+				}
+				return;
+			}
+			if (event.key === "Enter" && focusedId) {
+				setSelectedWorkUnitId(focusedId);
+				event.preventDefault();
+				event.stopPropagation();
+			}
+		},
+		[canvasLayers],
+	);
 
 	const onNodesChange = useCallback((changes: NodeChange<Node<FlowNodeData>>[]) => {
 		for (const change of changes) {
@@ -334,7 +425,12 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 			)}
 
 			<div className="flex min-h-0 flex-1 gap-3">
-				<div className="min-h-0 min-w-0 flex-1 rounded-group hairline border-border bg-card" data-testid="mission-canvas-viewport">
+				<div
+					className="min-h-0 min-w-0 flex-1 rounded-group hairline border-border bg-card"
+					data-testid="mission-canvas-viewport"
+					onKeyDownCapture={handleCanvasKeyDown}
+					ref={viewportRef}
+				>
 					{layoutReady ? (
 						<ReactFlow
 							aria-label={t("mission.list.heading" satisfies MessageKey)}
@@ -344,6 +440,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 							nodes={flowNodes}
 							nodesConnectable={false}
 							nodesDraggable={false}
+							nodesFocusable
 							nodeTypes={NODE_TYPES}
 							onInit={handleInit}
 							onNodesChange={onNodesChange}

@@ -4687,3 +4687,14 @@ html[data-native-browser-composition="true"] .browser-popout-overlay {
 	padding-inline: var(--space-2_5);
 	padding-block: var(--space-2);
 }
+
+/* Mission canvas lineage highlighting: the selected node's dependency
+   lineage (both directions) keeps full weight; every other edge steps back.
+   Class-driven, instant - no animation, so reduced motion needs nothing. */
+.react-flow__edge.mission-edge-related .react-flow__edge-path {
+	stroke: var(--color-status-working);
+	stroke-width: 2;
+}
+.react-flow__edge.mission-edge-dimmed {
+	opacity: 0.3;
+}

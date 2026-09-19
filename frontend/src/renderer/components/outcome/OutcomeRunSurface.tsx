@@ -19,6 +19,7 @@ import { useUiStore } from "../../stores/ui-store";
 import { MissionPlanView } from "./MissionPlanView";
 import { selectMissionCanvasRenderer } from "../../lib/mission-canvas-config";
 import { MissionCanvas } from "./MissionCanvas";
+import { MissionViewSwitch } from "./MissionViewSwitch";
 import { MissionWorkUnitList } from "./MissionWorkUnitList";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -62,6 +63,8 @@ function statusBadgeKey(status: string): MessageKey | undefined {
  * no provider name is treated as a policy.
  */
 export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked = false }: OutcomeRunSurfaceProps) {
+	const missionViewMode = useUiStore((state) => state.missionViewMode);
+	const setMissionViewMode = useUiStore((state) => state.setMissionViewMode);
 	const { t } = useTranslation();
 	const planQuery = useOutcomePlan(outcomeId);
 	const attemptsQuery = useOutcomeAttempts(outcomeId);
@@ -167,12 +170,23 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 			    projection only, never joined with Plan/Schedule/Attempt/session
 			    responses to recreate its authority. List and Canvas render the
 			    same projection through the shared WorkUnit face; the
-			    mission-canvas config seam selects the renderer and defaults to
-			    List, which remains the complete reading until the cutover
-			    slice. */}
-			<h3 className="text-sm font-medium text-foreground">{t("mission.list.heading")}</h3>
+			    remembered List/Graph preference feeds the mission-canvas config
+			    seam; List is the default and remains the complete reading until
+			    the cutover slice. */}
+			<div className="flex items-center justify-between gap-2">
+				<h3 className="text-sm font-medium text-foreground">{t("mission.list.heading")}</h3>
+				<MissionViewSwitch
+					labels={{
+						ariaLabel: t("mission.view.switchAria" satisfies MessageKey),
+						graph: t("mission.view.graph" satisfies MessageKey),
+						list: t("mission.view.list" satisfies MessageKey),
+					}}
+					onChange={setMissionViewMode}
+					value={missionViewMode}
+				/>
+			</div>
 			<div className="min-h-0 flex-1">
-				{selectMissionCanvasRenderer() === "flow" ? (
+				{selectMissionCanvasRenderer({ renderer: missionViewMode === "graph" ? "flow" : "list" }) === "flow" ? (
 					<MissionCanvas missionQuery={missionQuery} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
 				) : (
 					<MissionWorkUnitList missionQuery={missionQuery} onStart={startNextRunnable} planApproved={planApproved} planWorkUnits={plan?.workUnits} />

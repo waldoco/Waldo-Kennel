@@ -2741,6 +2741,9 @@
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
 	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"mission.view.switchAria": "Mission view",
+	"mission.view.graph": "Graph",
+	"mission.view.list": "List",
 	"outcome.decide.factsSummary": "Summary",
 	"outcome.decide.authorizeCta": "Authorize this Outcome plan",
 	"outcome.decide.notReported": "Not reported"

@@ -2760,6 +2760,9 @@
 	"mission.criteria.ready": "Ready",
 	"mission.criteria.pending": "Pending",
 	"mission.list.refreshFailed.banner": "Showing the last confirmed Mission — refresh failed: {{message}}",
+	"mission.view.switchAria": "ミッションビュー",
+	"mission.view.graph": "グラフ",
+	"mission.view.list": "リスト",
 	"outcome.decide.factsSummary": "概要",
 	"outcome.decide.authorizeCta": "このOutcomeプランを承認",
 	"outcome.decide.notReported": "未報告"
