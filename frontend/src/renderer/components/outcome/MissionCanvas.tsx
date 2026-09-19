@@ -194,7 +194,9 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 
 	const reducedMotion = usePrefersReducedMotion();
 	const instanceRef = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
-	const fittedKeyRef = useRef<string | undefined>(undefined);
+	const [instanceReady, setInstanceReady] = useState(false);
+	const fittedFrameRef = useRef<string | undefined>(undefined);
+	const [viewportSize, setViewportSize] = useState("");
 
 	// Selecting a node lights up its full dependency lineage - every ancestor
 	// and every dependent over drawable edges - and dims the rest.
@@ -207,7 +209,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 		return model.nodes.map((node) => ({
 			ariaLabel: `${node.title} - ${graph.nodesByWorkUnitId.get(node.workUnitId)?.status.label ?? node.state}`,
 			className: cn(
-				"group motion-safe:transition-opacity",
+				"group motion-safe:transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 				lineage && !lineage.related.has(node.workUnitId) && "opacity-40",
 			),
 			data: { view: graph.nodesByWorkUnitId.get(node.workUnitId) as MissionNodeView },
@@ -220,32 +222,43 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 		}));
 	}, [model, graph, layout, selectedWorkUnitId, lineage]);
 
-	// A controlled React Flow commits its external store after React commits the
-	// nodes prop. Wait until the instance reports the exact topology before
-	// fitting, and do not record the key until that fit really occurs.
+	// React Flow first commits node IDs and only later measures their DOM bounds.
+	// Fitting against the ID-only phase produces an unreadably small, off-centre
+	// graph. Wait for every expected node to have usable measured bounds. The
+	// framing key also includes the inspector state and viewport dimensions, so
+	// opening/closing the inspector or resizing the canvas preserves the whole
+	// topology in the remaining space without refitting state-only refreshes.
 	useEffect(() => {
 		if (!layout || !model || !instanceRef.current) return;
 		if (layout.key !== model.topologyKey) return;
-		if (fittedKeyRef.current === layout.key) return;
+		const frameKey = `${layout.key}:${selectedWorkUnitId ? "inspector" : "canvas"}:${viewportSize}`;
+		if (fittedFrameRef.current === frameKey) return;
 		const expectedIds = model.nodes.map((node) => node.workUnitId).sort();
 		let cancelled = false;
 		let retryTimer: ReturnType<typeof setTimeout> | undefined;
-		const fitCommittedTopology = () => {
+		const fitMeasuredTopology = () => {
 			if (cancelled || !instanceRef.current) return;
-			const renderedIds = instanceRef.current.getNodes().map((node) => node.id).sort();
-			if (renderedIds.length !== expectedIds.length || renderedIds.some((id, index) => id !== expectedIds[index])) {
-				retryTimer = setTimeout(fitCommittedTopology, 16);
+			const rendered = instanceRef.current.getNodes();
+			const renderedIds = rendered.map((node) => node.id).sort();
+			const exactTopology = renderedIds.length === expectedIds.length && renderedIds.every((id, index) => id === expectedIds[index]);
+			const allMeasured = rendered.every((node) => {
+				const width = node.measured?.width ?? node.width;
+				const height = node.measured?.height ?? node.height;
+				return typeof width === "number" && width > 0 && typeof height === "number" && height > 0;
+			});
+			if (!exactTopology || !allMeasured) {
+				retryTimer = setTimeout(fitMeasuredTopology, 16);
 				return;
 			}
-			instanceRef.current.fitView({ duration: reducedMotion ? 0 : 200 });
-			fittedKeyRef.current = layout.key;
+			instanceRef.current.fitView({ duration: reducedMotion ? 0 : 200, padding: 0.08 });
+			fittedFrameRef.current = frameKey;
 		};
-		retryTimer = setTimeout(fitCommittedTopology, 0);
+		retryTimer = setTimeout(fitMeasuredTopology, 0);
 		return () => {
 			cancelled = true;
 			if (retryTimer !== undefined) clearTimeout(retryTimer);
 		};
-	}, [flowNodes, layout, model, reducedMotion]);
+	}, [flowNodes, instanceReady, layout, model, reducedMotion, selectedWorkUnitId, viewportSize]);
 
 	const flowEdges = useMemo<Edge[]>(() => {
 		if (!model || !layout || layout.key !== model.topologyKey) return [];
@@ -273,6 +286,17 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 		[model, layout],
 	);
 	const viewportRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const viewport = viewportRef.current;
+		if (!viewport || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(([entry]) => {
+			if (!entry) return;
+			const nextSize = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+			setViewportSize((current) => current === nextSize ? current : nextSize);
+		});
+		observer.observe(viewport);
+		return () => observer.disconnect();
+	}, []);
 	const handleCanvasKeyDown = useCallback(
 		(event: React.KeyboardEvent<HTMLDivElement>) => {
 			const focusedId =
@@ -331,15 +355,12 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	const handleInit = useCallback(
 		(instance: ReactFlowInstance<Node<FlowNodeData>, Edge>) => {
 			instanceRef.current = instance;
-			const currentLayout = layout;
-			const currentModel = model;
-			if (currentLayout && currentModel && currentLayout.key === currentModel.topologyKey) {
-				instance.fitView({ duration: reducedMotion ? 0 : 200 });
-				fittedKeyRef.current = currentLayout.key;
-			}
+			setInstanceReady(true);
+			// onInit precedes reliable node measurement. The measurement-aware
+			// effect above owns all automatic framing.
 			onInstanceReady?.(instance);
 		},
-		[layout, model, onInstanceReady, reducedMotion],
+		[onInstanceReady],
 	);
 
 	// Bind to the store's RESOLVED theme, never the preference: under "system"

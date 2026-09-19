@@ -23,6 +23,11 @@ function missionQuery(overrides: Partial<MissionQuery> = {}): MissionQuery {
 	};
 }
 
+function exposeMeasuredNodes(instance: ReactFlowInstance<any, any>): void {
+	const getNodes = instance.getNodes.bind(instance);
+	vi.spyOn(instance, "getNodes").mockImplementation(() => getNodes().map((node) => ({ ...node, measured: { width: 256, height: 84 } })));
+}
+
 function withNodeState(mission: MissionQuery["mission"], workUnitId: string, scheduleState: string) {
 	if (!mission) return mission;
 	return {
@@ -66,6 +71,7 @@ describe("MissionCanvas", () => {
 				missionQuery={missionQuery({ mission })}
 				onInstanceReady={(ready) => {
 					instance = ready;
+					exposeMeasuredNodes(ready);
 				}}
 				planApproved
 			/>,
@@ -87,6 +93,33 @@ describe("MissionCanvas", () => {
 		expect(screen.queryByTestId("mission-row-action")).not.toBeInTheDocument();
 	});
 
+	it("waits for every committed node to be measured before fitting", async () => {
+		let instance: ReactFlowInstance<any, any> | undefined;
+		let measured = false;
+		const boundsAtFit: { id: string; width?: number; height?: number }[][] = [];
+		render(
+			<MissionCanvas
+				missionQuery={missionQuery()}
+				onInstanceReady={(ready) => {
+					instance = ready;
+					const getNodes = ready.getNodes.bind(ready);
+					vi.spyOn(ready, "getNodes").mockImplementation(() => getNodes().map((node) => measured ? { ...node, measured: { width: 256, height: 84 } } : { ...node, measured: undefined, width: undefined, height: undefined }));
+					vi.spyOn(ready, "fitView").mockImplementation(() => {
+						boundsAtFit.push(ready.getNodes().map((node) => ({ id: node.id, width: node.measured?.width, height: node.measured?.height })));
+						return Promise.resolve(true);
+					});
+				}}
+				planApproved
+			/>,
+		);
+		await waitFor(() => expect(instance?.getNodes()).toHaveLength(8));
+		await new Promise((resolve) => setTimeout(resolve, 40));
+		expect(instance?.fitView).not.toHaveBeenCalled();
+		measured = true;
+		await waitFor(() => expect(instance?.fitView).toHaveBeenCalledWith(expect.objectContaining({ padding: 0.08 })));
+		expect(boundsAtFit.at(-1)?.every((node) => Number(node.width) > 0 && Number(node.height) > 0)).toBe(true);
+	});
+
 	it("keeps viewport and selection on a state-only refresh, refits only on a topology swap", async () => {
 		let instance: ReactFlowInstance<any, any> | undefined;
 		const query = missionQuery();
@@ -95,6 +128,7 @@ describe("MissionCanvas", () => {
 				missionQuery={query}
 				onInstanceReady={(ready) => {
 					instance = ready;
+					exposeMeasuredNodes(ready);
 				}}
 				planApproved
 			/>,
@@ -108,13 +142,16 @@ describe("MissionCanvas", () => {
 
 		fireEvent.click(screen.getByTestId("mission-node-face-wu-sweep"));
 		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
+		// Opening the inspector is a frame resize and intentionally refits once.
+		await waitFor(() => expect(fitViewSpy.mock.calls.length).toBeGreaterThanOrEqual(fitCallsBeforeStateRefresh));
+		const fitCallsAfterInspector = fitViewSpy.mock.calls.length;
 
 		// State-only refresh: same topology fingerprint, one node's state and
 		// generation changed. No refit, selection intact.
 		const stateOnlyQuery = { ...query, mission: withNodeState(query.mission, "wu-docs", "runnable") };
 		rerender(<MissionCanvas missionQuery={stateOnlyQuery} onInstanceReady={() => {}} planApproved />);
 		await waitFor(() => expect(screen.getByTestId("mission-node-face-wu-docs")).toHaveTextContent("Ready"));
-		expect(fitViewSpy).toHaveBeenCalledTimes(fitCallsBeforeStateRefresh);
+		expect(fitViewSpy).toHaveBeenCalledTimes(fitCallsAfterInspector);
 		expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument();
 
 		// Topology swap uses a wholly different ID set and extent. At the exact
@@ -134,7 +171,7 @@ describe("MissionCanvas", () => {
 			return Promise.resolve(true);
 		});
 		rerender(<MissionCanvas missionQuery={{ ...query, mission: swapped }} onInstanceReady={() => {}} planApproved />);
-		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledTimes(fitCallsBeforeStateRefresh + 1));
+		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledTimes(fitCallsAfterInspector + 1));
 		expect(idsAtFit.at(-1)).toEqual(["wu-replacement"]);
 		expect(screen.getByTestId("mission-node-face-wu-replacement")).toBeInTheDocument();
 		expect(screen.queryByTestId("mission-node-face-wu-sweep")).not.toBeInTheDocument();
@@ -158,6 +195,7 @@ describe("MissionCanvas", () => {
 				missionQuery={query}
 				onInstanceReady={(ready) => {
 					instance = ready;
+					exposeMeasuredNodes(ready);
 				}}
 				planApproved
 			/>,
@@ -272,6 +310,7 @@ describe("MissionCanvas interactions", () => {
 		// The RF node wrapper is the single focus owner.
 		nodeEl("wu-schema").focus();
 		expect(focusedId()).toBe("wu-schema");
+		expect(nodeEl("wu-schema")).toHaveClass("focus-visible:ring-2", "focus-visible:ring-ring", "focus-visible:ring-offset-2");
 
 		// Right crosses into the successor layer; layer 0 holds exactly one node,
 		// so only the landing sibling is topology-dependent.
@@ -301,6 +340,20 @@ describe("MissionCanvas interactions", () => {
 		fireEvent.keyDown(nodeEl("wu-schema"), { key: "Escape" });
 		expect(focusedId()).not.toBe("wu-schema");
 		expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument();
+	});
+
+	it("reframes the measured topology when the inspector opens and closes", async () => {
+		let instance: ReactFlowInstance<any, any> | undefined;
+		render(<MissionCanvas missionQuery={missionQuery()} onInstanceReady={(ready) => { instance = ready; exposeMeasuredNodes(ready); }} planApproved />);
+		await waitFor(() => expect(instance).toBeDefined());
+		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/)).toHaveLength(8));
+		const fitViewSpy = vi.spyOn(instance!, "fitView").mockResolvedValue(true);
+		fireEvent.click(screen.getByTestId("mission-node-face-wu-binding"));
+		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
+		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ padding: 0.08 })));
+		fitViewSpy.mockClear();
+		fireEvent.click(screen.getByTestId("outcome-inspector-close"));
+		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ padding: 0.08 })));
 	});
 
 	it("highlights the selected node's lineage and dims the rest until selection clears", async () => {
