@@ -439,7 +439,7 @@ func Run() error {
 		return fmt.Errorf("attempt artifact store: %w", artifactErr)
 	}
 	attempts := attemptSpawner{sessions: sessionSvc, projects: store, agents: agents}
-	attempts.retention = &attemptArtifactRetainer{sessions: sessionSvc, refs: store, artifacts: artifactContent}
+	attempts.retention = &attemptArtifactRetainer{sessions: sessionSvc, refs: store, artifacts: artifactContent, manifests: store}
 	// Artifact continuity has two halves and both are wired here: retention
 	// captures what an Attempt produced, provisioning gives those exact bytes
 	// to its successor before that successor's provider starts.
@@ -478,6 +478,7 @@ func Run() error {
 		WithDocuments(store, artifactContent).
 		WithProofStore(store).
 		WithDelivery(store, artifactContent).
+		WithAttemptManifests(store).
 		WithAnalystSessionReaper(reaper).
 		WithNeedsYou(store, chatSvc)
 	outcomeSvc.AdmissionPolicy = admissionPolicy

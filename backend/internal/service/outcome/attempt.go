@@ -473,6 +473,9 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 	}); err != nil {
 		return AttemptView{}, s.admitUnresolved(ctx, attempt.ID, domain.ObservationActivationAmbiguous, fmt.Errorf("session binding failed: %w", err))
 	}
+	if err := s.sealAttemptInputManifest(ctx, outcomeID, plan, unit, attempt, session, inputs, documentInputs, recomputed, compiled, policyDigest); err != nil {
+		return AttemptView{}, s.admitUnresolved(ctx, attempt.ID, domain.ObservationActivationAmbiguous, err)
+	}
 	rows, err := s.store.TransitionAttemptStatus(ctx, outcomeID, attempt.ID, domain.AttemptQueued, domain.AttemptRunning, s.clock())
 	if err != nil || rows != 1 {
 		return AttemptView{}, s.admitUnresolved(ctx, attempt.ID, domain.ObservationActivationAmbiguous, fmt.Errorf("activation not recorded (rows=%d): %w", rows, err))

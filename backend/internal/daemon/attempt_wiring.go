@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -58,6 +59,10 @@ type attemptArtifactRetainer struct {
 	sessions  attemptSessionControl
 	refs      attemptRetentionSource
 	artifacts *artifactstore.Store
+	// manifests seals the output half of the Attempt's custody record once
+	// the receipt is durable. Nil only in test wiring; the daemon always
+	// wires it.
+	manifests ports.AttemptManifestStore
 }
 
 var _ ports.AttemptRetainer = (*attemptArtifactRetainer)(nil)
@@ -77,7 +82,7 @@ func (r *attemptArtifactRetainer) RetainAttempt(ctx context.Context, attempt dom
 				return fmt.Errorf("verify retained blob %s: %w", file.RelativePath, err)
 			}
 		}
-		return nil
+		return r.sealOutputManifest(ctx, existing)
 	}
 	ref, found, err := r.refs.LatestAttemptSessionRef(ctx, attempt.ID)
 	if err != nil {
@@ -105,6 +110,46 @@ func (r *attemptArtifactRetainer) RetainAttempt(ctx context.Context, attempt dom
 	}
 	if err := r.refs.SaveAttemptReceipt(ctx, result.Receipt); err != nil {
 		return fmt.Errorf("persist retained receipt: %w", err)
+	}
+	return r.sealOutputManifest(ctx, result.Receipt)
+}
+
+// sealOutputManifest writes the output half of the Attempt's custody record,
+// bound to the receipt's immutable artifact version. It is idempotent: a
+// daemon restart that finds the receipt durable but the manifest absent
+// re-seals from the receipt, and a sealed half with identical content is
+// accepted, with different content refused.
+func (r *attemptArtifactRetainer) sealOutputManifest(ctx context.Context, receipt domain.AttemptReceipt) error {
+	if r.manifests == nil {
+		return nil
+	}
+	manifest, err := domain.NewAttemptOutputManifest(domain.AttemptOutputManifest{
+		AttemptID: receipt.AttemptID, OutcomeID: receipt.OutcomeID, PlanRevisionID: receipt.PlanRevisionID,
+		WorkUnitID: receipt.WorkUnitID, ContractRevisionNumber: receipt.ContractRevisionNumber,
+		ArtifactVersion: receipt.ArtifactVersion, ResultRevision: receipt.ResultRevision,
+		RetentionState: receipt.RetentionState, RetentionDetail: receipt.RetentionDetail,
+		TerminationReason: receipt.TerminationReason, ObservedAt: receipt.ObservedAt,
+	}, receipt.ObservedAt)
+	if err != nil {
+		return fmt.Errorf("seal output custody manifest for %s: %w", receipt.AttemptID, err)
+	}
+	if existing, found, err := r.manifests.GetAttemptManifest(ctx, receipt.AttemptID, domain.AttemptManifestOutput); err != nil {
+		return fmt.Errorf("read output custody manifest for %s: %w", receipt.AttemptID, err)
+	} else if found {
+		if existing.PayloadDigest != manifest.PayloadDigest {
+			return fmt.Errorf("output custody manifest for %s already sealed with different content", receipt.AttemptID)
+		}
+		return nil
+	}
+	if err := r.manifests.SaveAttemptManifest(ctx, manifest); err != nil {
+		if errors.Is(err, ports.ErrAttemptManifestSealed) {
+			existing, found, readErr := r.manifests.GetAttemptManifest(ctx, receipt.AttemptID, domain.AttemptManifestOutput)
+			if readErr == nil && found && existing.PayloadDigest == manifest.PayloadDigest {
+				return nil
+			}
+			return fmt.Errorf("output custody manifest for %s already sealed with different content: %w", receipt.AttemptID, err)
+		}
+		return fmt.Errorf("persist output custody manifest for %s: %w", receipt.AttemptID, err)
 	}
 	return nil
 }

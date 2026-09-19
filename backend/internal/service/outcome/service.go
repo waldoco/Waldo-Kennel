@@ -132,7 +132,11 @@ type Service struct {
 	// receipts records what each attempt produced. Optional so a degraded
 	// profile still schedules and reports truthfully; when absent, artifact
 	// continuity is unavailable rather than silently faked.
-	receipts          ports.AttemptReceiptStore
+	receipts ports.AttemptReceiptStore
+	// manifests seals what each Attempt was admitted with and what custody
+	// close retained. Optional like receipts: absent means custody lineage is
+	// unavailable rather than fabricated.
+	manifests         ports.AttemptManifestStore
 	deliveryStore     ports.DeliveryStore
 	deliveryArtifacts *artifactstore.Store
 	retainer          ports.AttemptRetainer

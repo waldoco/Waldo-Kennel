@@ -172,6 +172,15 @@ type AttemptFence struct {
 	ReleaseReason string
 }
 
+type AttemptManifest struct {
+	AttemptID     string
+	Half          string
+	OutcomeID     string
+	Payload       string
+	PayloadDigest string
+	CreatedAt     time.Time
+}
+
 type AttemptObservation struct {
 	ID        string
 	AttemptID domain.AttemptID
