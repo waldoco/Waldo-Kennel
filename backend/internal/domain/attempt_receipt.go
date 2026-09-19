@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -235,8 +236,9 @@ func (r AttemptReceipt) Frozen() bool { return r.FrozenAt != nil }
 // CanonicallyEqual reports whether two receipts describe the same retained
 // result for every fact downstream custody seals: producing lineage,
 // workspace and revision metadata, retention state and detail, termination
-// reason, observation time, and the exact file manifest. Row identity and
-// write timestamps are storage facts, not custody facts.
+// reason, observation time, and the exact file manifest - every non-storage
+// field of every entry, including nil-vs-measured line metrics. Row identity
+// and write timestamps are storage facts, not custody facts.
 func (r AttemptReceipt) CanonicallyEqual(other AttemptReceipt) bool {
 	if r.AttemptID != other.AttemptID || r.OutcomeID != other.OutcomeID ||
 		r.PlanRevisionID != other.PlanRevisionID || r.WorkUnitID != other.WorkUnitID ||
@@ -254,25 +256,57 @@ func (r AttemptReceipt) CanonicallyEqual(other AttemptReceipt) bool {
 	if len(r.Files) != len(other.Files) {
 		return false
 	}
-	key := func(f ArtifactFile) string {
-		return f.RelativePath + "\x00" + string(f.ChangeKind) + "\x00" + f.ContentDigest
-	}
-	mine := make([]string, 0, len(r.Files))
-	for _, f := range r.Files {
-		mine = append(mine, key(f))
-	}
-	theirs := make([]string, 0, len(other.Files))
-	for _, f := range other.Files {
-		theirs = append(theirs, key(f))
-	}
-	sort.Strings(mine)
-	sort.Strings(theirs)
+	mine := append([]ArtifactFile(nil), r.Files...)
+	theirs := append([]ArtifactFile(nil), other.Files...)
+	sort.Slice(mine, func(i, j int) bool { return canonicalFileSortKey(mine[i]) < canonicalFileSortKey(mine[j]) })
+	sort.Slice(theirs, func(i, j int) bool { return canonicalFileSortKey(theirs[i]) < canonicalFileSortKey(theirs[j]) })
 	for i := range mine {
-		if mine[i] != theirs[i] {
+		if !canonicalFileEqual(mine[i], theirs[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+// canonicalFileEqual compares every non-storage ArtifactFile field. ID and
+// AttemptID are storage identity; everything else is a retained custody
+// fact, including measured line counts. A nil measurement means unmeasured,
+// which is a different fact from a measured zero, so pointer fields compare
+// nil-ness first and value second.
+func canonicalFileEqual(a, b ArtifactFile) bool {
+	return a.RelativePath == b.RelativePath &&
+		a.ChangeKind == b.ChangeKind &&
+		a.ContentDigest == b.ContentDigest &&
+		int64PtrEqual(a.SizeBytes, b.SizeBytes) &&
+		int64PtrEqual(a.FileMode, b.FileMode) &&
+		a.IsBinary == b.IsBinary &&
+		int64PtrEqual(a.Additions, b.Additions) &&
+		int64PtrEqual(a.Deletions, b.Deletions) &&
+		a.UnsupportedReason == b.UnsupportedReason
+}
+
+func int64PtrEqual(a, b *int64) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return a == nil || *a == *b
+}
+
+// canonicalFileSortKey orders manifests deterministically so equal multisets
+// sort into identical sequences before pairwise comparison. Equality itself
+// is decided by canonicalFileEqual, never by this key.
+func canonicalFileSortKey(f ArtifactFile) string {
+	deref := func(p *int64) string {
+		if p == nil {
+			return "nil"
+		}
+		return "val:" + strconv.FormatInt(*p, 10)
+	}
+	return strings.Join([]string{
+		f.RelativePath, string(f.ChangeKind), f.ContentDigest,
+		deref(f.SizeBytes), deref(f.FileMode), strconv.FormatBool(f.IsBinary),
+		deref(f.Additions), deref(f.Deletions), f.UnsupportedReason,
+	}, "\x00")
 }
 
 // Validate checks that the receipt carries full producing lineage and does not

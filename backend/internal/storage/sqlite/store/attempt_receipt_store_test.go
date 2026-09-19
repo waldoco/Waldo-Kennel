@@ -576,3 +576,78 @@ func TestSaveAttemptReceiptSameVersionDifferentMetadataRefused(t *testing.T) {
 		t.Fatalf("malformed receipt was misreported as divergent rather than invalid: %v", err)
 	}
 }
+
+// Line metrics are durable custody facts: ArtifactManifestDigest does not
+// cover Additions/Deletions, so two valid complete receipts can share an
+// ArtifactVersion while disagreeing about measured line counts. The
+// compare-and-set must refuse the second one, and a nil (unmeasured) count
+// is a different fact from a measured zero.
+func TestSaveAttemptReceiptSameVersionDivergentLineMetricsRefused(t *testing.T) {
+	s := sqlitetest.MustOpen(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	plan, outcomeID := seedApprovedPlan(t, s, "receipt-cas-metrics")
+	attempt, err := s.CreateAttemptWithFence(ctx, admissionFor(outcomeID, plan, "rk-receipt-cas-metrics", domain.FenceSubjectForProject("receipt-cas-metrics")))
+	if err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+	canonical := receiptFixture(attempt.ID, outcomeID, plan, at)
+	if err := s.SaveAttemptReceipt(ctx, canonical); err != nil {
+		t.Fatalf("save canonical receipt: %v", err)
+	}
+
+	// Same ArtifactVersion, only line measurements differ: refused, and the
+	// durable metrics stay exactly as first recorded.
+	measured := canonical
+	measured.Files = append([]domain.ArtifactFile(nil), canonical.Files...)
+	five, three := int64(5), int64(3)
+	measured.Files[0].Additions = &five
+	measured.Files[0].Deletions = &three
+	if err := s.SaveAttemptReceipt(ctx, measured); !errors.Is(err, ports.ErrAttemptReceiptDiverged) {
+		t.Fatalf("metrics-only divergent save = %v, want ErrAttemptReceiptDiverged", err)
+	}
+	got, _, err := s.GetAttemptReceipt(ctx, attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Files[0].Additions != nil || got.Files[0].Deletions != nil {
+		t.Fatalf("durable metrics were replaced by the refused save: %+v", got.Files[0])
+	}
+
+	// A measured zero is a different fact from unmeasured (nil), and from a
+	// measured non-zero.
+	second, err := s.CreateAttemptWithFence(ctx, admissionFor(outcomeID, plan, "rk-receipt-cas-metrics-2", domain.FenceSubjectForProject("receipt-cas-metrics-2")))
+	if err != nil {
+		t.Fatalf("create second attempt: %v", err)
+	}
+	zero := receiptFixture(second.ID, outcomeID, plan, at)
+	zero.Files = append([]domain.ArtifactFile(nil), zero.Files...)
+	zeroA, zeroD := int64(0), int64(0)
+	zero.Files[0].Additions = &zeroA
+	zero.Files[0].Deletions = &zeroD
+	zero.Files[0].ID = "artifact-1z"
+	zero.Files[1].ID = "artifact-2z"
+	if err := s.SaveAttemptReceipt(ctx, zero); err != nil {
+		t.Fatalf("save measured-zero receipt: %v", err)
+	}
+	unmeasured := zero
+	unmeasured.Files = append([]domain.ArtifactFile(nil), zero.Files...)
+	unmeasured.Files[0].Additions = nil
+	unmeasured.Files[0].Deletions = nil
+	if err := s.SaveAttemptReceipt(ctx, unmeasured); !errors.Is(err, ports.ErrAttemptReceiptDiverged) {
+		t.Fatalf("nil-vs-zero metrics save = %v, want ErrAttemptReceiptDiverged", err)
+	}
+	got, _, err = s.GetAttemptReceipt(ctx, second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parseEntry *domain.ArtifactFile
+	for i := range got.Files {
+		if got.Files[i].RelativePath == "internal/parser/parse.go" {
+			parseEntry = &got.Files[i]
+		}
+	}
+	if parseEntry == nil || parseEntry.Additions == nil || *parseEntry.Additions != 0 {
+		t.Fatalf("durable measured-zero was replaced by the refused save: %+v", got.Files)
+	}
+}
