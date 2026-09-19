@@ -25,7 +25,7 @@ func TestAttemptCustodyFencesMigrationSealsRowsWithUpdateGuard(t *testing.T) {
 	}
 	ctx := context.Background()
 	seedMeasurementMigrationLineage(t, ctx, db)
-	if err := goose.UpTo(db, "migrations", 160, goose.WithAllowMissing()); err != nil {
+	if err := goose.UpTo(db, "migrations", 161, goose.WithAllowMissing()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO attempt_custody_fences(attempt_id,session_id,detail,fenced_at) VALUES('att','ses','provider exited','2026-09-20 02:00:00')`); err != nil {
@@ -47,7 +47,7 @@ func TestAttemptCustodyFencesMigrationSealsRowsWithUpdateGuard(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='attempt_custody_fences'`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("table survived down migration: count=%d err=%v", count, err)
 	}
-	if err := goose.UpTo(db, "migrations", 160, goose.WithAllowMissing()); err != nil {
+	if err := goose.UpTo(db, "migrations", 161, goose.WithAllowMissing()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO attempt_custody_fences(attempt_id,session_id,detail,fenced_at) VALUES('att','ses','provider exited','2026-09-20 02:00:00')`); err != nil {
