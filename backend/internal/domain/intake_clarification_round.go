@@ -190,6 +190,7 @@ func (history IntakeClarificationHistory) validate() error {
 		return fmt.Errorf("current proposal revision must not be negative")
 	}
 	ids := map[IntakeClarificationRoundID]struct{}{}
+	var previousProposalRevision int64
 	for i, round := range history.Rounds {
 		if err := validateRound(round); err != nil {
 			return err
@@ -200,6 +201,13 @@ func (history IntakeClarificationHistory) validate() error {
 		if round.Ordinal != int64(i+1) {
 			return fmt.Errorf("clarification round ordinals must be contiguous")
 		}
+		if round.ExpectedProposalRevision > history.CurrentProposalRevision {
+			return fmt.Errorf("clarification round is bound to a future proposal revision")
+		}
+		if i > 0 && round.ExpectedProposalRevision < previousProposalRevision {
+			return fmt.Errorf("clarification round proposal revisions must be nondecreasing")
+		}
+		previousProposalRevision = round.ExpectedProposalRevision
 		if _, exists := ids[round.ID]; exists {
 			return fmt.Errorf("duplicate clarification round id %q", round.ID)
 		}
@@ -329,6 +337,9 @@ func AdvanceIntakeProposal(history IntakeClarificationHistory, expectedRevision 
 	}
 	if expectedRevision != history.CurrentProposalRevision {
 		return IntakeClarificationHistory{}, fmt.Errorf("stale proposal revision")
+	}
+	if len(history.Rounds) > 0 && !history.Rounds[len(history.Rounds)-1].Complete() {
+		return IntakeClarificationHistory{}, fmt.Errorf("proposal advancement requires completed clarification history")
 	}
 	result := cloneHistory(history)
 	result.CurrentProposalRevision++

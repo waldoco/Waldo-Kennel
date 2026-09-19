@@ -148,20 +148,94 @@ func TestClarificationQuestionValidationAndNoAliasing(t *testing.T) {
 	}
 }
 
-func TestProposalRevisionTransitionDoesNotRebindRounds(t *testing.T) {
-	history := openTestRound(t, testHistory(), "round-1", false, testQuestion("q1", 1))
-	advanced, err := AdvanceIntakeProposal(history, 3)
+func TestProposalRevisionTransitionRequiresCompleteHistoryAndDoesNotRebindRounds(t *testing.T) {
+	empty := testHistory()
+	emptyAdvanced, err := AdvanceIntakeProposal(empty, 3)
+	if err != nil || emptyAdvanced.CurrentProposalRevision != 4 {
+		t.Fatalf("advance without rounds: revision=%d err=%v", emptyAdvanced.CurrentProposalRevision, err)
+	}
+
+	incomplete := openTestRound(t, testHistory(), "round-1", false, testQuestion("q1", 1))
+	before := cloneHistory(incomplete)
+	if _, err := AdvanceIntakeProposal(incomplete, 3); err == nil {
+		t.Fatal("advanced proposal with incomplete latest round")
+	}
+	if !reflect.DeepEqual(incomplete, before) {
+		t.Fatal("rejected proposal advance mutated history")
+	}
+
+	complete := answerTestRound(t, incomplete, "round-1", IntakeClarificationRoundAnswer{RoundID: "round-1", QuestionID: "q1", Answer: "A"})
+	advanced, err := AdvanceIntakeProposal(complete, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if advanced.CurrentProposalRevision != 4 || advanced.Rounds[0].ExpectedProposalRevision != 3 {
 		t.Fatal("proposal advance rebound old round")
 	}
-	if _, err := AdvanceIntakeProposal(history, 2); err == nil {
+	if _, err := AdvanceIntakeProposal(complete, 2); err == nil {
 		t.Fatal("accepted stale proposal advance")
 	}
-	if _, err := AnswerClarificationRound(advanced, IntakeClarificationAnswerBatch{Version: IntakeClarificationRoundV1, RoundID: "round-1", ExpectedProposalRevision: 3, Answers: []IntakeClarificationRoundAnswer{{RoundID: "round-1", QuestionID: "q1", Answer: "A"}}}); err == nil {
+	if _, err := AnswerClarificationRound(advanced, IntakeClarificationAnswerBatch{Version: IntakeClarificationRoundV1, RoundID: "round-1", ExpectedProposalRevision: 3, Answers: []IntakeClarificationRoundAnswer{{RoundID: "round-1", QuestionID: "q1", Answer: "again"}}}); err == nil {
 		t.Fatal("accepted stale answer after proposal advance")
+	}
+}
+
+func TestClarificationHistoryRejectsFutureRegressionPermutationAndTwoIncompleteRounds(t *testing.T) {
+	completed := openTestRound(t, testHistory(), "round-1", false, testQuestion("q1", 1))
+	completed = answerTestRound(t, completed, "round-1", IntakeClarificationRoundAnswer{RoundID: "round-1", QuestionID: "q1", Answer: "A"})
+	advanced, err := AdvanceIntakeProposal(completed, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := openTestRound(t, advanced, "round-2", true, testQuestion("q2", 1))
+
+	future := cloneHistory(second)
+	future.Rounds[1].ExpectedProposalRevision = 5
+	regressing := cloneHistory(second)
+	regressing.Rounds[0].ExpectedProposalRevision = 4
+	regressing.Rounds[1].ExpectedProposalRevision = 3
+	permuted := cloneHistory(second)
+	permuted.Rounds[0], permuted.Rounds[1] = permuted.Rounds[1], permuted.Rounds[0]
+	twoIncomplete := cloneHistory(second)
+	twoIncomplete.Rounds[0].Answers = nil
+
+	for name, malformed := range map[string]IntakeClarificationHistory{
+		"future": future, "regressing": regressing, "permuted": permuted, "two-incomplete": twoIncomplete,
+	} {
+		if _, err := OpenClarificationRound(malformed, IntakeClarificationRoundDraft{}); err == nil {
+			t.Fatalf("accepted malformed %s history", name)
+		}
+	}
+}
+
+func TestEquivalentQuestionAndAnswerPermutationsCanonicalizeIdentically(t *testing.T) {
+	left := openTestRound(t, testHistory(), "round-1", false, testQuestion("q2", 2), testQuestion("q1", 1))
+	right := openTestRound(t, testHistory(), "round-1", false, testQuestion("q1", 1), testQuestion("q2", 2))
+	left = answerTestRound(t, left, "round-1",
+		IntakeClarificationRoundAnswer{RoundID: "round-1", QuestionID: "q2", Answer: "B"},
+		IntakeClarificationRoundAnswer{RoundID: "round-1", QuestionID: "q1", Answer: "A"})
+	right = answerTestRound(t, right, "round-1",
+		IntakeClarificationRoundAnswer{RoundID: "round-1", QuestionID: "q1", Answer: "A"},
+		IntakeClarificationRoundAnswer{RoundID: "round-1", QuestionID: "q2", Answer: "B"})
+	if !reflect.DeepEqual(left, right) {
+		t.Fatalf("equivalent permutations differ:\nleft=%+v\nright=%+v", left, right)
+	}
+}
+
+func TestCrossRoundAnswerReplayRejectsRepeatedQuestionID(t *testing.T) {
+	history := openTestRound(t, testHistory(), "round-1", false, testQuestion("same-question", 1))
+	history = answerTestRound(t, history, "round-1", IntakeClarificationRoundAnswer{RoundID: "round-1", QuestionID: "same-question", Answer: "first"})
+	history = openTestRound(t, history, "round-2", true, testQuestion("same-question", 1))
+	before := cloneHistory(history)
+	_, err := AnswerClarificationRound(history, IntakeClarificationAnswerBatch{
+		Version: IntakeClarificationRoundV1, RoundID: "round-2", ExpectedProposalRevision: 3,
+		Answers: []IntakeClarificationRoundAnswer{{RoundID: "round-1", QuestionID: "same-question", Answer: "replay"}},
+	})
+	if err == nil {
+		t.Fatal("accepted prior-round composite answer in newer round")
+	}
+	if !reflect.DeepEqual(history, before) {
+		t.Fatal("cross-round replay rejection mutated history")
 	}
 }
 
