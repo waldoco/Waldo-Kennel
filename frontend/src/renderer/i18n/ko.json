@@ -2771,5 +2771,6 @@
 	"mission.sessionHub.empty": "이 결과에 연결된 라이브 세션이 아직 없습니다.",
 	"mission.sessionHub.open": "세션 열기",
 	"mission.sessionHub.openAria": "{{title}} 세션 열기",
-	"mission.sessionHub.back": "결과 허브"
+	"mission.sessionHub.back": "결과 허브",
+	"mission.sessionHub.contractRevision": "계약 개정 {{revision}}"
 }

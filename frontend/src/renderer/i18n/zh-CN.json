@@ -2753,5 +2753,6 @@
 	"mission.sessionHub.empty": "此结果尚未绑定实时会话。",
 	"mission.sessionHub.open": "打开会话",
 	"mission.sessionHub.openAria": "打开 {{title}} 的会话",
-	"mission.sessionHub.back": "结果中心"
+	"mission.sessionHub.back": "结果中心",
+	"mission.sessionHub.contractRevision": "合同修订版 {{revision}}"
 }

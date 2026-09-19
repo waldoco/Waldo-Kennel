@@ -2752,5 +2752,6 @@
 	"mission.sessionHub.empty": "No live sessions are bound to this outcome yet.",
 	"mission.sessionHub.open": "Open session",
 	"mission.sessionHub.openAria": "Open session for {{title}}",
-	"mission.sessionHub.back": "Outcome hub"
+	"mission.sessionHub.back": "Outcome hub",
+	"mission.sessionHub.contractRevision": "Contract revision {{revision}}"
 }

@@ -2787,5 +2787,6 @@
 	"mission.sessionHub.empty": "Todavía no hay sesiones activas vinculadas a este resultado.",
 	"mission.sessionHub.open": "Abrir sesión",
 	"mission.sessionHub.openAria": "Abrir la sesión de {{title}}",
-	"mission.sessionHub.back": "Vista del resultado"
+	"mission.sessionHub.back": "Vista del resultado",
+	"mission.sessionHub.contractRevision": "Revisión del contrato {{revision}}"
 }

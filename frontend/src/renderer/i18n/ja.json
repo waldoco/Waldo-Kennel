@@ -2771,5 +2771,6 @@
 	"mission.sessionHub.empty": "この成果にはまだライブセッションが関連付けられていません。",
 	"mission.sessionHub.open": "セッションを開く",
 	"mission.sessionHub.openAria": "{{title}} のセッションを開く",
-	"mission.sessionHub.back": "成果ハブ"
+	"mission.sessionHub.back": "成果ハブ",
+	"mission.sessionHub.contractRevision": "契約リビジョン {{revision}}"
 }

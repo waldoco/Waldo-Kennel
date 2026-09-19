@@ -2771,5 +2771,6 @@
 	"mission.sessionHub.empty": "Für dieses Ergebnis sind noch keine aktiven Sitzungen verbunden.",
 	"mission.sessionHub.open": "Sitzung öffnen",
 	"mission.sessionHub.openAria": "Sitzung für {{title}} öffnen",
-	"mission.sessionHub.back": "Ergebnisübersicht"
+	"mission.sessionHub.back": "Ergebnisübersicht",
+	"mission.sessionHub.contractRevision": "Vertragsrevision {{revision}}"
 }

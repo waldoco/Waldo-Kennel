@@ -17,7 +17,7 @@ describe("MissionSessionHub", () => {
 		render(<MissionSessionHub missionQuery={query()} onDrillDown={onDrillDown} onOpenSession={onOpenSession} />);
 
 		expect(screen.getByTestId("mission-session-harness-rollup")).toHaveTextContent("codex · 1");
-		expect(screen.getByText(/Contract r7/)).toBeInTheDocument();
+		expect(screen.getByText(/Contract revision 7/)).toBeInTheDocument();
 		fireEvent.click(screen.getByText("Refuse duplicate resume for one session id"));
 		expect(onDrillDown).toHaveBeenCalledWith("wu-handshake");
 		expect(onOpenSession).not.toHaveBeenCalled();

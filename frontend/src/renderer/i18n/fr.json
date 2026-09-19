@@ -2787,5 +2787,6 @@
 	"mission.sessionHub.empty": "Aucune session active n’est encore liée à ce résultat.",
 	"mission.sessionHub.open": "Ouvrir la session",
 	"mission.sessionHub.openAria": "Ouvrir la session de {{title}}",
-	"mission.sessionHub.back": "Vue du résultat"
+	"mission.sessionHub.back": "Vue du résultat",
+	"mission.sessionHub.contractRevision": "Révision du contrat {{revision}}"
 }

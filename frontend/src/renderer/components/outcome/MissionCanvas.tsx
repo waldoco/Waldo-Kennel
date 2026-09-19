@@ -485,6 +485,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 					data-testid="mission-canvas-viewport"
 					onKeyDownCapture={handleCanvasKeyDown}
 					ref={viewportRef}
+					tabIndex={-1}
 				>
 					{layoutReady ? (
 						<ReactFlow

@@ -76,7 +76,7 @@ export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: 
 								<Network aria-hidden="true" className="size-icon-sm text-muted-foreground" />
 								<span className="line-clamp-2 text-sm font-medium">{card.title}</span>
 							</span>
-							<span className="mt-2 block text-xs text-muted-foreground">Contract r{missionQuery.mission?.contractRevisionNumber} · {card.activity}</span>
+							<span className="mt-2 block text-xs text-muted-foreground">{t("mission.sessionHub.contractRevision", { revision: missionQuery.mission?.contractRevisionNumber })} · {card.activity}</span>
 						</button>
 						<div className="mt-3 flex items-center justify-between gap-2">
 							<Badge variant="outline">{card.harness}</Badge>
