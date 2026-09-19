@@ -461,7 +461,7 @@ func (s *Service) selectWorkUnitForAttempt(ctx context.Context, outcomeID domain
 		return next, nil
 	}
 	if next.ID != requested {
-		return domain.WorkUnit{}, apierr.Conflict("WORK_UNIT_NOT_RUNNABLE", "That WorkUnit is not the next dependency-ready unit", map[string]any{"requestedWorkUnitId": requested, "nextRunnableWorkUnitId": next.ID})
+		return domain.WorkUnit{}, apierr.Conflict(CodeWorkUnitNotRunnable, "That WorkUnit is not the next dependency-ready unit", map[string]any{"requestedWorkUnitId": requested, "nextRunnableWorkUnitId": next.ID})
 	}
 	return next, nil
 }

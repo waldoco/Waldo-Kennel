@@ -293,8 +293,8 @@ func TestSerialChain_SuccessorRefusedUntilPredecessorProven(t *testing.T) {
 		_, err := h.svc.StartAttempt(ctx, h.outcomeID, outcome.StartAttemptInput{
 			PlanRevisionID: h.planID, WorkUnitID: unit, RequestKey: "rk-early-" + string(unit),
 		})
-		if requireAPICode(t, err) != "WORK_UNIT_NOT_RUNNABLE" {
-			t.Fatalf("early start of %s err = %v, want WORK_UNIT_NOT_RUNNABLE", unit, err)
+		if requireAPICode(t, err) != outcome.CodeWorkUnitNotRunnable {
+			t.Fatalf("early start of %s err = %v, want %s", unit, err, outcome.CodeWorkUnitNotRunnable)
 		}
 	}
 	if got := len(h.attempts(t)); got != 0 {
@@ -310,8 +310,8 @@ func TestSerialChain_SuccessorRefusedUntilPredecessorProven(t *testing.T) {
 	h.complete(t, first.Attempt.ID)
 	if _, err := h.svc.StartAttempt(ctx, h.outcomeID, outcome.StartAttemptInput{
 		PlanRevisionID: h.planID, WorkUnitID: h.unitC, RequestKey: "rk-early-c2",
-	}); requireAPICode(t, err) != "WORK_UNIT_NOT_RUNNABLE" {
-		t.Fatalf("C after only A err = %v, want WORK_UNIT_NOT_RUNNABLE", err)
+	}); requireAPICode(t, err) != outcome.CodeWorkUnitNotRunnable {
+		t.Fatalf("C after only A err = %v, want %s", err, outcome.CodeWorkUnitNotRunnable)
 	}
 	second := h.startDaemon(t, "rk-b")
 	if second.Attempt.WorkUnitID != h.unitB {
@@ -321,7 +321,8 @@ func TestSerialChain_SuccessorRefusedUntilPredecessorProven(t *testing.T) {
 
 // TestSerialChain_ActiveAttemptHoldsTheChain is the duplicate-successor
 // falsifier: while one unit runs, no second admission - of any unit - is
-// possible, and a fresh request key does not mint parallel work.
+// possible, and a fresh request key does not mint parallel work. These are
+// sequential calls; nothing here is a concurrent-StartAttempt race proof.
 func TestSerialChain_ActiveAttemptHoldsTheChain(t *testing.T) {
 	h := newSerialHarness(t)
 	ctx := context.Background()
@@ -341,5 +342,68 @@ func TestSerialChain_ActiveAttemptHoldsTheChain(t *testing.T) {
 	}
 	if calls := h.spawner.spawnCalls(); calls != 1 {
 		t.Fatalf("spawn calls = %d, want one", calls)
+	}
+}
+
+// enablingChainProvider drafts an executable enabling unit (no criterion)
+// feeding one criterion-owning unit: the shape that used to compile into a
+// deadlock, because the enabling attempt could never be proved and its
+// consumer would block forever. Draft validation now refuses it truthfully.
+type enablingChainProvider struct {
+	intelligencetest.Provider
+}
+
+func (enablingChainProvider) DraftPlan(_ context.Context, request ports.PlanIntelligenceRequest) (ports.PlanIntelligenceResponse, error) {
+	covered := make([]string, 0, len(request.CriterionAliases))
+	for alias := range request.CriterionAliases {
+		covered = append(covered, alias)
+	}
+	sort.Strings(covered)
+	return ports.PlanIntelligenceResponse{
+		Readiness: domain.NewPlanningReadinessResult("Ready.", &domain.PlanDraftProposal{
+			Summary: "An executable enabling stage feeding the real work.",
+			WorkUnits: []domain.PlanDraftWorkUnit{
+				{
+					Key: "W1", Title: "Prepare", Intent: domain.WorkUnitIntentModifyAndExecute,
+					Role: domain.WorkUnitRoleImplement, OutputSummary: "Preparation output.",
+					DependsOn: nil, CriteriaCovered: nil,
+					EvidenceIdeas: []string{"Preparation is observable."},
+				},
+				{
+					Key: "W2", Title: "Deliver", Intent: domain.WorkUnitIntentModifyAndExecute,
+					Role:    domain.WorkUnitRoleImplement,
+					Inputs:  []domain.PlanDraftDependencyInput{{FromKey: "W1", Required: "W1 output"}},
+					OutputSummary:   "Delivery output.",
+					CriteriaCovered: covered, DependsOn: []string{"W1"},
+					EvidenceIdeas: []string{"A deterministic check demonstrates the delivery."},
+				},
+			},
+		}, nil),
+		Provenance: ports.IntelligenceProvenance{EffectiveProvider: intelligencetest.ProviderID, EffectiveModel: "fixed"},
+	}, nil
+}
+
+// TestSerialChain_EnablingExecutableUnitRejectedAtDraft is the regression
+// falsifier for the launch ruling: an executable unit with zero covered
+// criteria is refused at draft with a truthful typed code, instead of
+// compiling into a chain whose first unit can never succeed. The valid
+// three-unit chain above proves the same validation still passes honest
+// chains.
+func TestSerialChain_EnablingExecutableUnitRejectedAtDraft(t *testing.T) {
+	store := newReceiptFakeStore()
+	spawner := &fakeSpawner{readiness: ports.AgentProfileReadiness{Ready: true, Detail: "profile ok"}}
+	svc := outcome.New(store, func() time.Time { return time.Unix(1_000, 0).UTC() }).
+		WithPlanning(enablingChainProvider{}, &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
+		WithExecution(spawner, newFakeHeartbeats())
+	svc.AdmissionPolicy = testAdmissionPolicy()
+
+	ctx := context.Background()
+	view, err := svc.Create(ctx, validCreateInput())
+	if err != nil {
+		t.Fatalf("create outcome: %v", err)
+	}
+	_, err = svc.ProposePlan(ctx, view.Outcome.ID, 1)
+	if requireAPICode(t, err) != string(domain.PlanDraftExecutableRequiresCriterion) {
+		t.Fatalf("propose err = %v, want %s", err, domain.PlanDraftExecutableRequiresCriterion)
 	}
 }

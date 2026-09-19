@@ -150,6 +150,9 @@ const (
 	// refused: every WorkUnit in the approved Plan is either already running
 	// or still waiting on a dependency or required proof.
 	CodeNoRunnableWorkUnit = "NO_RUNNABLE_WORK_UNIT"
+	// CodeWorkUnitNotRunnable reports that the explicitly requested WorkUnit
+	// is not the scheduler's next dependency-ready unit.
+	CodeWorkUnitNotRunnable = "WORK_UNIT_NOT_RUNNABLE"
 	// CodeAttemptNotFound indicates that the requested attempt does not exist.
 	CodeAttemptNotFound = "ATTEMPT_NOT_FOUND"
 	// CodeAttemptLivenessUnproven indicates that runtime liveness is unknown.

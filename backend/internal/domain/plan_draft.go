@@ -96,6 +96,11 @@ const (
 	PlanDraftEnablingUnconsumed       PlanDraftValidationCode = "PLAN_ENABLING_UNIT_UNCONSUMED"
 	PlanDraftVerifyRequiresCriterion  PlanDraftValidationCode = "PLAN_VERIFY_REQUIRES_CRITERION"
 	PlanDraftConsolidateRequiresFanIn PlanDraftValidationCode = "PLAN_CONSOLIDATE_REQUIRES_FAN_IN"
+	// PlanDraftExecutableRequiresCriterion refuses an executable unit that
+	// covers no criterion: its attempt could never be proved, so any consumer
+	// would block forever. The planner must state what proves the enabling
+	// work or fold it into a consumer unit.
+	PlanDraftExecutableRequiresCriterion PlanDraftValidationCode = "PLAN_EXECUTABLE_REQUIRES_CRITERION"
 )
 
 type PlanDraftValidationError struct {
@@ -264,6 +269,9 @@ func (p PlanDraftProposal) Validate() error {
 		}
 		if unit.Role == WorkUnitRoleConsolidate && len(seenDependencies) < 2 {
 			return planDraftValidation(PlanDraftConsolidateRequiresFanIn, "plan draft work unit %q consolidate role requires at least two dependencies", key)
+		}
+		if (unit.Intent == WorkUnitIntentExecute || unit.Intent == WorkUnitIntentModifyAndExecute) && len(unit.CriteriaCovered) == 0 {
+			return planDraftValidation(PlanDraftExecutableRequiresCriterion, "plan draft executable work unit %q covers no criterion: state what proves the enabling work or fold it into a consumer unit", key)
 		}
 	}
 	for key, unit := range units {

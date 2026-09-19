@@ -50,6 +50,13 @@ A unit in this situation is also visible before Start: its schedule entry is
 `ATTEMPT_EXECUTION_POLICY_UNSUPPORTED`, `ATTEMPT_START_UNRESOLVED`,
 `ATTEMPT_ACTIVATION_UNRESOLVED`.
 
+`WORK_UNIT_NOT_RUNNABLE` (409) refuses an explicit Start naming any unit that
+is not the scheduler's next dependency-ready unit. It is distinct from
+`NO_RUNNABLE_WORK_UNIT`, which reports that scheduling itself has nothing to
+offer (every unit is already running or still waiting on a dependency or
+required proof), and from `WORK_UNIT_INPUT_ARTIFACT_MISSING`, which is the
+post-selection upstream-artifact gate.
+
 ## 2. Missing operations being added by this task
 
 All paths are under `/api/v1`. All responses are the repository's standard

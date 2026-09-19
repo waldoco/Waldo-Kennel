@@ -277,6 +277,10 @@ func TestPlanDraftValidationFamiliesAreTyped(t *testing.T) {
 		}, PlanDraftVerifyRequiresCriterion},
 		{"consolidate fan in", func(p *PlanDraftProposal) { p.WorkUnits[0].Role = WorkUnitRoleConsolidate }, PlanDraftConsolidateRequiresFanIn},
 		{"enabling", func(p *PlanDraftProposal) { p.WorkUnits[0].CriteriaCovered = nil }, PlanDraftEnablingUnconsumed},
+		{"executable criterion", func(p *PlanDraftProposal) {
+			p.WorkUnits[0].Intent = WorkUnitIntentExecute
+			p.WorkUnits[0].CriteriaCovered = nil
+		}, PlanDraftExecutableRequiresCriterion},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
