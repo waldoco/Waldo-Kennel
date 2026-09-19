@@ -17,6 +17,8 @@ import {
 } from "../../hooks/useOutcome";
 import { useUiStore } from "../../stores/ui-store";
 import { MissionPlanView } from "./MissionPlanView";
+import { selectMissionCanvasRenderer } from "../../lib/mission-canvas-config";
+import { MissionCanvas } from "./MissionCanvas";
 import { MissionWorkUnitList } from "./MissionWorkUnitList";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -163,12 +165,18 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 
 			{/* The Mission WorkUnit graph (F2): the authenticated `/mission`
 			    projection only, never joined with Plan/Schedule/Attempt/session
-			    responses to recreate its authority. Canvas is not built in this
-			    slice (`@xyflow/react` is not an approved/installed dependency) —
-			    List is the sole, first-class reading, not a fallback. */}
+			    responses to recreate its authority. List and Canvas render the
+			    same projection through the shared WorkUnit face; the
+			    mission-canvas config seam selects the renderer and defaults to
+			    List, which remains the complete reading until the cutover
+			    slice. */}
 			<h3 className="text-sm font-medium text-foreground">{t("mission.list.heading")}</h3>
 			<div className="min-h-0 flex-1">
-				<MissionWorkUnitList missionQuery={missionQuery} onStart={startNextRunnable} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
+				{selectMissionCanvasRenderer() === "flow" ? (
+					<MissionCanvas missionQuery={missionQuery} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
+				) : (
+					<MissionWorkUnitList missionQuery={missionQuery} onStart={startNextRunnable} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
+				)}
 			</div>
 
 			{current && <CurrentAttemptCard
