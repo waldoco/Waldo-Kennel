@@ -621,6 +621,34 @@ describe("Mission List/Graph switch", () => {
 		expect(window.localStorage.getItem("kennel.mission.viewMode")).toBe("list");
 	});
 
+	it("carries the active affordance on the selected segment in both readings", async () => {
+		// The white/dark pill must sit on the segment whose view is rendered.
+		// Inverted affordances read as the other view being active (owner catch).
+		const activeClasses = ["hairline", "border-border", "bg-card", "font-medium", "text-foreground"];
+		mockApprovedRun();
+		renderSurface();
+
+		await screen.findByTestId("mission-work-unit-list");
+		const listSegment = screen.getByTestId("mission-view-list");
+		const graphSegment = screen.getByTestId("mission-view-graph");
+		const tokens = (el: HTMLElement) => el.className.split(/\s+/);
+		for (const cls of activeClasses) {
+			expect(tokens(listSegment)).toContain(cls);
+			expect(tokens(graphSegment)).not.toContain(cls);
+		}
+		expect(tokens(listSegment)).not.toContain("text-passive");
+		expect(tokens(graphSegment)).toContain("text-passive");
+
+		fireEvent.click(screen.getByTestId("mission-view-graph"));
+		expect(await screen.findByTestId("mission-canvas")).toBeInTheDocument();
+		for (const cls of activeClasses) {
+			expect(tokens(graphSegment)).toContain(cls);
+			expect(tokens(listSegment)).not.toContain(cls);
+		}
+		expect(tokens(graphSegment)).not.toContain("text-passive");
+		expect(tokens(listSegment)).toContain("text-passive");
+	});
+
 	it("opens on the remembered Graph reading when a preference is stored", async () => {
 		window.localStorage.setItem("kennel.mission.viewMode", "graph");
 		useUiStore.setState({ missionViewMode: "graph" });

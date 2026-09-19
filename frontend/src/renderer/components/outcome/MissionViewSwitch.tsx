@@ -58,7 +58,7 @@ function MissionViewSwitchItem({
 			className={cn(
 				"inline-flex h-full items-center justify-center rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
 				disabled && "cursor-not-allowed",
-				active ? "hairline border-border bg-card font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+				active ? "hairline border-border bg-card font-medium text-foreground" : "text-passive hover:text-foreground",
 			)}
 			data-testid={`mission-view-${mode}`}
 			disabled={disabled}
