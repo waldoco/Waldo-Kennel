@@ -217,10 +217,10 @@ describe("MissionCanvas", () => {
 	});
 
 	it("freezes the last confirmed projection with a stale banner when disconnected", async () => {
-		render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
+		const { rerender } = render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
 		connectionState.value = "disconnected";
-		render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
+		rerender(<MissionCanvas missionQuery={missionQuery()} planApproved />);
 		await waitFor(() => expect(screen.getByTestId("mission-canvas-stale-banner")).toBeInTheDocument());
 	});
 
