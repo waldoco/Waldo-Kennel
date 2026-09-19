@@ -384,6 +384,16 @@ describe("MissionCanvas interactions", () => {
 		expect(fitViewSpy).not.toHaveBeenCalled();
 	});
 
+	it("restores no-opener Escape dismissal to the focusable canvas viewport", async () => {
+		render(<MissionCanvas initialWorkUnitId="wu-binding" missionQuery={missionQuery()} planApproved />);
+		const overlay = await screen.findByTestId("mission-canvas-inspector-overlay");
+		await waitFor(() => expect(overlay).toHaveFocus());
+		fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+		await waitFor(() => expect(screen.queryByTestId("mission-canvas-inspector-overlay")).not.toBeInTheDocument());
+		expect(screen.getByTestId("mission-canvas-viewport")).toHaveFocus();
+		expect(document.activeElement).not.toBe(document.body);
+	});
+
 	it("highlights the selected node's lineage and dims the rest until selection clears", async () => {
 		const { container } = render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));

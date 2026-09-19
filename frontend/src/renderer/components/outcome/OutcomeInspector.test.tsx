@@ -102,7 +102,7 @@ describe("OutcomeInspector", () => {
 				status: "running",
 				createdAt: "",
 				updatedAt: "",
-				session: { attemptSessionRefId: "asr-1", boundAt: "2026-09-19T00:00:00Z", generation: 1, harness: "codex", mode: "tui", sessionId: "session-1", status: "live" },
+				session: { attemptSessionRefId: "asr-1", boundAt: "2026-09-19T00:00:00Z", generation: 1, harness: "codex", mode: "tui", sessionId: "session-1", status: "unknown" },
 			},
 		});
 		const { rerender } = render(<OutcomeInspector node={runningBound} onClose={() => {}} onOpenSession={onOpenSession} view={view()} />);
@@ -114,7 +114,7 @@ describe("OutcomeInspector", () => {
 	});
 
 	it("does not expose session navigation without an explicit destination callback", () => {
-		render(<OutcomeInspector node={record({ currentAttempt: { attemptId: "attempt-1", number: 1, status: "running", createdAt: "", updatedAt: "", session: { attemptSessionRefId: "asr-1", boundAt: "2026-09-19T00:00:00Z", generation: 1, harness: "codex", mode: "tui", sessionId: "session-1", status: "live" } } })} onClose={() => {}} view={view()} />);
+		render(<OutcomeInspector node={record({ currentAttempt: { attemptId: "attempt-1", number: 1, status: "running", createdAt: "", updatedAt: "", session: { attemptSessionRefId: "asr-1", boundAt: "2026-09-19T00:00:00Z", generation: 1, harness: "codex", mode: "tui", sessionId: "session-1", status: "unknown" } } })} onClose={() => {}} view={view()} />);
 		expect(screen.queryByTestId("outcome-inspector-open-session")).not.toBeInTheDocument();
 	});
 

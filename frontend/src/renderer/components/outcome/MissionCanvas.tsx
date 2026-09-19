@@ -309,7 +309,9 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 		const opener = openerId
 			? viewportRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${openerId}"]`)
 			: undefined;
-		(opener ?? viewportRef.current?.querySelector<HTMLElement>(".react-flow__pane") ?? viewportRef.current)?.focus();
+		// React Flow's pane exists but is not focusable in real browsers; the
+		// canvas viewport is explicitly tabIndex=-1 and is the honest fallback.
+		(opener ?? viewportRef.current)?.focus();
 	}, [selectedWorkUnitId]);
 	const dismissInspector = useCallback(() => {
 		restoreFocusRef.current = true;
