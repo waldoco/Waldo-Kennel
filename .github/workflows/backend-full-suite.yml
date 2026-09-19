@@ -75,9 +75,9 @@ jobs:
         run: |
           npm --prefix packages/product-ui run test
           npm --prefix packages/product-ui run typecheck
-      - name: Frontend spike + gallery tests
+      - name: Frontend canvas + gallery tests
         working-directory: frontend
-        run: npx vitest run --config vite.renderer.config.ts src/renderer/components/outcome/MissionCanvasSpike.test.tsx src/renderer/components/preview/MissionPrimitivesGallery.test.tsx
+        run: npx vitest run --config vite.renderer.config.ts src/renderer/lib/mission-canvas-model.test.ts src/renderer/lib/mission-canvas-layout.test.ts src/renderer/components/preview/MissionPrimitivesGallery.test.tsx
       - name: Frontend tsc
         working-directory: frontend
         run: npm run typecheck
