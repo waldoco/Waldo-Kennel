@@ -34,4 +34,23 @@ describe("MissionSessionHub", () => {
 		expect(screen.getByTestId("mission-session-hub-empty")).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: /Open session for/ })).not.toBeInTheDocument();
 	});
+	it("shows an honest initial failure with retry, never the empty claim", () => {
+		const refetch = vi.fn();
+		render(<MissionSessionHub missionQuery={{ ...query(), mission: undefined, failure: { message: "mission unavailable" } as MissionQuery["failure"], refetch }} onDrillDown={vi.fn()} onOpenSession={vi.fn()} />);
+		expect(screen.getByTestId("mission-session-hub-error")).toHaveTextContent("mission unavailable");
+		expect(screen.queryByTestId("mission-session-hub-empty")).not.toBeInTheDocument();
+		fireEvent.click(screen.getByTestId("mission-session-hub-retry"));
+		expect(refetch).toHaveBeenCalledOnce();
+	});
+
+	it("keeps last confirmed cards with a refresh-failed reading", () => {
+		const initial = query();
+		const { rerender } = render(<MissionSessionHub missionQuery={initial} onDrillDown={vi.fn()} onOpenSession={vi.fn()} />);
+		expect(screen.getByText("Refuse duplicate resume for one session id")).toBeInTheDocument();
+		rerender(<MissionSessionHub missionQuery={{ ...initial, mission: undefined, failure: { message: "refresh failed" } as MissionQuery["failure"] }} onDrillDown={vi.fn()} onOpenSession={vi.fn()} />);
+		expect(screen.getByTestId("mission-session-hub-refresh-failed")).toHaveTextContent("refresh failed");
+		expect(screen.getByText("Refuse duplicate resume for one session id")).toBeInTheDocument();
+		expect(screen.queryByTestId("mission-session-hub-empty")).not.toBeInTheDocument();
+	});
+
 });

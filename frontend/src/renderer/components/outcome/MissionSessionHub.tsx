@@ -1,5 +1,5 @@
 import { ExternalLink, Network } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { useOutcomeMission } from "../../hooks/useOutcome";
@@ -24,9 +24,13 @@ type SessionCard = {
 
 export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: MissionSessionHubProps) {
 	const { t } = useTranslation();
+	const lastConfirmedRef = useRef(missionQuery.mission);
+	if (missionQuery.mission) lastConfirmedRef.current = missionQuery.mission;
+	const displayMission = missionQuery.mission ?? lastConfirmedRef.current;
+	const refreshFailed = Boolean(missionQuery.failure && displayMission);
 	const cards = useMemo<SessionCard[]>(
 		() =>
-			(missionQuery.mission?.nodes ?? [])
+			(displayMission?.nodes ?? [])
 				.flatMap((node) => {
 					const session = node.currentAttempt?.status === "running" ? node.currentAttempt.session : undefined;
 					if (!session?.sessionId) return [];
@@ -40,7 +44,7 @@ export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: 
 					}];
 				})
 				.sort((left, right) => Number(right.attention) - Number(left.attention) || left.title.localeCompare(right.title)),
-		[missionQuery.mission],
+		[displayMission],
 	);
 	const harnessRollup = useMemo(() => {
 		const counts = new Map<string, number>();
@@ -48,12 +52,27 @@ export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: 
 		return [...counts].sort(([left], [right]) => left.localeCompare(right));
 	}, [cards]);
 
-	if (missionQuery.isLoading && !missionQuery.mission) {
+	if (missionQuery.isLoading && !displayMission) {
 		return <p className="text-sm text-muted-foreground">{t("mission.list.loading")}</p>;
+	}
+	if (missionQuery.failure && !displayMission) {
+		return (
+			<div className="rounded-group hairline border-warning/40 bg-warning/5 px-4.5 py-3.5" data-testid="mission-session-hub-error">
+				<h3 className="text-sm font-medium">{t("mission.list.error.title")}</h3>
+				<p className="mt-1 text-muted-foreground text-sm">{missionQuery.failure.message}</p>
+				<Button className="mt-2" data-testid="mission-session-hub-retry" onClick={missionQuery.refetch} size="sm" variant="outline">{t("mission.list.retry")}</Button>
+			</div>
+		);
 	}
 
 	return (
 		<section className="flex min-h-0 flex-1 flex-col gap-3" data-testid="mission-session-hub">
+		{refreshFailed ? (
+			<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-session-hub-refresh-failed">
+				<p className="text-muted-foreground text-xs">{t("mission.list.refreshFailed.banner", { message: missionQuery.failure?.message ?? "" })}</p>
+				<Button data-testid="mission-session-hub-refresh-retry" onClick={missionQuery.refetch} size="sm" variant="outline">{t("mission.list.retry")}</Button>
+			</div>
+		) : null}
 		<header className="flex flex-wrap items-center justify-between gap-2">
 			<div>
 				<h3 className="text-sm font-medium text-foreground">{t("mission.sessionHub.heading")}</h3>
@@ -76,7 +95,7 @@ export function MissionSessionHub({ missionQuery, onDrillDown, onOpenSession }: 
 								<Network aria-hidden="true" className="size-icon-sm text-muted-foreground" />
 								<span className="line-clamp-2 text-sm font-medium">{card.title}</span>
 							</span>
-							<span className="mt-2 block text-xs text-muted-foreground">{t("mission.sessionHub.contractRevision", { revision: missionQuery.mission?.contractRevisionNumber })} · {card.activity}</span>
+							<span className="mt-2 block text-xs text-muted-foreground">{t("mission.sessionHub.contractRevision", { revision: displayMission?.contractRevisionNumber })} · {card.activity}</span>
 						</button>
 						<div className="mt-3 flex items-center justify-between gap-2">
 							<Badge variant="outline">{card.harness}</Badge>

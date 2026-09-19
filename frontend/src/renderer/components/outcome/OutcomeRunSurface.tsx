@@ -94,7 +94,7 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 			proofQuery.proof?.criteria.find((criterion) => criterion.criterionId === criterionId)?.text,
 		[proofQuery.proof],
 	);
-	const failure = action.failure ?? recovery.failure ?? attemptsQuery.failure ?? scheduleQuery.failure;
+	const failure = action.failure ?? recovery.failure ?? attemptsQuery.failure ?? scheduleQuery.failure ?? missionQuery.failure;
 	const attempts = attemptsQuery.attempts ?? [];
 	const current = newestAttempt(attempts);
 
