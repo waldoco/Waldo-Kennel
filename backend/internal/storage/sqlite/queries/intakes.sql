@@ -159,3 +159,52 @@ WHERE id = ? AND status = 'requested';
 UPDATE intake_analysis_requests
 SET status = ?, raw_proposal = ?, refusal_reason = ?, answered_at = ?
 WHERE id = ? AND status = 'requested';
+
+-- name: MaxIntakeClarificationRoundOrdinal :one
+SELECT CAST(COALESCE(MAX(ordinal), 0) AS INTEGER) FROM intake_clarification_rounds WHERE intake_id = ?;
+
+-- name: ListIntakeClarificationRoundsPage :many
+SELECT * FROM intake_clarification_rounds
+WHERE intake_id = sqlc.arg(intake_id)
+  AND ordinal > sqlc.arg(after_ordinal)
+  AND ordinal <= sqlc.arg(high_water_ordinal)
+ORDER BY ordinal
+LIMIT sqlc.arg(page_limit);
+
+-- name: GetIntakeClarificationRound :one
+SELECT * FROM intake_clarification_rounds WHERE intake_id = ? AND id = ?;
+
+-- name: GetLatestIntakeClarificationRound :one
+SELECT * FROM intake_clarification_rounds WHERE intake_id = ? ORDER BY ordinal DESC LIMIT 1;
+
+-- name: CreateIntakeClarificationRound :exec
+INSERT INTO intake_clarification_rounds
+    (id, intake_id, ordinal, version, expected_proposal_revision, explicit_reanalysis, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- name: CreateIntakeClarificationRoundQuestion :exec
+INSERT INTO intake_clarification_round_questions
+    (round_id, question_id, position, question, reason, recommendation, alternatives, deferral_consequence)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: ListIntakeClarificationRoundQuestions :many
+SELECT * FROM intake_clarification_round_questions WHERE round_id = ? ORDER BY position;
+
+-- name: CreateIntakeClarificationRoundAnswer :exec
+INSERT INTO intake_clarification_round_answers (round_id, question_id, answer, answered_at)
+VALUES (?, ?, ?, ?);
+
+-- name: ListIntakeClarificationRoundAnswers :many
+SELECT * FROM intake_clarification_round_answers WHERE round_id = ? ORDER BY question_id;
+
+-- name: MaxIntakeClarificationAnswerRowID :one
+SELECT CAST(COALESCE(MAX(a.answer_ordinal), 0) AS INTEGER)
+FROM intake_clarification_round_answers a
+JOIN intake_clarification_rounds r ON r.id = a.round_id
+WHERE r.intake_id = ?;
+
+-- name: ListIntakeClarificationRoundAnswersAtHighWater :many
+SELECT a.round_id, a.question_id, a.answer, a.answered_at
+FROM intake_clarification_round_answers a
+WHERE a.round_id = sqlc.arg(round_id) AND a.answer_ordinal <= sqlc.arg(answer_high_water)
+ORDER BY a.question_id;

@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,7 +18,15 @@ import (
 
 func newTestStore(t *testing.T) *sqlite.Store {
 	t.Helper()
-	return sqlitetest.MustOpen(t)
+	s := sqlitetest.MustOpen(t)
+	codec, err := ports.NewIntakeClarificationCursorCodec(bytes.Repeat([]byte{1}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetIntakeClarificationCursorCodec(codec); err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func seedProject(t *testing.T, s *sqlite.Store, id string) {

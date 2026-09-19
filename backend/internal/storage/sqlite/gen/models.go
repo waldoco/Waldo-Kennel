@@ -814,6 +814,35 @@ type IntakeClarificationAnswer struct {
 	AnsweredAt      time.Time
 }
 
+type IntakeClarificationRound struct {
+	ID                       string
+	IntakeID                 string
+	Ordinal                  int64
+	Version                  string
+	ExpectedProposalRevision int64
+	ExplicitReanalysis       int64
+	CreatedAt                time.Time
+}
+
+type IntakeClarificationRoundAnswer struct {
+	AnswerOrdinal int64
+	RoundID       string
+	QuestionID    string
+	Answer        string
+	AnsweredAt    time.Time
+}
+
+type IntakeClarificationRoundQuestion struct {
+	RoundID             string
+	QuestionID          string
+	Position            int64
+	Question            string
+	Reason              string
+	Recommendation      string
+	Alternatives        string
+	DeferralConsequence string
+}
+
 type IntakeConfirmation struct {
 	IntakeID           string
 	ProposalRevision   int64

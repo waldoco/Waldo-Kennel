@@ -1,9 +1,16 @@
 package ports
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
@@ -23,6 +30,103 @@ type IntakeSnapshot struct {
 	Clarification     *domain.ClarificationRequest
 	ConfirmedOutcome  *domain.Outcome
 	ConfirmedContract *domain.ContractRevision
+}
+
+const (
+	IntakeClarificationHistoryDefaultPageLimit = 20
+	IntakeClarificationHistoryPageLimit        = 50
+)
+
+type IntakeClarificationHistoryCursor string
+
+type IntakeClarificationCursorBoundary struct {
+	Ordinal int64
+	RoundID domain.IntakeClarificationRoundID
+}
+
+type intakeClarificationCursorPayload struct {
+	Version          int    `json:"v"`
+	IntakeIDHash     string `json:"i"`
+	HighWaterOrdinal int64  `json:"ho"`
+	HighWaterRoundID string `json:"hr"`
+	AfterOrdinal     int64  `json:"ao"`
+	AfterRoundID     string `json:"ar"`
+	AnswerHighWater  int64  `json:"aw"`
+}
+
+type IntakeClarificationCursorCodec struct{ key []byte }
+
+func NewIntakeClarificationCursorCodec(key []byte) (*IntakeClarificationCursorCodec, error) {
+	if len(key) != 32 {
+		return nil, fmt.Errorf("intake cursor MAC key must be 32 bytes")
+	}
+	return &IntakeClarificationCursorCodec{key: append([]byte(nil), key...)}, nil
+}
+func (c *IntakeClarificationCursorCodec) New(id domain.IntakeSessionID, after, highWater IntakeClarificationCursorBoundary, answerHighWater int64) (IntakeClarificationHistoryCursor, error) {
+	if c == nil || len(c.key) != 32 || id.IsZero() || after.Ordinal < 0 || highWater.Ordinal < 1 || after.Ordinal > highWater.Ordinal || (after.Ordinal == 0) != (after.RoundID == "") || highWater.RoundID == "" || (after.Ordinal == highWater.Ordinal && after.RoundID != highWater.RoundID) || answerHighWater < 0 {
+		return "", fmt.Errorf("invalid clarification history cursor bounds")
+	}
+	p := intakeClarificationCursorPayload{Version: 1, IntakeIDHash: intakeClarificationCursorIntakeHash(id), HighWaterOrdinal: highWater.Ordinal, HighWaterRoundID: string(highWater.RoundID), AfterOrdinal: after.Ordinal, AfterRoundID: string(after.RoundID), AnswerHighWater: answerHighWater}
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, c.key)
+	_, _ = mac.Write([]byte("kennel.intake-clarification-history.cursor.mac.v1\x00"))
+	_, _ = mac.Write(payload)
+	return IntakeClarificationHistoryCursor(base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))), nil
+}
+func (c *IntakeClarificationCursorCodec) Parse(cursor IntakeClarificationHistoryCursor, id domain.IntakeSessionID) (after, highWater IntakeClarificationCursorBoundary, answerHighWater int64, err error) {
+	if c == nil || len(c.key) != 32 {
+		return after, highWater, 0, fmt.Errorf("intake cursor codec unavailable")
+	}
+	parts := strings.Split(string(cursor), ".")
+	if len(parts) != 2 {
+		return after, highWater, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	payload, e := base64.RawURLEncoding.Strict().DecodeString(parts[0])
+	if e != nil {
+		return after, highWater, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	sig, e := base64.RawURLEncoding.Strict().DecodeString(parts[1])
+	if e != nil {
+		return after, highWater, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	mac := hmac.New(sha256.New, c.key)
+	_, _ = mac.Write([]byte("kennel.intake-clarification-history.cursor.mac.v1\x00"))
+	_, _ = mac.Write(payload)
+	if !hmac.Equal(sig, mac.Sum(nil)) {
+		return after, highWater, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.DisallowUnknownFields()
+	var p intakeClarificationCursorPayload
+	if e := dec.Decode(&p); e != nil {
+		return after, highWater, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	if dec.Decode(&struct{}{}) != io.EOF {
+		return after, highWater, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	canonical, e := json.Marshal(p)
+	if e != nil || !bytes.Equal(payload, canonical) || p.Version != 1 || p.IntakeIDHash != intakeClarificationCursorIntakeHash(id) {
+		return after, highWater, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	after = IntakeClarificationCursorBoundary{Ordinal: p.AfterOrdinal, RoundID: domain.IntakeClarificationRoundID(p.AfterRoundID)}
+	highWater = IntakeClarificationCursorBoundary{Ordinal: p.HighWaterOrdinal, RoundID: domain.IntakeClarificationRoundID(p.HighWaterRoundID)}
+	if after.Ordinal < 0 || highWater.Ordinal < 1 || after.Ordinal > highWater.Ordinal || (after.Ordinal == 0) != (after.RoundID == "") || highWater.RoundID == "" || (after.Ordinal == highWater.Ordinal && after.RoundID != highWater.RoundID) || p.AnswerHighWater < 0 {
+		return IntakeClarificationCursorBoundary{}, IntakeClarificationCursorBoundary{}, 0, fmt.Errorf("invalid clarification history cursor")
+	}
+	return after, highWater, p.AnswerHighWater, nil
+}
+
+func intakeClarificationCursorIntakeHash(id domain.IntakeSessionID) string {
+	sum := sha256.Sum256([]byte("kennel.intake-clarification-history.cursor.intake.v1\x00" + id.String()))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+type IntakeClarificationHistoryPage struct {
+	Rounds     []domain.IntakeClarificationRound
+	NextCursor IntakeClarificationHistoryCursor
 }
 
 // IntakeRevisionConflictError reports an optimistic concurrency mismatch.
@@ -59,6 +163,9 @@ type IntakeStore interface {
 	FailIntakeAnalysis(context.Context, domain.IntakeSessionID, int64, string, time.Time) (IntakeSnapshot, error)
 	CancelIntake(context.Context, domain.IntakeSessionID, int64, string, time.Time) (IntakeSnapshot, error)
 	RecoverInterruptedIntakeAnalyses(context.Context, time.Time) (int64, error)
+	OpenIntakeClarificationRound(context.Context, domain.IntakeSessionID, domain.IntakeClarificationRoundDraft, time.Time) (domain.IntakeClarificationRound, error)
+	AnswerIntakeClarificationRound(context.Context, domain.IntakeSessionID, domain.IntakeClarificationAnswerBatch, time.Time) (domain.IntakeClarificationRound, error)
+	ListIntakeClarificationHistory(context.Context, domain.IntakeSessionID, IntakeClarificationHistoryCursor, int) (IntakeClarificationHistoryPage, error)
 
 	// CreateIntakeAnalysisRequest opens one durable ask for an agent-authored
 	// Contract proposal. It is written BEFORE the agent is spawned.

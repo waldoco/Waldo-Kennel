@@ -127,6 +127,10 @@ func Run() error {
 		return fmt.Errorf("open store: %w", err)
 	}
 	defer func() { _ = store.Close() }()
+	if err := installIntakeCursorCodec(store, cfg.DataDir); err != nil {
+		_ = store.Close()
+		return err
+	}
 
 	// Refresh the embedded using-kennel skill into the data dir so worker sessions
 	// in any project can read the ao CLI catalog from a stable absolute path.
@@ -755,6 +759,21 @@ func stabilizeWorkingDirectory(dataDir string) error {
 	}
 	if err := os.Chdir(dataDir); err != nil {
 		return fmt.Errorf("daemon working directory: chdir %s: %w", dataDir, err)
+	}
+	return nil
+}
+
+func installIntakeCursorCodec(store *sqlite.Store, dataDir string) error {
+	key, err := secretstore.LoadOrCreateIntakeCursorMACKey(dataDir)
+	if err != nil {
+		return fmt.Errorf("load intake cursor MAC key: %w", err)
+	}
+	codec, err := ports.NewIntakeClarificationCursorCodec(key)
+	if err != nil {
+		return fmt.Errorf("create intake cursor codec: %w", err)
+	}
+	if err := store.SetIntakeClarificationCursorCodec(codec); err != nil {
+		return fmt.Errorf("install intake cursor codec: %w", err)
 	}
 	return nil
 }

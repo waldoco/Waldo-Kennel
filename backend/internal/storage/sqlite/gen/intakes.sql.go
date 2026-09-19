@@ -230,6 +230,88 @@ func (q *Queries) CreateIntakeClarificationAnswer(ctx context.Context, arg Creat
 	return err
 }
 
+const createIntakeClarificationRound = `-- name: CreateIntakeClarificationRound :exec
+INSERT INTO intake_clarification_rounds
+    (id, intake_id, ordinal, version, expected_proposal_revision, explicit_reanalysis, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`
+
+type CreateIntakeClarificationRoundParams struct {
+	ID                       string
+	IntakeID                 string
+	Ordinal                  int64
+	Version                  string
+	ExpectedProposalRevision int64
+	ExplicitReanalysis       int64
+	CreatedAt                time.Time
+}
+
+func (q *Queries) CreateIntakeClarificationRound(ctx context.Context, arg CreateIntakeClarificationRoundParams) error {
+	_, err := q.db.ExecContext(ctx, createIntakeClarificationRound,
+		arg.ID,
+		arg.IntakeID,
+		arg.Ordinal,
+		arg.Version,
+		arg.ExpectedProposalRevision,
+		arg.ExplicitReanalysis,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const createIntakeClarificationRoundAnswer = `-- name: CreateIntakeClarificationRoundAnswer :exec
+INSERT INTO intake_clarification_round_answers (round_id, question_id, answer, answered_at)
+VALUES (?, ?, ?, ?)
+`
+
+type CreateIntakeClarificationRoundAnswerParams struct {
+	RoundID    string
+	QuestionID string
+	Answer     string
+	AnsweredAt time.Time
+}
+
+func (q *Queries) CreateIntakeClarificationRoundAnswer(ctx context.Context, arg CreateIntakeClarificationRoundAnswerParams) error {
+	_, err := q.db.ExecContext(ctx, createIntakeClarificationRoundAnswer,
+		arg.RoundID,
+		arg.QuestionID,
+		arg.Answer,
+		arg.AnsweredAt,
+	)
+	return err
+}
+
+const createIntakeClarificationRoundQuestion = `-- name: CreateIntakeClarificationRoundQuestion :exec
+INSERT INTO intake_clarification_round_questions
+    (round_id, question_id, position, question, reason, recommendation, alternatives, deferral_consequence)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type CreateIntakeClarificationRoundQuestionParams struct {
+	RoundID             string
+	QuestionID          string
+	Position            int64
+	Question            string
+	Reason              string
+	Recommendation      string
+	Alternatives        string
+	DeferralConsequence string
+}
+
+func (q *Queries) CreateIntakeClarificationRoundQuestion(ctx context.Context, arg CreateIntakeClarificationRoundQuestionParams) error {
+	_, err := q.db.ExecContext(ctx, createIntakeClarificationRoundQuestion,
+		arg.RoundID,
+		arg.QuestionID,
+		arg.Position,
+		arg.Question,
+		arg.Reason,
+		arg.Recommendation,
+		arg.Alternatives,
+		arg.DeferralConsequence,
+	)
+	return err
+}
+
 const createIntakeConfirmation = `-- name: CreateIntakeConfirmation :exec
 INSERT INTO intake_confirmations
     (intake_id, proposal_revision, outcome_id, contract_revision_id, request_key, request_fingerprint, confirmed_at)
@@ -648,6 +730,30 @@ func (q *Queries) GetIntakeClarification(ctx context.Context, intakeID string) (
 	return i, err
 }
 
+const getIntakeClarificationRound = `-- name: GetIntakeClarificationRound :one
+SELECT id, intake_id, ordinal, version, expected_proposal_revision, explicit_reanalysis, created_at FROM intake_clarification_rounds WHERE intake_id = ? AND id = ?
+`
+
+type GetIntakeClarificationRoundParams struct {
+	IntakeID string
+	ID       string
+}
+
+func (q *Queries) GetIntakeClarificationRound(ctx context.Context, arg GetIntakeClarificationRoundParams) (IntakeClarificationRound, error) {
+	row := q.db.QueryRowContext(ctx, getIntakeClarificationRound, arg.IntakeID, arg.ID)
+	var i IntakeClarificationRound
+	err := row.Scan(
+		&i.ID,
+		&i.IntakeID,
+		&i.Ordinal,
+		&i.Version,
+		&i.ExpectedProposalRevision,
+		&i.ExplicitReanalysis,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getIntakeConfirmation = `-- name: GetIntakeConfirmation :one
 SELECT intake_id, proposal_revision, outcome_id, contract_revision_id, request_key, request_fingerprint, confirmed_at FROM intake_confirmations WHERE intake_id = ?
 `
@@ -691,6 +797,25 @@ func (q *Queries) GetIntakeSession(ctx context.Context, id string) (IntakeSessio
 		&i.RequestFingerprint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLatestIntakeClarificationRound = `-- name: GetLatestIntakeClarificationRound :one
+SELECT id, intake_id, ordinal, version, expected_proposal_revision, explicit_reanalysis, created_at FROM intake_clarification_rounds WHERE intake_id = ? ORDER BY ordinal DESC LIMIT 1
+`
+
+func (q *Queries) GetLatestIntakeClarificationRound(ctx context.Context, intakeID string) (IntakeClarificationRound, error) {
+	row := q.db.QueryRowContext(ctx, getLatestIntakeClarificationRound, intakeID)
+	var i IntakeClarificationRound
+	err := row.Scan(
+		&i.ID,
+		&i.IntakeID,
+		&i.Ordinal,
+		&i.Version,
+		&i.ExpectedProposalRevision,
+		&i.ExplicitReanalysis,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -774,6 +899,174 @@ func (q *Queries) LatestIntakeAnalysisRequest(ctx context.Context, intakeID stri
 	return i, err
 }
 
+const listIntakeClarificationRoundAnswers = `-- name: ListIntakeClarificationRoundAnswers :many
+SELECT answer_ordinal, round_id, question_id, answer, answered_at FROM intake_clarification_round_answers WHERE round_id = ? ORDER BY question_id
+`
+
+func (q *Queries) ListIntakeClarificationRoundAnswers(ctx context.Context, roundID string) ([]IntakeClarificationRoundAnswer, error) {
+	rows, err := q.db.QueryContext(ctx, listIntakeClarificationRoundAnswers, roundID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IntakeClarificationRoundAnswer{}
+	for rows.Next() {
+		var i IntakeClarificationRoundAnswer
+		if err := rows.Scan(
+			&i.AnswerOrdinal,
+			&i.RoundID,
+			&i.QuestionID,
+			&i.Answer,
+			&i.AnsweredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIntakeClarificationRoundAnswersAtHighWater = `-- name: ListIntakeClarificationRoundAnswersAtHighWater :many
+SELECT a.round_id, a.question_id, a.answer, a.answered_at
+FROM intake_clarification_round_answers a
+WHERE a.round_id = ?1 AND a.answer_ordinal <= ?2
+ORDER BY a.question_id
+`
+
+type ListIntakeClarificationRoundAnswersAtHighWaterParams struct {
+	RoundID         string
+	AnswerHighWater int64
+}
+
+type ListIntakeClarificationRoundAnswersAtHighWaterRow struct {
+	RoundID    string
+	QuestionID string
+	Answer     string
+	AnsweredAt time.Time
+}
+
+func (q *Queries) ListIntakeClarificationRoundAnswersAtHighWater(ctx context.Context, arg ListIntakeClarificationRoundAnswersAtHighWaterParams) ([]ListIntakeClarificationRoundAnswersAtHighWaterRow, error) {
+	rows, err := q.db.QueryContext(ctx, listIntakeClarificationRoundAnswersAtHighWater, arg.RoundID, arg.AnswerHighWater)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIntakeClarificationRoundAnswersAtHighWaterRow{}
+	for rows.Next() {
+		var i ListIntakeClarificationRoundAnswersAtHighWaterRow
+		if err := rows.Scan(
+			&i.RoundID,
+			&i.QuestionID,
+			&i.Answer,
+			&i.AnsweredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIntakeClarificationRoundQuestions = `-- name: ListIntakeClarificationRoundQuestions :many
+SELECT round_id, question_id, position, question, reason, recommendation, alternatives, deferral_consequence FROM intake_clarification_round_questions WHERE round_id = ? ORDER BY position
+`
+
+func (q *Queries) ListIntakeClarificationRoundQuestions(ctx context.Context, roundID string) ([]IntakeClarificationRoundQuestion, error) {
+	rows, err := q.db.QueryContext(ctx, listIntakeClarificationRoundQuestions, roundID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IntakeClarificationRoundQuestion{}
+	for rows.Next() {
+		var i IntakeClarificationRoundQuestion
+		if err := rows.Scan(
+			&i.RoundID,
+			&i.QuestionID,
+			&i.Position,
+			&i.Question,
+			&i.Reason,
+			&i.Recommendation,
+			&i.Alternatives,
+			&i.DeferralConsequence,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIntakeClarificationRoundsPage = `-- name: ListIntakeClarificationRoundsPage :many
+SELECT id, intake_id, ordinal, version, expected_proposal_revision, explicit_reanalysis, created_at FROM intake_clarification_rounds
+WHERE intake_id = ?1
+  AND ordinal > ?2
+  AND ordinal <= ?3
+ORDER BY ordinal
+LIMIT ?4
+`
+
+type ListIntakeClarificationRoundsPageParams struct {
+	IntakeID         string
+	AfterOrdinal     int64
+	HighWaterOrdinal int64
+	PageLimit        int64
+}
+
+func (q *Queries) ListIntakeClarificationRoundsPage(ctx context.Context, arg ListIntakeClarificationRoundsPageParams) ([]IntakeClarificationRound, error) {
+	rows, err := q.db.QueryContext(ctx, listIntakeClarificationRoundsPage,
+		arg.IntakeID,
+		arg.AfterOrdinal,
+		arg.HighWaterOrdinal,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IntakeClarificationRound{}
+	for rows.Next() {
+		var i IntakeClarificationRound
+		if err := rows.Scan(
+			&i.ID,
+			&i.IntakeID,
+			&i.Ordinal,
+			&i.Version,
+			&i.ExpectedProposalRevision,
+			&i.ExplicitReanalysis,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIntakeConversationRefs = `-- name: ListIntakeConversationRefs :many
 SELECT intake_id, episode_id, turn_id, position
 FROM intake_conversation_refs WHERE intake_id = ? ORDER BY position
@@ -846,6 +1139,31 @@ func (q *Queries) ListOpenIntakeAnalysisRequests(ctx context.Context) ([]IntakeA
 		return nil, err
 	}
 	return items, nil
+}
+
+const maxIntakeClarificationAnswerRowID = `-- name: MaxIntakeClarificationAnswerRowID :one
+SELECT CAST(COALESCE(MAX(a.answer_ordinal), 0) AS INTEGER)
+FROM intake_clarification_round_answers a
+JOIN intake_clarification_rounds r ON r.id = a.round_id
+WHERE r.intake_id = ?
+`
+
+func (q *Queries) MaxIntakeClarificationAnswerRowID(ctx context.Context, intakeID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxIntakeClarificationAnswerRowID, intakeID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const maxIntakeClarificationRoundOrdinal = `-- name: MaxIntakeClarificationRoundOrdinal :one
+SELECT CAST(COALESCE(MAX(ordinal), 0) AS INTEGER) FROM intake_clarification_rounds WHERE intake_id = ?
+`
+
+func (q *Queries) MaxIntakeClarificationRoundOrdinal(ctx context.Context, intakeID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxIntakeClarificationRoundOrdinal, intakeID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const recoverInterruptedIntakeAnalyses = `-- name: RecoverInterruptedIntakeAnalyses :execrows

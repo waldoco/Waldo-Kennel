@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/ports"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/gen"
 )
 
@@ -19,11 +20,12 @@ import (
 // CDC is captured by DB triggers (migration 0001), NOT by this layer: the store
 // never writes change_log, it only reads it for the CDC poller.
 type Store struct {
-	writeDB *sql.DB
-	readDB  *sql.DB
-	qw      *gen.Queries // bound to the single writer connection
-	qr      *gen.Queries // bound to the reader pool
-	writeMu sync.Mutex
+	writeDB           *sql.DB
+	readDB            *sql.DB
+	qw                *gen.Queries // bound to the single writer connection
+	qr                *gen.Queries // bound to the reader pool
+	writeMu           sync.Mutex
+	intakeCursorCodec *ports.IntakeClarificationCursorCodec
 }
 
 type conversationProjectionTxKey struct{}
@@ -56,6 +58,15 @@ func NewStore(writeDB, readDB *sql.DB) *Store {
 		qw:      gen.New(writeDB),
 		qr:      gen.New(readDB),
 	}
+}
+
+// SetIntakeClarificationCursorCodec installs the daemon-owned signing authority.
+func (s *Store) SetIntakeClarificationCursorCodec(codec *ports.IntakeClarificationCursorCodec) error {
+	if codec == nil {
+		return fmt.Errorf("intake cursor codec is required")
+	}
+	s.intakeCursorCodec = codec
+	return nil
 }
 
 // Close closes both pools.

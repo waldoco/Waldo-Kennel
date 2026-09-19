@@ -711,3 +711,236 @@ func intakeAnalysisRequestFromRow(row gen.IntakeAnalysisRequest) domain.IntakeAn
 	}
 	return request
 }
+
+// OpenIntakeClarificationRound persists one aggregate transition atomically.
+func (s *Store) OpenIntakeClarificationRound(ctx context.Context, id domain.IntakeSessionID, draft domain.IntakeClarificationRoundDraft, at time.Time) (domain.IntakeClarificationRound, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	var opened domain.IntakeClarificationRound
+	err := s.inTx(ctx, "open intake clarification round", func(q *gen.Queries) error {
+		session, err := q.GetIntakeSession(ctx, id.String())
+		if err != nil {
+			return err
+		}
+		rounds, err := loadAllIntakeClarificationRounds(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		history := domain.IntakeClarificationHistory{IntakeID: id, CurrentProposalRevision: session.CurrentProposalRevision, Rounds: rounds}
+		next, err := domain.OpenClarificationRound(history, draft)
+		if err != nil {
+			return err
+		}
+		opened = next.Rounds[len(next.Rounds)-1]
+		if err := q.CreateIntakeClarificationRound(ctx, gen.CreateIntakeClarificationRoundParams{ID: string(opened.ID), IntakeID: id.String(), Ordinal: opened.Ordinal, Version: string(opened.Version), ExpectedProposalRevision: opened.ExpectedProposalRevision, ExplicitReanalysis: boolInt64(draft.ExplicitReanalysis), CreatedAt: at}); err != nil {
+			return err
+		}
+		for _, question := range opened.Questions {
+			alternatives, err := json.Marshal(question.Alternatives)
+			if err != nil {
+				return err
+			}
+			if err := q.CreateIntakeClarificationRoundQuestion(ctx, gen.CreateIntakeClarificationRoundQuestionParams{RoundID: string(opened.ID), QuestionID: string(question.ID), Position: question.Position, Question: question.Question, Reason: question.Reason, Recommendation: question.Recommendation, Alternatives: string(alternatives), DeferralConsequence: question.DeferralConsequence}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return opened, err
+}
+
+// AnswerIntakeClarificationRound applies an answer batch atomically.
+func (s *Store) AnswerIntakeClarificationRound(ctx context.Context, id domain.IntakeSessionID, batch domain.IntakeClarificationAnswerBatch, at time.Time) (domain.IntakeClarificationRound, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	var answered domain.IntakeClarificationRound
+	err := s.inTx(ctx, "answer intake clarification round", func(q *gen.Queries) error {
+		session, err := q.GetIntakeSession(ctx, id.String())
+		if err != nil {
+			return err
+		}
+		rounds, err := loadAllIntakeClarificationRounds(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		next, err := domain.AnswerClarificationRound(domain.IntakeClarificationHistory{IntakeID: id, CurrentProposalRevision: session.CurrentProposalRevision, Rounds: rounds}, batch)
+		if err != nil {
+			return err
+		}
+		for _, answer := range batch.Answers {
+			if err := q.CreateIntakeClarificationRoundAnswer(ctx, gen.CreateIntakeClarificationRoundAnswerParams{RoundID: string(answer.RoundID), QuestionID: string(answer.QuestionID), Answer: answer.Answer, AnsweredAt: at}); err != nil {
+				return err
+			}
+		}
+		for _, round := range next.Rounds {
+			if round.ID == batch.RoundID {
+				answered = round
+				break
+			}
+		}
+		return nil
+	})
+	return answered, err
+}
+
+// ListIntakeClarificationHistory returns a stable, bounded page. The first page
+// freezes the current maximum ordinal; subsequent pages validate that same bound.
+func (s *Store) ListIntakeClarificationHistory(ctx context.Context, id domain.IntakeSessionID, cursor ports.IntakeClarificationHistoryCursor, limit int) (ports.IntakeClarificationHistoryPage, error) {
+	if s.intakeCursorCodec == nil {
+		return ports.IntakeClarificationHistoryPage{}, fmt.Errorf("intake cursor codec unavailable")
+	}
+	if limit == 0 {
+		limit = ports.IntakeClarificationHistoryDefaultPageLimit
+	}
+	if limit < 1 || limit > ports.IntakeClarificationHistoryPageLimit {
+		return ports.IntakeClarificationHistoryPage{}, fmt.Errorf("clarification history page limit must be between 1 and %d", ports.IntakeClarificationHistoryPageLimit)
+	}
+	var after, high ports.IntakeClarificationCursorBoundary
+	var answerHighWater int64
+	if cursor == "" {
+		latest, err := s.qr.GetLatestIntakeClarificationRound(ctx, id.String())
+		if errors.Is(err, sql.ErrNoRows) {
+			return ports.IntakeClarificationHistoryPage{Rounds: []domain.IntakeClarificationRound{}}, nil
+		}
+		if err != nil {
+			return ports.IntakeClarificationHistoryPage{}, err
+		}
+		high = ports.IntakeClarificationCursorBoundary{Ordinal: latest.Ordinal, RoundID: domain.IntakeClarificationRoundID(latest.ID)}
+		answerHighWater, err = s.qr.MaxIntakeClarificationAnswerRowID(ctx, id.String())
+		if err != nil {
+			return ports.IntakeClarificationHistoryPage{}, err
+		}
+	} else {
+		var err error
+		after, high, answerHighWater, err = s.intakeCursorCodec.Parse(cursor, id)
+		if err != nil {
+			return ports.IntakeClarificationHistoryPage{}, err
+		}
+		if err := validateIntakeClarificationCursorBoundary(ctx, s.qr, id, high); err != nil {
+			return ports.IntakeClarificationHistoryPage{}, err
+		}
+		if after.Ordinal > 0 {
+			if err := validateIntakeClarificationCursorBoundary(ctx, s.qr, id, after); err != nil {
+				return ports.IntakeClarificationHistoryPage{}, err
+			}
+		}
+	}
+	rows, err := s.qr.ListIntakeClarificationRoundsPage(ctx, gen.ListIntakeClarificationRoundsPageParams{IntakeID: id.String(), AfterOrdinal: after.Ordinal, HighWaterOrdinal: high.Ordinal, PageLimit: int64(limit + 1)})
+	if err != nil {
+		return ports.IntakeClarificationHistoryPage{}, err
+	}
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+	page := ports.IntakeClarificationHistoryPage{Rounds: make([]domain.IntakeClarificationRound, 0, len(rows))}
+	for _, row := range rows {
+		round, err := intakeClarificationRoundFromRowAtHighWater(ctx, s.qr, row, answerHighWater)
+		if err != nil {
+			return ports.IntakeClarificationHistoryPage{}, err
+		}
+		page.Rounds = append(page.Rounds, round)
+	}
+	if hasMore {
+		last := rows[len(rows)-1]
+		page.NextCursor, err = s.intakeCursorCodec.New(id,
+			ports.IntakeClarificationCursorBoundary{Ordinal: last.Ordinal, RoundID: domain.IntakeClarificationRoundID(last.ID)}, high, answerHighWater)
+		if err != nil {
+			return ports.IntakeClarificationHistoryPage{}, err
+		}
+	}
+	return page, nil
+}
+
+func validateIntakeClarificationCursorBoundary(ctx context.Context, q *gen.Queries, id domain.IntakeSessionID, boundary ports.IntakeClarificationCursorBoundary) error {
+	row, err := q.GetIntakeClarificationRound(ctx, gen.GetIntakeClarificationRoundParams{IntakeID: id.String(), ID: string(boundary.RoundID)})
+	if err != nil || row.Ordinal != boundary.Ordinal {
+		return fmt.Errorf("invalid clarification history cursor boundary")
+	}
+	return nil
+}
+
+func loadAllIntakeClarificationRounds(ctx context.Context, q *gen.Queries, id domain.IntakeSessionID) ([]domain.IntakeClarificationRound, error) {
+	highWater, err := q.MaxIntakeClarificationRoundOrdinal(ctx, id.String())
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.ListIntakeClarificationRoundsPage(ctx, gen.ListIntakeClarificationRoundsPageParams{IntakeID: id.String(), AfterOrdinal: 0, HighWaterOrdinal: highWater, PageLimit: highWater + 1})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.IntakeClarificationRound, 0, len(rows))
+	for _, row := range rows {
+		round, err := intakeClarificationRoundFromRow(ctx, q, row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, round)
+	}
+	return result, nil
+}
+
+func intakeClarificationRoundFromRowAtHighWater(ctx context.Context, q *gen.Queries, row gen.IntakeClarificationRound, answerHighWater int64) (domain.IntakeClarificationRound, error) {
+	round := domain.IntakeClarificationRound{Version: domain.IntakeClarificationRoundVersion(row.Version), ID: domain.IntakeClarificationRoundID(row.ID), IntakeID: domain.IntakeSessionID(row.IntakeID), Ordinal: row.Ordinal, ExpectedProposalRevision: row.ExpectedProposalRevision}
+	questions, err := q.ListIntakeClarificationRoundQuestions(ctx, row.ID)
+	if err != nil {
+		return domain.IntakeClarificationRound{}, err
+	}
+	for _, item := range questions {
+		var alternatives []string
+		if err := json.Unmarshal([]byte(item.Alternatives), &alternatives); err != nil {
+			return domain.IntakeClarificationRound{}, err
+		}
+		round.Questions = append(round.Questions, domain.IntakeClarificationQuestion{ID: domain.IntakeClarificationQuestionID(item.QuestionID), Position: item.Position, Question: item.Question, Reason: item.Reason, Recommendation: item.Recommendation, Alternatives: alternatives, DeferralConsequence: item.DeferralConsequence})
+	}
+	answers, err := q.ListIntakeClarificationRoundAnswersAtHighWater(ctx, gen.ListIntakeClarificationRoundAnswersAtHighWaterParams{RoundID: row.ID, AnswerHighWater: answerHighWater})
+	if err != nil {
+		return domain.IntakeClarificationRound{}, err
+	}
+	answerByID := make(map[string]gen.ListIntakeClarificationRoundAnswersAtHighWaterRow, len(answers))
+	for _, answer := range answers {
+		answerByID[answer.QuestionID] = answer
+	}
+	for _, question := range round.Questions {
+		if answer, ok := answerByID[string(question.ID)]; ok {
+			round.Answers = append(round.Answers, domain.IntakeClarificationRoundAnswer{RoundID: round.ID, QuestionID: question.ID, Answer: answer.Answer})
+		}
+	}
+	return round, nil
+}
+
+func intakeClarificationRoundFromRow(ctx context.Context, q *gen.Queries, row gen.IntakeClarificationRound) (domain.IntakeClarificationRound, error) {
+	round := domain.IntakeClarificationRound{Version: domain.IntakeClarificationRoundVersion(row.Version), ID: domain.IntakeClarificationRoundID(row.ID), IntakeID: domain.IntakeSessionID(row.IntakeID), Ordinal: row.Ordinal, ExpectedProposalRevision: row.ExpectedProposalRevision}
+	questions, err := q.ListIntakeClarificationRoundQuestions(ctx, row.ID)
+	if err != nil {
+		return domain.IntakeClarificationRound{}, err
+	}
+	for _, item := range questions {
+		var alternatives []string
+		if err := json.Unmarshal([]byte(item.Alternatives), &alternatives); err != nil {
+			return domain.IntakeClarificationRound{}, err
+		}
+		round.Questions = append(round.Questions, domain.IntakeClarificationQuestion{ID: domain.IntakeClarificationQuestionID(item.QuestionID), Position: item.Position, Question: item.Question, Reason: item.Reason, Recommendation: item.Recommendation, Alternatives: alternatives, DeferralConsequence: item.DeferralConsequence})
+	}
+	answers, err := q.ListIntakeClarificationRoundAnswers(ctx, row.ID)
+	if err != nil {
+		return domain.IntakeClarificationRound{}, err
+	}
+	answerByID := make(map[string]gen.IntakeClarificationRoundAnswer, len(answers))
+	for _, answer := range answers {
+		answerByID[answer.QuestionID] = answer
+	}
+	for _, question := range round.Questions {
+		if answer, ok := answerByID[string(question.ID)]; ok {
+			round.Answers = append(round.Answers, domain.IntakeClarificationRoundAnswer{RoundID: round.ID, QuestionID: question.ID, Answer: answer.Answer})
+		}
+	}
+	return round, nil
+}
+
+func boolInt64(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
+}
