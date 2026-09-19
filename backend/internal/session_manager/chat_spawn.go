@@ -164,7 +164,6 @@ func (m *Manager) launchChatController(ctx context.Context, in chatSpawn) (domai
 				Prompt:                        in.prompt,
 				DiffBaseSHA:                   diffBaseSHA,
 				DiffBaseRef:                   diffBaseRef,
-				Worktrees:                     in.record.Metadata.Worktrees,
 				GovernedExecutionPolicyDigest: in.record.Metadata.GovernedExecutionPolicyDigest,
 				// No RuntimeHandleID or RuntimeLaunchID: a chat session has no
 				// agent pane. Leaving them empty keeps the reaper from probing for

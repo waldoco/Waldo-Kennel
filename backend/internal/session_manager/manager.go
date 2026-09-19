@@ -935,13 +935,35 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (rec domain.
 	if projectKind == domain.ProjectKindSingleRepo {
 		spawnDiffBaseSHA, spawnDiffBaseRef = resolveSpawnDiffBase(ctx, ws.Path, ws.BaseRef)
 	}
+	// A governed launch fails closed BEFORE the boundary when its source-tree
+	// evidence cannot be proven: a single-repo base that resolved to nothing,
+	// or a workspace project without a durable per-repo inventory. The custody
+	// record sealed inside the boundary reads the same durable
+	// session_worktrees rows passed here, never a second in-memory copy.
+	var spawnWorktreeRows []domain.SessionWorktreeRecord
 	if cfg.ExecutionPolicy != nil {
+		if projectKind == domain.ProjectKindSingleRepo && spawnDiffBaseSHA == "" {
+			m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
+			return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: governed launch requires a resolved source-tree base", id)
+		}
+		if workspaceProject != nil {
+			rows, err := m.store.ListSessionWorktrees(ctx, id)
+			if err != nil {
+				m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
+				return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: read durable worktree inventory: %w", id, err)
+			}
+			if len(rows) == 0 {
+				m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
+				return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: governed workspace launch has no durable worktree inventory", id)
+			}
+			sort.Slice(rows, func(i, j int) bool { return rows[i].RepoName < rows[j].RepoName })
+			spawnWorktreeRows = rows
+		}
 		rec.Metadata.Branch = ws.Branch
 		rec.Metadata.WorkspacePath = ws.Path
 		rec.Metadata.WorkspaceRepoPath = ws.RepoPath
 		rec.Metadata.DiffBaseSHA = spawnDiffBaseSHA
 		rec.Metadata.DiffBaseRef = spawnDiffBaseRef
-		rec.Metadata.Worktrees = spawnWorktreeFacts(workspaceProject)
 		rec.UpdatedAt = m.clock()
 		if err := m.store.UpdateSession(ctx, rec); err != nil {
 			m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
@@ -956,7 +978,7 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (rec domain.
 			m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
 			return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: governed launch persistence callback is missing", id)
 		}
-		if err := cfg.BeforeProviderLaunch(ctx, rec, *cfg.ExecutionPolicy); err != nil {
+		if err := cfg.BeforeProviderLaunch(ctx, rec, *cfg.ExecutionPolicy, spawnWorktreeRows); err != nil {
 			m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false)
 			return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: persist governed launch packet: %w", id, err)
 		}
@@ -1088,7 +1110,6 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (rec domain.
 	// exactly that value so custody evidence and final metadata cannot
 	// diverge.
 	metadata.DiffBaseSHA, metadata.DiffBaseRef = spawnDiffBaseSHA, spawnDiffBaseRef
-	metadata.Worktrees = rec.Metadata.Worktrees
 	if err := m.lcm.MarkSpawned(ctx, id, metadata); err != nil {
 		runtimeDestroyed := m.runtime.Destroy(ctx, handle) == nil
 		m.rollbackPreparedSpawnWorkspace(ctx, rec, ws, workspaceProject, runtimeDestroyed)
@@ -1222,21 +1243,6 @@ func (m *Manager) provisionAttemptInputs(ctx context.Context, cfg ports.SpawnCon
 		Inputs: cfg.AttemptInputs, Documents: cfg.AttemptDocuments,
 		WorkspacePath: ws.Path, WorkspaceKind: kind, BaseRevision: baseRevision,
 	})
-}
-
-// spawnWorktreeFacts captures the durable per-repo inventory of a
-// workspace-project session in canonical order, before provider launch, so
-// custody records bind the exact per-repo source trees.
-func spawnWorktreeFacts(info *ports.WorkspaceProjectInfo) []domain.SessionWorktreeFact {
-	if info == nil || len(info.Worktrees) == 0 {
-		return nil
-	}
-	facts := make([]domain.SessionWorktreeFact, 0, len(info.Worktrees))
-	for _, wt := range info.Worktrees {
-		facts = append(facts, domain.SessionWorktreeFact{RepoName: wt.RepoName, BaseSHA: wt.BaseSHA, BaseRef: wt.BaseRef, WorktreePath: wt.Path})
-	}
-	sort.Slice(facts, func(i, j int) bool { return facts[i].RepoName < facts[j].RepoName })
-	return facts
 }
 
 func resolveSpawnDiffBase(ctx context.Context, root, defaultBranch string) (string, string) {

@@ -461,8 +461,9 @@ func timeToSuffix(t time.Time) string {
 // for and answers with whatever failure the current scenario injects. NO
 // fallback: the requested harness is echoed verbatim.
 type fakeSpawner struct {
-	afterPrelaunch  func()
-	sessionMetadata domain.SessionMetadata
+	afterPrelaunch   func()
+	sessionMetadata  domain.SessionMetadata
+	sessionWorktrees []domain.SessionWorktreeRecord
 	mu              sync.Mutex
 	readiness       ports.AgentProfileReadiness
 	readinessErr    error
@@ -522,11 +523,10 @@ func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (p
 			LastActivityAt: time.Now(),
 		},
 	}
-	if f.sessionMetadata.WorkspaceRepoPath != "" || len(f.sessionMetadata.Worktrees) > 0 {
+	if f.sessionMetadata.WorkspaceRepoPath != "" {
 		rec.Metadata.WorkspaceRepoPath = f.sessionMetadata.WorkspaceRepoPath
 		rec.Metadata.DiffBaseSHA = f.sessionMetadata.DiffBaseSHA
 		rec.Metadata.DiffBaseRef = f.sessionMetadata.DiffBaseRef
-		rec.Metadata.Worktrees = f.sessionMetadata.Worktrees
 	}
 	bound, err := req.ExecutionPolicy.BindWorkspaceRoot(rec.Metadata.WorkspacePath)
 	f.mu.Unlock()
@@ -536,7 +536,7 @@ func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (p
 	if req.BeforeProviderLaunch == nil {
 		return ports.AttemptSpawnResult{}, errors.New("missing prelaunch persistence callback")
 	}
-	if err := req.BeforeProviderLaunch(context.Background(), rec, bound); err != nil {
+	if err := req.BeforeProviderLaunch(context.Background(), rec, bound, f.sessionWorktrees); err != nil {
 		return ports.AttemptSpawnResult{}, &ports.AttemptPrelaunchError{Stage: "before_provider_launch", Err: err}
 	}
 	if f.afterPrelaunch != nil {

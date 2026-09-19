@@ -47,7 +47,7 @@ type SpawnConfig struct {
 	// BeforeProviderLaunch is the mandatory governed crash boundary. Session
 	// identity, canonical workspace and bound policy exist, but no provider
 	// process/controller may be started until it returns successfully.
-	BeforeProviderLaunch func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy) error
+	BeforeProviderLaunch func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy, []domain.SessionWorktreeRecord) error
 
 	RequestedMode domain.SessionMode
 	DisplayName   string

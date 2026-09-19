@@ -31,7 +31,7 @@ type AttemptSpawnRequest struct {
 	Documents *AttemptDocumentInputs
 	// BeforeProviderLaunch persists the WorkspaceBoundLaunchPacket after
 	// workspace preparation. A governed launch must fail closed when absent.
-	BeforeProviderLaunch func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy) error
+	BeforeProviderLaunch func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy, []domain.SessionWorktreeRecord) error
 }
 
 // AttemptSpawnResult reports the spawned subordinate session and, when the

@@ -154,14 +154,19 @@ func TestSpawn_WithoutAdmittedInputsDoesNotConsultTheProvisioner(t *testing.T) {
 
 func TestSpawn_PersistsBoundLaunchPacketBeforeProviderLaunch(t *testing.T) {
 	st := newFakeStore()
-	st.projects["mer"] = domain.ProjectRecord{ID: "mer"}
+	repo := newManagerGitRepo(t)
+	cfg := testRoleAgents()
+	cfg.DefaultBranch = "main"
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Path: repo, Config: cfg}
 	runtime := &fakeRuntime{}
 	agent := &recordingAgent{}
-	m := New(Deps{Runtime: runtime, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: func(string) (string, error) { return "/bin/true", nil }})
+	ws := &fakeWorkspace{}
+	ws.path = repo
+	m := New(Deps{Runtime: runtime, Agents: singleAgent{agent: agent}, Workspace: ws, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: func(string) (string, error) { return "/bin/true", nil }})
 	binding := domain.ExecutionBinding{Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault}
 	policy := &domain.AttemptExecutionPolicy{OutcomeID: "out", PlanRevisionID: "plan", WorkUnitID: "wu", ContractRevisionNumber: 1, RunBriefCoreDigest: "brief", RequiredCapabilities: []string{domain.CapabilityWorktreeRead}, Grants: []domain.CapabilityGrant{{ID: "read", Name: domain.CapabilityWorktreeRead, Scope: "worktree/*"}}}
 	called := false
-	_, _, _, err := m.Spawn(context.Background(), ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding, ExecutionPolicy: policy, BeforeProviderLaunch: func(_ context.Context, rec domain.SessionRecord, bound domain.AttemptExecutionPolicy) error {
+	_, _, _, err := m.Spawn(context.Background(), ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding, ExecutionPolicy: policy, BeforeProviderLaunch: func(_ context.Context, rec domain.SessionRecord, bound domain.AttemptExecutionPolicy, _ []domain.SessionWorktreeRecord) error {
 		called = true
 		if rec.ID == "" || bound.WorkspaceRoot == "" {
 			t.Fatalf("callback missing prepared identity/root: rec=%+v policy=%+v", rec, bound)

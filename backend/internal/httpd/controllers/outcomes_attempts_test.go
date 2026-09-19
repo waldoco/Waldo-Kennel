@@ -235,7 +235,7 @@ func (controllerSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest)
 		return ports.AttemptSpawnResult{}, err
 	}
 	if req.BeforeProviderLaunch != nil {
-		if err := req.BeforeProviderLaunch(context.Background(), rec, bound); err != nil {
+		if err := req.BeforeProviderLaunch(context.Background(), rec, bound, nil); err != nil {
 			return ports.AttemptSpawnResult{}, err
 		}
 	}

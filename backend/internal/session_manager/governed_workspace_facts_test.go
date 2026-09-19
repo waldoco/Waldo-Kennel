@@ -22,37 +22,26 @@ func workspaceProjectFixture() (domain.ProjectRecord, *fakeWorkspace) {
 	return project, ws
 }
 
-func wantWorkspaceFacts() []domain.SessionWorktreeFact {
-	return []domain.SessionWorktreeFact{
-		{RepoName: "api", BaseSHA: "sha-api", BaseRef: "main", WorktreePath: "/ws/mer-1/api"},
-		{RepoName: "root", BaseSHA: "sha-root", BaseRef: "main", WorktreePath: "/ws/mer-1/root"},
-	}
-}
-
-func assertFactsMatchWorktreeRows(t *testing.T, facts []domain.SessionWorktreeFact, rows []domain.SessionWorktreeRecord) {
+// The custody record sealed inside the boundary must observe the canonical
+// order of the same durable session_worktrees rows, never a second copy.
+func assertBoundaryInventoryMatchesStore(t *testing.T, cbWorktrees, rows []domain.SessionWorktreeRecord) {
 	t.Helper()
-	if len(rows) != len(facts) {
-		t.Fatalf("worktree rows = %d, want %d sealed facts", len(rows), len(facts))
+	if len(cbWorktrees) != 2 || cbWorktrees[0].RepoName != "api" || cbWorktrees[1].RepoName != "root" {
+		t.Fatalf("boundary inventory = %#v, want canonical api,root", cbWorktrees)
 	}
-	byName := map[string]domain.SessionWorktreeRecord{}
-	for _, row := range rows {
-		byName[row.RepoName] = row
+	if !reflect.DeepEqual(cbWorktrees, rows) {
+		t.Fatalf("boundary inventory = %#v, durable rows = %#v: the seal must read the same rows", cbWorktrees, rows)
 	}
-	for _, fact := range facts {
-		row, ok := byName[fact.RepoName]
-		if !ok {
-			t.Fatalf("sealed repo %q has no durable session_worktrees row", fact.RepoName)
-		}
-		if row.BaseSHA != fact.BaseSHA || row.BaseRef != fact.BaseRef || row.WorktreePath != fact.WorktreePath {
-			t.Fatalf("row for %q = %#v, sealed fact = %#v: custody must match the durable inventory", fact.RepoName, row, fact)
+	for _, row := range cbWorktrees {
+		if row.BaseSHA == "" {
+			t.Fatalf("boundary inventory row %q lost its base", row.RepoName)
 		}
 	}
 }
 
-// A governed workspace-project spawn must carry the canonical per-repo
-// inventory into the prelaunch SessionRecord: the custody record sealed
-// inside the callback observes the exact same facts that are durable in
-// session_worktrees, and the final session metadata binds them.
+// A governed workspace-project spawn hands the durable per-repo inventory to
+// the prelaunch callback, sourced from the session_worktrees rows written
+// during workspace preparation.
 func TestSpawn_GovernedWorkspaceFactsBoundBeforeProviderLaunch(t *testing.T) {
 	st := newFakeStore()
 	project, ws := workspaceProjectFixture()
@@ -62,19 +51,19 @@ func TestSpawn_GovernedWorkspaceFactsBoundBeforeProviderLaunch(t *testing.T) {
 	m := New(Deps{Runtime: runtime, Agents: singleAgent{agent: &recordingAgent{}}, Workspace: ws, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: func(string) (string, error) { return "/bin/true", nil }})
 	binding := domain.ExecutionBinding{Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault}
 
-	var cbFacts []domain.SessionWorktreeFact
+	var cbWorktrees []domain.SessionWorktreeRecord
 	cbRuntimeCreated := -1
 	rec, _, _, err := m.Spawn(ctx, ports.SpawnConfig{
 		ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding,
 		ExecutionPolicy: governedDiffBasePolicy(),
-		BeforeProviderLaunch: func(cbCtx context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy) error {
-			cbFacts = cbRec.Metadata.Worktrees
+		BeforeProviderLaunch: func(cbCtx context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy, worktrees []domain.SessionWorktreeRecord) error {
+			cbWorktrees = worktrees
 			cbRuntimeCreated = runtime.created
 			rows, err := st.ListSessionWorktrees(cbCtx, cbRec.ID)
 			if err != nil {
 				t.Fatalf("read durable worktree rows inside the boundary: %v", err)
 			}
-			assertFactsMatchWorktreeRows(t, cbRec.Metadata.Worktrees, rows)
+			assertBoundaryInventoryMatchesStore(t, worktrees, rows)
 			return nil
 		},
 	})
@@ -84,22 +73,17 @@ func TestSpawn_GovernedWorkspaceFactsBoundBeforeProviderLaunch(t *testing.T) {
 	if cbRuntimeCreated != 0 {
 		t.Fatalf("runtime had already created %d sessions inside the boundary; the provider must not start first", cbRuntimeCreated)
 	}
-	if !reflect.DeepEqual(cbFacts, wantWorkspaceFacts()) {
-		t.Fatalf("boundary-observed inventory = %#v, want canonical %#v", cbFacts, wantWorkspaceFacts())
-	}
-	if !reflect.DeepEqual(rec.Metadata.Worktrees, cbFacts) {
-		t.Fatalf("final metadata inventory = %#v, want the boundary value %#v", rec.Metadata.Worktrees, cbFacts)
-	}
 	finalRows, err := st.ListSessionWorktrees(context.Background(), rec.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFactsMatchWorktreeRows(t, rec.Metadata.Worktrees, finalRows)
+	if !reflect.DeepEqual(cbWorktrees, finalRows) {
+		t.Fatalf("post-launch durable rows = %#v, want the boundary inventory %#v", finalRows, cbWorktrees)
+	}
 }
 
-// The chat controller path binds the same prelaunch inventory: the boundary
-// observes it before the controller starts and the stored final metadata
-// matches every durable session_worktrees row.
+// The chat controller path hands the same durable inventory to the boundary
+// before the controller starts.
 func TestChatSpawn_GovernedWorkspaceFactsBoundBeforeControllerStart(t *testing.T) {
 	st := newFakeStore()
 	project, ws := workspaceProjectFixture()
@@ -114,19 +98,19 @@ func TestChatSpawn_GovernedWorkspaceFactsBoundBeforeControllerStart(t *testing.T
 	})
 	binding := domain.ExecutionBinding{Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault}
 
-	var cbFacts []domain.SessionWorktreeFact
+	var cbWorktrees []domain.SessionWorktreeRecord
 	launcherStartsAtBoundary := -1
 	rec, _, _, err := m.Spawn(ctx, ports.SpawnConfig{
 		ProjectID: "mer", Kind: domain.KindWorker, RequestedMode: domain.SessionModeChat,
 		ExactExecutionBinding: &binding, ExecutionPolicy: governedDiffBasePolicy(),
-		BeforeProviderLaunch: func(cbCtx context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy) error {
-			cbFacts = cbRec.Metadata.Worktrees
+		BeforeProviderLaunch: func(cbCtx context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy, worktrees []domain.SessionWorktreeRecord) error {
+			cbWorktrees = worktrees
 			launcherStartsAtBoundary = len(launcher.started)
 			rows, err := st.ListSessionWorktrees(cbCtx, cbRec.ID)
 			if err != nil {
 				t.Fatalf("read durable worktree rows inside the boundary: %v", err)
 			}
-			assertFactsMatchWorktreeRows(t, cbRec.Metadata.Worktrees, rows)
+			assertBoundaryInventoryMatchesStore(t, worktrees, rows)
 			return nil
 		},
 	})
@@ -136,19 +120,11 @@ func TestChatSpawn_GovernedWorkspaceFactsBoundBeforeControllerStart(t *testing.T
 	if launcherStartsAtBoundary != 0 {
 		t.Fatalf("controller had already started %d sessions inside the boundary", launcherStartsAtBoundary)
 	}
-	if !reflect.DeepEqual(cbFacts, wantWorkspaceFacts()) {
-		t.Fatalf("boundary-observed inventory = %#v, want canonical %#v", cbFacts, wantWorkspaceFacts())
-	}
-	stored, found, err := st.GetSession(context.Background(), rec.ID)
-	if err != nil || !found {
-		t.Fatalf("final session row: found=%v err=%v", found, err)
-	}
-	if !reflect.DeepEqual(stored.Metadata.Worktrees, cbFacts) {
-		t.Fatalf("stored final inventory = %#v, want the boundary value %#v", stored.Metadata.Worktrees, cbFacts)
-	}
 	finalRows, err := st.ListSessionWorktrees(context.Background(), rec.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFactsMatchWorktreeRows(t, stored.Metadata.Worktrees, finalRows)
+	if !reflect.DeepEqual(cbWorktrees, finalRows) {
+		t.Fatalf("post-launch durable rows = %#v, want the boundary inventory %#v", finalRows, cbWorktrees)
+	}
 }

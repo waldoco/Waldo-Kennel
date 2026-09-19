@@ -25,7 +25,7 @@ func (s *Service) WithAttemptManifests(manifests ports.AttemptManifestStore) *Se
 // It runs inside the mandatory provider-launch crash boundary. The record is
 // insert-once: an identical re-seal (a boundary replay) is accepted, and a
 // divergent one is refused, exactly like the output half.
-func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain.OutcomeID, plan domain.PlanRevision, unit domain.WorkUnit, attempt domain.Attempt, session domain.SessionRecord, inputs []ports.AttemptInputRef, documents *ports.AttemptDocumentInputs, coreDigest, compiledDigest, policyDigest string) error {
+func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain.OutcomeID, plan domain.PlanRevision, unit domain.WorkUnit, attempt domain.Attempt, session domain.SessionRecord, worktrees []domain.SessionWorktreeRecord, inputs []ports.AttemptInputRef, documents *ports.AttemptDocumentInputs, coreDigest, compiledDigest, policyDigest string) error {
 	if s.manifests == nil {
 		return nil
 	}
@@ -33,9 +33,17 @@ func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain
 	if strings.TrimSpace(session.Metadata.DiffBaseSHA) != "" || strings.TrimSpace(session.Metadata.WorkspaceRepoPath) != "" {
 		kind = domain.WorkspaceGitWorktree
 	}
-	repos := make([]domain.AttemptManifestRepo, 0, len(session.Metadata.Worktrees))
-	for _, wt := range session.Metadata.Worktrees {
+	// A workspace-project Attempt binds one source-tree representation: the
+	// per-repo inventory from the durable session_worktrees rows observed
+	// inside the launch boundary. A single-repo Attempt binds its resolved
+	// base revision instead; the manifest never carries both.
+	repos := make([]domain.AttemptManifestRepo, 0, len(worktrees))
+	for _, wt := range worktrees {
 		repos = append(repos, domain.AttemptManifestRepo{RepoName: wt.RepoName, WorktreePath: wt.WorktreePath, BaseSHA: wt.BaseSHA, BaseRef: wt.BaseRef})
+	}
+	baseRevision, baseRef := session.Metadata.DiffBaseSHA, session.Metadata.DiffBaseRef
+	if len(repos) > 0 {
+		baseRevision, baseRef = "", ""
 	}
 	refs := make([]domain.AttemptManifestInputRef, 0, len(inputs))
 	for _, input := range inputs {
@@ -52,7 +60,7 @@ func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain
 	manifest, err := domain.NewAttemptInputManifest(domain.AttemptInputManifest{
 		AttemptID: attempt.ID, OutcomeID: outcomeID, PlanRevisionID: plan.ID, WorkUnitID: unit.ID,
 		ContractRevisionNumber: plan.ContractRevisionNumber,
-		WorkspaceKind:          kind, BaseRevision: session.Metadata.DiffBaseSHA, BaseRef: session.Metadata.DiffBaseRef,
+		WorkspaceKind:          kind, BaseRevision: baseRevision, BaseRef: baseRef,
 		Repos:              repos,
 		RunBriefCoreDigest: coreDigest, RunBriefCompiledDigest: compiledDigest, ExecutionPolicyDigest: policyDigest,
 		Inputs: refs, Documents: docs, Checks: checks,

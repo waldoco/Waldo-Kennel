@@ -51,7 +51,7 @@ func TestSpawn_GovernedDiffBaseResolvedBeforeProviderLaunch(t *testing.T) {
 	rec, _, _, err := m.Spawn(ctx, ports.SpawnConfig{
 		ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding,
 		ExecutionPolicy: governedDiffBasePolicy(),
-		BeforeProviderLaunch: func(_ context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy) error {
+		BeforeProviderLaunch: func(_ context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy, _ []domain.SessionWorktreeRecord) error {
 			cbSHA, cbRef = cbRec.Metadata.DiffBaseSHA, cbRec.Metadata.DiffBaseRef
 			cbRuntimeCreated = runtime.created
 			stored, found, err := st.GetSession(context.Background(), cbRec.ID)
@@ -105,7 +105,7 @@ func TestChatSpawn_GovernedDiffBaseResolvedBeforeControllerStart(t *testing.T) {
 	rec, _, _, err := m.Spawn(ctx, ports.SpawnConfig{
 		ProjectID: "mer", Kind: domain.KindWorker, RequestedMode: domain.SessionModeChat,
 		ExactExecutionBinding: &binding, ExecutionPolicy: governedDiffBasePolicy(),
-		BeforeProviderLaunch: func(_ context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy) error {
+		BeforeProviderLaunch: func(_ context.Context, cbRec domain.SessionRecord, _ domain.AttemptExecutionPolicy, _ []domain.SessionWorktreeRecord) error {
 			cbSHA = cbRec.Metadata.DiffBaseSHA
 			launcherStartsAtBoundary = len(launcher.started)
 			return nil
@@ -133,11 +133,16 @@ func TestChatSpawn_GovernedDiffBaseResolvedBeforeControllerStart(t *testing.T) {
 // terminal path: custody evidence that cannot be sealed stops the launch.
 func TestChatSpawn_GovernedCallbackFailureStartsNoController(t *testing.T) {
 	st := newFakeStore()
-	st.projects["mer"] = domain.ProjectRecord{ID: "mer"}
+	repo := newManagerGitRepo(t)
+	cfg := testRoleAgents()
+	cfg.DefaultBranch = "main"
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Path: repo, Config: cfg}
 	launcher := &governedChatLauncher{&recordingLauncher{}}
 	runtime := &fakeRuntime{}
+	ws := &fakeWorkspace{}
+	ws.path = repo
 	m := New(Deps{
-		Runtime: runtime, Agents: singleAgent{agent: &recordingAgent{}}, Workspace: &fakeWorkspace{}, Store: st,
+		Runtime: runtime, Agents: singleAgent{agent: &recordingAgent{}}, Workspace: ws, Store: st,
 		Messenger: &fakeMessenger{}, Chat: launcher, Lifecycle: &fakeLCM{store: st},
 		LookPath: func(string) (string, error) { return "/bin/true", nil },
 	})
@@ -146,7 +151,7 @@ func TestChatSpawn_GovernedCallbackFailureStartsNoController(t *testing.T) {
 	_, _, _, err := m.Spawn(ctx, ports.SpawnConfig{
 		ProjectID: "mer", Kind: domain.KindWorker, RequestedMode: domain.SessionModeChat,
 		ExactExecutionBinding: &binding, ExecutionPolicy: governedDiffBasePolicy(),
-		BeforeProviderLaunch: func(_ context.Context, _ domain.SessionRecord, _ domain.AttemptExecutionPolicy) error {
+		BeforeProviderLaunch: func(_ context.Context, _ domain.SessionRecord, _ domain.AttemptExecutionPolicy, _ []domain.SessionWorktreeRecord) error {
 			called = true
 			return fmt.Errorf("simulated custody seal failure")
 		},
@@ -159,5 +164,41 @@ func TestChatSpawn_GovernedCallbackFailureStartsNoController(t *testing.T) {
 	}
 	if runtime.created != 0 {
 		t.Fatalf("terminal runtime created %d sessions despite the boundary failure", runtime.created)
+	}
+}
+
+// Falsifier: when the single-repo source-tree base cannot be resolved at all,
+// a governed spawn must refuse BEFORE the launch boundary - no callback, no
+// runtime, no durable session - instead of sealing a custody record with an
+// empty base.
+func TestSpawn_GovernedSingleRepoBaseUnresolvableRefusesBeforeBoundary(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Path: "/repo/mer", Config: testRoleAgents()}
+	runtime := &fakeRuntime{}
+	ws := &fakeWorkspace{}
+	ws.path = t.TempDir() // not a git repository: every base probe fails
+	m := New(Deps{Runtime: runtime, Agents: singleAgent{agent: &recordingAgent{}}, Workspace: ws, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: func(string) (string, error) { return "/bin/true", nil }})
+	binding := domain.ExecutionBinding{Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault}
+
+	callbackRan := false
+	_, _, _, err := m.Spawn(ctx, ports.SpawnConfig{
+		ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding,
+		ExecutionPolicy: governedDiffBasePolicy(),
+		BeforeProviderLaunch: func(_ context.Context, _ domain.SessionRecord, _ domain.AttemptExecutionPolicy, _ []domain.SessionWorktreeRecord) error {
+			callbackRan = true
+			return nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "resolved source-tree base") {
+		t.Fatalf("Spawn err = %v, want refusal to name the unresolved source-tree base", err)
+	}
+	if callbackRan {
+		t.Fatal("the launch boundary ran despite the missing base")
+	}
+	if runtime.created != 0 {
+		t.Fatalf("runtime created %d sessions despite the refusal", runtime.created)
+	}
+	if _, found, _ := st.GetSession(context.Background(), "mer-1"); found {
+		t.Fatal("refused spawn left a durable session row behind")
 	}
 }

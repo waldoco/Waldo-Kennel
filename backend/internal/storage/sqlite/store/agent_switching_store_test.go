@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1003,7 +1002,7 @@ func TestAgentSwitchSourceStopAndTargetActivationAreAtomicAndNarrow(t *testing.T
 		t.Fatalf("late source activity after stop confirmation: applied=%v err=%v", applied, err)
 	}
 	stillExited, ok, err := s.GetSession(ctx, session.ID)
-	if err != nil || !ok || !reflect.DeepEqual(stillExited, exited) {
+	if err != nil || !ok || stillExited != exited {
 		t.Fatalf("late source activity mutated stopped projection: session=%+v ok=%v err=%v", stillExited, ok, err)
 	}
 
@@ -1114,7 +1113,7 @@ func TestAgentSwitchSourceStopAndTargetActivationAreAtomicAndNarrow(t *testing.T
 		t.Fatalf("late source activity after target activation: applied=%v err=%v", applied, err)
 	}
 	stillActivated, ok, err := s.GetSession(ctx, session.ID)
-	if err != nil || !ok || !reflect.DeepEqual(stillActivated, activated) {
+	if err != nil || !ok || stillActivated != activated {
 		t.Fatalf("late source activity overwrote target owner: session=%+v ok=%v err=%v", stillActivated, ok, err)
 	}
 	finalSwitch, ok, err := s.GetAgentSwitch(ctx, sw.ID)

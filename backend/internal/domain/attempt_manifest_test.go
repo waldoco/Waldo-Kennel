@@ -145,6 +145,7 @@ func TestAttemptManifestRejectsUnknownHalf(t *testing.T) {
 
 func TestAttemptManifestValidateChecksBoundRepos(t *testing.T) {
 	valid := validInputManifest()
+	valid.BaseRevision, valid.BaseRef = "", ""
 	valid.Repos = []AttemptManifestRepo{
 		{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root", BaseRef: "main"},
 		{RepoName: "api", WorktreePath: "/ws/api", BaseSHA: "sha-api"},
@@ -178,5 +179,57 @@ func TestAttemptManifestValidateChecksBoundRepos(t *testing.T) {
 	pathless.Repos = []AttemptManifestRepo{{RepoName: "root", WorktreePath: "", BaseSHA: "sha-root"}}
 	if _, err := NewAttemptInputManifest(pathless, time.Now()); err == nil {
 		t.Fatal("a repo fact without a worktree path must be refused")
+	}
+}
+
+func TestAttemptManifestValidateRequiresExactlyOneSourceTreeRepresentation(t *testing.T) {
+	base := validInputManifest()
+	seal := func(m AttemptInputManifest) error {
+		sealed, err := NewAttemptInputManifest(m, time.Now())
+		if err != nil {
+			return err
+		}
+		return sealed.Validate()
+	}
+	// single-repo git worktree: base revision, no repos - valid (the helper).
+	if err := seal(base); err != nil {
+		t.Fatalf("single-repo base representation must seal: %v", err)
+	}
+	// workspace: repos, no base - valid.
+	ws := base
+	ws.BaseRevision, ws.BaseRef = "", ""
+	ws.Repos = []AttemptManifestRepo{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root"}}
+	if err := seal(ws); err != nil {
+		t.Fatalf("workspace repo representation must seal: %v", err)
+	}
+	// neither: refused.
+	neither := base
+	neither.BaseRevision, neither.BaseRef = "", ""
+	if err := seal(neither); err == nil {
+		t.Fatal("git worktree with neither base nor repos must be refused")
+	}
+	// both: refused.
+	both := base
+	both.Repos = []AttemptManifestRepo{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root"}}
+	if err := seal(both); err == nil {
+		t.Fatal("git worktree with both base and repos must be refused")
+	}
+	// workspace with a top-level base ref: refused.
+	refd := ws
+	refd.BaseRef = "main"
+	if err := seal(refd); err == nil {
+		t.Fatal("workspace shape with a top-level base ref must be refused")
+	}
+	// staged folder: no representation - valid; with one - refused.
+	staged := base
+	staged.WorkspaceKind = WorkspaceStagedFolder
+	staged.BaseRevision, staged.BaseRef = "", ""
+	if err := seal(staged); err != nil {
+		t.Fatalf("staged folder without a representation must seal: %v", err)
+	}
+	stagedWithBase := staged
+	stagedWithBase.BaseRevision = "abc123"
+	if err := seal(stagedWithBase); err == nil {
+		t.Fatal("staged folder with a base revision must be refused")
 	}
 }

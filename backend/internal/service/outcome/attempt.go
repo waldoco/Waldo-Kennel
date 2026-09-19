@@ -388,7 +388,7 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 		ExecutionPolicy: &policy,
 		Prompt:          prompt, DisplayName: fmt.Sprintf("%s · %s · attempt %d", outcomeRecord.Title, unit.Title, attempt.Number),
 		Inputs: inputs, Documents: documentInputs,
-		BeforeProviderLaunch: func(ctx context.Context, session domain.SessionRecord, bound domain.AttemptExecutionPolicy) error {
+		BeforeProviderLaunch: func(ctx context.Context, session domain.SessionRecord, bound domain.AttemptExecutionPolicy, worktrees []domain.SessionWorktreeRecord) error {
 			readinessReceipt, readinessErr := s.probeReadiness(ctx, projectID, binding, &bound)
 			if readinessErr != nil {
 				return readinessErr
@@ -417,7 +417,7 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 			// admitted inputs sealed. A failure aborts the launch as a known
 			// pre-launch error and the Attempt ends closed.
 			compiledDigest := computeCompiledBriefDigest(binding, session.Mode, recomputed, policyDigest, inputs)
-			return s.sealAttemptInputManifest(ctx, outcomeID, plan, unit, attempt, session, inputs, documentInputs, recomputed, compiledDigest, policyDigest)
+			return s.sealAttemptInputManifest(ctx, outcomeID, plan, unit, attempt, session, worktrees, inputs, documentInputs, recomputed, compiledDigest, policyDigest)
 		},
 	})
 	if err != nil {

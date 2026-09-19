@@ -1192,9 +1192,11 @@ func TestSpawn_ExactExecutionBindingReachesLaunchConfig(t *testing.T) {
 
 func TestSpawn_ExactExecutionPolicyOverridesProjectPermissionsAndReachesLaunch(t *testing.T) {
 	st := newFakeStore()
-	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{
-		AgentConfig: domain.AgentConfig{Permissions: domain.PermissionModeBypassPermissions},
-		Worker:      domain.RoleOverride{Harness: domain.HarnessCodex, AgentConfig: domain.AgentConfig{Permissions: domain.PermissionModeBypassPermissions}},
+	repo := newManagerGitRepo(t)
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Path: repo, Config: domain.ProjectConfig{
+		DefaultBranch: "main",
+		AgentConfig:   domain.AgentConfig{Permissions: domain.PermissionModeBypassPermissions},
+		Worker:        domain.RoleOverride{Harness: domain.HarnessCodex, AgentConfig: domain.AgentConfig{Permissions: domain.PermissionModeBypassPermissions}},
 	}}
 	agent := &recordingAgent{}
 	rt := &fakeRuntime{}
@@ -1206,7 +1208,7 @@ func TestSpawn_ExactExecutionPolicyOverridesProjectPermissionsAndReachesLaunch(t
 	}
 	var logBuf bytes.Buffer
 	m := New(Deps{
-		Runtime: rt, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st,
+		Runtime: rt, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{path: repo}, Store: st,
 		Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: func(string) (string, error) { return "/bin/true", nil },
 		Logger: slog.New(slog.NewTextHandler(&logBuf, nil)),
 	})
@@ -1218,7 +1220,7 @@ func TestSpawn_ExactExecutionPolicyOverridesProjectPermissionsAndReachesLaunch(t
 	binding := domain.ExecutionBinding{Provider: domain.HarnessCodex, ModelSelection: domain.ExecutionBindingModelProviderDefault}
 	if _, _, _, err := m.Spawn(context.Background(), ports.SpawnConfig{
 		ProjectID: "mer", Kind: domain.KindWorker, ExactExecutionBinding: &binding, ExecutionPolicy: policy,
-		BeforeProviderLaunch: func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy) error { return nil },
+		BeforeProviderLaunch: func(context.Context, domain.SessionRecord, domain.AttemptExecutionPolicy, []domain.SessionWorktreeRecord) error { return nil },
 	}); err != nil {
 		t.Fatal(err)
 	}

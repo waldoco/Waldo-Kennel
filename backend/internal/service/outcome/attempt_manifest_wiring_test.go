@@ -136,12 +136,10 @@ func TestStartAttemptSealsWorkspaceRepoInventory(t *testing.T) {
 	svc, _, spawner, _, outcomeID, planID := newAttemptHarness(t)
 	manifests := &fakeManifestStore{}
 	svc.WithAttemptManifests(manifests)
-	spawner.sessionMetadata = domain.SessionMetadata{
-		WorkspaceRepoPath: "/repo/root", DiffBaseSHA: "base-root", DiffBaseRef: "main",
-		Worktrees: []domain.SessionWorktreeFact{
-			{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root", BaseRef: "main"},
-			{RepoName: "api", WorktreePath: "/ws/api", BaseSHA: "sha-api", BaseRef: "main"},
-		},
+	spawner.sessionMetadata = domain.SessionMetadata{WorkspaceRepoPath: "/repo/root"}
+	spawner.sessionWorktrees = []domain.SessionWorktreeRecord{
+		{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root", BaseRef: "main"},
+		{RepoName: "api", WorktreePath: "/ws/api", BaseSHA: "sha-api", BaseRef: "main"},
 	}
 
 	if _, err := svc.StartAttempt(context.Background(), outcomeID, startInput(planID)); err != nil {
@@ -160,11 +158,36 @@ func TestStartAttemptSealsWorkspaceRepoInventory(t *testing.T) {
 	if len(body.Repos) != 2 {
 		t.Fatalf("sealed repos = %#v, want both workspace repos", body.Repos)
 	}
+	if body.BaseRevision != "" || body.BaseRef != "" {
+		t.Fatalf("workspace shape must bind only the repo inventory, got base %q ref %q", body.BaseRevision, body.BaseRef)
+	}
 	if body.Repos[0].RepoName != "root" || body.Repos[0].BaseSHA != "sha-root" || body.Repos[0].WorktreePath != "/ws/root" {
 		t.Fatalf("root repo fact = %#v", body.Repos[0])
 	}
 	if body.Repos[1].RepoName != "api" || body.Repos[1].BaseSHA != "sha-api" || body.Repos[1].WorktreePath != "/ws/api" {
 		t.Fatalf("api repo fact = %#v", body.Repos[1])
+	}
+}
+
+// Falsifier (the review seam): a git-worktree session whose base resolved to
+// nothing AND whose inventory is empty has no source-tree representation at
+// all - the seal must refuse it and no provider may start.
+func TestStartAttemptRefusesGitWorktreeWithoutAnySourceTreeRepresentation(t *testing.T) {
+	svc, _, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	manifests := &fakeManifestStore{}
+	svc.WithAttemptManifests(manifests)
+	spawner.sessionMetadata = domain.SessionMetadata{WorkspaceRepoPath: "/repo/root", DiffBaseSHA: "", DiffBaseRef: ""}
+
+	pastBoundary := false
+	spawner.afterPrelaunch = func() { pastBoundary = true }
+	if _, err := svc.StartAttempt(context.Background(), outcomeID, startInput(planID)); err == nil {
+		t.Fatal("a git worktree with neither a base revision nor a repo inventory must refuse admission")
+	}
+	if pastBoundary {
+		t.Fatal("launch crossed the provider boundary despite the seal refusing the representationless source tree")
+	}
+	if len(manifests.saved) != 0 {
+		t.Fatalf("sealed %d manifests without a source-tree representation, want none", len(manifests.saved))
 	}
 }
 
@@ -174,10 +197,8 @@ func TestStartAttemptRefusesWorkspaceShapeWithoutRepoBase(t *testing.T) {
 	svc, _, spawner, _, outcomeID, planID := newAttemptHarness(t)
 	manifests := &fakeManifestStore{}
 	svc.WithAttemptManifests(manifests)
-	spawner.sessionMetadata = domain.SessionMetadata{
-		WorkspaceRepoPath: "/repo/root",
-		Worktrees:         []domain.SessionWorktreeFact{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: ""}},
-	}
+	spawner.sessionMetadata = domain.SessionMetadata{WorkspaceRepoPath: "/repo/root"}
+	spawner.sessionWorktrees = []domain.SessionWorktreeRecord{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: ""}}
 
 	pastBoundary := false
 	spawner.afterPrelaunch = func() { pastBoundary = true }

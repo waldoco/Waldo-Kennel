@@ -170,6 +170,24 @@ func (m AttemptInputManifest) Validate() error {
 			return err
 		}
 	}
+	// Exactly one source-tree representation: a staged folder binds none, a
+	// single-repo git worktree binds its resolved base revision, a workspace
+	// project binds its per-repo inventory. Anything else is not custody.
+	switch m.WorkspaceKind {
+	case WorkspaceStagedFolder:
+		if strings.TrimSpace(m.BaseRevision) != "" || len(m.Repos) != 0 {
+			return fmt.Errorf("staged folder source tree must not bind a base revision or repo inventory")
+		}
+	case WorkspaceGitWorktree:
+		hasBase := strings.TrimSpace(m.BaseRevision) != ""
+		hasRepos := len(m.Repos) != 0
+		if hasBase == hasRepos {
+			return fmt.Errorf("git worktree source tree must bind exactly one of a base revision or a repo inventory")
+		}
+		if hasRepos && strings.TrimSpace(m.BaseRef) != "" {
+			return fmt.Errorf("workspace repo inventory binds per-repo bases; top-level base ref must be empty")
+		}
+	}
 	if m.Documents != nil {
 		if err := m.Documents.Validate(); err != nil {
 			return err
