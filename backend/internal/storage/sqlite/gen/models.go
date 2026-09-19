@@ -162,6 +162,13 @@ type AttemptCheckRun struct {
 	BaselineDetail          string
 }
 
+type AttemptCustodyFence struct {
+	AttemptID string
+	SessionID string
+	Detail    string
+	FencedAt  time.Time
+}
+
 type AttemptFence struct {
 	ID            string
 	Subject       string

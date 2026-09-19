@@ -63,6 +63,10 @@ type attemptArtifactRetainer struct {
 	// the receipt is durable. Nil only in test wiring; the daemon always
 	// wires it.
 	manifests ports.AttemptManifestStore
+	// fences records the typed custody-close fence: the provider had exited
+	// and the workspace had settled before the snapshot. Nil only in test
+	// wiring; the daemon always wires it.
+	fences ports.AttemptCustodyFenceStore
 }
 
 var _ ports.AttemptRetainer = (*attemptArtifactRetainer)(nil)
@@ -95,6 +99,11 @@ func (r *attemptArtifactRetainer) RetainAttempt(ctx context.Context, attempt dom
 	if err != nil {
 		return fmt.Errorf("read session %s: %w", ref.SessionID, err)
 	}
+	// The settle fence precedes the snapshot: no tree is captured while the
+	// provider that wrote it may still be alive.
+	if err := r.settleCustodyFence(ctx, attempt, session); err != nil {
+		return err
+	}
 	kind := domain.WorkspaceStagedFolder
 	if strings.TrimSpace(session.Metadata.DiffBaseSHA) != "" || strings.TrimSpace(session.Metadata.WorkspaceRepoPath) != "" {
 		kind = domain.WorkspaceGitWorktree
@@ -112,6 +121,45 @@ func (r *attemptArtifactRetainer) RetainAttempt(ctx context.Context, attempt dom
 		return fmt.Errorf("persist retained receipt: %w", err)
 	}
 	return r.sealOutputManifest(ctx, result.Receipt)
+}
+
+// settleCustodyFence records the typed custody-close fence exactly once: the
+// bound provider session has exited, so the workspace it wrote is settled and
+// safe to snapshot. A live session is refused - retaining a tree its writer
+// can still change would make the snapshot, and every check bound to it,
+// unattributable. A restart replay with the same binding is a no-op; a fence
+// recorded against a different session is refused.
+func (r *attemptArtifactRetainer) settleCustodyFence(ctx context.Context, attempt domain.Attempt, session domain.Session) error {
+	if r.fences == nil {
+		return nil
+	}
+	if !session.IsTerminated {
+		return fmt.Errorf("attempt %s custody close refused: provider session %s has not exited", attempt.ID, session.ID)
+	}
+	fence := domain.AttemptCustodyFence{
+		AttemptID: attempt.ID,
+		SessionID: string(session.ID),
+		Detail:    "provider session terminated; workspace settled before snapshot",
+		FencedAt:  time.Now().UTC(),
+	}
+	if existing, found, err := r.fences.GetAttemptCustodyFence(ctx, attempt.ID); err != nil {
+		return fmt.Errorf("read custody fence for %s: %w", attempt.ID, err)
+	} else if found {
+		if existing.SessionID != fence.SessionID {
+			return fmt.Errorf("custody fence for %s already recorded against session %s, not %s", attempt.ID, existing.SessionID, fence.SessionID)
+		}
+		return nil
+	}
+	if err := r.fences.RecordAttemptCustodyFence(ctx, fence); err != nil {
+		if errors.Is(err, ports.ErrAttemptCustodyFenceSealed) {
+			if existing, found, readErr := r.fences.GetAttemptCustodyFence(ctx, attempt.ID); readErr == nil && found && existing.SessionID == fence.SessionID {
+				return nil
+			}
+			return fmt.Errorf("custody fence for %s already recorded with different content: %w", attempt.ID, err)
+		}
+		return fmt.Errorf("record custody fence for %s: %w", attempt.ID, err)
+	}
+	return nil
 }
 
 // sealOutputManifest writes the output half of the Attempt's custody record,

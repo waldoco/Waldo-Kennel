@@ -443,7 +443,7 @@ func Run() error {
 		return fmt.Errorf("attempt artifact store: %w", artifactErr)
 	}
 	attempts := attemptSpawner{sessions: sessionSvc, projects: store, agents: agents}
-	attempts.retention = &attemptArtifactRetainer{sessions: sessionSvc, refs: store, artifacts: artifactContent, manifests: store}
+	attempts.retention = &attemptArtifactRetainer{sessions: sessionSvc, refs: store, artifacts: artifactContent, manifests: store, fences: store}
 	// Artifact continuity has two halves and both are wired here: retention
 	// captures what an Attempt produced, provisioning gives those exact bytes
 	// to its successor before that successor's provider starts.
