@@ -93,14 +93,13 @@ const (
 	PlanDraftRoleInvalid              PlanDraftValidationCode = "PLAN_WORK_UNIT_ROLE_INVALID"
 	PlanDraftRoleIntentConflict       PlanDraftValidationCode = "PLAN_WORK_UNIT_ROLE_INTENT_CONFLICT"
 	PlanDraftInputMismatch            PlanDraftValidationCode = "PLAN_WORK_UNIT_INPUT_MISMATCH"
-	PlanDraftEnablingUnconsumed       PlanDraftValidationCode = "PLAN_ENABLING_UNIT_UNCONSUMED"
 	PlanDraftVerifyRequiresCriterion  PlanDraftValidationCode = "PLAN_VERIFY_REQUIRES_CRITERION"
 	PlanDraftConsolidateRequiresFanIn PlanDraftValidationCode = "PLAN_CONSOLIDATE_REQUIRES_FAN_IN"
-	// PlanDraftExecutableRequiresCriterion refuses an executable unit that
-	// covers no criterion: its attempt could never be proved, so any consumer
-	// would block forever. The planner must state what proves the enabling
-	// work or fold it into a consumer unit.
-	PlanDraftExecutableRequiresCriterion PlanDraftValidationCode = "PLAN_EXECUTABLE_REQUIRES_CRITERION"
+	// PlanDraftUnitRequiresCriterion refuses a unit that covers no criterion,
+	// whatever its intent: its attempt could never be proved, so it would
+	// block itself and every consumer forever. The planner must state what
+	// proves the unit's work or fold it into a consumer unit.
+	PlanDraftUnitRequiresCriterion PlanDraftValidationCode = "PLAN_UNIT_REQUIRES_CRITERION"
 )
 
 type PlanDraftValidationError struct {
@@ -232,7 +231,6 @@ func (p PlanDraftProposal) Validate() error {
 		units[key] = unit
 	}
 
-	consumers := make(map[string]int, len(units))
 	for key, unit := range units {
 		seenDependencies := map[string]struct{}{}
 		for _, raw := range unit.DependsOn {
@@ -250,7 +248,6 @@ func (p PlanDraftProposal) Validate() error {
 				return fmt.Errorf("plan draft work unit %q repeats dependency %q", key, dependency)
 			}
 			seenDependencies[dependency] = struct{}{}
-			consumers[dependency]++
 		}
 		seenInputs := map[string]struct{}{}
 		for _, input := range unit.Inputs {
@@ -270,13 +267,8 @@ func (p PlanDraftProposal) Validate() error {
 		if unit.Role == WorkUnitRoleConsolidate && len(seenDependencies) < 2 {
 			return planDraftValidation(PlanDraftConsolidateRequiresFanIn, "plan draft work unit %q consolidate role requires at least two dependencies", key)
 		}
-		if (unit.Intent == WorkUnitIntentExecute || unit.Intent == WorkUnitIntentModifyAndExecute) && len(unit.CriteriaCovered) == 0 {
-			return planDraftValidation(PlanDraftExecutableRequiresCriterion, "plan draft executable work unit %q covers no criterion: state what proves the enabling work or fold it into a consumer unit", key)
-		}
-	}
-	for key, unit := range units {
-		if len(unit.CriteriaCovered) == 0 && consumers[key] == 0 {
-			return planDraftValidation(PlanDraftEnablingUnconsumed, "plan draft enabling work unit %q is unconsumed", key)
+		if len(unit.CriteriaCovered) == 0 {
+			return planDraftValidation(PlanDraftUnitRequiresCriterion, "plan draft work unit %q covers no criterion: state what proves the unit's work or fold it into a consumer unit", key)
 		}
 	}
 	if _, err := p.TopologicalOrder(); err != nil {

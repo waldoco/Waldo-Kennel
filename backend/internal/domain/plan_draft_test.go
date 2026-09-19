@@ -142,16 +142,16 @@ func TestPlanDraftTopologicalOrderUsesProposalOrderForIndependentBranches(t *tes
 	}
 }
 
-func TestPlanDraftRolesInputsAndEnablingUnits(t *testing.T) {
+func TestPlanDraftRolesAndInputs(t *testing.T) {
 	root := validPlanDraftWorkUnit("root")
-	root.CriteriaCovered = nil
+	root.CriteriaCovered = []string{"C2"}
 	leaf := validPlanDraftWorkUnit("leaf")
 	leaf.Role = WorkUnitRoleVerify
 	leaf.Intent = WorkUnitIntentExecute
 	leaf.DependsOn = []string{"root"}
 	leaf.Inputs = []PlanDraftDependencyInput{{FromKey: "root", Required: "reviewed findings"}}
 	if err := (PlanDraftProposal{Summary: "handoff", WorkUnits: []PlanDraftWorkUnit{leaf, root}}).Validate(); err != nil {
-		t.Fatalf("valid enabling handoff: %v", err)
+		t.Fatalf("valid criterion-owning handoff: %v", err)
 	}
 	leaf.Inputs = nil
 	if err := (PlanDraftProposal{Summary: "missing", WorkUnits: []PlanDraftWorkUnit{leaf, root}}).Validate(); err == nil {
@@ -276,11 +276,19 @@ func TestPlanDraftValidationFamiliesAreTyped(t *testing.T) {
 			p.WorkUnits[0].CriteriaCovered = nil
 		}, PlanDraftVerifyRequiresCriterion},
 		{"consolidate fan in", func(p *PlanDraftProposal) { p.WorkUnits[0].Role = WorkUnitRoleConsolidate }, PlanDraftConsolidateRequiresFanIn},
-		{"enabling", func(p *PlanDraftProposal) { p.WorkUnits[0].CriteriaCovered = nil }, PlanDraftEnablingUnconsumed},
-		{"executable criterion", func(p *PlanDraftProposal) {
+		{"criterion-less inspect", func(p *PlanDraftProposal) { p.WorkUnits[0].CriteriaCovered = nil }, PlanDraftUnitRequiresCriterion},
+		{"criterion-less modify", func(p *PlanDraftProposal) {
+			p.WorkUnits[0].Intent = WorkUnitIntentModify
+			p.WorkUnits[0].CriteriaCovered = nil
+		}, PlanDraftUnitRequiresCriterion},
+		{"criterion-less execute", func(p *PlanDraftProposal) {
 			p.WorkUnits[0].Intent = WorkUnitIntentExecute
 			p.WorkUnits[0].CriteriaCovered = nil
-		}, PlanDraftExecutableRequiresCriterion},
+		}, PlanDraftUnitRequiresCriterion},
+		{"criterion-less modify and execute", func(p *PlanDraftProposal) {
+			p.WorkUnits[0].Intent = WorkUnitIntentModifyAndExecute
+			p.WorkUnits[0].CriteriaCovered = nil
+		}, PlanDraftUnitRequiresCriterion},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

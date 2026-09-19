@@ -345,65 +345,85 @@ func TestSerialChain_ActiveAttemptHoldsTheChain(t *testing.T) {
 	}
 }
 
-// enablingChainProvider drafts an executable enabling unit (no criterion)
-// feeding one criterion-owning unit: the shape that used to compile into a
-// deadlock, because the enabling attempt could never be proved and its
-// consumer would block forever. Draft validation now refuses it truthfully.
+// enablingChainProvider drafts a criterion-less enabling unit feeding one
+// criterion-owning unit: the shape that used to compile into a deadlock,
+// because the enabling attempt could never be proved and its consumer would
+// block forever. Draft validation now refuses it truthfully for every intent.
 type enablingChainProvider struct {
 	intelligencetest.Provider
+	intent domain.WorkUnitIntent
 }
 
-func (enablingChainProvider) DraftPlan(_ context.Context, request ports.PlanIntelligenceRequest) (ports.PlanIntelligenceResponse, error) {
-	covered := make([]string, 0, len(request.CriterionAliases))
-	for alias := range request.CriterionAliases {
-		covered = append(covered, alias)
+// enablingChainDraft is the one shared proposal shape, so the provider and
+// the direct readiness-surface call exercise exactly the same draft. The role
+// matches the intent so only the missing criterion is illegal.
+func enablingChainDraft(intent domain.WorkUnitIntent) domain.PlanDraftProposal {
+	role := domain.WorkUnitRoleImplement
+	if intent == domain.WorkUnitIntentInspect {
+		role = domain.WorkUnitRoleInvestigate
 	}
-	sort.Strings(covered)
-	return ports.PlanIntelligenceResponse{
-		Readiness: domain.NewPlanningReadinessResult("Ready.", &domain.PlanDraftProposal{
-			Summary: "An executable enabling stage feeding the real work.",
-			WorkUnits: []domain.PlanDraftWorkUnit{
-				{
-					Key: "W1", Title: "Prepare", Intent: domain.WorkUnitIntentModifyAndExecute,
-					Role: domain.WorkUnitRoleImplement, OutputSummary: "Preparation output.",
-					DependsOn: nil, CriteriaCovered: nil,
-					EvidenceIdeas: []string{"Preparation is observable."},
-				},
-				{
-					Key: "W2", Title: "Deliver", Intent: domain.WorkUnitIntentModifyAndExecute,
-					Role:    domain.WorkUnitRoleImplement,
-					Inputs:  []domain.PlanDraftDependencyInput{{FromKey: "W1", Required: "W1 output"}},
-					OutputSummary:   "Delivery output.",
-					CriteriaCovered: covered, DependsOn: []string{"W1"},
-					EvidenceIdeas: []string{"A deterministic check demonstrates the delivery."},
-				},
+	return domain.PlanDraftProposal{
+		Summary: "An enabling stage feeding the real work.",
+		WorkUnits: []domain.PlanDraftWorkUnit{
+			{
+				Key: "W1", Title: "Prepare", Intent: intent,
+				Role: role, OutputSummary: "Preparation output.",
+				DependsOn: nil, CriteriaCovered: nil,
+				EvidenceIdeas: []string{"Preparation is observable."},
 			},
-		}, nil),
+			{
+				Key: "W2", Title: "Deliver", Intent: intent,
+				Role:    role,
+				Inputs:  []domain.PlanDraftDependencyInput{{FromKey: "W1", Required: "W1 output"}},
+				OutputSummary:   "Delivery output.",
+				CriteriaCovered: []string{"C1"}, DependsOn: []string{"W1"},
+				EvidenceIdeas: []string{"A deterministic check demonstrates the delivery."},
+			},
+		},
+	}
+}
+
+func (p enablingChainProvider) DraftPlan(_ context.Context, _ ports.PlanIntelligenceRequest) (ports.PlanIntelligenceResponse, error) {
+	draft := enablingChainDraft(p.intent)
+	return ports.PlanIntelligenceResponse{
+		Readiness:  domain.NewPlanningReadinessResult("Ready.", &draft, nil),
 		Provenance: ports.IntelligenceProvenance{EffectiveProvider: intelligencetest.ProviderID, EffectiveModel: "fixed"},
 	}, nil
 }
 
-// TestSerialChain_EnablingExecutableUnitRejectedAtDraft is the regression
-// falsifier for the launch ruling: an executable unit with zero covered
-// criteria is refused at draft with a truthful typed code, instead of
-// compiling into a chain whose first unit can never succeed. The valid
-// three-unit chain above proves the same validation still passes honest
-// chains.
-func TestSerialChain_EnablingExecutableUnitRejectedAtDraft(t *testing.T) {
-	store := newReceiptFakeStore()
-	spawner := &fakeSpawner{readiness: ports.AgentProfileReadiness{Ready: true, Detail: "profile ok"}}
-	svc := outcome.New(store, func() time.Time { return time.Unix(1_000, 0).UTC() }).
-		WithPlanning(enablingChainProvider{}, &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
-		WithExecution(spawner, newFakeHeartbeats())
-	svc.AdmissionPolicy = testAdmissionPolicy()
+// TestSerialChain_CriterionlessUnitRejectedAtDraft is the regression
+// falsifier for the launch ruling: a unit with zero covered criteria is
+// refused at draft with a truthful typed code for EVERY intent shape,
+// through both the proposal surface (ProposePlan) and the readiness surface
+// (EvaluatePlanReadiness), instead of compiling into a chain whose enabling
+// unit can never succeed. The valid three-unit chain above proves the same
+// validation still passes honest chains.
+func TestSerialChain_CriterionlessUnitRejectedAtDraft(t *testing.T) {
+	for _, intent := range []domain.WorkUnitIntent{
+		domain.WorkUnitIntentInspect, domain.WorkUnitIntentModify,
+		domain.WorkUnitIntentExecute, domain.WorkUnitIntentModifyAndExecute,
+	} {
+		t.Run(string(intent), func(t *testing.T) {
+			store := newReceiptFakeStore()
+			spawner := &fakeSpawner{readiness: ports.AgentProfileReadiness{Ready: true, Detail: "profile ok"}}
+			svc := outcome.New(store, func() time.Time { return time.Unix(1_000, 0).UTC() }).
+				WithPlanning(enablingChainProvider{intent: intent}, &routingInventoryFake{candidates: []domain.RoutingCandidate{executionCandidate(domain.HarnessCodex, "")}}).
+				WithExecution(spawner, newFakeHeartbeats())
+			svc.AdmissionPolicy = testAdmissionPolicy()
 
-	ctx := context.Background()
-	view, err := svc.Create(ctx, validCreateInput())
-	if err != nil {
-		t.Fatalf("create outcome: %v", err)
-	}
-	_, err = svc.ProposePlan(ctx, view.Outcome.ID, 1)
-	if requireAPICode(t, err) != string(domain.PlanDraftExecutableRequiresCriterion) {
-		t.Fatalf("propose err = %v, want %s", err, domain.PlanDraftExecutableRequiresCriterion)
+			ctx := context.Background()
+			view, err := svc.Create(ctx, validCreateInput())
+			if err != nil {
+				t.Fatalf("create outcome: %v", err)
+			}
+			if _, err := svc.ProposePlan(ctx, view.Outcome.ID, 1); requireAPICode(t, err) != string(domain.PlanDraftUnitRequiresCriterion) {
+				t.Fatalf("propose err = %v, want %s", err, domain.PlanDraftUnitRequiresCriterion)
+			}
+
+			draft := enablingChainDraft(intent)
+			if _, _, err := svc.EvaluatePlanReadiness(ctx, readinessFence(), "p1", readinessContract(fullLocalAuthority(), readinessCriterion(1)), nil, &draft, nil, ""); requireAPICode(t, err) != string(domain.PlanDraftUnitRequiresCriterion) {
+				t.Fatalf("readiness err = %v, want %s", err, domain.PlanDraftUnitRequiresCriterion)
+			}
+		})
 	}
 }
