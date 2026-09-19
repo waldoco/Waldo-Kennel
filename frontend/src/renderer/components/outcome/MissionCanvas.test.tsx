@@ -342,24 +342,27 @@ describe("MissionCanvas interactions", () => {
 		fireEvent.keyDown(nodeEl("wu-schema"), { key: "Enter" });
 		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
 
-		// Escape returns focus toward the pane; selection is untouched.
-		fireEvent.keyDown(nodeEl("wu-schema"), { key: "Escape" });
+		// Escape dismisses the modal overlay and returns focus toward the pane.
+		fireEvent.keyDown(screen.getByTestId("outcome-inspector"), { key: "Escape" });
 		expect(focusedId()).not.toBe("wu-schema");
-		expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument();
+		expect(screen.queryByTestId("outcome-inspector")).not.toBeInTheDocument();
 	});
 
-	it("reframes the measured topology when the inspector opens and closes", async () => {
+	it("overlays the inspector without resizing or refitting the inert graph", async () => {
 		let instance: ReactFlowInstance<any, any> | undefined;
 		render(<MissionCanvas missionQuery={missionQuery()} onInstanceReady={(ready) => { instance = ready; exposeMeasuredNodes(ready); }} planApproved />);
 		await waitFor(() => expect(instance).toBeDefined());
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/)).toHaveLength(8));
 		const fitViewSpy = vi.spyOn(instance!, "fitView").mockResolvedValue(true);
 		fireEvent.click(screen.getByTestId("mission-node-face-wu-binding"));
-		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
-		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ minZoom: 0.25, padding: 0.08 })));
-		fitViewSpy.mockClear();
+		await waitFor(() => expect(screen.getByTestId("mission-canvas-inspector-overlay")).toBeInTheDocument());
+		expect(screen.getByTestId("mission-canvas-viewport")).toHaveAttribute("inert");
+		await new Promise((resolve) => setTimeout(resolve, 40));
+		expect(fitViewSpy).not.toHaveBeenCalled();
 		fireEvent.click(screen.getByTestId("outcome-inspector-close"));
-		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ minZoom: 0.25, padding: 0.08 })));
+		await waitFor(() => expect(screen.queryByTestId("mission-canvas-inspector-overlay")).not.toBeInTheDocument());
+		expect(screen.getByTestId("mission-canvas-viewport")).not.toHaveAttribute("inert");
+		expect(fitViewSpy).not.toHaveBeenCalled();
 	});
 
 	it("highlights the selected node's lineage and dims the rest until selection clears", async () => {

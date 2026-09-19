@@ -229,13 +229,13 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	// React Flow first commits node IDs and only later measures their DOM bounds.
 	// Fitting against the ID-only phase produces an unreadably small, off-centre
 	// graph. Wait for every expected node to have usable measured bounds. The
-	// framing key also includes the inspector state and viewport dimensions, so
-	// opening/closing the inspector or resizing the canvas preserves the whole
-	// topology in the remaining space without refitting state-only refreshes.
+	// framing key also includes viewport dimensions, so a real container resize
+	// preserves the whole topology without refitting state-only refreshes. The
+	// inspector overlays this stable frame and never changes its dimensions.
 	useEffect(() => {
 		if (!layout || !model || !instanceRef.current) return;
 		if (layout.key !== model.topologyKey) return;
-		const frameKey = `${layout.key}:${selectedWorkUnitId ? "inspector" : "canvas"}:${viewportSize}`;
+		const frameKey = `${layout.key}:${viewportSize}`;
 		if (fittedFrameRef.current === frameKey) return;
 		const expectedIds = model.nodes.map((node) => node.workUnitId).sort();
 		let cancelled = false;
@@ -264,7 +264,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 			cancelled = true;
 			if (retryTimer !== undefined) clearTimeout(retryTimer);
 		};
-	}, [flowNodes, instanceReady, layout, model, reducedMotion, selectedWorkUnitId, viewportSize]);
+	}, [flowNodes, instanceReady, layout, model, reducedMotion, viewportSize]);
 
 	const flowEdges = useMemo<Edge[]>(() => {
 		if (!model || !layout || layout.key !== model.topologyKey) return [];
@@ -310,7 +310,8 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 					? (document.activeElement.closest(".react-flow__node")?.getAttribute("data-id") ?? undefined)
 					: undefined;
 			if (event.key === "Escape") {
-				if (focusedId && document.activeElement instanceof HTMLElement) {
+				if (selectedRef.current) setSelectedWorkUnitId(undefined);
+				if ((focusedId || selectedRef.current) && document.activeElement instanceof HTMLElement) {
 					document.activeElement.blur();
 					viewportRef.current?.querySelector<HTMLElement>(".react-flow__pane")?.focus();
 					event.preventDefault();
@@ -451,9 +452,11 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 				</p>
 			)}
 
-			<div className="flex min-h-0 flex-1 gap-3">
+			<div className="relative flex min-h-0 flex-1">
 				<div
+					aria-hidden={selectedNode ? true : undefined}
 					className="min-h-0 min-w-0 flex-1 rounded-group hairline border-border bg-card"
+					inert={selectedNode ? true : undefined}
 					data-testid="mission-canvas-viewport"
 					onKeyDownCapture={handleCanvasKeyDown}
 					ref={viewportRef}
@@ -500,8 +503,21 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 				</div>
 
 				{selectedNode && selectedView && (
-					<div className="w-[22rem] shrink-0">
-						<OutcomeInspector node={selectedNode} onClose={() => setSelectedWorkUnitId(undefined)} view={selectedView} />
+					<div
+						className="absolute inset-0 z-overlay flex justify-end bg-background/45 backdrop-blur-[1px]"
+						data-testid="mission-canvas-inspector-overlay"
+						onKeyDown={(event) => {
+							if (event.key !== "Escape") return;
+							setSelectedWorkUnitId(undefined);
+							if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+							viewportRef.current?.querySelector<HTMLElement>(".react-flow__pane")?.focus();
+							event.preventDefault();
+							event.stopPropagation();
+						}}
+					>
+						<div className="h-full w-[min(22rem,calc(100%-1rem))] bg-card shadow-xl">
+							<OutcomeInspector node={selectedNode} onClose={() => setSelectedWorkUnitId(undefined)} view={selectedView} />
+						</div>
 					</div>
 				)}
 			</div>
