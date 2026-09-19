@@ -2781,5 +2781,11 @@
 	"mission.view.list": "Lista",
 	"outcome.decide.factsSummary": "Resumen",
 	"outcome.decide.authorizeCta": "Autorizar este plan de Outcome",
-	"outcome.decide.notReported": "No informado"
+	"outcome.decide.notReported": "No informado",
+	"mission.sessionHub.heading": "Sesiones activas",
+	"mission.sessionHub.body": "Elige una sesión para ver su grafo de WorkUnits o abre el espacio de trabajo existente.",
+	"mission.sessionHub.empty": "Todavía no hay sesiones activas vinculadas a este resultado.",
+	"mission.sessionHub.open": "Abrir sesión",
+	"mission.sessionHub.openAria": "Abrir la sesión de {{title}}",
+	"mission.sessionHub.back": "Vista del resultado"
 }

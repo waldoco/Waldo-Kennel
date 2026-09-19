@@ -2765,5 +2765,11 @@
 	"mission.view.list": "목록",
 	"outcome.decide.factsSummary": "요약",
 	"outcome.decide.authorizeCta": "이 Outcome 계획 승인",
-	"outcome.decide.notReported": "보고되지 않음"
+	"outcome.decide.notReported": "보고되지 않음",
+	"mission.sessionHub.heading": "활성 세션",
+	"mission.sessionHub.body": "세션을 선택해 WorkUnit 그래프를 보거나 기존 세션 화면을 여세요.",
+	"mission.sessionHub.empty": "이 결과에 연결된 라이브 세션이 아직 없습니다.",
+	"mission.sessionHub.open": "세션 열기",
+	"mission.sessionHub.openAria": "{{title}} 세션 열기",
+	"mission.sessionHub.back": "결과 허브"
 }

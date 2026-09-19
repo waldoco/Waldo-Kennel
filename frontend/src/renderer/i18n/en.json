@@ -2746,5 +2746,11 @@
 	"mission.view.list": "List",
 	"outcome.decide.factsSummary": "Summary",
 	"outcome.decide.authorizeCta": "Authorize this Outcome plan",
-	"outcome.decide.notReported": "Not reported"
+	"outcome.decide.notReported": "Not reported",
+	"mission.sessionHub.heading": "Active sessions",
+	"mission.sessionHub.body": "Choose an outcome session to inspect its WorkUnit graph, or open the existing session workspace.",
+	"mission.sessionHub.empty": "No live sessions are bound to this outcome yet.",
+	"mission.sessionHub.open": "Open session",
+	"mission.sessionHub.openAria": "Open session for {{title}}",
+	"mission.sessionHub.back": "Outcome hub"
 }

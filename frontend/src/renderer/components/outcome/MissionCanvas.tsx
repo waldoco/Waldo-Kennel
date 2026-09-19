@@ -112,9 +112,11 @@ export type MissionCanvasProps = {
 	missionQuery: ReturnType<typeof useOutcomeMission>;
 	planApproved: boolean;
 	planWorkUnits?: readonly { id: string; title: string; dependsOn: readonly string[] }[];
+	initialWorkUnitId?: string;
 	/** Test-only hook: exposes the live ReactFlowInstance so a test can spy on
 	 *  `fitView`. Never used by production callers. */
 	onInstanceReady?: (instance: ReactFlowInstance<Node<FlowNodeData>, Edge>) => void;
+	onOpenSession?: (sessionId: string) => void;
 };
 
 export function MissionCanvas(props: MissionCanvasProps) {
@@ -125,10 +127,11 @@ export function MissionCanvas(props: MissionCanvasProps) {
 	);
 }
 
-function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInstanceReady }: MissionCanvasProps) {
+function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initialWorkUnitId, onInstanceReady, onOpenSession }: MissionCanvasProps) {
 	const { t } = useTranslation();
 	const connection = useEventsConnection();
-	const [selectedWorkUnitId, setSelectedWorkUnitId] = useState<string | undefined>();
+	const [selectedWorkUnitId, setSelectedWorkUnitId] = useState<string | undefined>(initialWorkUnitId);
+	useEffect(() => { if (initialWorkUnitId) setSelectedWorkUnitId(initialWorkUnitId); }, [initialWorkUnitId]);
 	const selectedRef = useRef(selectedWorkUnitId);
 	selectedRef.current = selectedWorkUnitId;
 	const openerWorkUnitIdRef = useRef<string | undefined>(undefined);
@@ -559,7 +562,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 						tabIndex={-1}
 					>
 						<div className="h-full w-[min(22rem,calc(100%-1rem))] bg-card shadow-xl">
-							<OutcomeInspector node={selectedNode} onClose={dismissInspector} view={selectedView} withinDialog />
+							<OutcomeInspector node={selectedNode} onClose={dismissInspector} onOpenSession={onOpenSession} view={selectedView} withinDialog />
 						</div>
 					</div>
 				)}

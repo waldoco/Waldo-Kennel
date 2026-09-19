@@ -9,6 +9,7 @@ import { MissionUsage } from "./MissionUsage";
 import { useSettings } from "../../hooks/useSettings";
 import { ReasoningSettingsSection } from "../settings/ReasoningSettingsSection";
 import { useState } from "react";
+import { useNavigateToSession } from "../../lib/navigate-to-session";
 import { useTranslation } from "react-i18next";
 import { useOutcome, useOutcomePlan, useOutcomeProof } from "../../hooks/useOutcome";
 import { useEventsConnection } from "../../hooks/useEventsConnection";
@@ -42,6 +43,7 @@ export function OutcomeMissionPanel({
 	onClose: () => void;
 }) {
 	const { t } = useTranslation();
+	const navigateToSession = useNavigateToSession();
 	const query = useOutcome(outcomeId);
 	const planQuery = useOutcomePlan(outcomeId);
 	const proofQuery = useOutcomeProof(outcomeId);
@@ -194,6 +196,8 @@ export function OutcomeMissionPanel({
 							</div>
 							<div hidden={tab !== "run"}>
 								<OutcomeRunSurface
+									projectId={projectId}
+									onOpenSession={(sessionId) => navigateToSession(projectId, sessionId)}
 									outcomeId={outcomeId}
 									admissionBlocked={stale || connection !== "connected"}
 									onReviewProof={() => setTab("result")}

@@ -32,7 +32,9 @@ export type MissionWorkUnitListProps = {
 	 *  Plan-only-pending reading while Mission has not resolved yet. */
 	planApproved: boolean;
 	planWorkUnits?: readonly { id: string; title: string; dependsOn: readonly string[] }[];
+	initialWorkUnitId?: string;
 	onStart?: (workUnitId: string) => void;
+	onOpenSession?: (sessionId: string) => void;
 };
 
 /**
@@ -42,10 +44,11 @@ export type MissionWorkUnitListProps = {
  * hand-rolled graph — so List is the sole reading here, always available,
  * never a fallback of something else.
  */
-export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits, onStart }: MissionWorkUnitListProps) {
+export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits, initialWorkUnitId, onStart, onOpenSession }: MissionWorkUnitListProps) {
 	const { t } = useTranslation();
 	const connection = useEventsConnection();
-	const [selectedWorkUnitId, setSelectedWorkUnitId] = useState<string | undefined>();
+	const [selectedWorkUnitId, setSelectedWorkUnitId] = useState<string | undefined>(initialWorkUnitId);
+	useEffect(() => { if (initialWorkUnitId) setSelectedWorkUnitId(initialWorkUnitId); }, [initialWorkUnitId]);
 	const [announcement, setAnnouncement] = useState("");
 
 	const selectedRef = useRef(selectedWorkUnitId);
@@ -247,7 +250,7 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 
 				{selectedNode && selectedView && (
 					<div className="w-[22rem] shrink-0">
-						<OutcomeInspector node={selectedNode} onClose={() => setSelectedWorkUnitId(undefined)} view={selectedView} />
+						<OutcomeInspector node={selectedNode} onClose={() => setSelectedWorkUnitId(undefined)} onOpenSession={onOpenSession} view={selectedView} />
 					</div>
 				)}
 			</div>

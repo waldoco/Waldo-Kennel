@@ -166,6 +166,8 @@ function renderStageBody({
 		return (
 			<OutcomeLifecycleShell outcomeId={outcome} projectId={project} stage="act_observe">
 				<OutcomeRunSurface
+					projectId={project}
+					onOpenSession={(sessionId) => { void navigate({ to: "/projects/$projectId/sessions/$sessionId", params: { projectId: project, sessionId } }); }}
 					onReviewProof={() => {
 						void navigate({ to: "/work", search: { project, stage: "prove_close", outcome } });
 					}}

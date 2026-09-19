@@ -2765,5 +2765,11 @@
 	"mission.view.list": "リスト",
 	"outcome.decide.factsSummary": "概要",
 	"outcome.decide.authorizeCta": "このOutcomeプランを承認",
-	"outcome.decide.notReported": "未報告"
+	"outcome.decide.notReported": "未報告",
+	"mission.sessionHub.heading": "アクティブなセッション",
+	"mission.sessionHub.body": "セッションを選んで WorkUnit グラフを確認するか、既存のセッション画面を開きます。",
+	"mission.sessionHub.empty": "この成果にはまだライブセッションが関連付けられていません。",
+	"mission.sessionHub.open": "セッションを開く",
+	"mission.sessionHub.openAria": "{{title}} のセッションを開く",
+	"mission.sessionHub.back": "成果ハブ"
 }

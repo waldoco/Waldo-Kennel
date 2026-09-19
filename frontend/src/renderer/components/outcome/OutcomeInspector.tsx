@@ -1,5 +1,5 @@
 import { ContractCoverage } from "@pin4sf/kennel-product-ui";
-import { X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { MessageKey } from "../../i18n/messages";
@@ -20,9 +20,10 @@ export type OutcomeInspectorProps = {
 	onClose: () => void;
 	/** The owning overlay supplies dialog semantics; omit nested region semantics. */
 	withinDialog?: boolean;
+	onOpenSession?: (sessionId: string) => void;
 };
 
-export function OutcomeInspector({ node, view, onClose, withinDialog = false }: OutcomeInspectorProps) {
+export function OutcomeInspector({ node, view, onClose, onOpenSession, withinDialog = false }: OutcomeInspectorProps) {
 	const { t } = useTranslation();
 	return (
 		<div
@@ -104,6 +105,13 @@ export function OutcomeInspector({ node, view, onClose, withinDialog = false }: 
 					<p className="mt-1 text-muted-foreground text-sm">{t("mission.inspector.noAttempt" satisfies MessageKey)}</p>
 				)}
 			</section>
+
+			{node.currentAttempt?.status === "running" && node.currentAttempt.session?.sessionId && onOpenSession ? (
+				<Button data-testid="outcome-inspector-open-session" onClick={() => onOpenSession(node.currentAttempt!.session!.sessionId)} variant="outline">
+					<ExternalLink aria-hidden="true" className="size-icon-sm" />
+					{t("mission.sessionHub.open")}
+				</Button>
+			) : null}
 
 			<details className="mt-auto">
 				<summary className="cursor-pointer text-muted-foreground text-xs font-medium uppercase">

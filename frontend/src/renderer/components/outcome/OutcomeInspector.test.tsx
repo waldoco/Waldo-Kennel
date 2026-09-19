@@ -92,6 +92,32 @@ describe("OutcomeInspector", () => {
 		expect(screen.queryByText(/Running/)).not.toBeInTheDocument();
 	});
 
+	it("offers the existing session destination only for a running bound session", async () => {
+		const user = userEvent.setup();
+		const onOpenSession = vi.fn();
+		const runningBound = record({
+			currentAttempt: {
+				attemptId: "attempt-1",
+				number: 1,
+				status: "running",
+				createdAt: "",
+				updatedAt: "",
+				session: { sessionId: "session-1", harness: "codex", mode: "tui", state: "live" },
+			},
+		});
+		const { rerender } = render(<OutcomeInspector node={runningBound} onClose={() => {}} onOpenSession={onOpenSession} view={view()} />);
+		await user.click(screen.getByTestId("outcome-inspector-open-session"));
+		expect(onOpenSession).toHaveBeenCalledWith("session-1");
+
+		rerender(<OutcomeInspector node={record({ currentAttempt: { ...runningBound.currentAttempt!, status: "ended" } })} onClose={() => {}} onOpenSession={onOpenSession} view={view()} />);
+		expect(screen.queryByTestId("outcome-inspector-open-session")).not.toBeInTheDocument();
+	});
+
+	it("does not expose session navigation without an explicit destination callback", () => {
+		render(<OutcomeInspector node={record({ currentAttempt: { attemptId: "attempt-1", number: 1, status: "running", createdAt: "", updatedAt: "", session: { sessionId: "session-1", harness: "codex", mode: "tui", state: "live" } } })} onClose={() => {}} view={view()} />);
+		expect(screen.queryByTestId("outcome-inspector-open-session")).not.toBeInTheDocument();
+	});
+
 	it("keeps raw IDs confined to the collapsed technical-details section", () => {
 		render(
 			<OutcomeInspector

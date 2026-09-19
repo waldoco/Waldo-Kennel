@@ -20,6 +20,7 @@ import { MissionPlanView } from "./MissionPlanView";
 import { selectMissionCanvasRenderer } from "../../lib/mission-canvas-config";
 import { MissionCanvas } from "./MissionCanvas";
 import { MissionViewSwitch } from "./MissionViewSwitch";
+import { MissionSessionHub } from "./MissionSessionHub";
 import { MissionWorkUnitList } from "./MissionWorkUnitList";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -30,6 +31,8 @@ type OutcomeRunSurfaceProps = {
 	/** Stale authority or reconnect uncertainty blocks admission, never containment. */
 	admissionBlocked?: boolean;
 	onReviewProof?: () => void;
+	projectId?: string;
+	onOpenSession?: (sessionId: string) => void;
 };
 
 /**
@@ -62,7 +65,7 @@ function statusBadgeKey(status: string): MessageKey | undefined {
  * completion is never presented as success, transcripts are never read, and
  * no provider name is treated as a policy.
  */
-export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked = false }: OutcomeRunSurfaceProps) {
+export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked = false, projectId, onOpenSession }: OutcomeRunSurfaceProps) {
 	const missionViewMode = useUiStore((state) => state.missionViewMode);
 	const setMissionViewMode = useUiStore((state) => state.setMissionViewMode);
 	const { t } = useTranslation();
@@ -77,6 +80,13 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 	const scheduleQuery = useOutcomeSchedule(outcomeId, planApproved ? plan?.id : undefined);
 	const schedule = scheduleQuery.schedule;
 	const missionQuery = useOutcomeMission(outcomeId, planApproved ? plan?.id : undefined);
+	const sessionHubEnabled = Boolean(projectId && onOpenSession);
+	const [missionZoom, setMissionZoom] = useState<"hub" | "dag">(sessionHubEnabled ? "hub" : "dag");
+	const [drillWorkUnitId, setDrillWorkUnitId] = useState<string | undefined>();
+	const openSession = useCallback((sessionId: string) => {
+		if (!projectId || !onOpenSession) return;
+		onOpenSession(sessionId);
+	}, [onOpenSession, projectId]);
 	const startAttempt = useStartOutcomeAttempt(outcomeId);
 	const proofQuery = useOutcomeProof(outcomeId);
 	const criterionText = useCallback(
@@ -166,30 +176,26 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 				</section>
 			)}
 
-			{/* The Mission WorkUnit graph (F2): the authenticated `/mission`
-			    projection only, never joined with Plan/Schedule/Attempt/session
-			    responses to recreate its authority. List and Canvas render the
-			    same projection through the shared WorkUnit face; the
-			    remembered List/Graph preference feeds the mission-canvas config
-			    seam; List is the default and remains the complete reading until
-			    the cutover slice. */}
 			<div className="flex items-center justify-between gap-2">
-				<h3 className="text-sm font-medium text-foreground">{t("mission.list.heading")}</h3>
-				<MissionViewSwitch
-					labels={{
-						ariaLabel: t("mission.view.switchAria" satisfies MessageKey),
-						graph: t("mission.view.graph" satisfies MessageKey),
-						list: t("mission.view.list" satisfies MessageKey),
-					}}
+				<div className="flex items-center gap-2">
+					{missionZoom === "dag" ? (
+						<Button onClick={() => setMissionZoom("hub")} size="sm" variant="ghost">{t("mission.sessionHub.back")}</Button>
+					) : null}
+					<h3 className="text-sm font-medium text-foreground">{missionZoom === "hub" ? t("mission.sessionHub.heading") : t("mission.list.heading")}</h3>
+				</div>
+				{missionZoom === "dag" ? <MissionViewSwitch
+					labels={{ ariaLabel: t("mission.view.switchAria" satisfies MessageKey), graph: t("mission.view.graph" satisfies MessageKey), list: t("mission.view.list" satisfies MessageKey) }}
 					onChange={setMissionViewMode}
 					value={missionViewMode}
-				/>
+				/> : null}
 			</div>
 			<div className="min-h-0 flex-1">
-				{selectMissionCanvasRenderer({ renderer: missionViewMode === "graph" ? "flow" : "list" }) === "flow" ? (
-					<MissionCanvas missionQuery={missionQuery} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
+				{missionZoom === "hub" ? (
+					<MissionSessionHub missionQuery={missionQuery} onDrillDown={(workUnitId) => { setDrillWorkUnitId(workUnitId); setMissionZoom("dag"); }} onOpenSession={openSession} />
+				) : selectMissionCanvasRenderer({ renderer: missionViewMode === "graph" ? "flow" : "list" }) === "flow" ? (
+					<MissionCanvas initialWorkUnitId={drillWorkUnitId} missionQuery={missionQuery} onOpenSession={openSession} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
 				) : (
-					<MissionWorkUnitList missionQuery={missionQuery} onStart={startNextRunnable} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
+					<MissionWorkUnitList initialWorkUnitId={drillWorkUnitId} missionQuery={missionQuery} onOpenSession={openSession} onStart={startNextRunnable} planApproved={planApproved} planWorkUnits={plan?.workUnits} />
 				)}
 			</div>
 

@@ -2747,5 +2747,11 @@
 	"mission.view.list": "列表",
 	"outcome.decide.factsSummary": "摘要",
 	"outcome.decide.authorizeCta": "授权此成果计划",
-	"outcome.decide.notReported": "未报告"
+	"outcome.decide.notReported": "未报告",
+	"mission.sessionHub.heading": "活跃会话",
+	"mission.sessionHub.body": "选择会话查看其 WorkUnit 图，或打开现有会话工作区。",
+	"mission.sessionHub.empty": "此结果尚未绑定实时会话。",
+	"mission.sessionHub.open": "打开会话",
+	"mission.sessionHub.openAria": "打开 {{title}} 的会话",
+	"mission.sessionHub.back": "结果中心"
 }

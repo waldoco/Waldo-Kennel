@@ -2765,5 +2765,11 @@
 	"mission.view.list": "Liste",
 	"outcome.decide.factsSummary": "Zusammenfassung",
 	"outcome.decide.authorizeCta": "Diesen Outcome-Plan autorisieren",
-	"outcome.decide.notReported": "Nicht gemeldet"
+	"outcome.decide.notReported": "Nicht gemeldet",
+	"mission.sessionHub.heading": "Aktive Sitzungen",
+	"mission.sessionHub.body": "Wähle eine Sitzung für den WorkUnit-Graphen oder öffne den bestehenden Sitzungsarbeitsbereich.",
+	"mission.sessionHub.empty": "Für dieses Ergebnis sind noch keine aktiven Sitzungen verbunden.",
+	"mission.sessionHub.open": "Sitzung öffnen",
+	"mission.sessionHub.openAria": "Sitzung für {{title}} öffnen",
+	"mission.sessionHub.back": "Ergebnisübersicht"
 }
