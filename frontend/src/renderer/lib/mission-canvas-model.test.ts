@@ -75,6 +75,24 @@ describe("modelFromMissionProjection", () => {
 		expect(island?.upstream).toEqual(["wu-binding", "wu-handshake"]);
 	});
 
+	it("treats node/edge permutation as the same topology: key and canonical edges unchanged", () => {
+		// The daemon's node array order is its canonical presentation order, so
+		// the model keeps it (ELK placement and deterministic-successor selection
+		// depend on it). What permutation must NEVER change is the topology
+		// identity and the canonical edge order - otherwise a reshuffled
+		// payload would force a spurious relayout/refit.
+		const projection = dummyMissionProjection();
+		const baseline = modelFromMissionProjection(projection);
+		const permuted = modelFromMissionProjection({
+			...projection,
+			edges: [...projection.edges].reverse(),
+			nodes: [...projection.nodes].reverse(),
+		});
+		expect(permuted.topologyKey).toBe(baseline.topologyKey);
+		expect(permuted.edges).toEqual(baseline.edges);
+		expect(permuted.nodes.map((node) => node.workUnitId)).toEqual([...baseline.nodes.map((node) => node.workUnitId)].reverse());
+	});
+
 	it("maps an unrecognized daemon state to unknown with its raw label, never a guess", () => {
 		const projection = dummyMissionProjection();
 		projection.nodes = projection.nodes.map((node) =>

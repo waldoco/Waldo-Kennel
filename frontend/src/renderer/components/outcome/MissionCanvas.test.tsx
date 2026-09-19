@@ -250,6 +250,9 @@ describe("MissionCanvas interactions", () => {
 		// The preview never carries an action and never hides its facts from one
 		// input mode: reveal is CSS on the RF wrapper for BOTH pointer hover and
 		// keyboard focus-within.
+		// The RF wrapper carries a meaningful label ("title - status"), never a bare "node".
+		const wrapper = document.querySelector('.react-flow__node[data-id="wu-tests"]');
+		expect(wrapper?.getAttribute("aria-label")).toBe("Cover resume race in regression tests - Paused");
 		expect(preview.className).toContain("group-hover:opacity-100");
 		expect(preview.className).toContain("group-focus-within:opacity-100");
 		expect(preview).toHaveAttribute("aria-hidden", "true");
