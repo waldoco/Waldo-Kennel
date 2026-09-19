@@ -238,13 +238,15 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 		let retryTimer: ReturnType<typeof setTimeout> | undefined;
 		const fitMeasuredTopology = () => {
 			if (cancelled || !instanceRef.current) return;
-			const rendered = instanceRef.current.getNodes();
-			const renderedIds = rendered.map((node) => node.id).sort();
+			const renderedIds = instanceRef.current.getNodes().map((node) => node.id).sort();
 			const exactTopology = renderedIds.length === expectedIds.length && renderedIds.every((id, index) => id === expectedIds[index]);
-			const allMeasured = rendered.every((node) => {
-				const width = node.measured?.width ?? node.width;
-				const height = node.measured?.height ?? node.height;
-				return typeof width === "number" && width > 0 && typeof height === "number" && height > 0;
+			// In a controlled flow React Flow keeps DOM measurement in its
+			// internal-node store. Dimension changes do not populate the user-facing
+			// node objects unless the app applies them, and this read-only canvas has
+			// no reason to duplicate that state. Read the owning store directly.
+			const allMeasured = expectedIds.every((id) => {
+				const measured = instanceRef.current?.getInternalNode(id)?.measured;
+				return typeof measured?.width === "number" && measured.width > 0 && typeof measured.height === "number" && measured.height > 0;
 			});
 			if (!exactTopology || !allMeasured) {
 				retryTimer = setTimeout(fitMeasuredTopology, 16);

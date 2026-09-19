@@ -24,8 +24,11 @@ function missionQuery(overrides: Partial<MissionQuery> = {}): MissionQuery {
 }
 
 function exposeMeasuredNodes(instance: ReactFlowInstance<any, any>): void {
-	const getNodes = instance.getNodes.bind(instance);
-	vi.spyOn(instance, "getNodes").mockImplementation(() => getNodes().map((node) => ({ ...node, measured: { width: 256, height: 84 } })));
+	const getInternalNode = instance.getInternalNode.bind(instance);
+	vi.spyOn(instance, "getInternalNode").mockImplementation((id) => {
+		const node = getInternalNode(id);
+		return node ? { ...node, measured: { width: 256, height: 84 } } : undefined;
+	});
 }
 
 function withNodeState(mission: MissionQuery["mission"], workUnitId: string, scheduleState: string) {
@@ -93,7 +96,7 @@ describe("MissionCanvas", () => {
 		expect(screen.queryByTestId("mission-row-action")).not.toBeInTheDocument();
 	});
 
-	it("waits for every committed node to be measured before fitting", async () => {
+	it("waits for every internal node measurement before fitting the controlled flow", async () => {
 		let instance: ReactFlowInstance<any, any> | undefined;
 		let measured = false;
 		const boundsAtFit: { id: string; width?: number; height?: number }[][] = [];
@@ -102,10 +105,13 @@ describe("MissionCanvas", () => {
 				missionQuery={missionQuery()}
 				onInstanceReady={(ready) => {
 					instance = ready;
-					const getNodes = ready.getNodes.bind(ready);
-					vi.spyOn(ready, "getNodes").mockImplementation(() => getNodes().map((node) => measured ? { ...node, measured: { width: 256, height: 84 } } : { ...node, measured: undefined, width: undefined, height: undefined }));
+					const getInternalNode = ready.getInternalNode.bind(ready);
+					vi.spyOn(ready, "getInternalNode").mockImplementation((id) => {
+						const node = getInternalNode(id);
+						return node ? { ...node, measured: measured ? { width: 256, height: 84 } : { width: undefined, height: undefined } } : undefined;
+					});
 					vi.spyOn(ready, "fitView").mockImplementation(() => {
-						boundsAtFit.push(ready.getNodes().map((node) => ({ id: node.id, width: node.measured?.width, height: node.measured?.height })));
+						boundsAtFit.push(ready.getNodes().map((node) => ({ id: node.id, ...ready.getInternalNode(node.id)?.measured })));
 						return Promise.resolve(true);
 					});
 				}}
