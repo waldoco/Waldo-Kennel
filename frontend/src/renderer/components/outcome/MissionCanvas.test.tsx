@@ -60,7 +60,7 @@ describe("MissionCanvas", () => {
 		const sourceWorkUnitId = mission.nodes[0]?.workUnitId;
 		expect(sourceWorkUnitId).toBeDefined();
 		if (!sourceWorkUnitId) throw new Error("dummy mission needs a source node");
-		mission.edges = [...mission.edges, { fromWorkUnitId: sourceWorkUnitId, toWorkUnitId: "ghost-node" }];
+		mission.edges = [...mission.edges, { from: sourceWorkUnitId, to: "ghost-node" }];
 		render(
 			<MissionCanvas
 				missionQuery={missionQuery({ mission })}
