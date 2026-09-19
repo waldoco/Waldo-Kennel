@@ -600,3 +600,119 @@ func TestRunState_AuthorizedRunBetweenWorkUnitsDoesNotOfferAnotherStart(t *testi
 		t.Fatalf("cancel = %+v, want it offered", cancel)
 	}
 }
+
+// runNeedsYouFake is the minimal NeedsYouStore the run-gate tests drive: a
+// settable question list plus an injectable read error for the fail-closed
+// case.
+type runNeedsYouFake struct {
+	questions []domain.NeedsYouQuestion
+	err       error
+}
+
+func (f *runNeedsYouFake) ListCurrentNeedsYouQuestions(context.Context, domain.OutcomeID) ([]domain.NeedsYouQuestion, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return append([]domain.NeedsYouQuestion(nil), f.questions...), nil
+}
+func (f *runNeedsYouFake) GetNeedsYouQuestion(context.Context, domain.OutcomeID, string) (domain.NeedsYouQuestion, bool, error) {
+	return domain.NeedsYouQuestion{}, false, nil
+}
+func (f *runNeedsYouFake) ReconcileNeedsYouAnswer(context.Context, domain.OutcomeID, string, string) (domain.NeedsYouQuestion, error) {
+	return domain.NeedsYouQuestion{}, errors.New("not implemented")
+}
+
+func (h *runHarness) openQuestion(id string) domain.NeedsYouQuestion {
+	// Generation == ID is the store's self-integrity mark of an unresolved
+	// production record; open is the status an unanswered question carries.
+	return domain.NeedsYouQuestion{
+		ID: id, OutcomeID: h.outcomeID, PlanRevisionID: h.planID,
+		Generation: id, Kind: domain.NeedsYouChoice, Status: domain.NeedsYouOpen,
+	}
+}
+
+// TestCommandRun_StartRefusesUnresolvedNeedsYou is the command-level half of
+// the projection's attention surface: a question the owner has not answered
+// refuses to become authorized work.
+func TestCommandRun_StartRefusesUnresolvedNeedsYou(t *testing.T) {
+	h := newRunHarness(t)
+	needs := &runNeedsYouFake{questions: []domain.NeedsYouQuestion{h.openQuestion("q1")}}
+	h.svc = h.svc.WithNeedsYou(needs, nil)
+
+	if _, err := h.command(t, domain.RunCommandStart, "rk-start"); requireAPICode(t, err) != outcome.CodeRunNeedsYouUnresolved {
+		t.Fatalf("start err = %v, want %s", err, outcome.CodeRunNeedsYouUnresolved)
+	}
+	if got := h.intents.generations(h.outcomeID); got != 0 {
+		t.Fatalf("refusal appended %d generations, want none", got)
+	}
+	if calls := h.spawner.spawnCalls(); calls != 0 {
+		t.Fatalf("refusal launched %d providers", calls)
+	}
+}
+
+// TestCommandRun_ResumeRefusesUnresolvedNeedsYou covers the other
+// authorization verb: a question raised after Start must hold a Resume.
+func TestCommandRun_ResumeRefusesUnresolvedNeedsYou(t *testing.T) {
+	h := newRunHarness(t)
+	needs := &runNeedsYouFake{}
+	h.svc = h.svc.WithNeedsYou(needs, nil)
+
+	h.mustCommand(t, domain.RunCommandStart, "rk-start")
+	h.mustCommand(t, domain.RunCommandPause, "rk-pause")
+	needs.questions = []domain.NeedsYouQuestion{h.openQuestion("q1")}
+
+	if _, err := h.command(t, domain.RunCommandResume, "rk-resume"); requireAPICode(t, err) != outcome.CodeRunNeedsYouUnresolved {
+		t.Fatalf("resume err = %v, want %s", err, outcome.CodeRunNeedsYouUnresolved)
+	}
+}
+
+// TestCommandRun_AnsweredNeedsYouDoesNotBlock keeps the gate precise:
+// acknowledged, superseded and refused questions are resolved, and a question
+// bound to a superseded Plan revision cannot veto the reviewed one.
+func TestCommandRun_AnsweredNeedsYouDoesNotBlock(t *testing.T) {
+	h := newRunHarness(t)
+	acknowledged := h.openQuestion("q-ack")
+	acknowledged.Status = domain.NeedsYouAcknowledged
+	stalePlan := h.openQuestion("q-old-plan")
+	stalePlan.PlanRevisionID = domain.PlanRevisionID("prv-superseded")
+	needs := &runNeedsYouFake{questions: []domain.NeedsYouQuestion{acknowledged, stalePlan}}
+	h.svc = h.svc.WithNeedsYou(needs, nil)
+
+	view := h.mustCommand(t, domain.RunCommandStart, "rk-start")
+	if view.Intent == nil || view.Intent.Desired != string(domain.RunIntentRunning) {
+		t.Fatalf("intent = %+v, want running", view.Intent)
+	}
+}
+
+// TestCommandRun_ReplaySkipsTheNeedsYouGate proves the replay check still
+// returns the recorded authorization before the gate can judge it: a question
+// opened after Start cannot turn the replayed Start into a refusal.
+func TestCommandRun_ReplaySkipsTheNeedsYouGate(t *testing.T) {
+	h := newRunHarness(t)
+	needs := &runNeedsYouFake{}
+	h.svc = h.svc.WithNeedsYou(needs, nil)
+
+	first := h.mustCommand(t, domain.RunCommandStart, "rk-start")
+	needs.questions = []domain.NeedsYouQuestion{h.openQuestion("q1")}
+
+	second := h.mustCommand(t, domain.RunCommandStart, "rk-start")
+	if first.Intent.Generation != second.Intent.Generation {
+		t.Fatalf("generations = %d and %d, want the replay to return the first",
+			first.Intent.Generation, second.Intent.Generation)
+	}
+}
+
+// TestCommandRun_NeedsYouReadFailsClosed: when the question store cannot be
+// read, the command fails rather than authorizing work over an unknown state.
+func TestCommandRun_NeedsYouReadFailsClosed(t *testing.T) {
+	h := newRunHarness(t)
+	needs := &runNeedsYouFake{err: errors.New("store unavailable")}
+	h.svc = h.svc.WithNeedsYou(needs, nil)
+
+	if _, err := h.command(t, domain.RunCommandStart, "rk-start"); err == nil {
+		t.Fatal("start authorized over an unreadable needs-you store")
+	}
+	if got := h.intents.generations(h.outcomeID); got != 0 {
+		t.Fatalf("failed read appended %d generations, want none", got)
+	}
+}

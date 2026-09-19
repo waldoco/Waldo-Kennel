@@ -28,6 +28,10 @@ const (
 	// CodeRunActionUnavailable means the command does not apply to the
 	// current state — resuming a cancelled run, pausing an idle one.
 	CodeRunActionUnavailable = "RUN_ACTION_UNAVAILABLE"
+	// CodeRunNeedsYouUnresolved means an unanswered owner question stands on
+	// the reviewed Plan, so authorizing a run would mint work whose first
+	// move is a block the owner can already see.
+	CodeRunNeedsYouUnresolved = "RUN_NEEDS_YOU_UNRESOLVED"
 	// CodeRunCustodyUnknown means execution of unknown status survives, so
 	// authorizing more work could duplicate it.
 	CodeRunCustodyUnknown = "RUN_CUSTODY_UNKNOWN"
@@ -151,6 +155,9 @@ func (s *Service) CommandRun(ctx context.Context, outcomeID domain.OutcomeID, in
 			return RunStateView{}, err
 		}
 		if err := s.refuseUnknownSurvivingWork(ctx, outcomeID); err != nil {
+			return RunStateView{}, err
+		}
+		if err := s.refuseRunAgainstUnresolvedNeedsYou(ctx, outcomeID, planID); err != nil {
 			return RunStateView{}, err
 		}
 	} else if hasCurrent {
@@ -292,6 +299,42 @@ func correctionHaltFingerprint(outcomeID domain.OutcomeID, decisionID domain.Acc
 // not merely its idempotency key or resulting desired state. JSON gives the
 // storage boundary one stable, opaque value to compare without reinterpreting
 // a historical command.
+// refuseRunAgainstUnresolvedNeedsYou keeps Start and Resume behind unanswered
+// owner questions. An unresolved needs-you question on the Plan being
+// authorized means the run already needs the owner before it does anything;
+// starting anyway would mint work whose first move is a block the owner can
+// already see. The Mission projection surfaces the same questions as
+// attention; this is what makes that attention a boundary rather than a
+// rendering choice. Questions are scoped to the exact Plan revision the
+// command authorizes, so a question a superseded Plan raised cannot veto the
+// reviewed one. Fail-closed: an unreadable store refuses the command rather
+// than authorizing work over an unknown question state. Replay is unaffected
+// because the replay check in CommandRun returns before this gate runs.
+func (s *Service) refuseRunAgainstUnresolvedNeedsYou(ctx context.Context, outcomeID domain.OutcomeID, planID domain.PlanRevisionID) error {
+	if s.needsYou == nil {
+		return nil
+	}
+	questions, err := s.needsYou.ListCurrentNeedsYouQuestions(ctx, outcomeID)
+	if err != nil {
+		return fmt.Errorf("read current needs-you questions before authorizing a run: %w", err)
+	}
+	unresolved := []string{}
+	for _, q := range questions {
+		if q.PlanRevisionID != planID {
+			continue
+		}
+		if missionQuestionUnresolved(q) {
+			unresolved = append(unresolved, q.ID)
+		}
+	}
+	if len(unresolved) > 0 {
+		return apierr.Conflict(CodeRunNeedsYouUnresolved,
+			"This Outcome has unanswered needs-you questions on the reviewed Plan; answer them before authorizing a run",
+			map[string]any{"questionIds": unresolved})
+	}
+	return nil
+}
+
 func runCommandFingerprint(outcomeID domain.OutcomeID, in RunCommandInput) string {
 	request := struct {
 		OutcomeID          domain.OutcomeID
