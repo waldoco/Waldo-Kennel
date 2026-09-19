@@ -11,6 +11,16 @@ import type { MissionCanvasModel } from "./mission-canvas-model";
  * after its model changes or it unmounts. Independent canvases never cancel
  * one another, and every cache write remains fenced by its own topology key.
  *
+ * Cache-key boundary, stated once: positions are a pure function of TOPOLOGY
+ * (node set + edge set), so the key is the daemon's own topologyFingerprint.
+ * A Plan revision or projection generation that moves while the fingerprint
+ * holds is the same topology by the daemon's contract, and a cache hit then
+ * returns the CORRECT positions, never a stale alias. Selection/topology
+ * identity is a different concern and uses the full
+ * planRevisionId+fingerprint+generation triple (missionTopologyIdentity). A
+ * fingerprint that collided across genuinely different topologies would be a
+ * daemon digest failure, outside the renderer's boundary to detect.
+ *
  * When Worker is unavailable (tests, non-DOM runtimes) the same ELK graph is
  * laid out on the main thread via a lazily imported bundled ELK. The pure
  * graph builder and the cache are shared by both paths.
