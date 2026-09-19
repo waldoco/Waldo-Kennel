@@ -18,16 +18,18 @@ export type OutcomeInspectorProps = {
 	node: MissionNodeRecord;
 	view: MissionNodeView;
 	onClose: () => void;
+	/** The owning overlay supplies dialog semantics; omit nested region semantics. */
+	withinDialog?: boolean;
 };
 
-export function OutcomeInspector({ node, view, onClose }: OutcomeInspectorProps) {
+export function OutcomeInspector({ node, view, onClose, withinDialog = false }: OutcomeInspectorProps) {
 	const { t } = useTranslation();
 	return (
 		<div
-			aria-label={t("mission.inspector.heading" satisfies MessageKey)}
+			aria-label={withinDialog ? undefined : t("mission.inspector.heading" satisfies MessageKey)}
 			className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto rounded-group hairline border-border bg-card p-4.5"
 			data-testid="outcome-inspector"
-			role="region"
+			role={withinDialog ? undefined : "region"}
 		>
 			<div className="flex items-start justify-between gap-2">
 				<h3 className="text-sm font-semibold">{view.title}</h3>

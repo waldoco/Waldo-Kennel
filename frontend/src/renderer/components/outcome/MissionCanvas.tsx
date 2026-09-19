@@ -131,6 +131,8 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	const [selectedWorkUnitId, setSelectedWorkUnitId] = useState<string | undefined>();
 	const selectedRef = useRef(selectedWorkUnitId);
 	selectedRef.current = selectedWorkUnitId;
+	const openerWorkUnitIdRef = useRef<string | undefined>();
+	const restoreFocusRef = useRef(false);
 
 	const lastConfirmedRef = useRef<ReturnType<typeof useOutcomeMission>["mission"] | undefined>(undefined);
 	const previousIdentityRef = useRef<ReturnType<typeof missionTopologyIdentity> | undefined>(undefined);
@@ -298,6 +300,19 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 		overlayRef.current?.focus();
 	}, [selectedWorkUnitId]);
 	useEffect(() => {
+		if (selectedWorkUnitId || !restoreFocusRef.current) return;
+		restoreFocusRef.current = false;
+		const openerId = openerWorkUnitIdRef.current;
+		const opener = openerId
+			? viewportRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${openerId}"]`)
+			: undefined;
+		(opener ?? viewportRef.current?.querySelector<HTMLElement>(".react-flow__pane") ?? viewportRef.current)?.focus();
+	}, [selectedWorkUnitId]);
+	const dismissInspector = useCallback(() => {
+		restoreFocusRef.current = true;
+		setSelectedWorkUnitId(undefined);
+	}, []);
+	useEffect(() => {
 		const viewport = viewportRef.current;
 		if (!viewport || typeof ResizeObserver === "undefined") return;
 		const observer = new ResizeObserver(([entry]) => {
@@ -315,7 +330,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 					? (document.activeElement.closest(".react-flow__node")?.getAttribute("data-id") ?? undefined)
 					: undefined;
 			if (event.key === "Escape") {
-				if (selectedRef.current) setSelectedWorkUnitId(undefined);
+				if (selectedRef.current) dismissInspector();
 				if ((focusedId || selectedRef.current) && document.activeElement instanceof HTMLElement) {
 					document.activeElement.blur();
 					viewportRef.current?.querySelector<HTMLElement>(".react-flow__pane")?.focus();
@@ -345,17 +360,19 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 				return;
 			}
 			if (event.key === "Enter" && focusedId) {
+				openerWorkUnitIdRef.current = focusedId;
 				setSelectedWorkUnitId(focusedId);
 				event.preventDefault();
 				event.stopPropagation();
 			}
 		},
-		[canvasLayers],
+		[canvasLayers, dismissInspector],
 	);
 
 	const onNodesChange = useCallback((changes: NodeChange<Node<FlowNodeData>>[]) => {
 		for (const change of changes) {
 			if (change.type === "select") {
+				if (change.selected) openerWorkUnitIdRef.current = change.id;
 				setSelectedWorkUnitId((selectedNow) => {
 					if (change.selected) return change.id;
 					return selectedNow === change.id ? undefined : selectedNow;
@@ -510,20 +527,39 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 				{selectedNode && selectedView && (
 					<div
 						className="absolute inset-0 z-overlay flex justify-end bg-background/45 backdrop-blur-[1px]"
+						aria-label={t("mission.inspector.heading" satisfies MessageKey)}
+						aria-modal="true"
 						data-testid="mission-canvas-inspector-overlay"
 						onKeyDown={(event) => {
-							if (event.key !== "Escape") return;
-							setSelectedWorkUnitId(undefined);
-							if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-							viewportRef.current?.querySelector<HTMLElement>(".react-flow__pane")?.focus();
-							event.preventDefault();
-							event.stopPropagation();
+							if (event.key === "Escape") {
+								dismissInspector();
+								event.preventDefault();
+								event.stopPropagation();
+								return;
+							}
+							if (event.key !== "Tab") return;
+							const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
+							if (focusable.length === 0) {
+								event.preventDefault();
+								event.currentTarget.focus();
+								return;
+							}
+							const first = focusable[0];
+							const last = focusable.at(-1) as HTMLElement;
+							if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+								event.preventDefault();
+								last.focus();
+							} else if (!event.shiftKey && (document.activeElement === last || document.activeElement === event.currentTarget)) {
+								event.preventDefault();
+								first.focus();
+							}
 						}}
 						ref={overlayRef}
+						role="dialog"
 						tabIndex={-1}
 					>
 						<div className="h-full w-[min(22rem,calc(100%-1rem))] bg-card shadow-xl">
-							<OutcomeInspector node={selectedNode} onClose={() => setSelectedWorkUnitId(undefined)} view={selectedView} />
+							<OutcomeInspector node={selectedNode} onClose={dismissInspector} view={selectedView} withinDialog />
 						</div>
 					</div>
 				)}

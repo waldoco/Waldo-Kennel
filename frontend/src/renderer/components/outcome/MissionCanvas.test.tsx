@@ -347,7 +347,7 @@ describe("MissionCanvas interactions", () => {
 		const overlay = screen.getByTestId("mission-canvas-inspector-overlay");
 		await waitFor(() => expect(overlay).toHaveFocus());
 		fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
-		expect(focusedId()).not.toBe("wu-schema");
+		await waitFor(() => expect(focusedId()).toBe("wu-schema"));
 		expect(screen.queryByTestId("outcome-inspector")).not.toBeInTheDocument();
 	});
 
@@ -358,12 +358,25 @@ describe("MissionCanvas interactions", () => {
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/)).toHaveLength(8));
 		const fitViewSpy = vi.spyOn(instance!, "fitView").mockResolvedValue(true);
 		fireEvent.click(screen.getByTestId("mission-node-face-wu-binding"));
-		await waitFor(() => expect(screen.getByTestId("mission-canvas-inspector-overlay")).toBeInTheDocument());
+		const overlay = await screen.findByTestId("mission-canvas-inspector-overlay");
+		expect(overlay).toHaveAttribute("role", "dialog");
+		expect(overlay).toHaveAttribute("aria-modal", "true");
+		expect(overlay).toHaveAccessibleName("WorkUnit");
+		expect(screen.getByTestId("outcome-inspector")).not.toHaveAttribute("role", "region");
 		expect(screen.getByTestId("mission-canvas-viewport")).toHaveAttribute("inert");
+		await waitFor(() => expect(overlay).toHaveFocus());
+		const close = screen.getByTestId("outcome-inspector-close");
+		fireEvent.keyDown(overlay, { key: "Tab" });
+		expect(close).toHaveFocus();
+		fireEvent.keyDown(close, { key: "Tab" });
+		expect(close).toHaveFocus();
+		fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+		expect(close).toHaveFocus();
 		await new Promise((resolve) => setTimeout(resolve, 40));
 		expect(fitViewSpy).not.toHaveBeenCalled();
-		fireEvent.click(screen.getByTestId("outcome-inspector-close"));
+		fireEvent.click(close);
 		await waitFor(() => expect(screen.queryByTestId("mission-canvas-inspector-overlay")).not.toBeInTheDocument());
+		await waitFor(() => expect(document.activeElement).toHaveAttribute("data-id", "wu-binding"));
 		expect(screen.getByTestId("mission-canvas-viewport")).not.toHaveAttribute("inert");
 		expect(fitViewSpy).not.toHaveBeenCalled();
 	});
