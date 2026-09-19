@@ -7,9 +7,9 @@ import type { MissionCanvasModel } from "./mission-canvas-model";
  * positions never recompute and the viewport never moves; only a real
  * topology swap (new fingerprint) pays for layout.
  *
- * A layout request that resolves after a newer request for a DIFFERENT
- * topology was issued answers "stale" and is never cached or applied - a
- * topology swap can never paint a mixed revision.
+ * Cancellation is consumer-scoped: the React owner ignores an old result
+ * after its model changes or it unmounts. Independent canvases never cancel
+ * one another, and every cache write remains fenced by its own topology key.
  *
  * When Worker is unavailable (tests, non-DOM runtimes) the same ELK graph is
  * laid out on the main thread via a lazily imported bundled ELK. The pure
@@ -99,7 +99,7 @@ function cachePositions(topologyKey: string, positions: CanvasPositions): void {
 	positionCache.set(topologyKey, positions);
 }
 
-export type CanvasLayoutResult = { status: "ready"; positions: CanvasPositions } | { status: "stale" };
+export type CanvasLayoutResult = { status: "ready"; positions: CanvasPositions };
 
 type ElkLike = { layout(graph: unknown): Promise<unknown> };
 type ElkModule = { default: new (options?: Record<string, unknown>) => ElkLike };
@@ -135,7 +135,6 @@ type ElkInstance = {
  */
 let elkInstance: ElkInstance | undefined;
 let workerDisabled = false;
-let requestSeq = 0;
 
 function fatalWorkerError(instance: ElkInstance, error: Error): void {
 	workerDisabled = true;
@@ -213,24 +212,21 @@ function layoutWithGuards(instance: ElkInstance, graph: unknown): Promise<unknow
 	});
 }
 
-/** Request positions for one topology. Resolves "stale" when a newer request
- *  for a different topology superseded this one before it finished. Results
- *  are cached by topologyKey, so a repeat request for a seen topology is a
- *  Map read, never a layout. Throws only when both the worker path and the
- *  main-thread retry fail - the caller surfaces that as an honest error. */
+/** Request positions for one topology. Results are cached by topologyKey, so
+ *  a repeat request for a seen topology is a Map read, never a layout. The
+ *  caller owns cancellation, which keeps simultaneous canvases independent.
+ *  Throws only when both the worker path and the main-thread retry fail - the
+ *  caller surfaces that as an honest error. */
 export async function requestCanvasLayout(model: MissionCanvasModel): Promise<CanvasLayoutResult> {
 	const cached = cachedCanvasPositions(model.topologyKey);
 	if (cached) return { status: "ready", positions: cached };
 
-	const seq = ++requestSeq;
-	const isCurrent = () => seq === requestSeq;
 	const graph = buildElkGraph(model);
 
 	const instance = await getElk();
 	const usedWorker = Boolean(instance.worker);
 	try {
 		const laid = await layoutWithGuards(instance, graph);
-		if (!isCurrent()) return { status: "stale" };
 		const positions = extractPositions(laid as LaidOutElkNode);
 		cachePositions(model.topologyKey, positions);
 		return { status: "ready", positions };
@@ -240,10 +236,10 @@ export async function requestCanvasLayout(model: MissionCanvasModel): Promise<Ca
 		// with no worker involved, or a failed retry, propagates so the canvas
 		// can say so instead of hanging.
 		if (usedWorker) {
-			workerDisabled = true;
-			elkInstance = undefined;
+			// Protocol-level rejections do not arrive through onerror, so retire
+			// this worker explicitly before retrying on the bundled engine.
+			fatalWorkerError(instance, error instanceof Error ? error : new Error(String(error)));
 			const laid = await layoutWithGuards(await getElk(), graph);
-			if (!isCurrent()) return { status: "stale" };
 			const positions = extractPositions(laid as LaidOutElkNode);
 			cachePositions(model.topologyKey, positions);
 			return { status: "ready", positions };
@@ -257,7 +253,6 @@ export function resetCanvasLayoutStateForTests(): void {
 	positionCache.clear();
 	elkInstance = undefined;
 	workerDisabled = false;
-	requestSeq = 0;
 	workerCtor = undefined;
 	elkLoader = () => import("elkjs/lib/elk.bundled.js") as Promise<ElkModule>;
 	layoutTimeoutMs = DEFAULT_LAYOUT_TIMEOUT_MS;

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setCanvasLayoutHooksForTests } from "./mission-canvas-layout";
 
@@ -92,14 +92,28 @@ describe("requestCanvasLayout", () => {
 		expect(cachedCanvasPositions(model.topologyKey)).toBeDefined();
 	});
 
-	it("answers stale for a request superseded by a different topology, and never caches it", async () => {
-		const older = requestCanvasLayout(tinyModel("old-topology"));
-		const newer = requestCanvasLayout(tinyModel("new-topology"));
-		const [olderResult, newerResult] = await Promise.all([older, newer]);
-		expect(olderResult.status).toBe("stale");
-		expect(newerResult.status).toBe("ready");
-		expect(cachedCanvasPositions("old-topology")).toBeUndefined();
-		expect(cachedCanvasPositions("new-topology")).toBeDefined();
+	it("keeps concurrent consumers independent when two uncached topologies resolve out of order", async () => {
+		const resolvers: ((value: unknown) => void)[] = [];
+		setCanvasLayoutHooksForTests({
+			elkLoader: async () => ({
+				default: class {
+					layout(graph: { children: { id: string }[] }): Promise<unknown> {
+						return new Promise((resolve) => resolvers.push(() => resolve({ children: graph.children.map((child, index) => ({ ...child, x: index * 10, y: 0 })) })));
+					}
+				},
+			}),
+		});
+		const earlier = requestCanvasLayout(tinyModel("earlier-canvas"));
+		const later = requestCanvasLayout(tinyModel("later-canvas"));
+		await vi.waitFor(() => expect(resolvers).toHaveLength(2));
+		resolvers[1]({});
+		const laterResult = await later;
+		resolvers[0]({});
+		const earlierResult = await earlier;
+		expect(earlierResult.status).toBe("ready");
+		expect(laterResult.status).toBe("ready");
+		expect(cachedCanvasPositions("earlier-canvas")).toBeDefined();
+		expect(cachedCanvasPositions("later-canvas")).toBeDefined();
 	});
 
 	it("lays out a proposed plan model through the same path", async () => {
@@ -142,6 +156,35 @@ describe("requestCanvasLayout", () => {
 		const result = await requestCanvasLayout(tinyModel("silent-worker"));
 		expect(result.status).toBe("ready");
 		expect(Date.now() - started).toBeLessThan(5000);
+	});
+
+	it("terminates a worker whose protocol rejects before retrying on the main thread", async () => {
+		let terminated = 0;
+		let construction = 0;
+		class RejectingWorker {
+			onmessage: ((event: MessageEvent) => void) | null = null;
+			onerror: ((event: { message?: string }) => void) | null = null;
+			onmessageerror: (() => void) | null = null;
+			postMessage(): void {}
+			terminate(): void {
+				terminated += 1;
+			}
+		}
+		setCanvasLayoutHooksForTests({
+			workerCtor: RejectingWorker as unknown as new (url: string) => Worker,
+			elkLoader: async () => ({
+				default: class {
+					private readonly workerBacked = construction++ === 0;
+					layout(graph: { children: { id: string }[] }): Promise<unknown> {
+						if (this.workerBacked) return Promise.reject(new Error("worker protocol rejected"));
+						return Promise.resolve({ children: graph.children.map((child) => ({ ...child, x: 0, y: 0 })) });
+					}
+				},
+			}),
+		});
+		const result = await requestCanvasLayout(tinyModel("protocol-rejection"));
+		expect(result.status).toBe("ready");
+		expect(terminated).toBe(1);
 	});
 
 	it("propagates when the worker path AND the main-thread retry both fail", async () => {

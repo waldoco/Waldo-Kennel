@@ -6,7 +6,6 @@ import {
 	Position,
 	ReactFlow,
 	ReactFlowProvider,
-	applyNodeChanges,
 	type Edge,
 	type Node,
 	type NodeChange,
@@ -169,48 +168,65 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	const instanceRef = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
 	const fittedKeyRef = useRef<string | undefined>(undefined);
 
-	// Refit exactly when a NEW topology's layout lands - never on a state-only
-	// refresh (the key is unchanged and the guard holds).
-	useEffect(() => {
-		if (!layout || !instanceRef.current) return;
-		if (fittedKeyRef.current === layout.key) return;
-		fittedKeyRef.current = layout.key;
-		instanceRef.current.fitView({ duration: reducedMotion ? 0 : 200 });
-	}, [layout, reducedMotion]);
-
-	const [flowNodes, setFlowNodes] = useState<Node<FlowNodeData>[]>([]);
-	useEffect(() => {
-		if (!model || !graph || !layout || layout.key !== model.topologyKey) return;
-		setFlowNodes((current) => {
-			const measured = new Map(current.map((node) => [node.id, node.measured]));
-			return model.nodes.map((node) => ({
-				ariaLabel: `${node.title} - ${graph.nodesByWorkUnitId.get(node.workUnitId)?.status.label ?? node.state}`,
-				data: { view: graph.nodesByWorkUnitId.get(node.workUnitId) as MissionNodeView },
-				draggable: false,
-				connectable: false,
-				id: node.workUnitId,
-				measured: measured.get(node.workUnitId),
-				position: layout.positions.get(node.workUnitId) ?? { x: 0, y: 0 },
-				selected: node.workUnitId === selectedWorkUnitId,
-				type: "workunit" as const,
-			}));
-		});
+	// Positioned nodes are derived synchronously from one model/layout pair.
+	// React never commits a new layout key alongside the previous topology.
+	const flowNodes = useMemo<Node<FlowNodeData>[]>(() => {
+		if (!model || !graph || !layout || layout.key !== model.topologyKey) return [];
+		return model.nodes.map((node) => ({
+			ariaLabel: `${node.title} - ${graph.nodesByWorkUnitId.get(node.workUnitId)?.status.label ?? node.state}`,
+			data: { view: graph.nodesByWorkUnitId.get(node.workUnitId) as MissionNodeView },
+			draggable: false,
+			connectable: false,
+			id: node.workUnitId,
+			position: layout.positions.get(node.workUnitId) ?? { x: 0, y: 0 },
+			selected: node.workUnitId === selectedWorkUnitId,
+			type: "workunit" as const,
+		}));
 	}, [model, graph, layout, selectedWorkUnitId]);
+
+	// A controlled React Flow commits its external store after React commits the
+	// nodes prop. Wait until the instance reports the exact topology before
+	// fitting, and do not record the key until that fit really occurs.
+	useEffect(() => {
+		if (!layout || !model || !instanceRef.current) return;
+		if (layout.key !== model.topologyKey) return;
+		if (fittedKeyRef.current === layout.key) return;
+		const expectedIds = model.nodes.map((node) => node.workUnitId).sort();
+		let cancelled = false;
+		let retryTimer: ReturnType<typeof setTimeout> | undefined;
+		const fitCommittedTopology = () => {
+			if (cancelled || !instanceRef.current) return;
+			const renderedIds = instanceRef.current.getNodes().map((node) => node.id).sort();
+			if (renderedIds.length !== expectedIds.length || renderedIds.some((id, index) => id !== expectedIds[index])) {
+				retryTimer = setTimeout(fitCommittedTopology, 16);
+				return;
+			}
+			instanceRef.current.fitView({ duration: reducedMotion ? 0 : 200 });
+			fittedKeyRef.current = layout.key;
+		};
+		retryTimer = setTimeout(fitCommittedTopology, 0);
+		return () => {
+			cancelled = true;
+			if (retryTimer !== undefined) clearTimeout(retryTimer);
+		};
+	}, [flowNodes, layout, model, reducedMotion]);
 
 	const flowEdges = useMemo<Edge[]>(() => {
 		if (!model || !layout || layout.key !== model.topologyKey) return [];
-		return model.edges.map((edge) => ({
-			focusable: false,
-			id: `${edge.from}->${edge.to}`,
-			selectable: false,
-			source: edge.from,
-			target: edge.to,
-			type: "smoothstep",
-		}));
+		const nodeIds = new Set(model.nodes.map((node) => node.workUnitId));
+		return model.edges
+			.filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
+			.map((edge) => ({
+				focusable: false,
+				id: `${edge.from}->${edge.to}`,
+				selectable: false,
+				source: edge.from,
+				target: edge.to,
+				type: "smoothstep",
+			}));
 	}, [model, layout]);
 
 	const onNodesChange = useCallback((changes: NodeChange<Node<FlowNodeData>>[]) => {
-		setFlowNodes((current) => applyNodeChanges(changes, current));
 		for (const change of changes) {
 			if (change.type === "select") {
 				setSelectedWorkUnitId((selectedNow) => {
@@ -224,9 +240,13 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 	const handleInit = useCallback(
 		(instance: ReactFlowInstance<Node<FlowNodeData>, Edge>) => {
 			instanceRef.current = instance;
+			if (layout?.key === model?.topologyKey) {
+				instance.fitView({ duration: reducedMotion ? 0 : 200 });
+				fittedKeyRef.current = layout.key;
+			}
 			onInstanceReady?.(instance);
 		},
-		[onInstanceReady],
+		[layout, model, onInstanceReady, reducedMotion],
 	);
 
 	// Bind to the store's RESOLVED theme, never the preference: under "system"
@@ -319,8 +339,6 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 							colorMode={colorMode}
 							edges={flowEdges}
 							edgesFocusable={false}
-							fitView
-							fitViewOptions={{ duration: reducedMotion ? 0 : 200 }}
 							nodes={flowNodes}
 							nodesConnectable={false}
 							nodesDraggable={false}

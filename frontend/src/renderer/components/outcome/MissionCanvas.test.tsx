@@ -54,6 +54,24 @@ describe("MissionCanvas", () => {
 		expect(screen.queryByTestId("mission-canvas-layout-pending")).not.toBeInTheDocument();
 	});
 
+	it("never sends a missing-endpoint edge to React Flow", async () => {
+		let instance: ReactFlowInstance<any, any> | undefined;
+		const mission = dummyMissionProjection();
+		mission.edges = [...mission.edges, { fromWorkUnitId: mission.nodes[0].workUnitId, toWorkUnitId: "ghost-node" }];
+		render(
+			<MissionCanvas
+				missionQuery={missionQuery({ mission })}
+				onInstanceReady={(ready) => {
+					instance = ready;
+				}}
+				planApproved
+			/>,
+		);
+		await waitFor(() => expect(instance).toBeDefined());
+		await waitFor(() => expect(instance!.getEdges().length).toBeGreaterThan(0));
+		expect(instance!.getEdges().some((edge) => edge.source === "ghost-node" || edge.target === "ghost-node")).toBe(false);
+	});
+
 	it("selects a node into the shared OutcomeInspector; the canvas exposes no execution surface", async () => {
 		render(<MissionCanvas missionQuery={missionQuery()} planApproved />);
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
@@ -81,6 +99,9 @@ describe("MissionCanvas", () => {
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
 		await waitFor(() => expect(instance).toBeDefined());
 		const fitViewSpy = vi.spyOn(instance!, "fitView");
+		await waitFor(() => expect(instance!.getNodes()).toHaveLength(8));
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const fitCallsBeforeStateRefresh = fitViewSpy.mock.calls.length;
 
 		fireEvent.click(screen.getByTestId("mission-node-face-wu-sweep"));
 		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
@@ -90,24 +111,29 @@ describe("MissionCanvas", () => {
 		const stateOnlyQuery = { ...query, mission: withNodeState(query.mission, "wu-docs", "runnable") };
 		rerender(<MissionCanvas missionQuery={stateOnlyQuery} onInstanceReady={() => {}} planApproved />);
 		await waitFor(() => expect(screen.getByTestId("mission-node-face-wu-docs")).toHaveTextContent("Ready"));
-		expect(fitViewSpy).not.toHaveBeenCalled();
+		expect(fitViewSpy).toHaveBeenCalledTimes(fitCallsBeforeStateRefresh);
 		expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument();
 
-		// Topology swap: new fingerprint, the selected node removed. Refit once;
-		// selection moves to the deterministic successor.
+		// Topology swap uses a wholly different ID set and extent. At the exact
+		// moment fitView runs, React Flow must already expose only those nodes.
+		const replacement = query.mission!.nodes[0];
 		const swapped = {
 			...query.mission!,
-			topologyFingerprint: "topology-resume-race-4",
+			topologyFingerprint: "topology-replacement-only",
 			topologyGeneration: 4,
-			nodes: query.mission!.nodes.filter((node) => node.workUnitId !== "wu-sweep"),
-			edges: query.mission!.edges.filter((edge) => edge.to !== "wu-sweep"),
+			nodes: [{ ...replacement, workUnitId: "wu-replacement", title: "Replacement unit", dependsOn: [] }],
+			edges: [],
 			nextRunnableWorkUnitId: undefined,
 		};
+		const idsAtFit: string[][] = [];
+		fitViewSpy.mockImplementation(() => {
+			idsAtFit.push(instance!.getNodes().map((node) => node.id).sort());
+			return Promise.resolve(true);
+		});
 		rerender(<MissionCanvas missionQuery={{ ...query, mission: swapped }} onInstanceReady={() => {}} planApproved />);
-		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledTimes(1));
-		// The nodes rebuild in a later effect pass than the fit effect, so this
-		// assertion must wait for the swapped graph to paint.
-		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(7));
+		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledTimes(fitCallsBeforeStateRefresh + 1));
+		expect(idsAtFit.at(-1)).toEqual(["wu-replacement"]);
+		expect(screen.getByTestId("mission-node-face-wu-replacement")).toBeInTheDocument();
 		expect(screen.queryByTestId("mission-node-face-wu-sweep")).not.toBeInTheDocument();
 	});
 
@@ -136,6 +162,8 @@ describe("MissionCanvas", () => {
 		await waitFor(() => expect(screen.queryAllByTestId(/^mission-node-face-/).length).toBe(8));
 		await waitFor(() => expect(instance).toBeDefined());
 		const fitViewSpy = vi.spyOn(instance!, "fitView");
+		await waitFor(() => expect(instance!.getNodes()).toHaveLength(8));
+		fitViewSpy.mockClear();
 		const swapped = { ...dummyMissionProjection(), topologyFingerprint: "topology-other", topologyGeneration: 9 };
 		rerender(<MissionCanvas missionQuery={{ ...query, mission: swapped }} onInstanceReady={() => {}} planApproved />);
 		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ duration: 0 })));
