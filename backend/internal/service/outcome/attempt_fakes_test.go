@@ -461,12 +461,13 @@ func timeToSuffix(t time.Time) string {
 // for and answers with whatever failure the current scenario injects. NO
 // fallback: the requested harness is echoed verbatim.
 type fakeSpawner struct {
-	mu           sync.Mutex
-	readiness    ports.AgentProfileReadiness
-	readinessErr error
-	readinessN   int
-	spawnErr     error
-	terminateErr error
+	afterPrelaunch func()
+	mu             sync.Mutex
+	readiness      ports.AgentProfileReadiness
+	readinessErr   error
+	readinessN     int
+	spawnErr       error
+	terminateErr   error
 	// terminateResult shapes the next successful Terminate answer; nil means
 	// a clean proven stop whose workspace was freed. Tests inject the
 	// dirty-preserved shape {ProviderStopped:true, WorkspaceFreed:false} to
@@ -530,6 +531,9 @@ func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (p
 	}
 	if err := req.BeforeProviderLaunch(context.Background(), rec, bound); err != nil {
 		return ports.AttemptSpawnResult{}, &ports.AttemptPrelaunchError{Stage: "before_provider_launch", Err: err}
+	}
+	if f.afterPrelaunch != nil {
+		f.afterPrelaunch()
 	}
 	return ports.AttemptSpawnResult{Session: domain.Session{SessionRecord: rec}, ExecutionPolicy: &bound, CompletionBoundary: f.completionBoundary}, nil
 }

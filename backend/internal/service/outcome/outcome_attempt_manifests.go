@@ -2,6 +2,7 @@ package outcome
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -21,9 +22,10 @@ func (s *Service) WithAttemptManifests(manifests ports.AttemptManifestStore) *Se
 // sealAttemptInputManifest writes the input half of an Attempt's custody
 // record: the exact lineage, frozen digests, predecessor artifact versions,
 // approved documents, and authorized checks the Attempt was admitted with.
-// The record is insert-once; a replayed start returns before this point, so a
-// second write attempt means something is wrong and is surfaced.
-func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain.OutcomeID, plan domain.PlanRevision, unit domain.WorkUnit, attempt domain.Attempt, session domain.Session, inputs []ports.AttemptInputRef, documents *ports.AttemptDocumentInputs, coreDigest, compiledDigest, policyDigest string) error {
+// It runs inside the mandatory provider-launch crash boundary. The record is
+// insert-once: an identical re-seal (a boundary replay) is accepted, and a
+// divergent one is refused, exactly like the output half.
+func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain.OutcomeID, plan domain.PlanRevision, unit domain.WorkUnit, attempt domain.Attempt, session domain.SessionRecord, inputs []ports.AttemptInputRef, documents *ports.AttemptDocumentInputs, coreDigest, compiledDigest, policyDigest string) error {
 	if s.manifests == nil {
 		return nil
 	}
@@ -53,7 +55,21 @@ func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain
 	if err != nil {
 		return fmt.Errorf("seal input custody manifest: %w", err)
 	}
+	if existing, found, err := s.manifests.GetAttemptManifest(ctx, attempt.ID, domain.AttemptManifestInput); err != nil {
+		return fmt.Errorf("read input custody manifest for %s: %w", attempt.ID, err)
+	} else if found {
+		if existing.PayloadDigest != manifest.PayloadDigest {
+			return fmt.Errorf("input custody manifest for %s already sealed with different content", attempt.ID)
+		}
+		return nil
+	}
 	if err := s.manifests.SaveAttemptManifest(ctx, manifest); err != nil {
+		if errors.Is(err, ports.ErrAttemptManifestSealed) {
+			if existing, found, readErr := s.manifests.GetAttemptManifest(ctx, attempt.ID, domain.AttemptManifestInput); readErr == nil && found && existing.PayloadDigest == manifest.PayloadDigest {
+				return nil
+			}
+			return fmt.Errorf("input custody manifest for %s already sealed with different content: %w", attempt.ID, err)
+		}
 		return fmt.Errorf("persist input custody manifest: %w", err)
 	}
 	return nil

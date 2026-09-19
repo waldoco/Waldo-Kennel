@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/service/outcome"
 )
 
 type fakeManifestStore struct {
@@ -83,5 +84,47 @@ func TestStartAttemptWithoutManifestStoreStartsNormally(t *testing.T) {
 	}
 	if spawner.spawnCalls() != 1 {
 		t.Fatalf("provider spawn calls = %d, want one", spawner.spawnCalls())
+	}
+}
+
+// The input half is sealed INSIDE the mandatory provider-launch crash
+// boundary: by the time Spawn has launched anything, the custody record is
+// durable. A crash after provider launch can never leave an executing Attempt
+// without its admitted inputs sealed.
+func TestStartAttemptSealsInputManifestInsideLaunchBoundary(t *testing.T) {
+	svc, _, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	manifests := &fakeManifestStore{}
+	svc.WithAttemptManifests(manifests)
+	sealedAtBoundary := false
+	spawner.afterPrelaunch = func() {
+		sealedAtBoundary = len(manifests.saved) == 1
+	}
+	if _, err := svc.StartAttempt(context.Background(), outcomeID, startInput(planID)); err != nil {
+		t.Fatalf("start attempt: %v", err)
+	}
+	if !sealedAtBoundary {
+		t.Fatal("input custody half was not sealed inside the provider-launch boundary")
+	}
+}
+
+// A crash between launch-packet persistence and custody sealing leaves a
+// packet-bound Attempt with no input half. Recovery must refuse to continue
+// it: launch evidence is inconsistent and custody stays held.
+func TestRecoverAttemptPacketBoundWithoutInputManifestStaysHeld(t *testing.T) {
+	svc, _, _, _, outcomeID, planID := newAttemptHarness(t)
+	manifests := &fakeManifestStore{}
+	svc.WithAttemptManifests(manifests)
+	view, err := svc.StartAttempt(context.Background(), outcomeID, startInput(planID))
+	if err != nil {
+		t.Fatalf("start attempt: %v", err)
+	}
+	if len(manifests.saved) != 1 {
+		t.Fatalf("sealed manifests = %d, want one", len(manifests.saved))
+	}
+	// Simulate the crash window: packet durable, custody half lost.
+	manifests.saved = nil
+	_, err = svc.RecoverAttempt(context.Background(), outcomeID, view.Attempt.ID, outcome.RecoveryInput{Action: outcome.RecoveryActionReconcile})
+	if code := requireAPICode(t, err); code != outcome.CodeAttemptCustodyUnproven {
+		t.Fatalf("reconcile code = %s, want %s", code, outcome.CodeAttemptCustodyUnproven)
 	}
 }

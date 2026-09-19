@@ -408,7 +408,16 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 			if digestErr != nil {
 				return digestErr
 			}
-			return s.admission.PersistWorkspaceBoundLaunchPacket(ctx, packet)
+			if err := s.admission.PersistWorkspaceBoundLaunchPacket(ctx, packet); err != nil {
+				return err
+			}
+			// The input custody half seals here, inside the mandatory crash
+			// boundary: after the launch packet is durable and before any
+			// controller can start, so no provider ever runs without its
+			// admitted inputs sealed. A failure aborts the launch as a known
+			// pre-launch error and the Attempt ends closed.
+			compiledDigest := computeCompiledBriefDigest(binding, session.Mode, recomputed, policyDigest, inputs)
+			return s.sealAttemptInputManifest(ctx, outcomeID, plan, unit, attempt, session, inputs, documentInputs, recomputed, compiledDigest, policyDigest)
 		},
 	})
 	if err != nil {
@@ -472,9 +481,6 @@ func (s *Service) StartAttempt(ctx context.Context, outcomeID domain.OutcomeID, 
 		RunBriefCoreDigest: recomputed, RunBriefCompiledDigest: compiled, AdmissionSnapshot: string(snapshot), BoundAt: s.clock(),
 	}); err != nil {
 		return AttemptView{}, s.admitUnresolved(ctx, attempt.ID, domain.ObservationActivationAmbiguous, fmt.Errorf("session binding failed: %w", err))
-	}
-	if err := s.sealAttemptInputManifest(ctx, outcomeID, plan, unit, attempt, session, inputs, documentInputs, recomputed, compiled, policyDigest); err != nil {
-		return AttemptView{}, s.admitUnresolved(ctx, attempt.ID, domain.ObservationActivationAmbiguous, err)
 	}
 	rows, err := s.store.TransitionAttemptStatus(ctx, outcomeID, attempt.ID, domain.AttemptQueued, domain.AttemptRunning, s.clock())
 	if err != nil || rows != 1 {

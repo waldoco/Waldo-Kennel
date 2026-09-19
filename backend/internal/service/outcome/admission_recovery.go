@@ -43,6 +43,18 @@ func (s *Service) launchRecoveryState(ctx context.Context, attempt domain.Attemp
 		}
 		return LaunchLegacy, nil
 	}
+	// A packet-bound attempt crossed the launch crash boundary, so its sealed
+	// input custody half must exist. Its absence means the crash landed
+	// between packet persistence and custody sealing: the launch evidence is
+	// inconsistent, and the Attempt stays held rather than continuing with
+	// its admitted inputs unrecorded.
+	if s.manifests != nil {
+		if _, ok, mErr := s.manifests.GetAttemptManifest(ctx, attempt.ID, domain.AttemptManifestInput); mErr != nil {
+			return "", mErr
+		} else if !ok {
+			return "", fmt.Errorf("launch packet persisted for %s but its sealed input custody manifest is missing", attempt.ID)
+		}
+	}
 	ref, bound, err := s.store.LatestAttemptSessionRef(ctx, attempt.ID)
 	if err != nil {
 		return "", err
