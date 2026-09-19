@@ -464,12 +464,12 @@ type fakeSpawner struct {
 	afterPrelaunch   func()
 	sessionMetadata  domain.SessionMetadata
 	sessionWorktrees []domain.SessionWorktreeRecord
-	mu              sync.Mutex
-	readiness       ports.AgentProfileReadiness
-	readinessErr    error
-	readinessN      int
-	spawnErr        error
-	terminateErr    error
+	mu               sync.Mutex
+	readiness        ports.AgentProfileReadiness
+	readinessErr     error
+	readinessN       int
+	spawnErr         error
+	terminateErr     error
 	// terminateResult shapes the next successful Terminate answer; nil means
 	// a clean proven stop whose workspace was freed. Tests inject the
 	// dirty-preserved shape {ProviderStopped:true, WorkspaceFreed:false} to

@@ -30,10 +30,10 @@ type SessionMetadata struct {
 	WorkspaceRepoPath string `json:"workspaceRepoPath,omitempty"`
 	DiffBaseSHA       string `json:"diffBaseSha,omitempty"`
 	DiffBaseRef       string `json:"diffBaseRef,omitempty"`
-	RuntimeHandleID string                `json:"runtimeHandleId,omitempty"`
-	RuntimeLaunchID string                `json:"runtimeLaunchId,omitempty"`
-	AgentSessionID  string                `json:"agentSessionId,omitempty"`
-	Prompt          string                `json:"prompt,omitempty"`
+	RuntimeHandleID   string `json:"runtimeHandleId,omitempty"`
+	RuntimeLaunchID   string `json:"runtimeLaunchId,omitempty"`
+	AgentSessionID    string `json:"agentSessionId,omitempty"`
+	Prompt            string `json:"prompt,omitempty"`
 	// LatestUserPrompt is the latest real user-authored task direction observed
 	// for this Kennel session. Internal Kennel coordination messages (for example an
 	// agent-switch handoff request) must not replace it.

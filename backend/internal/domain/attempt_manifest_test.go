@@ -183,53 +183,58 @@ func TestAttemptManifestValidateChecksBoundRepos(t *testing.T) {
 }
 
 func TestAttemptManifestValidateRequiresExactlyOneSourceTreeRepresentation(t *testing.T) {
-	base := validInputManifest()
-	seal := func(m AttemptInputManifest) error {
-		sealed, err := NewAttemptInputManifest(m, time.Now())
-		if err != nil {
-			return err
+	// Exhaustive (kind x base x ref x repos) matrix: exactly four shapes may
+	// seal - staged folder with no git identity, single-repo git worktree
+	// with a base revision (ref optional), and a workspace with only a repo
+	// inventory. Every other combination must be refused.
+	repo := AttemptManifestRepo{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root"}
+	type shape struct {
+		kind       WorkspaceKind
+		base, ref  string
+		repos      []AttemptManifestRepo
+		wantSealed bool
+	}
+	var shapes []shape
+	for _, kind := range []WorkspaceKind{WorkspaceStagedFolder, WorkspaceGitWorktree} {
+		for _, base := range []string{"", "base-sha"} {
+			for _, ref := range []string{"", "main"} {
+				for _, repos := range [][]AttemptManifestRepo{nil, {repo}} {
+					want := false
+					switch kind {
+					case WorkspaceStagedFolder:
+						want = base == "" && ref == "" && len(repos) == 0
+					case WorkspaceGitWorktree:
+						if len(repos) == 0 {
+							want = base != ""
+						} else {
+							want = base == "" && ref == ""
+						}
+					}
+					shapes = append(shapes, shape{kind, base, ref, repos, want})
+				}
+			}
 		}
-		return sealed.Validate()
 	}
-	// single-repo git worktree: base revision, no repos - valid (the helper).
-	if err := seal(base); err != nil {
-		t.Fatalf("single-repo base representation must seal: %v", err)
+	if len(shapes) != 16 {
+		t.Fatalf("matrix has %d shapes, want the full 16", len(shapes))
 	}
-	// workspace: repos, no base - valid.
-	ws := base
-	ws.BaseRevision, ws.BaseRef = "", ""
-	ws.Repos = []AttemptManifestRepo{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root"}}
-	if err := seal(ws); err != nil {
-		t.Fatalf("workspace repo representation must seal: %v", err)
+	sealed := 0
+	for _, sh := range shapes {
+		m := validInputManifest()
+		m.WorkspaceKind = sh.kind
+		m.BaseRevision, m.BaseRef, m.Repos = sh.base, sh.ref, sh.repos
+		_, err := NewAttemptInputManifest(m, time.Now())
+		if sh.wantSealed && err != nil {
+			t.Errorf("kind=%s base=%q ref=%q repos=%d: must seal, got %v", sh.kind, sh.base, sh.ref, len(sh.repos), err)
+		}
+		if !sh.wantSealed && err == nil {
+			t.Errorf("kind=%s base=%q ref=%q repos=%d: must be refused", sh.kind, sh.base, sh.ref, len(sh.repos))
+		}
+		if err == nil {
+			sealed++
+		}
 	}
-	// neither: refused.
-	neither := base
-	neither.BaseRevision, neither.BaseRef = "", ""
-	if err := seal(neither); err == nil {
-		t.Fatal("git worktree with neither base nor repos must be refused")
-	}
-	// both: refused.
-	both := base
-	both.Repos = []AttemptManifestRepo{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root"}}
-	if err := seal(both); err == nil {
-		t.Fatal("git worktree with both base and repos must be refused")
-	}
-	// workspace with a top-level base ref: refused.
-	refd := ws
-	refd.BaseRef = "main"
-	if err := seal(refd); err == nil {
-		t.Fatal("workspace shape with a top-level base ref must be refused")
-	}
-	// staged folder: no representation - valid; with one - refused.
-	staged := base
-	staged.WorkspaceKind = WorkspaceStagedFolder
-	staged.BaseRevision, staged.BaseRef = "", ""
-	if err := seal(staged); err != nil {
-		t.Fatalf("staged folder without a representation must seal: %v", err)
-	}
-	stagedWithBase := staged
-	stagedWithBase.BaseRevision = "abc123"
-	if err := seal(stagedWithBase); err == nil {
-		t.Fatal("staged folder with a base revision must be refused")
+	if sealed != 4 {
+		t.Fatalf("%d shapes sealed, want exactly 4", sealed)
 	}
 }

@@ -175,8 +175,8 @@ func (m AttemptInputManifest) Validate() error {
 	// project binds its per-repo inventory. Anything else is not custody.
 	switch m.WorkspaceKind {
 	case WorkspaceStagedFolder:
-		if strings.TrimSpace(m.BaseRevision) != "" || len(m.Repos) != 0 {
-			return fmt.Errorf("staged folder source tree must not bind a base revision or repo inventory")
+		if strings.TrimSpace(m.BaseRevision) != "" || strings.TrimSpace(m.BaseRef) != "" || len(m.Repos) != 0 {
+			return fmt.Errorf("staged folder source tree must not bind a base revision, base ref, or repo inventory")
 		}
 	case WorkspaceGitWorktree:
 		hasBase := strings.TrimSpace(m.BaseRevision) != ""
