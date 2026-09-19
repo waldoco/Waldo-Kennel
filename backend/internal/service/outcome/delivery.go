@@ -23,6 +23,7 @@ const (
 	deliveryRequestInvalid   = "DELIVERY_REQUEST_INVALID"
 	deliveryArtifactMismatch = "DELIVERY_ARTIFACT_MISMATCH"
 	deliveryArtifactMissing  = "DELIVERY_ARTIFACT_MISSING"
+	deliveryLineageStale     = "DELIVERY_LINEAGE_STALE"
 	deliveryNotAccepted      = "DELIVERY_NOT_ACCEPTED"
 	deliveryInterrupted      = "DELIVERY_INTERRUPTED"
 	deliveryFailed           = "DELIVERY_FAILED"
@@ -146,6 +147,24 @@ func (s *Service) RequestDelivery(ctx context.Context, outcomeID domain.OutcomeI
 	}
 	if !receipt.RetentionState.Complete() {
 		return domain.OutcomeDelivery{}, apierr.Conflict(deliveryArtifactMissing, "Only a complete retained artifact can be delivered", map[string]any{"retentionState": string(receipt.RetentionState)})
+	}
+	// Defense in depth: admission already refuses superseded inputs for new
+	// Attempts, and proof already excludes stale Attempt evidence. Delivery is
+	// the last seam where a stale lineage could still leave the system - a
+	// retained artifact whose admitted inputs were superseded by upstream
+	// rework must not ship even when every earlier gate was bypassed.
+	if s.manifests != nil {
+		deliverAttempts, err := s.store.ListAttempts(ctx, outcomeID)
+		if err != nil {
+			return domain.OutcomeDelivery{}, err
+		}
+		staleness, err := s.lineageStaleness(ctx, outcomeID, deliverAttempts)
+		if err != nil {
+			return domain.OutcomeDelivery{}, err
+		}
+		if staleness.AttemptStale(in.AttemptID) {
+			return domain.OutcomeDelivery{}, apierr.Conflict(deliveryLineageStale, "The Attempt's admitted inputs are superseded by upstream rework; deliver the re-executed result", nil)
+		}
 	}
 
 	contractRevisionID, err := s.contractRevisionForReceipt(ctx, outcomeID, receipt.ContractRevisionNumber)

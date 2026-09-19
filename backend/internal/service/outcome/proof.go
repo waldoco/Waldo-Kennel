@@ -72,6 +72,11 @@ type ProofView struct {
 	// on the current Contract revision, so rework and reopen never ask the
 	// owner to type a raw identifier.
 	ReentryTargets []ReentryTargetView
+	// LineageStaleness reports Attempts and WorkUnits whose proving lineage is
+	// superseded by upstream rework. Evidence and verifications bound to a
+	// stale Attempt are already excluded from Criteria; this explains why, and
+	// is what the scheduler and mission projection surface.
+	LineageStaleness domain.LineageStaleness
 }
 
 // AttemptChangesView projects one retained Attempt's measured file changes.
@@ -176,7 +181,15 @@ func (s *Service) GetProof(ctx context.Context, outcomeID domain.OutcomeID) (Pro
 	if err != nil {
 		return ProofView{}, err
 	}
-	view := deriveProof(outcomeView, evidence, verifications, decisions, corrections, delegated)
+	attempts, err := s.store.ListAttempts(ctx, outcomeID)
+	if err != nil {
+		return ProofView{}, err
+	}
+	staleness, err := s.lineageStaleness(ctx, outcomeID, attempts)
+	if err != nil {
+		return ProofView{}, err
+	}
+	view := deriveProof(outcomeView, evidence, verifications, decisions, corrections, delegated, staleness)
 	if err := s.attachResultFacts(ctx, outcomeView, &view); err != nil {
 		return ProofView{}, err
 	}
@@ -618,7 +631,7 @@ func planWorkUnitCoversCriterion(plan domain.PlanRevision, workUnitID domain.Wor
 	return false
 }
 
-func deriveProof(view View, allEvidence []domain.EvidenceItem, allVerifications []domain.VerificationRun, allDecisions []domain.AcceptanceDecision, corrections []domain.OutcomeCorrection, delegated map[domain.CriterionID]domain.DelegatedCriterion) ProofView {
+func deriveProof(view View, allEvidence []domain.EvidenceItem, allVerifications []domain.VerificationRun, allDecisions []domain.AcceptanceDecision, corrections []domain.OutcomeCorrection, delegated map[domain.CriterionID]domain.DelegatedCriterion, staleness domain.LineageStaleness) ProofView {
 	currentDecisions := make([]domain.AcceptanceDecision, 0)
 	var horizon time.Time
 	var horizonDecision domain.AcceptanceDecisionID
@@ -648,17 +661,18 @@ func deriveProof(view View, allEvidence []domain.EvidenceItem, allVerifications 
 		OutcomeID: view.Outcome.ID, Contract: view.Current, Status: ProofStatusActive,
 		Decisions: currentDecisions, Corrections: currentCorrections,
 		ActiveCorrection: active, ProofHorizon: horizon,
+		LineageStaleness: staleness,
 	}
 	allReady := len(view.Current.Criteria) > 0
 	for _, criterion := range view.Current.Criteria {
 		criterionView := CriterionProofView{Criterion: criterion, Gap: "Add supporting Evidence for this criterion."}
 		for _, item := range allEvidence {
-			if item.ContractRevisionID == view.Current.ID && item.CriterionID == criterion.ID {
+			if item.ContractRevisionID == view.Current.ID && item.CriterionID == criterion.ID && !staleProofSubject(staleness, item.SubjectType, item.SubjectID) {
 				criterionView.Evidence = append(criterionView.Evidence, item)
 			}
 		}
 		for _, run := range allVerifications {
-			if run.ContractRevisionID == view.Current.ID && run.CriterionID == criterion.ID {
+			if run.ContractRevisionID == view.Current.ID && run.CriterionID == criterion.ID && !staleProofSubject(staleness, run.SubjectType, run.SubjectID) {
 				criterionView.Verifications = append(criterionView.Verifications, run)
 			}
 		}

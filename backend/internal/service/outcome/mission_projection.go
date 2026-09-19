@@ -61,6 +61,8 @@ type MissionNode struct {
 	ScheduleState                     string
 	BlockingDependencies              []domain.WorkUnitID
 	BlockedReason, BlockedDetail      string
+	StaleLineage                      bool
+	StaleLineageDetail                string
 	CriterionIDs                      []domain.CriterionID
 	CriterionReady                    map[domain.CriterionID]bool
 	CurrentAttempt                    *MissionAttempt
@@ -164,6 +166,7 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 		}
 	}
 	evidence := []domain.EvidenceItem(nil)
+	staleness := domain.LineageStaleness{}
 	var currentContractID domain.ContractRevisionID
 	if s.proof != nil {
 		revisions, err := s.store.ListContractRevisions(ctx, outcomeID)
@@ -183,6 +186,12 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 		if err != nil {
 			return MissionProjection{}, err
 		}
+		// The evidence link surface is a proof surface: a stale Attempts
+		// evidence is excluded from GetProof, so it must not publish here
+		// either. The nodes StaleLineage flag already carries that story.
+		// Filter through the SAME walk the schedule flags came from: one
+		// projection is one snapshot, never two reads that can disagree.
+		staleness = schedule.LineageStaleness
 	}
 	if s.receipts != nil {
 		for i := range view.Nodes {
@@ -205,6 +214,9 @@ func (s *Service) GetMissionProjection(ctx context.Context, outcomeID domain.Out
 			n.ChangeSummary = measuredMissionChanges(receipt)
 			for _, item := range evidence {
 				if item.ContractRevisionID != currentContractID {
+					continue
+				}
+				if staleProofSubject(staleness, item.SubjectType, item.SubjectID) {
 					continue
 				}
 				if item.SubjectType == domain.ProofSubjectAttempt && item.SubjectID == string(receipt.AttemptID) && item.SubjectRevision == receipt.ArtifactVersion {
@@ -293,7 +305,7 @@ func composeMissionProjection(record domain.Outcome, schedule ScheduleView, atte
 	view := MissionProjection{Version: MissionProjectionVersion, OutcomeID: record.ID, MissionID: record.SpaceID, ContractRevisionNumber: record.CurrentRevisionNumber, PlanRevisionID: schedule.Plan.ID, PlanRevisionNumber: schedule.Plan.Number, TopologyGeneration: schedule.Plan.Number, NextRunnableID: schedule.NextRunnableID, CustodyHeldBy: schedule.CustodyHeldBy, NoRunnableReason: string(schedule.NoRunnableReason)}
 	view.TopologyFingerprint = missionTopologyFingerprint(schedule.Plan)
 	for _, entry := range schedule.WorkUnits {
-		n := MissionNode{WorkUnitID: string(entry.WorkUnit.ID), PlanRevisionID: string(schedule.Plan.ID), Title: entry.WorkUnit.Title, Role: string(entry.WorkUnit.Role), Inputs: append([]domain.WorkUnitInput(nil), entry.WorkUnit.Inputs...), Links: []MissionLink{}, DependsOn: append([]domain.WorkUnitID(nil), entry.WorkUnit.DependsOn...), ScheduleState: string(entry.State), BlockingDependencies: append([]domain.WorkUnitID(nil), entry.BlockingDependencies...), BlockedReason: string(entry.BlockedReason), BlockedDetail: entry.BlockedDetail, CriterionIDs: append([]domain.CriterionID(nil), entry.WorkUnit.CriterionIDs...), CriterionReady: entry.CriterionReady, Responsibility: "unconfirmed", UpdatedAt: schedule.Plan.CreatedAt}
+		n := MissionNode{WorkUnitID: string(entry.WorkUnit.ID), PlanRevisionID: string(schedule.Plan.ID), Title: entry.WorkUnit.Title, Role: string(entry.WorkUnit.Role), Inputs: append([]domain.WorkUnitInput(nil), entry.WorkUnit.Inputs...), Links: []MissionLink{}, DependsOn: append([]domain.WorkUnitID(nil), entry.WorkUnit.DependsOn...), ScheduleState: string(entry.State), BlockingDependencies: append([]domain.WorkUnitID(nil), entry.BlockingDependencies...), BlockedReason: string(entry.BlockedReason), BlockedDetail: entry.BlockedDetail, StaleLineage: entry.StaleLineage, StaleLineageDetail: entry.StaleLineageDetail, CriterionIDs: append([]domain.CriterionID(nil), entry.WorkUnit.CriterionIDs...), CriterionReady: entry.CriterionReady, Responsibility: "unconfirmed", UpdatedAt: schedule.Plan.CreatedAt}
 		if binding, err := entry.WorkUnit.ExecutionBinding(); err == nil && (binding.ModelSelection == domain.ExecutionBindingModelProviderDefault || binding.ModelSelection == domain.ExecutionBindingModelExplicit) {
 			n.ExecutionBinding = &MissionExecutionBinding{Provider: string(binding.Provider), ModelSelection: string(binding.ModelSelection), Model: binding.Model}
 		}

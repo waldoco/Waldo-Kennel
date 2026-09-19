@@ -107,6 +107,13 @@ type WorkUnitScheduleView struct {
 	// missing, incomplete, unreviewed or mislineaged it actually is.
 	BlockedDetail  string
 	CriterionReady map[domain.CriterionID]bool
+	// StaleLineage marks a WorkUnit whose proving lineage is superseded:
+	// upstream rework moved a dependency's retained result past the artifact
+	// version this unit's current Attempt was admitted to consume. Stale proof
+	// is already excluded from the criteria behind State; this is the
+	// explanation, and the signal that fresh execution is owed.
+	StaleLineage       bool
+	StaleLineageDetail string
 }
 
 // ScheduleView is derived from one approved current Plan plus canonical proof.
@@ -121,6 +128,11 @@ type ScheduleView struct {
 	CustodyHeldBy domain.WorkUnitID
 	// NoRunnableReason is set when nothing can start. Empty means something can.
 	NoRunnableReason ScheduleNoRunnableReason
+	// LineageStaleness is the single staleness walk derived for this view:
+	// the entry flags above are computed from it, and any downstream proof
+	// surface (the mission projections evidence links) must filter through
+	// this same report rather than re-deriving, so one view is one snapshot.
+	LineageStaleness domain.LineageStaleness
 }
 
 func attemptActiveForScheduling(status domain.AttemptStatus) bool {
@@ -284,7 +296,12 @@ func (s *Service) GetSchedule(ctx context.Context, outcomeID domain.OutcomeID, p
 	if err != nil {
 		return ScheduleView{}, err
 	}
-	return deriveSchedule(plan, attempts, proof, s.upstreamArtifactBlocks(ctx, plan, attempts))
+	view, err := deriveSchedule(plan, attempts, proof, s.upstreamArtifactBlocks(ctx, plan, attempts))
+	if err != nil {
+		return ScheduleView{}, err
+	}
+	view.LineageStaleness = proof.LineageStaleness
+	return view, nil
 }
 
 // upstreamArtifactBlocks reports, per WorkUnit, why its predecessors' retained
@@ -345,6 +362,10 @@ func deriveSchedule(plan domain.PlanRevision, attempts []domain.Attempt, proof P
 	}
 	for _, unit := range ordered {
 		entry := WorkUnitScheduleView{WorkUnit: unit, Attempts: attemptsForWorkUnit(unit.ID, currentAttempts), CriterionReady: map[domain.CriterionID]bool{}}
+		if facts := proof.LineageStaleness.WorkUnitStaleFacts(unit.ID); len(facts) > 0 {
+			entry.StaleLineage = true
+			entry.StaleLineageDetail = staleLineageDetail(facts)
+		}
 		for _, criterionID := range unit.CriterionIDs {
 			criterion, ok := criterionProofForID(proof, criterionID)
 			if !ok {
@@ -464,4 +485,11 @@ func (s *Service) selectWorkUnitForAttempt(ctx context.Context, outcomeID domain
 		return domain.WorkUnit{}, apierr.Conflict(CodeWorkUnitNotRunnable, "That WorkUnit is not the next dependency-ready unit", map[string]any{"requestedWorkUnitId": requested, "nextRunnableWorkUnitId": next.ID})
 	}
 	return next, nil
+}
+
+// staleLineageDetail summarizes the first supersession fact for surfaces that
+// show one line; the full fact list stays available through the proof view.
+func staleLineageDetail(facts []domain.LineageStaleFact) string {
+	first := facts[0]
+	return fmt.Sprintf("dependency %s result moved from artifact version %s to %s; re-execution is owed", first.DependencyUnitID, first.AdmittedVersion, first.CurrentVersion)
 }
