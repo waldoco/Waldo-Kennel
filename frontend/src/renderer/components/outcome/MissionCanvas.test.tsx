@@ -342,8 +342,11 @@ describe("MissionCanvas interactions", () => {
 		fireEvent.keyDown(nodeEl("wu-schema"), { key: "Enter" });
 		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
 
-		// Escape dismisses the modal overlay and returns focus toward the pane.
-		fireEvent.keyDown(screen.getByTestId("outcome-inspector"), { key: "Escape" });
+		// The modal overlay takes focus on mount, so a real keyboard Escape
+		// bubbles through its handler and returns focus toward the pane.
+		const overlay = screen.getByTestId("mission-canvas-inspector-overlay");
+		await waitFor(() => expect(overlay).toHaveFocus());
+		fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
 		expect(focusedId()).not.toBe("wu-schema");
 		expect(screen.queryByTestId("outcome-inspector")).not.toBeInTheDocument();
 	});

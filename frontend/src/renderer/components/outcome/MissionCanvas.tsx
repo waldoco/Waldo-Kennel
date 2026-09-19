@@ -292,6 +292,11 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 		[model, layout],
 	);
 	const viewportRef = useRef<HTMLDivElement>(null);
+	const overlayRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!selectedWorkUnitId) return;
+		overlayRef.current?.focus();
+	}, [selectedWorkUnitId]);
 	useEffect(() => {
 		const viewport = viewportRef.current;
 		if (!viewport || typeof ResizeObserver === "undefined") return;
@@ -514,6 +519,8 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 							event.preventDefault();
 							event.stopPropagation();
 						}}
+						ref={overlayRef}
+						tabIndex={-1}
 					>
 						<div className="h-full w-[min(22rem,calc(100%-1rem))] bg-card shadow-xl">
 							<OutcomeInspector node={selectedNode} onClose={() => setSelectedWorkUnitId(undefined)} view={selectedView} />
