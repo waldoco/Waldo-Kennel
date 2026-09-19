@@ -90,6 +90,51 @@ describe("scanImportFolder", () => {
 		]);
 	});
 
+	it("flags an initialized repository without commits as setup-ready with the unborn reason", async () => {
+		const root = await tempDir();
+		const repo = path.join(root, "unborn");
+		await git(["init", "-b", "main", repo]);
+
+		const scan = await scanImportFolder(repo, "project", {
+			env: { ...process.env, GIT_CEILING_DIRECTORIES: root },
+		});
+
+		expect(scan.repos).toEqual([
+			expect.objectContaining({
+				name: "unborn",
+				path: repo,
+				relativePath: ".",
+				status: "ok",
+				reason: "Repository must have at least one commit.",
+				needsGitInit: true,
+			}),
+		]);
+	});
+
+	it("marks a committed repository without a remote as needsGitInit without an unborn reason", async () => {
+		const root = await tempDir();
+		const repo = path.join(root, "local-only");
+		await git(["init", "-b", "main", repo]);
+		await writeFile(path.join(repo, "README.md"), "hello\n");
+		await git(["add", "README.md"], repo);
+		await git(["commit", "-m", "initial"], repo);
+
+		const scan = await scanImportFolder(repo, "project", {
+			env: { ...process.env, GIT_CEILING_DIRECTORIES: root },
+		});
+
+		expect(scan.repos).toEqual([
+			expect.objectContaining({
+				name: "local-only",
+				path: repo,
+				relativePath: ".",
+				status: "ok",
+				needsGitInit: true,
+			}),
+		]);
+		expect(scan.repos[0]?.reason).toBeUndefined();
+	});
+
 	it("leaves a plain non-nested project folder setup-ready", async () => {
 		const root = await tempDir();
 		const selected = path.join(root, "plain");

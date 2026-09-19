@@ -275,7 +275,8 @@ type ProjectRepositoryPreflight = {
 async function projectRepositoryPreflight(path: string): Promise<ProjectRepositoryPreflight> {
 	try {
 		const scan = await aoBridge.app.scanImportFolder({ path, mode: "project" });
-		const reason = scan.repos[0]?.reason ?? "";
+		const repo = scan.repos[0];
+		const reason = repo?.reason ?? "";
 		if (reason.startsWith("Selected folder is inside Kennel's internal data directory.")) {
 			return {
 				blockingError: reason,
@@ -284,18 +285,28 @@ async function projectRepositoryPreflight(path: string): Promise<ProjectReposito
 				setupWarning: null,
 			};
 		}
-		if (scan.repos.length === 0) {
+		if (!repo) {
 			return { blockingError: null, scan, setupCode: "NOT_A_GIT_REPO", setupWarning: scan.setupWarning ?? null };
 		}
 		return {
 			blockingError: null,
 			scan,
-			setupCode: reason === "Repository must have at least one commit." ? "PROJECT_UNBORN" : null,
-			setupWarning: null,
+			setupCode: repositorySetupCodeFor(repo),
+			setupWarning: scan.setupWarning ?? null,
 		};
 	} catch {
 		return { blockingError: null, scan: null, setupCode: null, setupWarning: null };
 	}
+}
+
+// The scanner marks plain folders, unborn repositories, and committed
+// repositories without a remote as needsGitInit. Only the first two need
+// Kennel's initializer before registration; a committed repository registers
+// directly even without a remote.
+function repositorySetupCodeFor(repo: ImportFolderScan["repos"][number]): RepositorySetupCode | null {
+	if (!repo.needsGitInit) return null;
+	if (repo.reason === "Repository must have at least one commit.") return "PROJECT_UNBORN";
+	return repo.branch === "" ? "NOT_A_GIT_REPO" : null;
 }
 
 function shouldScanCreateFailure(message: string): boolean {

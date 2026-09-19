@@ -176,6 +176,10 @@ async function scanGitRepo(
 	const hasHead = headResult.status === "fulfilled";
 	const hasRemote = remoteResult.status === "fulfilled" && remoteResult.value.length > 0;
 	const validationReason = scanRepoValidationReason(name);
+	// An initialized repository without commits still needs setup before
+	// registration. Surface the reason so the create flow can offer Kennel's
+	// initializer instead of failing registration with PROJECT_UNBORN.
+	const setupReason = !validationReason && !hasHead ? "Repository must have at least one commit." : undefined;
 	return {
 		name,
 		path: repoPath,
@@ -184,7 +188,7 @@ async function scanGitRepo(
 		remote: remoteResult.status === "fulfilled" ? remoteResult.value : "",
 		hasRemote,
 		status: validationReason ? "error" : "ok",
-		reason: validationReason,
+		reason: validationReason ?? setupReason,
 		needsGitInit: !validationReason && (!hasHead || !hasRemote),
 	};
 }

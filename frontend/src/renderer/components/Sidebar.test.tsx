@@ -251,6 +251,27 @@ async function openCreateProjectDialog(
 	return user;
 }
 
+// Matches the real scanImportFolder contract for a plain folder: one repo
+// entry carrying needsGitInit, not an empty repos array.
+function plainProjectFolderScan(path: string, setupWarning?: string) {
+	return {
+		path,
+		repos: [
+			{
+				name: path.split("/").pop() ?? path,
+				path,
+				relativePath: ".",
+				branch: "",
+				remote: "",
+				hasRemote: false,
+				status: "ok" as const,
+				needsGitInit: true,
+			},
+		],
+		...(setupWarning ? { setupWarning } : {}),
+	};
+}
+
 /**
  * Opens the "Advanced settings" accordion that now holds the orchestrator
  * override. Radix unmounts collapsed content, so the control does not exist in
@@ -955,7 +976,7 @@ describe("Sidebar", () => {
 		const onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler;
 		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
 		renderSidebar({ onCreateProject, onInitializeProject });
-		const user = await openCreateProjectDialog("/repo/new-project", { path: "/repo/new-project", repos: [] });
+		const user = await openCreateProjectDialog("/repo/new-project", plainProjectFolderScan("/repo/new-project"));
 
 		expect(await screen.findByText(/If this folder needs Git setup/i)).toBeInTheDocument();
 		expect(onInitializeProject).not.toHaveBeenCalled();
@@ -969,12 +990,14 @@ describe("Sidebar", () => {
 		const onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler;
 		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
 		window.kennel!.app.chooseDirectory = vi.fn().mockResolvedValue("/repo/parent/universe");
-		window.kennel!.app.scanImportFolder = vi.fn().mockResolvedValue({
-			path: "/repo/parent/universe",
-			repos: [],
-			setupWarning:
-				"Selected folder is inside an existing Git repository at /repo/parent. Kennel will initialize this folder as a separate repository.",
-		});
+		window.kennel!.app.scanImportFolder = vi
+			.fn()
+			.mockResolvedValue(
+				plainProjectFolderScan(
+					"/repo/parent/universe",
+					"Selected folder is inside an existing Git repository at /repo/parent. Kennel will initialize this folder as a separate repository.",
+				),
+			);
 		renderSidebar({ onCreateProject, onInitializeProject });
 
 		await user.click(screen.getByLabelText("New project"));
@@ -991,6 +1014,50 @@ describe("Sidebar", () => {
 		await waitFor(() => expect(onCreateProject).toHaveBeenCalledTimes(1));
 	});
 
+	it("initializes a plain folder before creating the project", async () => {
+		const onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler;
+		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
+		renderSidebar({ onCreateProject, onInitializeProject });
+		const user = await openCreateProjectDialog("/repo/new-project", plainProjectFolderScan("/repo/new-project"));
+
+		expect(await screen.findByText(/If this folder needs Git setup/i)).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Create and start" }));
+		await waitFor(() => expect(onCreateProject).toHaveBeenCalledTimes(1));
+		expect(onInitializeProject).toHaveBeenCalledWith("/repo/new-project");
+		// Regression: the scanner returns a plain folder as a nonempty repos
+		// array, and creation must never run before the initializer resolves.
+		expect(vi.mocked(onInitializeProject).mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(onCreateProject).mock.invocationCallOrder[0],
+		);
+	});
+
+	it("creates a committed repository without a remote without Git setup", async () => {
+		const onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler;
+		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
+		renderSidebar({ onCreateProject, onInitializeProject });
+		const user = await openCreateProjectDialog("/repo/local-only", {
+			path: "/repo/local-only",
+			repos: [
+				{
+					name: "local-only",
+					path: "/repo/local-only",
+					relativePath: ".",
+					branch: "auto",
+					remote: "",
+					hasRemote: false,
+					status: "ok",
+					needsGitInit: true,
+				},
+			],
+		});
+
+		expect(await screen.findByRole("dialog", { name: "Project agents" })).toBeInTheDocument();
+		expect(screen.queryByText(/If this folder needs Git setup/i)).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Create and start" }));
+		await waitFor(() => expect(onCreateProject).toHaveBeenCalledTimes(1));
+		expect(onInitializeProject).not.toHaveBeenCalled();
+	});
+
 	it("shows repository initialization recovery for git repos with no commits", async () => {
 		const onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler;
 		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
@@ -1002,11 +1069,12 @@ describe("Sidebar", () => {
 					name: "unborn",
 					path: "/repo/unborn",
 					relativePath: ".",
-					branch: "HEAD",
+					branch: "auto",
 					remote: "",
 					hasRemote: false,
-					status: "error",
+					status: "ok",
 					reason: "Repository must have at least one commit.",
+					needsGitInit: true,
 				},
 			],
 		});
@@ -1024,7 +1092,7 @@ describe("Sidebar", () => {
 			) as unknown as CreateProjectHandler;
 		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
 		renderSidebar({ onCreateProject, onInitializeProject });
-		const user = await openCreateProjectDialog("/repo/new-project", { path: "/repo/new-project", repos: [] });
+		const user = await openCreateProjectDialog("/repo/new-project", plainProjectFolderScan("/repo/new-project"));
 		await user.click(screen.getByRole("button", { name: "Cancel" }));
 		expect(onInitializeProject).not.toHaveBeenCalled();
 		expect(screen.queryByRole("dialog", { name: "Project agents" })).not.toBeInTheDocument();
@@ -1034,7 +1102,7 @@ describe("Sidebar", () => {
 		const onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler;
 		const onInitializeProject = vi.fn().mockRejectedValue(new Error("git init failed")) as InitializeProjectHandler;
 		renderSidebar({ onCreateProject, onInitializeProject });
-		const user = await openCreateProjectDialog("/repo/new-project", { path: "/repo/new-project", repos: [] });
+		const user = await openCreateProjectDialog("/repo/new-project", plainProjectFolderScan("/repo/new-project"));
 		await user.click(screen.getByRole("button", { name: "Create and start" }));
 		await waitFor(() => expect(onInitializeProject).toHaveBeenCalledWith("/repo/new-project"));
 		expect(onCreateProject).not.toHaveBeenCalled();
