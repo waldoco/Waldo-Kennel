@@ -479,13 +479,13 @@ func TestSaveAttemptReceiptCompleteDivergentRefused(t *testing.T) {
 		t.Fatalf("identical replay must be accepted: %v", err)
 	}
 
-	// A divergent receipt is refused BEFORE overwriting.
+	// A well-formed but divergent receipt is refused BEFORE overwriting.
 	divergent := canonical
-	divergent.ArtifactVersion = "a-different-version"
 	divergent.Files = []domain.ArtifactFile{{
 		ID: "artifact-9", AttemptID: attempt.ID, RelativePath: "rewritten.go",
 		ChangeKind: domain.ArtifactModified, ContentDigest: "other",
 	}}
+	divergent.ArtifactVersion = string(domain.ArtifactManifestDigest(divergent.Files))
 	if err := s.SaveAttemptReceipt(ctx, divergent); !errors.Is(err, ports.ErrAttemptReceiptDiverged) {
 		t.Fatalf("divergent save = %v, want ErrAttemptReceiptDiverged", err)
 	}
@@ -523,5 +523,56 @@ func TestSaveAttemptReceiptCompleteDivergentRefused(t *testing.T) {
 	}
 	if got.ArtifactVersion != partial.ArtifactVersion || got.RetentionState != domain.RetentionRetained {
 		t.Fatalf("incomplete receipt not finished: %+v", got)
+	}
+}
+
+// The single-winner compare-and-set judges the whole canonical receipt, not
+// the version string alone. Two receipts can share an ArtifactVersion and
+// still disagree about everything downstream custody seals.
+func TestSaveAttemptReceiptSameVersionDifferentMetadataRefused(t *testing.T) {
+	s := sqlitetest.MustOpen(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 9, 11, 0, 0, 0, time.UTC)
+	plan, outcomeID := seedApprovedPlan(t, s, "receipt-cas-meta")
+	attempt, err := s.CreateAttemptWithFence(ctx, admissionFor(outcomeID, plan, "rk-receipt-cas-meta", domain.FenceSubjectForProject("receipt-cas-meta")))
+	if err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+	canonical := receiptFixture(attempt.ID, outcomeID, plan, at)
+	if err := s.SaveAttemptReceipt(ctx, canonical); err != nil {
+		t.Fatalf("save canonical receipt: %v", err)
+	}
+
+	// Same ArtifactVersion, divergent sealed metadata: refused as divergent,
+	// never accepted as an identical replay.
+	meta := canonical
+	meta.ResultRevision = "a-different-result"
+	meta.TerminationReason = "a-different-reason"
+	meta.RetentionDetail = "a-different-detail"
+	meta.ObservedAt = at.Add(5 * time.Minute)
+	if err := s.SaveAttemptReceipt(ctx, meta); !errors.Is(err, ports.ErrAttemptReceiptDiverged) {
+		t.Fatalf("same-version/different-metadata save = %v, want ErrAttemptReceiptDiverged", err)
+	}
+	got, _, err := s.GetAttemptReceipt(ctx, attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResultRevision != canonical.ResultRevision || got.TerminationReason != canonical.TerminationReason || got.RetentionDetail != canonical.RetentionDetail || !got.ObservedAt.Equal(canonical.ObservedAt) {
+		t.Fatalf("canonical receipt was modified by the refused save: %+v", got)
+	}
+
+	// A malformed receipt must not bypass validation just because its
+	// version string matches the durable one.
+	malformed := canonical
+	malformed.ArtifactVersion = canonical.ArtifactVersion
+	malformed.Files = nil
+	if err := malformed.Validate(); err == nil {
+		t.Fatalf("fixture malformed receipt unexpectedly validates")
+	}
+	if err := s.SaveAttemptReceipt(ctx, malformed); err == nil {
+		t.Fatalf("malformed same-version receipt bypassed validation")
+	}
+	if errors.Is(err, ports.ErrAttemptReceiptDiverged) {
+		t.Fatalf("malformed receipt was misreported as divergent rather than invalid: %v", err)
 	}
 }

@@ -75,7 +75,10 @@ func (f *fenceRefSource) SaveAttemptReceipt(_ context.Context, receipt domain.At
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.has && f.receipt.RetentionState.Complete() {
-		if f.receipt.ArtifactVersion != receipt.ArtifactVersion {
+		if err := receipt.Validate(); err != nil {
+			return err
+		}
+		if !f.receipt.CanonicallyEqual(receipt) {
 			return ports.ErrAttemptReceiptDiverged
 		}
 		return nil
@@ -393,5 +396,84 @@ func TestRetainAttempt_ConcurrentRetentionSingleWinner(t *testing.T) {
 	}
 	if sealed.ArtifactVersion != stored.ArtifactVersion {
 		t.Fatalf("sealed manifest binds version %s but the canonical receipt is %s", sealed.ArtifactVersion, stored.ArtifactVersion)
+	}
+}
+
+// Two retention passes producing the SAME artifact version (identical tree
+// bytes) from DIFFERENT custody sessions (each racer's own workspace path)
+// still race the full single-winner compare-and-set: the version string
+// alone can never count as a replay. The loser is refused as divergent, and
+// the sealed output half is decoded field-by-field equal to the durable
+// receipt, never to the loser's incoming copy.
+func TestRetainAttempt_ConcurrentEqualVersionDivergentMetadataRefused(t *testing.T) {
+	fences := &fakeCustodyFenceStore{}
+	refs := &fenceRefSource{sessionID: "sess-fence"}
+	gated := &gatedRefSource{fenceRefSource: refs, arrive: make(chan struct{}, 2), release: make(chan struct{})}
+	manifests := &fakeFenceManifestStore{}
+	attempt := fenceTestAttempt()
+
+	newRacer := func(t *testing.T) *attemptArtifactRetainer {
+		t.Helper()
+		dir := t.TempDir()
+		// Identical tree bytes: both racers compute the same ArtifactVersion.
+		if err := os.WriteFile(filepath.Join(dir, "result.txt"), []byte("same-tree-bytes\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		artifacts, err := artifactstore.New(artifactstore.Config{Root: filepath.Join(t.TempDir(), "artifacts")})
+		if err != nil {
+			t.Fatalf("artifact store: %v", err)
+		}
+		return &attemptArtifactRetainer{
+			sessions: fenceSessionSource{session: domain.Session{SessionRecord: domain.SessionRecord{
+				ID:           "sess-fence",
+				IsTerminated: true,
+				Metadata:     domain.SessionMetadata{WorkspacePath: dir},
+			}}},
+			refs: gated, artifacts: artifacts, fences: fences, manifests: manifests,
+		}
+	}
+
+	errs := make(chan error, 2)
+	go func() { errs <- newRacer(t).RetainAttempt(context.Background(), attempt) }()
+	go func() { errs <- newRacer(t).RetainAttempt(context.Background(), attempt) }()
+	first, second := <-errs, <-errs
+
+	diverged := 0
+	for _, err := range []error{first, second} {
+		if errors.Is(err, ports.ErrAttemptReceiptDiverged) {
+			diverged++
+		} else if err != nil {
+			t.Fatalf("unexpected retention error: %v", err)
+		}
+	}
+	if diverged != 1 {
+		t.Fatalf("divergent refusals = %d, want exactly one loser refused at the full canonical compare-and-set", diverged)
+	}
+	if len(refs.saved) != 1 {
+		t.Fatalf("receipt saves = %d, want the single canonical receipt", len(refs.saved))
+	}
+	if len(fences.saved) != 1 {
+		t.Fatalf("fences = %d, want the single canonical fence", len(fences.saved))
+	}
+	if len(manifests.saved) != 1 {
+		t.Fatalf("output manifests = %d, want the single canonical seal", len(manifests.saved))
+	}
+	refs.mu.Lock()
+	stored := refs.receipt
+	refs.mu.Unlock()
+	sealed, err := manifests.saved[0].DecodeOutput()
+	if err != nil {
+		t.Fatalf("decode the sealed output half: %v", err)
+	}
+	// Every field downstream custody seals must come from the durable
+	// receipt, so the seal can never bind the loser's incoming metadata.
+	if sealed.AttemptID != stored.AttemptID || sealed.OutcomeID != stored.OutcomeID ||
+		sealed.PlanRevisionID != stored.PlanRevisionID || sealed.WorkUnitID != stored.WorkUnitID ||
+		sealed.ContractRevisionNumber != stored.ContractRevisionNumber ||
+		sealed.ArtifactVersion != stored.ArtifactVersion ||
+		sealed.ResultRevision != stored.ResultRevision ||
+		sealed.RetentionState != stored.RetentionState || sealed.RetentionDetail != stored.RetentionDetail ||
+		sealed.TerminationReason != stored.TerminationReason || !sealed.ObservedAt.Equal(stored.ObservedAt) {
+		t.Fatalf("sealed output half diverges from the durable receipt:\nsealed %+v\nstored %+v", sealed, stored)
 	}
 }

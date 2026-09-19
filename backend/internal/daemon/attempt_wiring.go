@@ -63,8 +63,8 @@ type attemptArtifactRetainer struct {
 	// the receipt is durable. Nil only in test wiring; the daemon always
 	// wires it.
 	manifests ports.AttemptManifestStore
-	// fences records the typed custody-close fence: the provider had exited
-	// and the workspace had settled before the snapshot. Nil only in test
+	// fences records the typed custody-close fence: the bound provider
+	// session was durably terminated before the snapshot. Nil only in test
 	// wiring; the daemon always wires it.
 	fences ports.AttemptCustodyFenceStore
 }
@@ -146,11 +146,11 @@ func (r *attemptArtifactRetainer) boundSession(ctx context.Context, attempt doma
 }
 
 // settleCustodyFence records the typed custody-close fence exactly once: the
-// bound provider session has exited, so the workspace it wrote is settled and
-// safe to snapshot. A live session is refused - retaining a tree its writer
-// can still change would make the snapshot, and every check bound to it,
-// unattributable. A restart replay with the same binding is a no-op; a fence
-// recorded against a different session is refused.
+// bound provider session was observed durably terminated before the snapshot.
+// A live session is refused - retaining a tree its writer may still change
+// would make the snapshot, and every check bound to it, unattributable. A
+// restart replay with the same binding is a no-op; a fence recorded against
+// a different session is refused.
 func (r *attemptArtifactRetainer) settleCustodyFence(ctx context.Context, attempt domain.Attempt, session domain.Session) error {
 	if r.fences == nil {
 		return nil

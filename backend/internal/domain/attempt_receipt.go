@@ -232,6 +232,49 @@ type AttemptReceipt struct {
 // Frozen reports whether this receipt has been used as review evidence.
 func (r AttemptReceipt) Frozen() bool { return r.FrozenAt != nil }
 
+// CanonicallyEqual reports whether two receipts describe the same retained
+// result for every fact downstream custody seals: producing lineage,
+// workspace and revision metadata, retention state and detail, termination
+// reason, observation time, and the exact file manifest. Row identity and
+// write timestamps are storage facts, not custody facts.
+func (r AttemptReceipt) CanonicallyEqual(other AttemptReceipt) bool {
+	if r.AttemptID != other.AttemptID || r.OutcomeID != other.OutcomeID ||
+		r.PlanRevisionID != other.PlanRevisionID || r.WorkUnitID != other.WorkUnitID ||
+		r.ContractRevisionNumber != other.ContractRevisionNumber ||
+		r.ArtifactVersion != other.ArtifactVersion ||
+		r.WorkspaceKind != other.WorkspaceKind || r.WorkspacePath != other.WorkspacePath ||
+		r.RepositoryPath != other.RepositoryPath || r.RepositoryIdentity != other.RepositoryIdentity ||
+		r.BaseRevision != other.BaseRevision || r.ResultRevision != other.ResultRevision ||
+		r.WorkspaceDirty != other.WorkspaceDirty ||
+		r.RetentionState != other.RetentionState || r.RetentionDetail != other.RetentionDetail ||
+		r.TerminationReason != other.TerminationReason ||
+		!r.ObservedAt.Equal(other.ObservedAt) {
+		return false
+	}
+	if len(r.Files) != len(other.Files) {
+		return false
+	}
+	key := func(f ArtifactFile) string {
+		return f.RelativePath + "\x00" + string(f.ChangeKind) + "\x00" + f.ContentDigest
+	}
+	mine := make([]string, 0, len(r.Files))
+	for _, f := range r.Files {
+		mine = append(mine, key(f))
+	}
+	theirs := make([]string, 0, len(other.Files))
+	for _, f := range other.Files {
+		theirs = append(theirs, key(f))
+	}
+	sort.Strings(mine)
+	sort.Strings(theirs)
+	for i := range mine {
+		if mine[i] != theirs[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Validate checks that the receipt carries full producing lineage and does not
 // misdescribe its custody shape.
 func (r AttemptReceipt) Validate() error {

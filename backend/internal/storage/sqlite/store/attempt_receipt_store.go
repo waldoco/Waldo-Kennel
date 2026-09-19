@@ -43,11 +43,20 @@ func (s *Store) SaveAttemptReceipt(ctx context.Context, receipt domain.AttemptRe
 		return ports.ErrAttemptReceiptFrozen
 	case err == nil && existing.RetentionState == string(domain.RetentionRetained):
 		// Single-winner retention: a durable complete receipt is the
-		// canonical snapshot. An identical replay is already true; a
-		// divergent one is refused before it can overwrite what the output
-		// custody manifest sealed against.
-		if existing.ArtifactVersion != receipt.ArtifactVersion {
-			return fmt.Errorf("save attempt receipt %s: %w (durable version %s, incoming %s)", receipt.AttemptID, ports.ErrAttemptReceiptDiverged, existing.ArtifactVersion, receipt.ArtifactVersion)
+		// canonical snapshot. The incoming receipt is validated first - a
+		// matching version string never excuses a malformed payload - and
+		// must equal the durable receipt in every custody-sealed field and
+		// file to count as a replay. Anything else is refused BEFORE it can
+		// overwrite what the output custody manifest sealed against.
+		if verr := receipt.Validate(); verr != nil {
+			return verr
+		}
+		durable, rerr := s.receiptWithFiles(ctx, txq, receipt.AttemptID)
+		if rerr != nil {
+			return fmt.Errorf("load canonical receipt %s: %w", receipt.AttemptID, rerr)
+		}
+		if !durable.CanonicallyEqual(receipt) {
+			return fmt.Errorf("save attempt receipt %s: %w", receipt.AttemptID, ports.ErrAttemptReceiptDiverged)
 		}
 		return nil
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
@@ -156,6 +165,21 @@ func (s *Store) GetAttemptReceipt(ctx context.Context, attemptID domain.AttemptI
 		return domain.AttemptReceipt{}, false, fmt.Errorf("read artifact manifest %s: %w", attemptID, err)
 	}
 	return attemptReceiptFromRow(row, files), true, nil
+}
+
+// receiptWithFiles loads the durable receipt and its file manifest through
+// the caller's transaction, so the single-winner compare-and-set judges the
+// canonical record, never a stale or mixed read.
+func (s *Store) receiptWithFiles(ctx context.Context, q *gen.Queries, attemptID domain.AttemptID) (domain.AttemptReceipt, error) {
+	row, err := q.GetAttemptReceipt(ctx, string(attemptID))
+	if err != nil {
+		return domain.AttemptReceipt{}, fmt.Errorf("read attempt receipt %s: %w", attemptID, err)
+	}
+	files, err := q.ListAttemptArtifactFiles(ctx, string(attemptID))
+	if err != nil {
+		return domain.AttemptReceipt{}, fmt.Errorf("read artifact manifest %s: %w", attemptID, err)
+	}
+	return attemptReceiptFromRow(row, files), nil
 }
 
 // FreezeAttemptReceipt marks a receipt as review evidence, after which it is
