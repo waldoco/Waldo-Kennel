@@ -1,0 +1,10 @@
+import { launch, dumpControls } from './drivelib.mjs';
+const { browser, page, errors } = await launch();
+page.setDefaultTimeout(60000);
+await page.goto('http://127.0.0.1:5199/#/projects/scratch', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForTimeout(3000);
+await page.screenshot({ path: '/tmp/shots/17-project-home.png' });
+await dumpControls(page);
+console.log('BODY:', JSON.stringify((await page.evaluate(() => document.body.innerText.replace(/\n{2,}/g,'\n'))).slice(0, 800)));
+console.log('ERRORS:', JSON.stringify(errors.slice(0, 5)));
+await browser.close();

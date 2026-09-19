@@ -1,0 +1,12 @@
+import { launch } from './drivelib.mjs';
+const { browser, page, errors } = await launch();
+page.setDefaultTimeout(60000);
+await page.goto('http://127.0.0.1:5199/#/settings', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForTimeout(3500);
+await page.locator('text=AI providers').first().click();
+await page.waitForTimeout(2000);
+await page.screenshot({ path: '/tmp/shots/16-providers.png' });
+const t = await page.evaluate(() => document.body.innerText.replace(/\n{2,}/g, '\n').slice(0, 1200));
+console.log('PROVIDERS:', JSON.stringify(t));
+console.log('ERRORS:', JSON.stringify(errors.slice(0, 6)));
+await browser.close();

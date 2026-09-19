@@ -1,0 +1,15 @@
+import { launch } from './drivelib.mjs';
+const { browser, page, errors } = await launch();
+await page.goto('http://127.0.0.1:5199/#/work?view=outcomes&portfolio=scratch&project=scratch', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(2000);
+await page.locator('button:has-text("New Outcome")').first().click();
+await page.waitForTimeout(1200);
+await page.locator('textarea').first().fill("A file named E2E-PROOF.md exists in the project root whose first line is exactly: kennel e2e flow proof");
+const wa = page.locator('button[aria-label="Worker agent"]');
+await wa.click({ force: true, timeout: 8000 }).catch(e => console.log('worker click fail:', e.message.split('\n')[0]));
+await page.waitForTimeout(1000);
+await page.screenshot({ path: '/tmp/shots/08-worker-menu.png' });
+const opts = await page.evaluate(() => [...document.querySelectorAll('[role=option], [role=menuitem], [role=listbox] *, [data-radix-popper-content-wrapper] *')].filter(e => e.getBoundingClientRect().width > 0 && e.children.length === 0).map(e => (e.innerText || '').trim()).filter(t => t && t.length < 40).slice(0, 25));
+console.log('menu contents:', JSON.stringify(opts));
+console.log('ERRORS:', JSON.stringify(errors.slice(0, 5)));
+await browser.close();

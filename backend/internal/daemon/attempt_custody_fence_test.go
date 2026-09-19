@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,10 +16,13 @@ import (
 )
 
 type fakeCustodyFenceStore struct {
+	mu    sync.Mutex
 	saved []domain.AttemptCustodyFence
 }
 
 func (f *fakeCustodyFenceStore) RecordAttemptCustodyFence(_ context.Context, fence domain.AttemptCustodyFence) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, existing := range f.saved {
 		if existing.AttemptID == fence.AttemptID {
 			return ports.ErrAttemptCustodyFenceSealed
@@ -29,6 +33,8 @@ func (f *fakeCustodyFenceStore) RecordAttemptCustodyFence(_ context.Context, fen
 }
 
 func (f *fakeCustodyFenceStore) GetAttemptCustodyFence(_ context.Context, attemptID domain.AttemptID) (domain.AttemptCustodyFence, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, existing := range f.saved {
 		if existing.AttemptID == attemptID {
 			return existing, true, nil
@@ -55,19 +61,33 @@ func (s fenceSessionSource) Get(context.Context, domain.SessionID) (domain.Sessi
 }
 
 type fenceRefSource struct {
+	mu        sync.Mutex
 	receipt   domain.AttemptReceipt
 	has       bool
 	saved     []domain.AttemptReceipt
 	sessionID string
 }
 
+// SaveAttemptReceipt mirrors the durable single-winner rule: a complete
+// receipt is canonical, an identical replay is a no-op, and a divergent one
+// is refused before anything is overwritten.
 func (f *fenceRefSource) SaveAttemptReceipt(_ context.Context, receipt domain.AttemptReceipt) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.has && f.receipt.RetentionState.Complete() {
+		if f.receipt.ArtifactVersion != receipt.ArtifactVersion {
+			return ports.ErrAttemptReceiptDiverged
+		}
+		return nil
+	}
 	f.saved = append(f.saved, receipt)
 	f.receipt, f.has = receipt, true
 	return nil
 }
 
 func (f *fenceRefSource) GetAttemptReceipt(_ context.Context, id domain.AttemptID) (domain.AttemptReceipt, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if !f.has || f.receipt.AttemptID != id {
 		return domain.AttemptReceipt{}, false, nil
 	}
@@ -202,5 +222,176 @@ func TestSettleCustodyFence_NilStoreIsInert(t *testing.T) {
 	session := domain.Session{SessionRecord: domain.SessionRecord{ID: "sess-x", IsTerminated: false}}
 	if err := retainer.settleCustodyFence(context.Background(), fenceTestAttempt(), session); err != nil {
 		t.Fatalf("nil fence store must be inert: %v", err)
+	}
+}
+
+// A complete receipt whose fence was lost (pre-fence receipt, migration
+// window, or erasure) is repaired from the same durable terminated binding
+// before the fast path accepts or seals anything.
+func TestRetainAttempt_CompleteReceiptWithoutFenceRepairsFromTerminatedBinding(t *testing.T) {
+	retainer, fences, refs := newFenceRetainer(t, true)
+	attempt := fenceTestAttempt()
+	if err := retainer.RetainAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("first retention: %v", err)
+	}
+	if len(fences.saved) != 1 {
+		t.Fatalf("fences after first retention = %d, want 1", len(fences.saved))
+	}
+	fences.saved = nil // the receipt lost its fence
+
+	if err := retainer.RetainAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("fast-path retention must repair the fence: %v", err)
+	}
+	if len(fences.saved) != 1 || fences.saved[0].SessionID != "sess-fence" {
+		t.Fatalf("repaired fences = %#v, want exactly one fence bound to sess-fence", fences.saved)
+	}
+	if len(refs.saved) != 1 {
+		t.Fatalf("receipt saves = %d, want the single original receipt", len(refs.saved))
+	}
+}
+
+// A complete receipt carrying a fence bound to a DIFFERENT session than the
+// durable binding is refused on the fast path - it is not custody of this
+// workspace.
+func TestRetainAttempt_CompleteReceiptWithDivergentFenceRefused(t *testing.T) {
+	retainer, fences, refs := newFenceRetainer(t, true)
+	attempt := fenceTestAttempt()
+	if err := retainer.RetainAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("first retention: %v", err)
+	}
+	fences.saved[0].SessionID = "sess-other"
+
+	err := retainer.RetainAttempt(context.Background(), attempt)
+	if err == nil || !strings.Contains(err.Error(), "already recorded against session") {
+		t.Fatalf("fast-path retention = %v, want refusal of the divergent fence", err)
+	}
+	if len(refs.saved) != 1 {
+		t.Fatalf("receipt saves = %d, want the original receipt untouched", len(refs.saved))
+	}
+}
+
+type fakeFenceManifestStore struct {
+	mu    sync.Mutex
+	saved []domain.AttemptManifest
+}
+
+func (f *fakeFenceManifestStore) SaveAttemptManifest(_ context.Context, m domain.AttemptManifest) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, existing := range f.saved {
+		if existing.AttemptID == m.AttemptID && existing.Half == m.Half {
+			if existing.PayloadDigest != m.PayloadDigest {
+				return ports.ErrAttemptManifestSealed
+			}
+			return nil
+		}
+	}
+	f.saved = append(f.saved, m)
+	return nil
+}
+
+func (f *fakeFenceManifestStore) GetAttemptManifest(_ context.Context, attemptID domain.AttemptID, half domain.AttemptManifestHalf) (domain.AttemptManifest, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, existing := range f.saved {
+		if existing.AttemptID == attemptID && existing.Half == half {
+			return existing, true, nil
+		}
+	}
+	return domain.AttemptManifest{}, false, nil
+}
+
+func (f *fakeFenceManifestStore) ListAttemptManifestsForOutcome(_ context.Context, outcomeID domain.OutcomeID) ([]domain.AttemptManifest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.AttemptManifest
+	for _, existing := range f.saved {
+		if existing.OutcomeID == outcomeID {
+			out = append(out, existing)
+		}
+	}
+	return out, nil
+}
+
+// gatedRefSource holds every caller at the receipt check until two have
+// arrived, so two retainers race the full fence -> snapshot -> receipt path.
+type gatedRefSource struct {
+	*fenceRefSource
+	arrive  chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (g *gatedRefSource) GetAttemptReceipt(ctx context.Context, id domain.AttemptID) (domain.AttemptReceipt, bool, error) {
+	g.arrive <- struct{}{}
+	g.once.Do(func() { close(g.release) })
+	<-g.release
+	return g.fenceRefSource.GetAttemptReceipt(ctx, id)
+}
+
+// Two retention passes racing one Attempt converge on exactly one canonical
+// receipt, fence, and output manifest: the loser is refused at the durable
+// compare-and-set BEFORE it can overwrite the winner's receipt.
+func TestRetainAttempt_ConcurrentRetentionSingleWinner(t *testing.T) {
+	fences := &fakeCustodyFenceStore{}
+	refs := &fenceRefSource{sessionID: "sess-fence"}
+	gated := &gatedRefSource{fenceRefSource: refs, arrive: make(chan struct{}, 2), release: make(chan struct{})}
+	manifests := &fakeFenceManifestStore{}
+	attempt := fenceTestAttempt()
+
+	newRacer := func(t *testing.T, content string) *attemptArtifactRetainer {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "result.txt"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		artifacts, err := artifactstore.New(artifactstore.Config{Root: filepath.Join(t.TempDir(), "artifacts")})
+		if err != nil {
+			t.Fatalf("artifact store: %v", err)
+		}
+		return &attemptArtifactRetainer{
+			sessions: fenceSessionSource{session: domain.Session{SessionRecord: domain.SessionRecord{
+				ID:           "sess-fence",
+				IsTerminated: true,
+				Metadata:     domain.SessionMetadata{WorkspacePath: dir},
+			}}},
+			refs: gated, artifacts: artifacts, fences: fences, manifests: manifests,
+		}
+	}
+
+	errs := make(chan error, 2)
+	go func() { errs <- newRacer(t, "winner-one\n").RetainAttempt(context.Background(), attempt) }()
+	go func() { errs <- newRacer(t, "winner-two\n").RetainAttempt(context.Background(), attempt) }()
+	first, second := <-errs, <-errs
+
+	diverged := 0
+	for _, err := range []error{first, second} {
+		if errors.Is(err, ports.ErrAttemptReceiptDiverged) {
+			diverged++
+		} else if err != nil {
+			t.Fatalf("unexpected retention error: %v", err)
+		}
+	}
+	if diverged != 1 {
+		t.Fatalf("divergent refusals = %d, want exactly one loser", diverged)
+	}
+	if len(refs.saved) != 1 {
+		t.Fatalf("receipt saves = %d, want the single canonical receipt", len(refs.saved))
+	}
+	if len(fences.saved) != 1 {
+		t.Fatalf("fences = %d, want the single canonical fence", len(fences.saved))
+	}
+	if len(manifests.saved) != 1 {
+		t.Fatalf("output manifests = %d, want the single canonical seal", len(manifests.saved))
+	}
+	refs.mu.Lock()
+	stored := refs.receipt
+	refs.mu.Unlock()
+	sealed, err := manifests.saved[0].DecodeOutput()
+	if err != nil {
+		t.Fatalf("decode the sealed output half: %v", err)
+	}
+	if sealed.ArtifactVersion != stored.ArtifactVersion {
+		t.Fatalf("sealed manifest binds version %s but the canonical receipt is %s", sealed.ArtifactVersion, stored.ArtifactVersion)
 	}
 }

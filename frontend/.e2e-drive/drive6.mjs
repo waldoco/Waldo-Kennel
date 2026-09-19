@@ -1,0 +1,16 @@
+import { launch, dumpControls } from './drivelib.mjs';
+const { browser, page, errors } = await launch();
+await page.goto('http://127.0.0.1:5199/#/work?view=outcomes&portfolio=scratch&project=scratch', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(2000);
+const btns = page.locator('button:has-text("New Outcome")');
+console.log('New Outcome count:', await btns.count());
+await btns.first().click();
+await page.waitForTimeout(1500);
+await page.screenshot({ path: '/tmp/shots/06b-after-newoutcome.png' });
+await dumpControls(page);
+const cont = page.locator('button:has-text("Continue")');
+console.log('Continue count:', await cont.count(), 'disabled:', await cont.first().isDisabled().catch(() => 'n/a'));
+const ta = page.locator('textarea');
+console.log('textarea count:', await ta.count());
+console.log('ERRORS:', JSON.stringify(errors.slice(0, 8)));
+await browser.close();

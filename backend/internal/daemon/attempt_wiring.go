@@ -78,6 +78,18 @@ func (r *attemptArtifactRetainer) RetainAttempt(ctx context.Context, attempt dom
 	if existing, ok, err := r.refs.GetAttemptReceipt(ctx, attempt.ID); err != nil {
 		return err
 	} else if ok && existing.RetentionState.Complete() {
+		// A complete receipt without its custody fence is not custody. The
+		// fast path repairs the fence from the same durable terminated
+		// binding - or refuses when the binding is gone, live, or bound to
+		// a different session - before accepting the receipt or sealing
+		// its output.
+		session, err := r.boundSession(ctx, attempt)
+		if err != nil {
+			return err
+		}
+		if err := r.settleCustodyFence(ctx, attempt, session); err != nil {
+			return err
+		}
 		for _, file := range existing.Files {
 			if file.ChangeKind == domain.ArtifactDeleted {
 				continue
@@ -88,16 +100,9 @@ func (r *attemptArtifactRetainer) RetainAttempt(ctx context.Context, attempt dom
 		}
 		return r.sealOutputManifest(ctx, existing)
 	}
-	ref, found, err := r.refs.LatestAttemptSessionRef(ctx, attempt.ID)
+	session, err := r.boundSession(ctx, attempt)
 	if err != nil {
-		return fmt.Errorf("read session binding: %w", err)
-	}
-	if !found || strings.TrimSpace(ref.SessionID) == "" {
-		return fmt.Errorf("attempt %s has no daemon-owned session binding", attempt.ID)
-	}
-	session, err := r.sessions.Get(ctx, domain.SessionID(ref.SessionID))
-	if err != nil {
-		return fmt.Errorf("read session %s: %w", ref.SessionID, err)
+		return err
 	}
 	// The settle fence precedes the snapshot: no tree is captured while the
 	// provider that wrote it may still be alive.
@@ -123,6 +128,23 @@ func (r *attemptArtifactRetainer) RetainAttempt(ctx context.Context, attempt dom
 	return r.sealOutputManifest(ctx, result.Receipt)
 }
 
+// boundSession resolves the latest daemon-owned session binding for the
+// Attempt. The binding is daemon state, never a client-supplied path.
+func (r *attemptArtifactRetainer) boundSession(ctx context.Context, attempt domain.Attempt) (domain.Session, error) {
+	ref, found, err := r.refs.LatestAttemptSessionRef(ctx, attempt.ID)
+	if err != nil {
+		return domain.Session{}, fmt.Errorf("read session binding: %w", err)
+	}
+	if !found || strings.TrimSpace(ref.SessionID) == "" {
+		return domain.Session{}, fmt.Errorf("attempt %s has no daemon-owned session binding", attempt.ID)
+	}
+	session, err := r.sessions.Get(ctx, domain.SessionID(ref.SessionID))
+	if err != nil {
+		return domain.Session{}, fmt.Errorf("read session %s: %w", ref.SessionID, err)
+	}
+	return session, nil
+}
+
 // settleCustodyFence records the typed custody-close fence exactly once: the
 // bound provider session has exited, so the workspace it wrote is settled and
 // safe to snapshot. A live session is refused - retaining a tree its writer
@@ -139,7 +161,7 @@ func (r *attemptArtifactRetainer) settleCustodyFence(ctx context.Context, attemp
 	fence := domain.AttemptCustodyFence{
 		AttemptID: attempt.ID,
 		SessionID: string(session.ID),
-		Detail:    "provider session terminated; workspace settled before snapshot",
+		Detail:    "bound provider session durably terminated before snapshot",
 		FencedAt:  time.Now().UTC(),
 	}
 	if existing, found, err := r.fences.GetAttemptCustodyFence(ctx, attempt.ID); err != nil {

@@ -453,3 +453,75 @@ func TestFrozenAttemptReceiptMeasurementsCannotBeRewritten(t *testing.T) {
 		t.Fatalf("measurement rewrite err=%v", err)
 	}
 }
+
+// Two retention paths racing one Attempt converge on one canonical snapshot:
+// a durable COMPLETE receipt accepts an identical replay and refuses a
+// divergent one before anything is overwritten. An incomplete receipt may
+// still be replaced by the retry that finishes it.
+func TestSaveAttemptReceiptCompleteDivergentRefused(t *testing.T) {
+	s := sqlitetest.MustOpen(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
+	plan, outcomeID := seedApprovedPlan(t, s, "receipt-cas")
+	attempt, err := s.CreateAttemptWithFence(ctx, admissionFor(outcomeID, plan, "rk-receipt-cas", domain.FenceSubjectForProject("receipt-cas")))
+	if err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+	canonical := receiptFixture(attempt.ID, outcomeID, plan, at)
+	if err := s.SaveAttemptReceipt(ctx, canonical); err != nil {
+		t.Fatalf("save canonical receipt: %v", err)
+	}
+
+	// Identical replay (a restart retry) is a no-op.
+	replay := canonical
+	replay.UpdatedAt = at.Add(time.Hour)
+	if err := s.SaveAttemptReceipt(ctx, replay); err != nil {
+		t.Fatalf("identical replay must be accepted: %v", err)
+	}
+
+	// A divergent receipt is refused BEFORE overwriting.
+	divergent := canonical
+	divergent.ArtifactVersion = "a-different-version"
+	divergent.Files = []domain.ArtifactFile{{
+		ID: "artifact-9", AttemptID: attempt.ID, RelativePath: "rewritten.go",
+		ChangeKind: domain.ArtifactModified, ContentDigest: "other",
+	}}
+	if err := s.SaveAttemptReceipt(ctx, divergent); !errors.Is(err, ports.ErrAttemptReceiptDiverged) {
+		t.Fatalf("divergent save = %v, want ErrAttemptReceiptDiverged", err)
+	}
+	got, _, err := s.GetAttemptReceipt(ctx, attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ArtifactVersion != canonical.ArtifactVersion || len(got.Files) != 2 {
+		t.Fatalf("canonical receipt was modified by the refused save: %+v", got)
+	}
+
+	// An incomplete receipt carries no single-winner guarantee: the retry
+	// that finishes it replaces it wholesale.
+	incompleteAttempt, err := s.CreateAttemptWithFence(ctx, admissionFor(outcomeID, plan, "rk-receipt-cas-2", domain.FenceSubjectForProject("receipt-cas-2")))
+	if err != nil {
+		t.Fatalf("create second attempt: %v", err)
+	}
+	partial := receiptFixture(incompleteAttempt.ID, outcomeID, plan, at)
+	for i := range partial.Files {
+		partial.Files[i].ID = partial.Files[i].ID + "-inc"
+	}
+	partial.ArtifactVersion = string(domain.ArtifactManifestDigest(partial.Files))
+	partial.RetentionState = domain.RetentionIncomplete
+	if err := s.SaveAttemptReceipt(ctx, partial); err != nil {
+		t.Fatalf("save incomplete receipt: %v", err)
+	}
+	finished := partial
+	finished.RetentionState = domain.RetentionRetained
+	if err := s.SaveAttemptReceipt(ctx, finished); err != nil {
+		t.Fatalf("finishing retry must replace the incomplete receipt: %v", err)
+	}
+	got, _, err = s.GetAttemptReceipt(ctx, incompleteAttempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ArtifactVersion != partial.ArtifactVersion || got.RetentionState != domain.RetentionRetained {
+		t.Fatalf("incomplete receipt not finished: %+v", got)
+	}
+}

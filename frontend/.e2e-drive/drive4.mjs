@@ -1,0 +1,11 @@
+import { launch, dumpControls } from './drivelib.mjs';
+const { browser, page, errors } = await launch();
+await page.goto('http://127.0.0.1:5199/#/work?view=outcomes&portfolio=scratch&project=scratch', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(2000);
+await page.locator('button:has-text("New Outcome")').first().click();
+await page.waitForTimeout(1500);
+console.log('URL:', page.url());
+await page.screenshot({ path: '/tmp/shots/05-new-outcome.png' });
+await dumpControls(page);
+console.log('ERRORS:', JSON.stringify(errors.slice(0, 8)));
+await browser.close();

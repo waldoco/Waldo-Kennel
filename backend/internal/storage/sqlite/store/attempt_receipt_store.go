@@ -41,6 +41,15 @@ func (s *Store) SaveAttemptReceipt(ctx context.Context, receipt domain.AttemptRe
 	switch {
 	case err == nil && existing.FrozenAt.Valid:
 		return ports.ErrAttemptReceiptFrozen
+	case err == nil && existing.RetentionState == string(domain.RetentionRetained):
+		// Single-winner retention: a durable complete receipt is the
+		// canonical snapshot. An identical replay is already true; a
+		// divergent one is refused before it can overwrite what the output
+		// custody manifest sealed against.
+		if existing.ArtifactVersion != receipt.ArtifactVersion {
+			return fmt.Errorf("save attempt receipt %s: %w (durable version %s, incoming %s)", receipt.AttemptID, ports.ErrAttemptReceiptDiverged, existing.ArtifactVersion, receipt.ArtifactVersion)
+		}
+		return nil
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("read attempt receipt %s: %w", receipt.AttemptID, err)
 	}

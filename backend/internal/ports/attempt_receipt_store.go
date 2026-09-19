@@ -16,6 +16,14 @@ import (
 // acceptance decision was made against.
 var ErrAttemptReceiptFrozen = errors.New("attempt receipt is frozen and cannot be replaced")
 
+// ErrAttemptReceiptDiverged reports a refused overwrite of a durable COMPLETE
+// receipt by a receipt with a different artifact version. Two retention paths
+// racing one Attempt must converge on one canonical snapshot: an identical
+// replay is a no-op, a divergent one is refused BEFORE anything is
+// overwritten. An incomplete receipt carries no such guarantee and may still
+// be replaced by the retry that finishes it.
+var ErrAttemptReceiptDiverged = errors.New("attempt receipt diverges from the durable complete receipt")
+
 // ErrAttemptReceiptMissing means an Attempt has no retained result to judge.
 // Absence is not an empty artifact: an empty result must be represented by an
 // explicit retained receipt whose manifest is empty.

@@ -1,0 +1,15 @@
+import { launch } from './drivelib.mjs';
+const { browser, page, errors } = await launch();
+page.setDefaultTimeout(60000);
+await page.goto('http://127.0.0.1:5199/#/settings', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForTimeout(4000);
+await page.screenshot({ path: '/tmp/shots/12-settings.png' });
+const settingsText = await page.evaluate(() => document.body.innerText.replace(/\n{2,}/g, '\n').slice(0, 900));
+console.log('SETTINGS:', JSON.stringify(settingsText));
+await page.goto('http://127.0.0.1:5199/#/projects/scratch/settings', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForTimeout(3000);
+await page.screenshot({ path: '/tmp/shots/15-project-settings.png' });
+const psText = await page.evaluate(() => document.body.innerText.replace(/\n{2,}/g, '\n').slice(0, 800));
+console.log('PROJSETTINGS:', JSON.stringify(psText));
+console.log('ERRORS:', JSON.stringify(errors.slice(0, 6)));
+await browser.close();
