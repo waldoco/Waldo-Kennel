@@ -2753,5 +2753,12 @@
 	"mission.sessionHub.open": "Open session",
 	"mission.sessionHub.openAria": "Open session for {{title}}",
 	"mission.sessionHub.back": "Outcome hub",
-	"mission.sessionHub.contractRevision": "Contract revision {{revision}}"
+	"mission.sessionHub.contractRevision": "Contract revision {{revision}}",
+	"mission.documents.optional": "Optional",
+	"mission.documents.optionalEmpty": "No supplied documents yet. Repository work does not need them - attach files only when the work depends on sources outside the repository.",
+	"planning.startUnavailable.discoveryFailed": "Planning agent discovery failed. Retry, then start.",
+	"planning.startUnavailable.noReadyAgent": "No planning agent is available yet. Set up a reasoning provider, then refresh.",
+	"planning.startUnavailable.selectAgent": "Select an available planning agent to start planning.",
+	"planning.startUnavailable.agentNotReady": "The selected planning agent is not ready. Choose an available agent.",
+	"planning.startUnavailable.noContext": "Choose a planning read scope to start."
 }

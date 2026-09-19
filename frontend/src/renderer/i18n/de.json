@@ -2772,5 +2772,12 @@
 	"mission.sessionHub.open": "Sitzung öffnen",
 	"mission.sessionHub.openAria": "Sitzung für {{title}} öffnen",
 	"mission.sessionHub.back": "Ergebnisübersicht",
-	"mission.sessionHub.contractRevision": "Vertragsrevision {{revision}}"
+	"mission.sessionHub.contractRevision": "Vertragsrevision {{revision}}",
+	"mission.documents.optional": "Optional",
+	"mission.documents.optionalEmpty": "Noch keine beigefügten Dokumente. Repository-Arbeit benötigt sie nicht - fügen Sie Dateien nur hinzu, wenn die Arbeit von Quellen außerhalb des Repositorys abhängt.",
+	"planning.startUnavailable.discoveryFailed": "Die Erkennung der Planungsagenten ist fehlgeschlagen. Wiederholen Sie den Vorgang und starten Sie erneut.",
+	"planning.startUnavailable.noReadyAgent": "Noch kein Planungsagent verfügbar. Richten Sie einen Reasoning-Anbieter ein und aktualisieren Sie dann.",
+	"planning.startUnavailable.selectAgent": "Wählen Sie einen verfügbaren Planungsagenten, um die Planung zu starten.",
+	"planning.startUnavailable.agentNotReady": "Der ausgewählte Planungsagent ist nicht bereit. Wählen Sie einen verfügbaren Agenten.",
+	"planning.startUnavailable.noContext": "Wählen Sie einen Leseumfang für die Planung, um zu starten."
 }

@@ -48,6 +48,16 @@ export function MissionPlanningConversation({
 	const pending = start.pending || send.pending || finalize.pending || cancel.pending;
 	const conversationPending = send.pending || finalize.pending;
 	const readyCandidates = useMemo(() => candidatesQuery.candidates.filter((candidate) => candidate.ready), [candidatesQuery.candidates]);
+	const selectedCandidateReady = Boolean(candidateId) && readyCandidates.some((candidate) => candidate.id === candidateId);
+	const startDisabled = !candidateId || !contextMode || pending || Boolean(candidatesQuery.failure) || !selectedCandidateReady;
+	let startDisabledReason: string | undefined;
+	if (startDisabled && !pending && !candidatesQuery.isLoading) {
+		if (candidatesQuery.failure) startDisabledReason = t("planning.startUnavailable.discoveryFailed");
+		else if (readyCandidates.length === 0) startDisabledReason = t("planning.startUnavailable.noReadyAgent");
+		else if (!candidateId) startDisabledReason = t("planning.startUnavailable.selectAgent");
+		else if (!selectedCandidateReady) startDisabledReason = t("planning.startUnavailable.agentNotReady");
+		else if (!contextMode) startDisabledReason = t("planning.startUnavailable.noContext");
+	}
 	const actionError = start.failure ?? send.failure ?? finalize.failure ?? cancel.failure ?? candidatesQuery.failure ?? planningQuery.failure;
 	const failedAction = start.failure ? "start" : send.failure ? "message" : finalize.failure ? "proposal" : cancel.failure ? "cancel" : undefined;
 	function beginNewAttempt() {
@@ -129,7 +139,7 @@ export function MissionPlanningConversation({
 					{editingContext && <PlanningContextGrant value={contextMode} onChange={setContextMode} disabled={pending} />}
 					<Button
 						data-testid="planning-start"
-						disabled={!candidateId || !contextMode || pending || Boolean(candidatesQuery.failure) || readyCandidates.every((candidate) => candidate.id !== candidateId)}
+						disabled={startDisabled}
 						onClick={() => {
 							if (!candidateId) return;
 							void start.mutate({ candidateId, contextMode, requestKey: stableRequestKey("start", `${contractRevision}:${candidateId}:${contextMode}`) })
@@ -141,6 +151,9 @@ export function MissionPlanningConversation({
 						{start.pending && <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />}
 						{t("planning.start")}
 					</Button>
+					{startDisabledReason && (
+						<p className="text-xs text-muted-foreground" data-testid="planning-start-disabled-reason">{startDisabledReason}</p>
+					)}
 				</>
 			)}
 

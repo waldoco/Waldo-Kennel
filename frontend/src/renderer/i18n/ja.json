@@ -2772,5 +2772,12 @@
 	"mission.sessionHub.open": "セッションを開く",
 	"mission.sessionHub.openAria": "{{title}} のセッションを開く",
 	"mission.sessionHub.back": "成果ハブ",
-	"mission.sessionHub.contractRevision": "契約リビジョン {{revision}}"
+	"mission.sessionHub.contractRevision": "契約リビジョン {{revision}}",
+	"mission.documents.optional": "任意",
+	"mission.documents.optionalEmpty": "提供ドキュメントはまだありません。リポジトリ作業には不要です - リポジトリ外のソースに依存する場合のみファイルを添付してください。",
+	"planning.startUnavailable.discoveryFailed": "プランニングエージェントの検出に失敗しました。再試行してから開始してください。",
+	"planning.startUnavailable.noReadyAgent": "利用可能なプランニングエージェントがまだありません。推論プロバイダーを設定してから更新してください。",
+	"planning.startUnavailable.selectAgent": "利用可能なプランニングエージェントを選択してプランニングを開始してください。",
+	"planning.startUnavailable.agentNotReady": "選択したプランニングエージェントは準備できていません。利用可能なエージェントを選択してください。",
+	"planning.startUnavailable.noContext": "開始するにはプランニングの読み取りスコープを選択してください。"
 }

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 
 import type { components } from "../../api/schema";
-import { apiClient } from "../lib/api-client";
+import { apiClient, apiErrorCode } from "../lib/api-client";
 import { classifyOutcomeFailure, type OutcomeFailure } from "./useOutcome";
 
 export type OutcomeDeliveryRecord = components["schemas"]["ControllersOutcomeDeliveryResponse"];
@@ -91,7 +91,13 @@ export function useOutcomeDocumentContext(outcomeId: string | undefined) {
 			const { data, error } = await apiClient.GET("/api/v1/outcomes/{outcomeId}/documents", {
 				params: { path: { outcomeId: outcomeId as string } },
 			});
-			if (error) throw error;
+			if (error) {
+				// No selection is the normal state for repository work: the daemon
+				// answers DOCUMENT_CONTEXT_STALE. That is empty, not a failure -
+				// real selection and approval errors keep surfacing below.
+				if (apiErrorCode(error) === "DOCUMENT_CONTEXT_STALE") return null;
+				throw error;
+			}
 			return (data as DocumentContextEnvelope).documentContext;
 		},
 	});

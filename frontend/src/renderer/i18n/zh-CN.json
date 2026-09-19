@@ -2754,5 +2754,12 @@
 	"mission.sessionHub.open": "打开会话",
 	"mission.sessionHub.openAria": "打开 {{title}} 的会话",
 	"mission.sessionHub.back": "结果中心",
-	"mission.sessionHub.contractRevision": "合同修订版 {{revision}}"
+	"mission.sessionHub.contractRevision": "合同修订版 {{revision}}",
+	"mission.documents.optional": "可选",
+	"mission.documents.optionalEmpty": "尚未提供文档。仓库工作不需要它们 - 仅当工作依赖仓库外部的来源时才附加文件。",
+	"planning.startUnavailable.discoveryFailed": "规划代理发现失败。请重试，然后开始。",
+	"planning.startUnavailable.noReadyAgent": "尚无可用的规划代理。请设置推理提供程序，然后刷新。",
+	"planning.startUnavailable.selectAgent": "选择一个可用的规划代理以开始规划。",
+	"planning.startUnavailable.agentNotReady": "所选的规划代理尚未就绪。请选择一个可用的代理。",
+	"planning.startUnavailable.noContext": "请选择规划读取范围以开始。"
 }

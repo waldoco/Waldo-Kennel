@@ -2788,5 +2788,12 @@
 	"mission.sessionHub.open": "Ouvrir la session",
 	"mission.sessionHub.openAria": "Ouvrir la session de {{title}}",
 	"mission.sessionHub.back": "Vue du résultat",
-	"mission.sessionHub.contractRevision": "Révision du contrat {{revision}}"
+	"mission.sessionHub.contractRevision": "Révision du contrat {{revision}}",
+	"mission.documents.optional": "Facultatif",
+	"mission.documents.optionalEmpty": "Aucun document fourni pour l'instant. Le travail sur le dépôt n'en a pas besoin - joignez des fichiers uniquement lorsque le travail dépend de sources externes au dépôt.",
+	"planning.startUnavailable.discoveryFailed": "La détection des agents de planification a échoué. Réessayez, puis démarrez.",
+	"planning.startUnavailable.noReadyAgent": "Aucun agent de planification n'est encore disponible. Configurez un fournisseur de raisonnement, puis actualisez.",
+	"planning.startUnavailable.selectAgent": "Sélectionnez un agent de planification disponible pour commencer la planification.",
+	"planning.startUnavailable.agentNotReady": "L'agent de planification sélectionné n'est pas prêt. Choisissez un agent disponible.",
+	"planning.startUnavailable.noContext": "Choisissez une portée de lecture de planification pour commencer."
 }

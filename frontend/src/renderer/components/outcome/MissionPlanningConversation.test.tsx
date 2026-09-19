@@ -45,6 +45,36 @@ describe("MissionPlanningConversation", () => {
 		expect(screen.getByText(/bounded repository context packet/i)).toBeInTheDocument();
 	});
 
+	it("explains why Start planning is disabled when no planning agent is ready", async () => {
+		getMock.mockImplementation(async (url: string) => {
+			if (url.endsWith("/planning-candidates")) return { data: { candidates: [] }, error: undefined };
+			return { data: undefined, error: { code: "PLANNING_SESSION_NOT_FOUND", message: "none" } };
+		});
+		renderConversation();
+		const start = await screen.findByTestId("planning-start");
+		expect(start).toBeDisabled();
+		expect(await screen.findByTestId("planning-start-disabled-reason")).toHaveTextContent(/no planning agent is available yet/i);
+	});
+
+	it("explains that an agent must be selected when several are ready", async () => {
+		const second = { id: "native_harness|codex|provider_default", ready: true, binding: { mode: "native_harness", provider: "codex", modelSelection: "provider_default" } };
+		getMock.mockImplementation(async (url: string) => {
+			if (url.endsWith("/planning-candidates")) return { data: { candidates: [candidate, second] }, error: undefined };
+			return { data: undefined, error: { code: "PLANNING_SESSION_NOT_FOUND", message: "none" } };
+		});
+		renderConversation();
+		const start = await screen.findByTestId("planning-start");
+		expect(await screen.findByTestId("planning-start-disabled-reason")).toHaveTextContent(/select an available planning agent/i);
+		expect(start).toBeDisabled();
+	});
+
+	it("shows no disabled reason once the start gate clears", async () => {
+		renderConversation();
+		const start = await screen.findByTestId("planning-start");
+		await vi.waitFor(() => expect(start).toBeEnabled());
+		expect(screen.queryByTestId("planning-start-disabled-reason")).not.toBeInTheDocument();
+	});
+
 	it("describes native planning as bounded packet reasoning", async () => {
 		const nativeCandidate = { id: "native_harness|codex|provider_default", ready: true, binding: { mode: "native_harness", provider: "codex", modelSelection: "provider_default" } };
 		getMock.mockImplementation(async (url: string) => {

@@ -2788,5 +2788,12 @@
 	"mission.sessionHub.open": "Abrir sessão",
 	"mission.sessionHub.openAria": "Abrir sessão de {{title}}",
 	"mission.sessionHub.back": "Visão do resultado",
-	"mission.sessionHub.contractRevision": "Revisão do contrato {{revision}}"
+	"mission.sessionHub.contractRevision": "Revisão do contrato {{revision}}",
+	"mission.documents.optional": "Opcional",
+	"mission.documents.optionalEmpty": "Ainda não há documentos fornecidos. O trabalho no repositório não precisa deles - anexe arquivos apenas quando o trabalho depender de fontes fora do repositório.",
+	"planning.startUnavailable.discoveryFailed": "Falha ao descobrir os agentes de planejamento. Tente novamente e depois comece.",
+	"planning.startUnavailable.noReadyAgent": "Ainda não há agente de planejamento disponível. Configure um provedor de raciocínio e atualize.",
+	"planning.startUnavailable.selectAgent": "Selecione um agente de planejamento disponível para começar a planejar.",
+	"planning.startUnavailable.agentNotReady": "O agente de planejamento selecionado não está pronto. Escolha um agente disponível.",
+	"planning.startUnavailable.noContext": "Escolha um escopo de leitura de planejamento para começar."
 }

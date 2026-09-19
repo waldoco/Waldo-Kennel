@@ -3,11 +3,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const { get, post, apiErrorCode } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), apiErrorCode: vi.fn(() => undefined as string | undefined) }));
 
 vi.mock("../../lib/api-client", () => ({
 	apiClient: { GET: get, POST: post },
-	apiErrorCode: () => undefined,
+	apiErrorCode,
 	apiErrorMessage: (error: Error) => error.message,
 }));
 
@@ -26,6 +26,7 @@ const selectedContext = {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	apiErrorCode.mockReturnValue(undefined);
 	get.mockResolvedValue({ data: { documentContext: selectedContext } });
 	post.mockImplementation(async (_url: string, request: { body: { paths?: string[]; expectedDigest?: string } }) => ({
 		data: {
@@ -61,4 +62,22 @@ it("selects local paths, then requires explicit approval of the returned digest"
 		"/api/v1/outcomes/{outcomeId}/documents/approval",
 		expect.objectContaining({ body: { expectedDigest: "digest-1" } }),
 	));
+});
+
+it("treats no selected documents as the normal optional state", async () => {
+	apiErrorCode.mockReturnValue("DOCUMENT_CONTEXT_STALE");
+	get.mockResolvedValue({ data: undefined, error: { code: "DOCUMENT_CONTEXT_STALE", message: "This Outcome has no selected documents" } });
+	renderPanel();
+	expect(await screen.findByTestId("outcome-documents-optional")).toBeInTheDocument();
+	expect(screen.getByText("Optional")).toBeInTheDocument();
+	expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+	expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
+});
+
+it("still surfaces real document-context failures", async () => {
+	apiErrorCode.mockReturnValue("DOCUMENT_CONTEXT_UNAVAILABLE");
+	get.mockResolvedValue({ data: undefined, error: { code: "DOCUMENT_CONTEXT_UNAVAILABLE", message: "Supplied-document context is not wired in this daemon" } });
+	renderPanel();
+	expect(await screen.findByRole("alert")).toHaveTextContent("Supplied-document context is not wired in this daemon");
+	expect(screen.queryByTestId("outcome-documents-optional")).not.toBeInTheDocument();
 });

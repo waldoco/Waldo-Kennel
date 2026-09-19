@@ -69,8 +69,16 @@ export function OutcomeDocumentsPanel({ outcomeId }: { outcomeId: string }) {
 						<FileText aria-hidden="true" className="size-4 text-muted-foreground" />
 						<h3 className="text-sm font-medium">{t("mission.documents.heading")}</h3>
 						{context && <Badge variant={context.state === "approved" ? "success" : "outline"}>{context.state}</Badge>}
+						{!context && !contextQuery.isLoading && !failure && (
+							<Badge variant="outline">{t("mission.documents.optional")}</Badge>
+						)}
 					</div>
 					<p className="mt-1 text-xs text-muted-foreground">{t("mission.documents.intro")}</p>
+					{!context && !contextQuery.isLoading && !failure && (
+						<p className="mt-1 text-xs text-muted-foreground" data-testid="outcome-documents-optional">
+							{t("mission.documents.optionalEmpty")}
+						</p>
+					)}
 				</div>
 				{contextQuery.failure && (
 					<Button onClick={contextQuery.refetch} size="sm" variant="ghost">
