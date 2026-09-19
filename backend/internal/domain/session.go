@@ -22,6 +22,16 @@ const (
 	KindOrchestrator SessionKind = "orchestrator"
 )
 
+// SessionWorktreeFact is one materialized repo worktree of a workspace-project
+// session, captured before provider launch so custody records can bind the
+// exact per-repo source trees the session started from.
+type SessionWorktreeFact struct {
+	RepoName     string `json:"repoName"`
+	BaseSHA      string `json:"baseSha"`
+	BaseRef      string `json:"baseRef,omitempty"`
+	WorktreePath string `json:"worktreePath"`
+}
+
 // SessionMetadata is the typed, off-status metadata for a session: operational
 // handles and seed inputs used by Session Manager and reaper.
 type SessionMetadata struct {
@@ -30,10 +40,13 @@ type SessionMetadata struct {
 	WorkspaceRepoPath string `json:"workspaceRepoPath,omitempty"`
 	DiffBaseSHA       string `json:"diffBaseSha,omitempty"`
 	DiffBaseRef       string `json:"diffBaseRef,omitempty"`
-	RuntimeHandleID   string `json:"runtimeHandleId,omitempty"`
-	RuntimeLaunchID   string `json:"runtimeLaunchId,omitempty"`
-	AgentSessionID    string `json:"agentSessionId,omitempty"`
-	Prompt            string `json:"prompt,omitempty"`
+	// Worktrees is the canonical per-repo inventory of a workspace-project
+	// session, captured before provider launch. Empty for other shapes.
+	Worktrees       []SessionWorktreeFact `json:"worktrees,omitempty"`
+	RuntimeHandleID string                `json:"runtimeHandleId,omitempty"`
+	RuntimeLaunchID string                `json:"runtimeLaunchId,omitempty"`
+	AgentSessionID  string                `json:"agentSessionId,omitempty"`
+	Prompt          string                `json:"prompt,omitempty"`
 	// LatestUserPrompt is the latest real user-authored task direction observed
 	// for this Kennel session. Internal Kennel coordination messages (for example an
 	// agent-switch handoff request) must not replace it.

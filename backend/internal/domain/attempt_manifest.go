@@ -54,6 +54,31 @@ func (r AttemptManifestInputRef) Validate() error {
 	return nil
 }
 
+// AttemptManifestRepo binds one materialized repo worktree of a
+// workspace-project Attempt: canonical identity plus the exact base revision
+// the Attempt started from. A workspace source tree without a resolved base
+// is not custody evidence, so the base is required.
+type AttemptManifestRepo struct {
+	RepoName     string `json:"repoName"`
+	WorktreePath string `json:"worktreePath"`
+	BaseSHA      string `json:"baseSha"`
+	BaseRef      string `json:"baseRef,omitempty"`
+}
+
+// Validate checks one bound repo source tree.
+func (r AttemptManifestRepo) Validate() error {
+	if strings.TrimSpace(r.RepoName) == "" {
+		return fmt.Errorf("repo name is required")
+	}
+	if strings.TrimSpace(r.WorktreePath) == "" {
+		return fmt.Errorf("repo worktree path is required")
+	}
+	if strings.TrimSpace(r.BaseSHA) == "" {
+		return fmt.Errorf("repo %s base revision is required", r.RepoName)
+	}
+	return nil
+}
+
 // AttemptManifestCheck is one owner-authorized check bound at admission, with
 // the exact argv the daemon may run. Rebinding happens only through a new
 // Plan revision, never by editing this record.
@@ -101,9 +126,13 @@ type AttemptInputManifest struct {
 	ContractRevisionNumber int64          `json:"contractRevisionNumber"`
 	// WorkspaceKind and BaseRevision identify the source tree the Attempt
 	// started from. Empty for a staged folder, never a fabricated revision.
-	WorkspaceKind          WorkspaceKind             `json:"workspaceKind"`
-	BaseRevision           string                    `json:"baseRevision,omitempty"`
-	BaseRef                string                    `json:"baseRef,omitempty"`
+	WorkspaceKind WorkspaceKind `json:"workspaceKind"`
+	BaseRevision  string        `json:"baseRevision,omitempty"`
+	BaseRef       string        `json:"baseRef,omitempty"`
+	// Repos binds the per-repo source trees of a workspace-project Attempt.
+	// Empty for single-repo and staged-folder shapes, whose base evidence
+	// lives in BaseRevision/BaseRef.
+	Repos                  []AttemptManifestRepo     `json:"repos,omitempty"`
 	RunBriefCoreDigest     string                    `json:"runBriefCoreDigest"`
 	RunBriefCompiledDigest string                    `json:"runBriefCompiledDigest"`
 	ExecutionPolicyDigest  string                    `json:"executionPolicyDigest"`
@@ -133,6 +162,11 @@ func (m AttemptInputManifest) Validate() error {
 	}
 	for _, input := range m.Inputs {
 		if err := input.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, repo := range m.Repos {
+		if err := repo.Validate(); err != nil {
 			return err
 		}
 	}

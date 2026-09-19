@@ -142,3 +142,41 @@ func TestAttemptManifestRejectsUnknownHalf(t *testing.T) {
 		t.Fatal("unknown manifest half validated")
 	}
 }
+
+func TestAttemptManifestValidateChecksBoundRepos(t *testing.T) {
+	valid := validInputManifest()
+	valid.Repos = []AttemptManifestRepo{
+		{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root", BaseRef: "main"},
+		{RepoName: "api", WorktreePath: "/ws/api", BaseSHA: "sha-api"},
+	}
+	sealed, err := NewAttemptInputManifest(valid, time.Now())
+	if err != nil {
+		t.Fatalf("workspace inventory with resolved bases must seal: %v", err)
+	}
+	if err := sealed.Validate(); err != nil {
+		t.Fatalf("sealed workspace manifest must validate: %v", err)
+	}
+	body, err := sealed.DecodeInput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Repos) != 2 || body.Repos[0].BaseSHA != "sha-root" {
+		t.Fatalf("round trip lost the bound repo inventory: %#v", body.Repos)
+	}
+
+	baseless := valid
+	baseless.Repos = []AttemptManifestRepo{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: ""}}
+	if _, err := NewAttemptInputManifest(baseless, time.Now()); err == nil {
+		t.Fatal("a workspace source tree without a resolved base must be refused")
+	}
+	nameless := valid
+	nameless.Repos = []AttemptManifestRepo{{RepoName: " ", WorktreePath: "/ws/root", BaseSHA: "sha-root"}}
+	if _, err := NewAttemptInputManifest(nameless, time.Now()); err == nil {
+		t.Fatal("a repo fact without a canonical name must be refused")
+	}
+	pathless := valid
+	pathless.Repos = []AttemptManifestRepo{{RepoName: "root", WorktreePath: "", BaseSHA: "sha-root"}}
+	if _, err := NewAttemptInputManifest(pathless, time.Now()); err == nil {
+		t.Fatal("a repo fact without a worktree path must be refused")
+	}
+}

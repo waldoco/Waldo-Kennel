@@ -128,3 +128,66 @@ func TestRecoverAttemptPacketBoundWithoutInputManifestStaysHeld(t *testing.T) {
 		t.Fatalf("reconcile code = %s, want %s", code, outcome.CodeAttemptCustodyUnproven)
 	}
 }
+
+// A workspace-project Attempt seals the canonical per-repo inventory into the
+// custody manifest: every repo fact observed at the prelaunch boundary is
+// bound with its exact base.
+func TestStartAttemptSealsWorkspaceRepoInventory(t *testing.T) {
+	svc, _, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	manifests := &fakeManifestStore{}
+	svc.WithAttemptManifests(manifests)
+	spawner.sessionMetadata = domain.SessionMetadata{
+		WorkspaceRepoPath: "/repo/root", DiffBaseSHA: "base-root", DiffBaseRef: "main",
+		Worktrees: []domain.SessionWorktreeFact{
+			{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: "sha-root", BaseRef: "main"},
+			{RepoName: "api", WorktreePath: "/ws/api", BaseSHA: "sha-api", BaseRef: "main"},
+		},
+	}
+
+	if _, err := svc.StartAttempt(context.Background(), outcomeID, startInput(planID)); err != nil {
+		t.Fatalf("start attempt: %v", err)
+	}
+	if len(manifests.saved) != 1 {
+		t.Fatalf("saved manifests = %d, want the sealed input half", len(manifests.saved))
+	}
+	body, err := manifests.saved[0].DecodeInput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manifests.saved[0].Validate(); err != nil {
+		t.Fatalf("sealed manifest must validate: %v", err)
+	}
+	if len(body.Repos) != 2 {
+		t.Fatalf("sealed repos = %#v, want both workspace repos", body.Repos)
+	}
+	if body.Repos[0].RepoName != "root" || body.Repos[0].BaseSHA != "sha-root" || body.Repos[0].WorktreePath != "/ws/root" {
+		t.Fatalf("root repo fact = %#v", body.Repos[0])
+	}
+	if body.Repos[1].RepoName != "api" || body.Repos[1].BaseSHA != "sha-api" || body.Repos[1].WorktreePath != "/ws/api" {
+		t.Fatalf("api repo fact = %#v", body.Repos[1])
+	}
+}
+
+// Falsifier: a workspace shape whose durable inventory lost a base revision
+// must be refused at the seal, not admitted with fabricated custody.
+func TestStartAttemptRefusesWorkspaceShapeWithoutRepoBase(t *testing.T) {
+	svc, _, spawner, _, outcomeID, planID := newAttemptHarness(t)
+	manifests := &fakeManifestStore{}
+	svc.WithAttemptManifests(manifests)
+	spawner.sessionMetadata = domain.SessionMetadata{
+		WorkspaceRepoPath: "/repo/root",
+		Worktrees:         []domain.SessionWorktreeFact{{RepoName: "root", WorktreePath: "/ws/root", BaseSHA: ""}},
+	}
+
+	pastBoundary := false
+	spawner.afterPrelaunch = func() { pastBoundary = true }
+	if _, err := svc.StartAttempt(context.Background(), outcomeID, startInput(planID)); err == nil {
+		t.Fatal("a workspace source tree without a resolved base must refuse admission")
+	}
+	if pastBoundary {
+		t.Fatal("launch crossed the provider boundary despite the seal refusing the baseless inventory")
+	}
+	if len(manifests.saved) != 0 {
+		t.Fatalf("sealed %d manifests from a baseless inventory, want none", len(manifests.saved))
+	}
+}

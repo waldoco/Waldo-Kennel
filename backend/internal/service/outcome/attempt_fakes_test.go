@@ -461,13 +461,14 @@ func timeToSuffix(t time.Time) string {
 // for and answers with whatever failure the current scenario injects. NO
 // fallback: the requested harness is echoed verbatim.
 type fakeSpawner struct {
-	afterPrelaunch func()
-	mu             sync.Mutex
-	readiness      ports.AgentProfileReadiness
-	readinessErr   error
-	readinessN     int
-	spawnErr       error
-	terminateErr   error
+	afterPrelaunch  func()
+	sessionMetadata domain.SessionMetadata
+	mu              sync.Mutex
+	readiness       ports.AgentProfileReadiness
+	readinessErr    error
+	readinessN      int
+	spawnErr        error
+	terminateErr    error
 	// terminateResult shapes the next successful Terminate answer; nil means
 	// a clean proven stop whose workspace was freed. Tests inject the
 	// dirty-preserved shape {ProviderStopped:true, WorkspaceFreed:false} to
@@ -520,6 +521,12 @@ func (f *fakeSpawner) Spawn(_ context.Context, req ports.AttemptSpawnRequest) (p
 			State:          domain.ActivityActive,
 			LastActivityAt: time.Now(),
 		},
+	}
+	if f.sessionMetadata.WorkspaceRepoPath != "" || len(f.sessionMetadata.Worktrees) > 0 {
+		rec.Metadata.WorkspaceRepoPath = f.sessionMetadata.WorkspaceRepoPath
+		rec.Metadata.DiffBaseSHA = f.sessionMetadata.DiffBaseSHA
+		rec.Metadata.DiffBaseRef = f.sessionMetadata.DiffBaseRef
+		rec.Metadata.Worktrees = f.sessionMetadata.Worktrees
 	}
 	bound, err := req.ExecutionPolicy.BindWorkspaceRoot(rec.Metadata.WorkspacePath)
 	f.mu.Unlock()

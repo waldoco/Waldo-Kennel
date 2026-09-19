@@ -33,6 +33,10 @@ func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain
 	if strings.TrimSpace(session.Metadata.DiffBaseSHA) != "" || strings.TrimSpace(session.Metadata.WorkspaceRepoPath) != "" {
 		kind = domain.WorkspaceGitWorktree
 	}
+	repos := make([]domain.AttemptManifestRepo, 0, len(session.Metadata.Worktrees))
+	for _, wt := range session.Metadata.Worktrees {
+		repos = append(repos, domain.AttemptManifestRepo{RepoName: wt.RepoName, WorktreePath: wt.WorktreePath, BaseSHA: wt.BaseSHA, BaseRef: wt.BaseRef})
+	}
 	refs := make([]domain.AttemptManifestInputRef, 0, len(inputs))
 	for _, input := range inputs {
 		refs = append(refs, domain.AttemptManifestInputRef{AttemptID: input.AttemptID, WorkUnitID: input.WorkUnitID, ArtifactVersion: input.ArtifactVersion})
@@ -49,6 +53,7 @@ func (s *Service) sealAttemptInputManifest(ctx context.Context, outcomeID domain
 		AttemptID: attempt.ID, OutcomeID: outcomeID, PlanRevisionID: plan.ID, WorkUnitID: unit.ID,
 		ContractRevisionNumber: plan.ContractRevisionNumber,
 		WorkspaceKind:          kind, BaseRevision: session.Metadata.DiffBaseSHA, BaseRef: session.Metadata.DiffBaseRef,
+		Repos:              repos,
 		RunBriefCoreDigest: coreDigest, RunBriefCompiledDigest: compiledDigest, ExecutionPolicyDigest: policyDigest,
 		Inputs: refs, Documents: docs, Checks: checks,
 	}, s.clock())
