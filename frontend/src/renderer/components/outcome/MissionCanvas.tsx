@@ -87,6 +87,10 @@ const MissionCanvasFlowNode = memo(function MissionCanvasFlowNode({ data, select
 });
 
 const NODE_TYPES = { workunit: MissionCanvasFlowNode };
+// Wide mission topologies must remain complete in the viewport. A 0.25 floor
+// is bounded enough to avoid illegible extreme zoom while allowing the full
+// graph to fit in the narrower pane beside the inspector.
+const MISSION_CANVAS_MIN_ZOOM = 0.25;
 
 function usePrefersReducedMotion(): boolean {
 	const [reduced, setReduced] = useState(
@@ -252,7 +256,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, onInsta
 				retryTimer = setTimeout(fitMeasuredTopology, 16);
 				return;
 			}
-			instanceRef.current.fitView({ duration: reducedMotion ? 0 : 200, padding: 0.08 });
+			instanceRef.current.fitView({ duration: reducedMotion ? 0 : 200, minZoom: MISSION_CANVAS_MIN_ZOOM, padding: 0.08 });
 			fittedFrameRef.current = frameKey;
 		};
 		retryTimer = setTimeout(fitMeasuredTopology, 0);

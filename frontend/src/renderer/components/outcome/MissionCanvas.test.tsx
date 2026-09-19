@@ -122,7 +122,7 @@ describe("MissionCanvas", () => {
 		await new Promise((resolve) => setTimeout(resolve, 40));
 		expect(instance?.fitView).not.toHaveBeenCalled();
 		measured = true;
-		await waitFor(() => expect(instance?.fitView).toHaveBeenCalledWith(expect.objectContaining({ padding: 0.08 })));
+		await waitFor(() => expect(instance?.fitView).toHaveBeenCalledWith(expect.objectContaining({ minZoom: 0.25, padding: 0.08 })));
 		expect(boundsAtFit.at(-1)?.every((node) => Number(node.width) > 0 && Number(node.height) > 0)).toBe(true);
 	});
 
@@ -356,10 +356,10 @@ describe("MissionCanvas interactions", () => {
 		const fitViewSpy = vi.spyOn(instance!, "fitView").mockResolvedValue(true);
 		fireEvent.click(screen.getByTestId("mission-node-face-wu-binding"));
 		await waitFor(() => expect(screen.getByTestId("outcome-inspector")).toBeInTheDocument());
-		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ padding: 0.08 })));
+		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ minZoom: 0.25, padding: 0.08 })));
 		fitViewSpy.mockClear();
 		fireEvent.click(screen.getByTestId("outcome-inspector-close"));
-		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ padding: 0.08 })));
+		await waitFor(() => expect(fitViewSpy).toHaveBeenCalledWith(expect.objectContaining({ minZoom: 0.25, padding: 0.08 })));
 	});
 
 	it("highlights the selected node's lineage and dims the rest until selection clears", async () => {
