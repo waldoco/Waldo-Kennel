@@ -60,6 +60,13 @@ it("restores portfolio input and opener focus after expanded Mission closes", as
 	await user.click(screen.getByRole("button", { name: "Open Outcome" }));
 	expect(screen.getByRole("button", { name: "Expand" })).toBeInTheDocument();
 });
+it("keeps the split-pane resize affordance available at common desktop widths", async () => {
+	render(<Harness />);
+	await userEvent.click(screen.getByRole("button", { name: "Open Outcome" }));
+	const divider = screen.getByRole("separator");
+	expect(divider).toHaveClass("@[960px]/mission:block");
+	expect(divider).not.toHaveClass("@[1050px]/mission:block");
+});
 it("resizes with keyboard and clamps at the panel bounds", async () => {
 	render(<Harness />);
 	await userEvent.click(screen.getByRole("button", { name: "Open Outcome" }));
