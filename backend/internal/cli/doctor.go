@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/codex"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/admissionpolicy"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/config"
 )
 
@@ -148,7 +149,7 @@ func (c *commandContext) runDoctor(ctx context.Context) []doctorCheck {
 		)
 	}
 
-	checks = append(checks, checkStore(cfg.DataDir), checkHooksLog(cfg.DataDir, time.Now()))
+	checks = append(checks, checkStore(cfg.DataDir), checkAdmissionPolicy(cfg.DataDir), checkHooksLog(cfg.DataDir, time.Now()))
 
 	st, err := c.inspectDaemon(ctx)
 	if err != nil {
@@ -181,6 +182,23 @@ func (c *commandContext) runDoctor(ctx context.Context) []doctorCheck {
 	}
 	checks = append(checks, c.checkCodexLaunchFlags(ctx), c.checkGitHubToken(ctx), c.checkGitLabToken(ctx))
 	return checks
+}
+
+func checkAdmissionPolicy(dataDir string) doctorCheck {
+	policy, err := admissionpolicy.Load(dataDir)
+	if err != nil {
+		return doctorCheck{Level: doctorFail, Section: doctorSectionCore, Name: "admission-policy", Message: err.Error()}
+	}
+	if policy == nil {
+		return doctorCheck{
+			Level: doctorWarn, Section: doctorSectionCore, Name: "admission-policy",
+			Message: fmt.Sprintf("%s is missing; Plan admission is blocked until an operator installs a valid policy", filepath.Join(dataDir, "admission-policy.json")),
+		}
+	}
+	return doctorCheck{
+		Level: doctorPass, Section: doctorSectionCore, Name: "admission-policy",
+		Message: fmt.Sprintf("%s (id=%s version=%s)", filepath.Join(dataDir, "admission-policy.json"), policy.ID, policy.Version),
+	}
 }
 
 // checkStore inspects the SQLite store WITHOUT opening or migrating it. The
