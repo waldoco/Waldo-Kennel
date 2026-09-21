@@ -5,6 +5,7 @@ import type { NotificationDTO, NotificationsCache } from "./notifications";
 const {
 	apiGetMock,
 	getApiBaseUrlMock,
+	hasTrustedApiBaseUrlMock,
 	onStatusMock,
 	removeStatusMock,
 	showNotificationMock,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
 	getApiBaseUrlMock: vi.fn(() => "http://127.0.0.1:3001"),
+	hasTrustedApiBaseUrlMock: vi.fn(() => true),
 	onStatusMock: vi.fn(),
 	removeStatusMock: vi.fn(),
 	showNotificationMock: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock("./api-client", () => ({
 	apiClient: { GET: apiGetMock },
 	apiErrorMessage: () => "Request failed",
 	getApiBaseUrl: getApiBaseUrlMock,
+	hasTrustedApiBaseUrl: hasTrustedApiBaseUrlMock,
 	subscribeApiBaseUrl: subscribeApiBaseUrlMock,
 }));
 
@@ -107,6 +110,7 @@ beforeEach(() => {
 	apiGetMock.mockReset();
 	EventSourceStub.instances = [];
 	getApiBaseUrlMock.mockReset().mockReturnValue("http://127.0.0.1:3001");
+	hasTrustedApiBaseUrlMock.mockReset().mockReturnValue(true);
 	onStatusMock.mockReset().mockReturnValue(removeStatusMock);
 	removeStatusMock.mockReset();
 	showNotificationMock.mockReset().mockResolvedValue(undefined);
@@ -378,6 +382,20 @@ describe("notification cache helpers", () => {
 });
 
 describe("createNotificationsTransport", () => {
+	it("waits for a trusted daemon URL instead of opening through the Vite origin", () => {
+		hasTrustedApiBaseUrlMock.mockReturnValue(false);
+		createNotificationsTransport(queryClient()).connect();
+
+		expect(EventSourceStub.instances).toHaveLength(0);
+
+		hasTrustedApiBaseUrlMock.mockReturnValue(true);
+		getApiBaseUrlMock.mockReturnValue("http://127.0.0.1:3032");
+		const onBaseUrlChange = subscribeApiBaseUrlMock.mock.calls[0][0] as () => void;
+		onBaseUrlChange();
+
+		expect(EventSourceStub.instances).toHaveLength(1);
+		expect(EventSourceStub.instances[0].url).toBe("http://127.0.0.1:3032/api/v1/notifications/stream");
+	});
 	it("opens the notification stream and invalidates unread notifications on open", () => {
 		const qc = queryClient();
 		const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
