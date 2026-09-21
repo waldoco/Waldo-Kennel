@@ -15,7 +15,7 @@ vi.mock("../../lib/api-client", () => ({
 
 import { OutcomeProveCloseSurface } from "./OutcomeProveCloseSurface";
 
-function proofEnvelope(status = "ready_for_acceptance") {
+function proofEnvelope(status = "ready_for_acceptance"): { proof: import("../../../api/schema").components["schemas"]["OutcomeProofResponse"] } {
 	return {
 		proof: {
 			outcomeId: "out-1",
