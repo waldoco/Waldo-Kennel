@@ -80,6 +80,8 @@ const productUiReactBoundary: Plugin = {
 			return null;
 		}
 		const remap =
+			source === "clsx" ||
+			source === "tailwind-merge" ||
 			source === "react" ||
 			source.startsWith("react/") ||
 			source === "react-dom" ||
