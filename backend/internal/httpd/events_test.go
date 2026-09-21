@@ -345,3 +345,41 @@ func TestWriteSSEEventFreezesVersionedBoundedEnvelope(t *testing.T) {
 		t.Fatal("unknown event type accepted")
 	}
 }
+
+func TestEventsStreamReplaysDurableIntakeEventWithoutClosing(t *testing.T) {
+	live := &fakeEventSubscriber{}
+	src := &staticEventSource{events: []cdc.Event{{
+		Seq:       1,
+		ProjectID: "proj_1",
+		Type:      cdc.EventIntakeCaptured,
+		Payload:   json.RawMessage(`{"intakeId":"intake-1"}`),
+		CreatedAt: time.Unix(1, 0).UTC(),
+	}}}
+	router := NewRouterWithControl(config.Config{}, discardLogger(), nil, APIDeps{CDC: src, Events: live}, ControlDeps{})
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events?after=0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if ids := readSSEIDs(t, resp.Body, 1); ids[0] != "1" {
+		t.Fatalf("id=%q, want 1", ids[0])
+	}
+}
+
+type staticEventSource struct{ events []cdc.Event }
+
+func (s *staticEventSource) EventsAfter(context.Context, int64, int) ([]cdc.Event, error) {
+	events := s.events
+	s.events = nil
+	return events, nil
+}
+func (*staticEventSource) LatestSeq(context.Context) (int64, error) { return 1, nil }
