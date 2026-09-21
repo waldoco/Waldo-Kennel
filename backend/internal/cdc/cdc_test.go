@@ -194,3 +194,21 @@ func TestEventEnvelopeJSONExactKeysAndVersion(t *testing.T) {
 		t.Fatalf("version=%s", got["version"])
 	}
 }
+
+func TestDurableChangeLogEventTypesBelongToSSERegistry(t *testing.T) {
+	durable := []cdc.EventType{
+		cdc.EventIntakeCaptured, cdc.EventIntakeUpdated, cdc.EventIntakeProposalRevised, cdc.EventIntakeConfirmed,
+		cdc.EventResponsibilityLinkCreated, cdc.EventResponsibilityLinkEnded,
+		cdc.EventWaldoConversationCreated, cdc.EventWaldoEpisodeOpened, cdc.EventWaldoEpisodeSealed,
+		cdc.EventWaldoTurnAppended, cdc.EventWaldoContextAttached, cdc.EventWaldoContextDetached,
+		cdc.EventWaldoContinuationPrepared, cdc.EventWaldoContinuationProgressed, cdc.EventWaldoContinuationRecorded,
+		cdc.EventOutcomeContributionBound, cdc.EventOutcomeDecompositionProposed,
+		cdc.EventOutcomeDecompositionAuthorized, cdc.EventOutcomeContributionWaived,
+		cdc.EventOutcomeDecompositionRequested, cdc.EventOutcomeDecompositionAnswered, cdc.EventProjectBriefRevised,
+	}
+	for _, eventType := range durable {
+		if !eventType.Valid() {
+			t.Errorf("durable change_log event type %q is absent from SSE registry", eventType)
+		}
+	}
+}

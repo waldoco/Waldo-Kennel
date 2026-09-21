@@ -77,7 +77,7 @@ export function OutcomeMissionPanel({
 							{t("mission.history")}
 						</Button>
  <OutcomeDeletionControls outcomeId={outcomeId} onRemoved={onClose} />
-						<Button className="hidden @[1050px]/mission:inline-flex" size="sm" variant="ghost" onClick={onExpand}>
+						<Button className="hidden @[960px]/mission:inline-flex" size="sm" variant="ghost" onClick={onExpand}>
 							{expanded ? (
 								<Minimize2 aria-hidden="true" className="size-3.5" />
 							) : (
@@ -188,6 +188,7 @@ export function OutcomeMissionPanel({
 									className="min-w-0"
 								>
 									<OutcomeDecideAuthorizeSurface
+										disabled={connection !== "connected"}
 										onReviewContract={() => setTab("overview")}
 										onReviewWork={() => setTab("run")}
 										outcomeId={outcomeId}

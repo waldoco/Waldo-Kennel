@@ -369,6 +369,35 @@ SELECT COALESCE((
 		_, err := db.Exec(`INSERT INTO goose_db_version (version_id, is_applied) VALUES (157, 1)`)
 		return err
 	}
+
+	// Startup reconciliation may have installed Outcome Trash guards whose
+	// bodies reference schema added outside the migration ledger. SQLite
+	// re-parses the complete trigger schema while 0157 rebuilds the two planning
+	// tables, so any such guard can make a valid legacy database fail before
+	// reaching reconciliation. Detach the guard set before Goose runs the
+	// rebuild; installOutcomeDeletionSchema restores the latest definitions
+	// after migrations and reconciliation complete.
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'outcome_trash_%'`)
+	if err != nil {
+		return err
+	}
+	var guards []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		guards = append(guards, name)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, name := range guards {
+		if _, err := db.Exec(`DROP TRIGGER IF EXISTS ` + quoteSQLiteIdent(name)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

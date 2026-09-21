@@ -261,8 +261,7 @@ func TestIssue_ConcurrentLeavesOnePendingWinner(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			local := *c
-			local.random = deterministicReader(string(rune('a' + i)))
+			local := NewWithRandom(c.store, c.kernel, deterministicReader(string(rune('a'+i))))
 			issued[i], errs[i] = local.Issue(context.Background(), req)
 		}(i)
 	}

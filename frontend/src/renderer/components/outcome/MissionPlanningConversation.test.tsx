@@ -13,10 +13,10 @@ vi.mock("../../lib/api-client", () => ({
 
 import { MissionPlanningConversation } from "./MissionPlanningConversation";
 
-function renderConversation() {
+function renderConversation({ disabled = false }: { disabled?: boolean } = {}) {
 	return render(
 		<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-			<MissionPlanningConversation contractRevision={3} onReviewContract={vi.fn()} outcomeId="out-1" />
+			<MissionPlanningConversation contractRevision={3} disabled={disabled} onReviewContract={vi.fn()} outcomeId="out-1" />
 		</QueryClientProvider>,
 	);
 }
@@ -43,6 +43,14 @@ describe("MissionPlanningConversation", () => {
 		await user.click(start);
 		expect(postMock).toHaveBeenCalledWith("/api/v1/outcomes/{outcomeId}/planning-sessions", expect.objectContaining({ body: { expectedContractRevision: 3, candidateId: candidate.id, contextMode: "repository_read", requestKey: expect.any(String) } }));
 		expect(screen.getByText(/bounded repository context packet/i)).toBeInTheDocument();
+	});
+
+	it("marks Start planning disabled and explains a disconnected fact stream", async () => {
+		renderConversation({ disabled: true });
+		const start = await screen.findByTestId("planning-start");
+		await vi.waitFor(() => expect(screen.getByRole("radio", { name: /openai/i })).toBeChecked());
+		expect(start).toBeDisabled();
+		expect(await screen.findByTestId("planning-start-disabled-reason")).toHaveTextContent(/updates disconnected/i);
 	});
 
 	it("explains why Start planning is disabled when no planning agent is ready", async () => {

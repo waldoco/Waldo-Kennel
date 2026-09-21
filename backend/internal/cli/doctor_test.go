@@ -16,6 +16,23 @@ import (
 	"time"
 )
 
+func TestDoctorReportsAdmissionPolicyState(t *testing.T) {
+	dataDir := t.TempDir()
+	missing := checkAdmissionPolicy(dataDir)
+	if missing.Level != doctorWarn || !strings.Contains(missing.Message, "Plan admission is blocked") {
+		t.Fatalf("missing policy check = %+v", missing)
+	}
+
+	path := filepath.Join(dataDir, "admission-policy.json")
+	if err := os.WriteFile(path, []byte(`{"id":"broken"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	invalid := checkAdmissionPolicy(dataDir)
+	if invalid.Level != doctorFail || invalid.Message == "" {
+		t.Fatalf("invalid policy check = %+v", invalid)
+	}
+}
+
 func TestDoctorChecksGitVersion(t *testing.T) {
 	setConfigEnv(t)
 	c := doctorContext(t, map[string]string{"git": "/bin/git"}, func(_ context.Context, name string, args ...string) ([]byte, error) {

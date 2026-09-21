@@ -64,8 +64,8 @@ export function OutcomeMissionWorkspace({
 			<div
 				className={cn(
 					"min-h-0 min-w-0 flex-1",
-					selected && "hidden @[1050px]/mission:block",
-					selected && expanded && "@[1050px]/mission:hidden",
+					selected && "hidden @[960px]/mission:block",
+					selected && expanded && "@[960px]/mission:hidden",
 				)}
 			>
 				<OutcomesOverviewSurface
@@ -91,7 +91,7 @@ export function OutcomeMissionWorkspace({
 				<div
 					className={cn(
 						"relative flex min-h-0 min-w-0 w-full flex-col border-l border-border pl-3",
-						!expanded && "@[1050px]/mission:w-[var(--mission-width)] @[1050px]/mission:flex-none",
+						!expanded && "@[960px]/mission:w-[var(--mission-width)] @[960px]/mission:flex-none",
 					)}
 					style={{ "--mission-width": `${width}%` } as React.CSSProperties}
 				>
@@ -104,7 +104,7 @@ export function OutcomeMissionWorkspace({
 							aria-valuemin={45}
 							aria-valuemax={75}
 							aria-valuenow={width}
-							className="absolute -left-2 top-0 bottom-0 hidden w-3 cursor-col-resize touch-none rounded-full transition-colors hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-none motion-reduce:transition-none @[1050px]/mission:block"
+							className="absolute -left-2 top-0 bottom-0 hidden w-3 cursor-col-resize touch-none rounded-full transition-colors hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-none motion-reduce:transition-none @[960px]/mission:block"
 							onDoubleClick={() => setWidth(60)}
 							onKeyDown={(event) => {
 								if (event.key === "ArrowLeft" || event.key === "ArrowRight") {

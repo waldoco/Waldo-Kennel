@@ -39,6 +39,8 @@ type OutcomeDecideAuthorizeSurfaceProps = {
 	onReviewWork?: () => void;
 	/** Returns to the Contract editor when planning proposes a Contract change. */
 	onReviewContract?: () => void;
+	/** Disable owner decisions while live facts cannot be kept current. */
+	disabled?: boolean;
 };
 
 type ContractRevisionRecord = components["schemas"]["ContractRevisionResponse"];
@@ -56,7 +58,7 @@ const PLAN_SECTION_VALUES = ["summary", "desired-state", "evidence", "verificati
  * and a contract that moved ahead forces a fresh brief instead of a silent
  * authority transfer.
  */
-export function OutcomeDecideAuthorizeSurface({ outcomeId, onReviewWork, onReviewContract }: OutcomeDecideAuthorizeSurfaceProps) {
+export function OutcomeDecideAuthorizeSurface({ outcomeId, onReviewWork, onReviewContract, disabled = false }: OutcomeDecideAuthorizeSurfaceProps) {
 	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 
@@ -130,6 +132,7 @@ export function OutcomeDecideAuthorizeSurface({ outcomeId, onReviewWork, onRevie
 					<div className="mt-3">
 						<MissionPlanningConversation
 							contractRevision={outcomeQuery.outcome.currentRevisionNumber}
+							disabled={disabled}
 							onReviewContract={onReviewContract}
 							outcomeId={outcomeId}
 						/>
@@ -138,6 +141,7 @@ export function OutcomeDecideAuthorizeSurface({ outcomeId, onReviewWork, onRevie
 			) : (
 				<MissionPlanningConversation
 					contractRevision={outcomeQuery.outcome.currentRevisionNumber}
+					disabled={disabled}
 					onReviewContract={onReviewContract}
 					outcomeId={outcomeId}
 				/>

@@ -23,10 +23,12 @@ export function MissionPlanningConversation({
 	outcomeId,
 	contractRevision,
 	onReviewContract,
+	disabled = false,
 }: {
 	outcomeId: string;
 	contractRevision: number;
 	onReviewContract?: () => void;
+	disabled?: boolean;
 }) {
 	const { t } = useTranslation();
 	const candidatesQuery = usePlanningCandidates(outcomeId, contractRevision);
@@ -49,10 +51,11 @@ export function MissionPlanningConversation({
 	const conversationPending = send.pending || finalize.pending;
 	const readyCandidates = useMemo(() => candidatesQuery.candidates.filter((candidate) => candidate.ready), [candidatesQuery.candidates]);
 	const selectedCandidateReady = Boolean(candidateId) && readyCandidates.some((candidate) => candidate.id === candidateId);
-	const startDisabled = !candidateId || !contextMode || pending || Boolean(candidatesQuery.failure) || !selectedCandidateReady;
+	const startDisabled = disabled || !candidateId || !contextMode || pending || Boolean(candidatesQuery.failure) || !selectedCandidateReady;
 	let startDisabledReason: string | undefined;
 	if (startDisabled && !pending && !candidatesQuery.isLoading) {
-		if (candidatesQuery.failure) startDisabledReason = t("planning.startUnavailable.discoveryFailed");
+		if (disabled) startDisabledReason = t("mission.offline");
+		else if (candidatesQuery.failure) startDisabledReason = t("planning.startUnavailable.discoveryFailed");
 		else if (readyCandidates.length === 0) startDisabledReason = t("planning.startUnavailable.noReadyAgent");
 		else if (!candidateId) startDisabledReason = t("planning.startUnavailable.selectAgent");
 		else if (!selectedCandidateReady) startDisabledReason = t("planning.startUnavailable.agentNotReady");
