@@ -99,6 +99,20 @@ describe("OutcomeProveCloseSurface", () => {
 		));
 	});
 
+	it("renders repeated criterion gaps without duplicate React keys", async () => {
+		const warn = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const envelope = proofEnvelope("active");
+		envelope.proof.criteria = [
+			{ ...envelope.proof.criteria[0], criterionId: "crit-1", ready: false, gap: "Add supporting Evidence for this criterion.", evidence: [], verifications: [] },
+			{ ...envelope.proof.criteria[0], criterionId: "crit-2", ready: false, gap: "Add supporting Evidence for this criterion.", evidence: [], verifications: [] },
+		];
+		getMock.mockResolvedValue({ data: envelope, error: undefined });
+
+		renderSurface();
+		expect(await screen.findAllByText("Add supporting Evidence for this criterion.")).toHaveLength(4);
+		expect(warn.mock.calls.flat().join(" ")).not.toContain("same key");
+	});
+
 	it("binds new Evidence and Verification to stable criterion identity", async () => {
 		const user = userEvent.setup();
 		renderSurface();
