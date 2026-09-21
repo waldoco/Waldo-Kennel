@@ -188,6 +188,7 @@ export function OutcomeMissionPanel({
 									className="min-w-0"
 								>
 									<OutcomeDecideAuthorizeSurface
+										disabled={connection !== "connected"}
 										onReviewContract={() => setTab("overview")}
 										onReviewWork={() => setTab("run")}
 										outcomeId={outcomeId}
