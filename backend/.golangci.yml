@@ -6,7 +6,10 @@ run:
   timeout: 5m
 
 issues:
-  # Report every finding, not the default first-50-per-linter / 3-same.
+  # The existing debt was exposed at this exact outcome-loop revision. Keep it
+  # visible in issue #206 while rejecting findings introduced after the baseline.
+  new-from-rev: 8598c22b23a6561f6b0c201d986b01d5cdb1e9a0
+  # Report every new finding, not the default first-50-per-linter / 3-same.
   max-issues-per-linter: 0
   max-same-issues: 0
 
