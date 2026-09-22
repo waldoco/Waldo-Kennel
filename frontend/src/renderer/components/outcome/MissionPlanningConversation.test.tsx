@@ -16,7 +16,7 @@ import { MissionPlanningConversation } from "./MissionPlanningConversation";
 function renderConversation({ disabled = false }: { disabled?: boolean } = {}) {
 	return render(
 		<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-			<MissionPlanningConversation contractRevision={3} disabled={disabled} onReviewContract={vi.fn()} outcomeId="out-1" />
+			<MissionPlanningConversation contractRevision={3} disabled={disabled} outcomeId="out-1" />
 		</QueryClientProvider>,
 	);
 }
@@ -97,20 +97,21 @@ describe("MissionPlanningConversation", () => {
 		expect(screen.queryByText(/local tools and Kennel skills/i)).not.toBeInTheDocument();
 	});
 
-	it("renders a clarification and Contract-change proposal without mutating the Contract", async () => {
+	it("renders a clarification and historical Contract-change proposal as plain text", async () => {
 		getMock.mockImplementation(async (url: string) => {
 			if (url.endsWith("/planning-candidates")) return { data: { candidates: [] }, error: undefined };
 			return {
 				data: { planning: { session: { id: "planning-1", outcomeId: "out-1", contractRevisionId: "cr-3", contractRevisionNumber: 3, revision: 2, status: "active", waitingOn: "owner", contextMode: "repository_read", contextDigest: "ctx", planningGrantDigest: "grant", binding: candidate.binding, createdAt: "2026-09-11T00:00:00Z", updatedAt: "2026-09-11T00:00:00Z" }, turns: [
 					{ id: "turn-1", sequence: 1, role: "planner", kind: "clarification", text: "internal planner text", createdAt: "2026-09-11T00:00:00Z", clarification: { question: "Which evidence should be checked first?", reason: "Keep scope bounded.", recommendation: "Use the existing check.", alternatives: ["Use the existing check"] } },
-					{ id: "turn-2", sequence: 2, role: "planner", kind: "contract_change_proposal", text: "The review criterion may need clarification.", createdAt: "2026-09-11T00:00:00Z", contractChange: { summary: "Clarify the review criterion", changedFields: ["review"] } },
+					{ id: "turn-2", sequence: 2, role: "planner", kind: "contract_change_proposal", text: "The review criterion may need clarification.", createdAt: "2026-09-11T00:00:00Z" },
 				] } }, error: undefined,
 			};
 		});
 		renderConversation();
 		expect(await screen.findByText("Which evidence should be checked first?")).toBeInTheDocument();
-		expect(screen.getByTestId("planning-contract-change")).toHaveTextContent("Clarify the review criterion");
-		expect(screen.getByRole("button", { name: "Review Contract" })).toBeInTheDocument();
+		expect(screen.getByText("The review criterion may need clarification.")).toBeInTheDocument();
+		expect(screen.queryByTestId("planning-contract-change")).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Review Contract" })).not.toBeInTheDocument();
 	});
 
 	it("renders a clarification with null alternatives without crashing", async () => {

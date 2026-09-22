@@ -133,7 +133,6 @@ export function OutcomeDecideAuthorizeSurface({ outcomeId, onReviewWork, onRevie
 						<MissionPlanningConversation
 							contractRevision={outcomeQuery.outcome.currentRevisionNumber}
 							disabled={disabled}
-							onReviewContract={onReviewContract}
 							outcomeId={outcomeId}
 						/>
 					</div>
@@ -142,7 +141,6 @@ export function OutcomeDecideAuthorizeSurface({ outcomeId, onReviewWork, onRevie
 				<MissionPlanningConversation
 					contractRevision={outcomeQuery.outcome.currentRevisionNumber}
 					disabled={disabled}
-					onReviewContract={onReviewContract}
 					outcomeId={outcomeId}
 				/>
 			))}
