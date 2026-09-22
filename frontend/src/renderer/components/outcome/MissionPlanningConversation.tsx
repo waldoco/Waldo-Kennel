@@ -219,9 +219,11 @@ function PlanningTurnView({ turn, onReviewContract, onSuggestion }: { turn: Plan
 				<div className="mt-2 flex flex-col gap-2 rounded-md bg-background/60 p-2 text-xs">
 					<p><span className="font-medium">{t("planning.why")}:</span> {turn.clarification.reason}</p>
 					{turn.clarification.recommendation && <p><span className="font-medium">{t("planning.suggested")}:</span> {turn.clarification.recommendation}</p>}
-					<div className="flex flex-wrap gap-1.5">
-						{turn.clarification.alternatives.map((alternative) => <Button key={alternative} onClick={() => onSuggestion(alternative)} size="sm" type="button" variant="outline">{alternative}</Button>)}
-					</div>
+					{turn.clarification.alternatives?.length ? (
+						<div className="flex flex-wrap gap-1.5">
+							{turn.clarification.alternatives.map((alternative) => <Button key={alternative} onClick={() => onSuggestion(alternative)} size="sm" type="button" variant="outline">{alternative}</Button>)}
+						</div>
+					) : null}
 				</div>
 			)}
 			{turn.contractChange && <ContractChangeProposalCard onReviewContract={onReviewContract} turn={turn} />}
