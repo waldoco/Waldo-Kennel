@@ -92,6 +92,7 @@ import { DEFAULT_POSTHOG_HOST, DEFAULT_POSTHOG_PROJECT_KEY } from "./shared/post
 import { buildTelemetryBootstrap } from "./shared/telemetry";
 import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view-host";
 import { createWindowComposition, type WindowComposition } from "./main/window-composition";
+import { promotePrimaryMacOSApp } from "./main/macos-app-activation";
 import { AgentBrowserRuntime } from "./main/agent-browser-runtime";
 import { sameBrowserRuntimeIdentity, type BrowserRuntimeIdentity } from "./main/browser-runtime-identity";
 import { connectSupervisor, type SupervisorLinkHandle } from "./main/supervisor-link";
@@ -486,6 +487,7 @@ async function createWindowInternal(): Promise<void> {
 					trafficLightPosition: { x: MAC_WINDOW_BUTTON_X, y: MAC_WINDOW_BUTTON_Y },
 				}),
 	};
+	promotePrimaryMacOSApp(process.platform, app);
 	mainWindow = new BaseWindow(windowOptions);
 	const composition = createWindowComposition({
 		mainWindow,
