@@ -113,6 +113,21 @@ describe("MissionPlanningConversation", () => {
 		expect(screen.getByRole("button", { name: "Review Contract" })).toBeInTheDocument();
 	});
 
+	it("renders a clarification with null alternatives without crashing", async () => {
+		getMock.mockImplementation(async (url: string) => {
+			if (url.endsWith("/planning-candidates")) return { data: { candidates: [] }, error: undefined };
+			return {
+				data: { planning: { session: { id: "planning-1", outcomeId: "out-1", contractRevisionId: "cr-3", contractRevisionNumber: 3, revision: 2, status: "active", waitingOn: "owner", contextMode: "repository_read", contextDigest: "ctx", planningGrantDigest: "grant", binding: candidate.binding, createdAt: "2026-09-11T00:00:00Z", updatedAt: "2026-09-11T00:00:00Z" }, turns: [
+					{ id: "turn-1", sequence: 1, role: "planner", kind: "clarification", text: "internal planner text", createdAt: "2026-09-11T00:00:00Z", clarification: { question: "Which evidence should be checked first?", reason: "Keep scope bounded.", recommendation: "Use the existing check.", alternatives: null } },
+				] } }, error: undefined,
+			};
+		});
+		renderConversation();
+		expect(await screen.findByText("Which evidence should be checked first?")).toBeInTheDocument();
+		expect(screen.getByText("Use the existing check.")).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Use the existing check." })).not.toBeInTheDocument();
+	});
+
 	it("keeps the draft and request key when sending fails", async () => {
 		getMock.mockImplementation(async (url: string) => {
 			if (url.endsWith("/planning-candidates")) return { data: { candidates: [] }, error: undefined };
