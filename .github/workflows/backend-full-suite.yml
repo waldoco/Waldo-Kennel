@@ -8,6 +8,7 @@ on:
     branches:
       - outcome-loop
       - 'instinct/*candidate*'
+      - 'ashish/*'
 
 permissions:
   contents: read
@@ -37,7 +38,7 @@ jobs:
     name: go-test-full-macos
     # Runs on outcome-loop AND candidate branches: a darwin-only failure must
     # block promotion, not surface after it. The push trigger already limits
-    # this workflow to outcome-loop and instinct/*candidate* refs.
+    # this workflow to outcome-loop, instinct/*candidate*, and ashish/* refs.
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
