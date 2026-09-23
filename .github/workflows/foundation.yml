@@ -6,9 +6,6 @@
 name: foundation
 
 on:
-  pull_request:
-    branches: [beta]
-    types: [opened, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       deep_race:
