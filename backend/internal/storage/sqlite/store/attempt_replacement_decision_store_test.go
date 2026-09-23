@@ -6,7 +6,6 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -171,20 +170,15 @@ func TestAttemptReplacementDecisionConcurrentPeerReplayAndConflict(t *testing.T)
 	}
 	s2 := openPeerStore(t, dataDir)
 	d := domain.AttemptReplacementDecision{ID: "decision-peer-1", OutcomeID: outcomeID, PredecessorAttemptID: attempt.ID, PlanRevisionID: plan.ID, WorkUnitID: unit.ID, RunIntentGeneration: intent.Generation, ContractRevisionNumber: 1, Action: "replace", RequestKey: "decision-peer", RequestFingerprint: strings.Repeat("a", 64), OwnerPrincipal: "local-owner:apprun-peer", CreatedAt: time.Now().UTC()}
-	var wg sync.WaitGroup
 	results := make(chan error, 2)
-	wg.Add(2)
 	create := func(store *sqlite.Store, value domain.AttemptReplacementDecision) error {
-		defer wg.Done()
 		_, _, err := store.CreateAttemptReplacementDecision(ctx, value)
 		return err
 	}
 	go func() { results <- create(s1, d) }()
 	go func() { x := d; x.ID = "decision-peer-2"; results <- create(s2, x) }()
-	wg.Wait()
-	close(results)
-	for err := range results {
-		if err != nil {
+	for i := 0; i < 2; i++ {
+		if err := <-results; err != nil {
 			t.Fatalf("same semantic peer replay: %v", err)
 		}
 	}
