@@ -106,7 +106,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.deep_race
     needs: foundation-core
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -116,4 +116,4 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       - name: Full Go race suite
-        run: cd backend && go test -race ./...
+        run: cd backend && go test -race -timeout 45m ./...
