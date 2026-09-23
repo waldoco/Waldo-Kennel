@@ -4874,10 +4874,6 @@ export interface components {
             reason: string;
             recommendation: string;
         };
-        PlanningContractChangeResponse: {
-            changedFields: string[];
-            summary: string;
-        };
         PlanningEnvelope: {
             planning: components["schemas"]["PlanningResponse"];
         };
@@ -4925,13 +4921,12 @@ export interface components {
         };
         PlanningTurnResponse: {
             clarification?: components["schemas"]["PlanningClarificationResponse"];
-            contractChange?: components["schemas"]["PlanningContractChangeResponse"];
             /** Format: date-time */
             createdAt: string;
             id: string;
             intelligenceRunId?: string;
             /** @enum {string} */
-            kind: "message" | "finalize_request" | "clarification" | "contract_change_proposal" | "plan_proposal";
+            kind: "message" | "finalize_request" | "clarification" | "contract_change_proposal" | "plan_proposal" | "readiness_blocked";
             replyToTurnId?: string;
             /** @enum {string} */
             role: "owner" | "planner";

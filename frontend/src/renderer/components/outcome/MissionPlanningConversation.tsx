@@ -15,19 +15,16 @@ import {
 } from "../../hooks/usePlanning";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { ContractChangeProposalCard } from "./ContractChangeProposalCard";
 import { PlanningAgentPicker } from "./PlanningAgentPicker";
 import { PlanningContextGrant } from "./PlanningContextGrant";
 
 export function MissionPlanningConversation({
 	outcomeId,
 	contractRevision,
-	onReviewContract,
 	disabled = false,
 }: {
 	outcomeId: string;
 	contractRevision: number;
-	onReviewContract?: () => void;
 	disabled?: boolean;
 }) {
 	const { t } = useTranslation();
@@ -186,7 +183,7 @@ export function MissionPlanningConversation({
 						</div>
 					</details>
 					<div className="flex flex-col gap-2" data-testid="planning-turns">
-						{visiblePlanning.turns.map((turn) => <PlanningTurnView key={turn.id} turn={turn} onReviewContract={onReviewContract} onSuggestion={setMessage} />)}
+						{visiblePlanning.turns.map((turn) => <PlanningTurnView key={turn.id} turn={turn} onSuggestion={setMessage} />)}
 						{visiblePlanning.turns.length === 0 && <p className="text-sm text-muted-foreground">{activeSession.waitingOn === "owner" ? t("planning.preparing") : t("planning.waiting")}</p>}
 					</div>
 					{activeSession.status === "active" && (
@@ -209,7 +206,7 @@ export function MissionPlanningConversation({
 	);
 }
 
-function PlanningTurnView({ turn, onReviewContract, onSuggestion }: { turn: PlanningTurn; onReviewContract?: () => void; onSuggestion: (suggestion: string) => void }) {
+function PlanningTurnView({ turn, onSuggestion }: { turn: PlanningTurn; onSuggestion: (suggestion: string) => void }) {
 	const { t } = useTranslation();
 	return (
 		<article className={`rounded-md border px-3 py-2 ${turn.role === "planner" ? "border-accent/40 bg-accent/5" : "border-border"}`} data-testid={`planning-turn-${turn.sequence}`}>
@@ -226,7 +223,6 @@ function PlanningTurnView({ turn, onReviewContract, onSuggestion }: { turn: Plan
 					) : null}
 				</div>
 			)}
-			{turn.contractChange && <ContractChangeProposalCard onReviewContract={onReviewContract} turn={turn} />}
 		</article>
 	);
 }
