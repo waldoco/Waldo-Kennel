@@ -161,6 +161,63 @@ func TestAttemptStore_FencedAdmissionIsAtomicAndExclusive(t *testing.T) {
 	}
 }
 
+// TestAttemptStore_ReadOnlyFencesDoNotContend pins ADR 0009 §6 at the store
+// layer: two read-only Attempts against the same project subject both get
+// their own durable fence row and neither is refused, while a write-capable
+// admission against the exclusive project subject still conflicts exactly as
+// TestAttemptStore_FencedAdmissionIsAtomicAndExclusive proves above.
+func TestAttemptStore_ReadOnlyFencesDoNotContend(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	plan, outcomeID := seedApprovedPlan(t, s, "read-fence")
+	subject := domain.FenceSubjectForProject("read-fence")
+
+	firstAdmission := admissionFor(outcomeID, plan, "rk-read-1", subject)
+	firstAdmission.FenceReadOnly = true
+	first, err := s.CreateAttemptWithFence(ctx, firstAdmission)
+	if err != nil {
+		t.Fatalf("create first read-only attempt: %v", err)
+	}
+
+	secondAdmission := admissionFor(outcomeID, plan, "rk-read-2", subject)
+	secondAdmission.FenceReadOnly = true
+	second, err := s.CreateAttemptWithFence(ctx, secondAdmission)
+	if err != nil {
+		t.Fatalf("second concurrent read-only admission must not conflict: %v", err)
+	}
+	if first.ID == second.ID {
+		t.Fatalf("expected two distinct attempts, got the same id twice: %s", first.ID)
+	}
+
+	firstFence, ok, err := s.OpenFenceForSubject(ctx, domain.FenceSubjectForReadOnlyAttempt(subject, first.ID))
+	if err != nil || !ok || firstFence.AttemptID != first.ID {
+		t.Fatalf("first read fence ok=%v err=%v fence=%+v, want open custody by %s", ok, err, firstFence, first.ID)
+	}
+	secondFence, ok, err := s.OpenFenceForSubject(ctx, domain.FenceSubjectForReadOnlyAttempt(subject, second.ID))
+	if err != nil || !ok || secondFence.AttemptID != second.ID {
+		t.Fatalf("second read fence ok=%v err=%v fence=%+v, want open custody by %s", ok, err, secondFence, second.ID)
+	}
+
+	// The exclusive project subject itself must remain unheld: a write-
+	// capable admission is still free to take it while only read-only
+	// Attempts are open.
+	if _, ok, err := s.OpenFenceForSubject(ctx, subject); err != nil || ok {
+		t.Fatalf("exclusive subject open=%v err=%v, want it unheld while only read-only Attempts are open", ok, err)
+	}
+	writeAdmission := admissionFor(outcomeID, plan, "rk-write-1", subject)
+	if _, err := s.CreateAttemptWithFence(ctx, writeAdmission); err != nil {
+		t.Fatalf("write-capable admission must succeed while only read-only fences are open: %v", err)
+	}
+
+	// A second write-capable admission against the same exclusive subject
+	// still conflicts, exactly as today.
+	var fenced *ports.AttemptFenceHeldError
+	_, err = s.CreateAttemptWithFence(ctx, admissionFor(outcomeID, plan, "rk-write-2", subject))
+	if !errors.As(err, &fenced) {
+		t.Fatalf("second write-capable admission must still fail with AttemptFenceHeldError, got %v", err)
+	}
+}
+
 func TestAttemptStore_AdmissionBindsRunIntentGenerationAndRejectsPauseWinner(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
