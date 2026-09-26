@@ -27,6 +27,6 @@
 		"api": "npm run api:spec && npm run api:ts"
 	},
 	"devDependencies": {
-		"openapi-typescript": "7.4.4"
+		"openapi-typescript": "7.13.0"
 	}
 }
