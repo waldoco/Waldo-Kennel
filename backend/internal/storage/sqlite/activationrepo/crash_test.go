@@ -61,7 +61,7 @@ func crashCase(t *testing.T, mode string) {
 	var calls atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.2.3"}`))
+		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.3.0"}`))
 	}))
 	defer server.Close()
 	var once sync.Once

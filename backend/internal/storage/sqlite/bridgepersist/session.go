@@ -169,7 +169,11 @@ func (b *BridgeSession) Admit(ctx context.Context, s devicebridge.Scope, raw []b
 	if exp <= now.Unix() {
 		return devicebridge.Admission{State: devicebridge.AckExpired, Reason: devicebridge.ReasonExpired}, nil
 	}
-	if exp-now.Unix() > devicebridge.CommandTTLMaxSeconds {
+	maxTTL := int64(devicebridge.CommandTTLMaxSeconds)
+	if f["class"] == devicebridge.ClassShellExec || f["class"] == devicebridge.ClassSessionQuery || f["class"] == devicebridge.ClassSessionControl {
+		maxTTL = devicebridge.ApprovalTTLSeconds
+	}
+	if exp-now.Unix() > maxTTL {
 		return a, nil
 	}
 	err = b.tx(ctx, s, true, func(tx *sql.Tx) error {
@@ -232,6 +236,13 @@ func (b *BridgeSession) Admit(ctx context.Context, s devicebridge.Scope, raw []b
 			return e
 		}
 		if n >= 100000 {
+			return nil
+		}
+		var active int
+		if e := tx.QueryRowContext(ctx, `SELECT count(*) FROM device_bridge_inbox_journal WHERE device_id=? AND state IN ('received','acked')`, s.DeviceID).Scan(&active); e != nil {
+			return e
+		}
+		if active != 0 {
 			return nil
 		}
 		if e := bridgeDedup(ctx, tx, s, f); e != nil {
@@ -334,6 +345,9 @@ func (b *BridgeSession) ApplyReceipt(ctx context.Context, s devicebridge.Scope, 
 	}
 	if r["type"] != devicebridge.TypeReceipt || !bridgeBound(r, s) || now.IsZero() {
 		return domain.ErrDeviceBridgeInvalid
+	}
+	if r["payload"].(map[string]any)["event_message_id"] != nil {
+		return b.applyEventReceipt(ctx, s, r, now)
 	}
 	id := r["payload"].(map[string]any)["result_message_id"].(string)
 	return b.tx(ctx, s, true, func(tx *sql.Tx) error {

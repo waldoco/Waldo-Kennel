@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"database/sql"
 	codexagent "github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/codex"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/agent/modelcatalog"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/adapters/chatdriver/codexappserver"
@@ -26,6 +27,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/browserruntime"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/config"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/daemon/supervisor"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/devicebridge"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/governedtools"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnessauthority"
@@ -33,6 +35,8 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/harnesspairing"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/httpd/controllers"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/macaction"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/macsession"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/mobilebridge"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/notify"
 	usagepipeline "github.com/Pin4sf/Waldo-Kennel/backend/internal/observe/usage"
@@ -61,6 +65,7 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/skillassets"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/activationrepo"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/storage/sqlite/macactionrepo"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/supervisorcap"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/terminal"
 )
@@ -571,7 +576,20 @@ func Run() error {
 	connectionKernel := harnessconnection.New(store)
 	pairingCoordinator := harnesspairing.New(store, connectionKernel)
 	harnessAuthoritySvc := harnessauthority.New(store, pairingCoordinator, connectionKernel).WithProjectScope(store)
-	bridge := wireBridge(cfg.DataDir, os.Getenv, bridgeAuthority, log, activationrepo.OpenDedicated)
+	var macActions httpd.MacActions
+	bridge := wireBridge(cfg.DataDir, os.Getenv, bridgeAuthority, log, activationrepo.OpenDedicated, func(db *sql.DB, k0 devicebridge.Executor) devicebridge.Executor {
+		ledger := macactionrepo.New(db)
+		// Without native owner authority there is no decision route. Requests wait
+		// for their deadline; no daemon-only approval shortcut exists.
+		if ownerAuthority != nil {
+			macActions = ledger
+		}
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/zsh"
+		}
+		return &macaction.Engine{Ledger: ledger, Projects: macsession.Registry{Store: store}, Sessions: macsession.Adapter{Sessions: sessionSvc, Chat: chatSvc, Runtime: runtimeAdapter}, Runner: macaction.Runner{Shell: shell, Environment: os.Environ()}, K0: k0}
+	})
 	defer bridge.close()
 	var bridgeHandler http.Handler
 	if bridge != nil {
@@ -618,6 +636,7 @@ func Run() error {
 		PreviewServer:            managedPreview,
 		SessionCapabilities:      browserAuthority,
 		OwnerAuthority:           ownerAuthority,
+		MacActions:               macActions,
 		BridgeHandler:            bridgeHandler,
 		BridgeAuthority:          bridgeAuthority,
 		ReplacementDecisions:     store,

@@ -41,7 +41,7 @@ func TestPairCheckpointCalledAfterPutBeforeNetwork(t *testing.T) {
 		keys.mu.Lock()
 		keys.events = append(keys.events, "network")
 		keys.mu.Unlock()
-		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.2.3"}`))
+		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.3.0"}`))
 	}))
 	defer server.Close()
 	p, e := NewPairingCoordinator(sqlitetest.MustOpen(t), keys, server.Client(), nil, server.URL+RedeemPath)
@@ -71,7 +71,7 @@ func TestPairCheckpointFailureFailsClosed(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.2.3"}`))
+		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.3.0"}`))
 	}))
 	defer server.Close()
 	p, e := NewPairingCoordinator(sqlitetest.MustOpen(t), keys, server.Client(), nil, server.URL+RedeemPath)
@@ -98,7 +98,7 @@ func TestPairCheckpointFailureFailsClosed(t *testing.T) {
 func TestPairWithoutCheckpointUnchanged(t *testing.T) {
 	keys := &checkpointKeys{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.2.3"}`))
+		_, _ = w.Write([]byte(`{"device_id":"dev","owner_id":"owner","accepted_contract_version":"0.3.0"}`))
 	}))
 	defer server.Close()
 	p, e := NewPairingCoordinator(sqlitetest.MustOpen(t), keys, server.Client(), nil, server.URL+RedeemPath)

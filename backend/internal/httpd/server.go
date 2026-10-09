@@ -71,6 +71,7 @@ func NewWithDeps(cfg config.Config, log *slog.Logger, termMgr *terminal.Manager,
 		Handler: NewRouterWithControl(cfg, log, termMgr, deps, ControlDeps{
 			RequestShutdown:      srv.requestShutdown,
 			OwnerAuthority:       deps.OwnerAuthority,
+			MacActions:           deps.MacActions,
 			BridgeHandler:        deps.BridgeHandler,
 			BridgeAuthority:      deps.BridgeAuthority,
 			ReplacementDecisions: deps.ReplacementDecisions,

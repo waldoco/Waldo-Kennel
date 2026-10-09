@@ -72,6 +72,7 @@ type APIDeps struct {
 
 	BridgeHandler            http.Handler
 	BridgeAuthority          *ownercommand.BridgeAuthority
+	MacActions               MacActions
 	OwnerAuthority           *ownercommand.Authority
 	ReplacementDecisions     ports.AttemptReplacementDecisionStore
 	PairingCoordinator       *harnesspairing.Coordinator

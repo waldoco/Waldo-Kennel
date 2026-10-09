@@ -86,7 +86,7 @@ func VerifyFrame(raw []byte, sender ed25519.PublicKey, now time.Time) (map[strin
 	if delta < -ReplayWindowSeconds || delta > ReplayWindowSeconds {
 		return nil, ErrInvalidFrameSignature
 	}
-	if frame["contract_version"] != ContractVersion {
+	if frame["contract_version"] != ContractVersion && frame["contract_version"] != "0.2.3" {
 		return nil, ErrContractVersionMismatch
 	}
 	if err := validateFrameShape(frame, true); err != nil {
@@ -146,7 +146,7 @@ func frameTimestamp(frame map[string]any) (int64, error) {
 
 func validFrameType(kind string) bool {
 	switch kind {
-	case TypeCommand, TypeAck, TypeResult, TypeReceipt, TypeHeartbeat:
+	case TypeCommand, TypeAck, TypeResult, TypeReceipt, TypeHeartbeat, TypeSessionEvent:
 		return true
 	default:
 		return false

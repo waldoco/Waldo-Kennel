@@ -28,7 +28,7 @@ func ParseBackendFrame(raw []byte) (map[string]any, error) {
 	if err != nil || !bytes.Equal(raw, canonical) {
 		return nil, ErrInvalidFrameShape
 	}
-	if frame["contract_version"] != ContractVersion {
+	if frame["contract_version"] != ContractVersion && frame["contract_version"] != "0.2.3" {
 		return nil, ErrContractVersionMismatch
 	}
 	if validateFrameShape(frame, false) != nil {
@@ -76,6 +76,20 @@ func validateUnsignedDeviceShape(frame map[string]any) error {
 }
 
 func validateFrameShape(frame map[string]any, deviceOutbound bool) error {
+	if frame["contract_version"] == "0.2.3" {
+		p, _ := frame["payload"].(map[string]any)
+		if frame["type"] == TypeSessionEvent || newCommandClass(frame["class"]) || p["event_message_id"] != nil || (frame["type"] == TypeResult && oneOf(p["status"], ResultCompleted, ResultDenied, ResultExpired, ResultOutcomeUnknown)) {
+			return ErrInvalidFrameShape
+		}
+		if frame["type"] == TypeHeartbeat {
+			caps, _ := p["declared_capabilities"].([]any)
+			for _, cap := range caps {
+				if cap != ClassMachineStateQuery && cap != ClassNotifyLocal {
+					return ErrInvalidFrameShape
+				}
+			}
+		}
+	}
 	if hasNull(frame) {
 		return ErrInvalidFrameShape
 	}
@@ -84,14 +98,14 @@ func validateFrameShape(frame map[string]any, deviceOutbound bool) error {
 		return ErrInvalidFrameShape
 	}
 	if deviceOutbound {
-		if typeName != TypeAck && typeName != TypeResult && typeName != TypeHeartbeat {
+		if typeName != TypeAck && typeName != TypeResult && typeName != TypeHeartbeat && typeName != TypeSessionEvent {
 			return ErrInvalidFrameShape
 		}
 	} else if typeName != TypeCommand && typeName != TypeReceipt {
 		return ErrInvalidFrameShape
 	}
 	allowed := []string{"contract_version", "type", "message_id", "device_id", "owner_id", "payload"}
-	if typeName != TypeHeartbeat {
+	if frameHasReference(frame) {
 		allowed = append(allowed, "command_id", "revision", "idempotency_key")
 	}
 	if typeName == TypeCommand {
@@ -100,7 +114,7 @@ func validateFrameShape(frame map[string]any, deviceOutbound bool) error {
 	if deviceOutbound {
 		allowed = append(allowed, "timestamp", "nonce", "signature")
 	}
-	if !exactFields(frame, allowed...) || frame["contract_version"] != ContractVersion {
+	if !exactFields(frame, allowed...) || (frame["contract_version"] != ContractVersion && frame["contract_version"] != "0.2.3") {
 		return ErrInvalidFrameShape
 	}
 	messageID, ok := frame["message_id"].(string)
@@ -113,7 +127,7 @@ func validateFrameShape(frame map[string]any, deviceOutbound bool) error {
 			return ErrInvalidFrameShape
 		}
 	}
-	if typeName != TypeHeartbeat {
+	if frameHasReference(frame) {
 		for _, field := range []string{"command_id", "idempotency_key"} {
 			value, ok := frame[field].(string)
 			if !ok || !validIdentifier(value) {
@@ -126,7 +140,7 @@ func validateFrameShape(frame map[string]any, deviceOutbound bool) error {
 	}
 	if typeName == TypeCommand {
 		class, ok := frame["class"].(string)
-		if !ok || (class != ClassMachineStateQuery && class != ClassNotifyLocal) || !positiveInteger(frame["expires_at"]) {
+		if !ok || !validCommandClass(class) || !positiveInteger(frame["expires_at"]) {
 			return ErrInvalidFrameShape
 		}
 	}
@@ -158,6 +172,9 @@ func validateFrameShape(frame map[string]any, deviceOutbound bool) error {
 func validatePayload(typeName string, frame, payload map[string]any) error {
 	switch typeName {
 	case TypeCommand:
+		if newCommandClass(frame["class"]) {
+			return validateMacCommand(frame["class"], payload)
+		}
 		if frame["class"] == ClassMachineStateQuery {
 			return validateQueryPayload(payload)
 		}
@@ -175,6 +192,9 @@ func validatePayload(typeName string, frame, payload map[string]any) error {
 			return ErrInvalidFrameShape
 		}
 	case TypeResult:
+		if validMacResult(payload) {
+			return nil
+		}
 		if exactFields(payload, "status", "answer") && payload["status"] == ResultAnswered {
 			answer, ok := payload["answer"].(map[string]any)
 			if !ok || !exactFields(answer, "query_id", "query_kind", "state") || !stringID(answer["query_id"]) || !validQueryKind(answer["query_kind"]) || !validQueryState(answer["query_kind"], answer["state"]) {
@@ -189,11 +209,22 @@ func validatePayload(typeName string, frame, payload map[string]any) error {
 			return ErrInvalidFrameShape
 		}
 	case TypeReceipt:
+		if exactFields(payload, "event_message_id", "received_at") {
+			id, ok := payload["event_message_id"].(string)
+			if ok && validULID(id) && positiveInteger(payload["received_at"]) {
+				return nil
+			}
+			return ErrInvalidFrameShape
+		}
 		if !exactFields(payload, "result_message_id", "received_at") {
 			return ErrInvalidFrameShape
 		}
 		id, ok := payload["result_message_id"].(string)
 		if !ok || !validULID(id) || !positiveInteger(payload["received_at"]) {
+			return ErrInvalidFrameShape
+		}
+	case TypeSessionEvent:
+		if !exactFields(payload, "session_id", "project", "event") || !stringID(payload["session_id"]) || !boundedString(payload["project"], 128) || !oneOf(payload["event"], "needs_input", "blocked_on_tool", "turn_finished", "exited") {
 			return ErrInvalidFrameShape
 		}
 	case TypeHeartbeat:
@@ -321,6 +352,40 @@ func ValidateResultForCommand(result, command map[string]any) error {
 		}
 	}
 	payload := result["payload"].(map[string]any)
+	if newCommandClass(command["class"]) {
+		if !validMacResult(payload) && !(payload["status"] == ResultFailed && payload["reason"] == ReasonProcessingFailed) {
+			return ErrInvalidFrameShape
+		}
+		if command["class"] == ClassSessionQuery && payload["status"] == ResultCompleted {
+			return ErrInvalidFrameShape
+		}
+		if command["class"] != ClassSessionQuery && payload["status"] == ResultAnswered {
+			return ErrInvalidFrameShape
+		}
+
+		request := command["payload"].(map[string]any)
+		if payload["status"] == ResultCompleted {
+			if command["class"] == ClassShellExec && payload["session_id"] != nil {
+				return ErrInvalidFrameShape
+			}
+			if command["class"] == ClassSessionControl {
+				if !stringID(payload["session_id"]) || (request["action"] != "start_session" && payload["session_id"] != request["session_id"]) {
+					return ErrInvalidFrameShape
+				}
+			}
+		}
+		if payload["status"] == ResultAnswered {
+			a := payload["answer"].(map[string]any)
+			if request["action"] == "read_session" {
+				if a["session_id"] != request["session_id"] {
+					return ErrInvalidFrameShape
+				}
+			} else if a["sessions"] == nil {
+				return ErrInvalidFrameShape
+			}
+		}
+		return nil
+	}
 	if command["class"] == ClassMachineStateQuery {
 		if payload["status"] == ResultAnswered {
 			answer := payload["answer"].(map[string]any)

@@ -110,10 +110,10 @@ func (b *bridgeWiring) afterPair(h http.Handler) http.Handler {
 
 // Configuration failure degrades only the optional bridge, never the daemon.
 // The opener is injectable so flag-off proves zero storage access.
-func wireBridge(dataDir string, getenv func(string) string, authority *ownercommand.BridgeAuthority, log *slog.Logger, open func(string) (*sql.DB, error)) *bridgeWiring {
-	return wireBridgeWithFactory(dataDir, getenv, authority, log, open, func(deps bridgeruntime.Dependencies) bridgeactivation.Factory { return bridgeruntime.NewFactory(deps) })
+func wireBridge(dataDir string, getenv func(string) string, authority *ownercommand.BridgeAuthority, log *slog.Logger, open func(string) (*sql.DB, error), executorFactory ...func(*sql.DB, devicebridge.Executor) devicebridge.Executor) *bridgeWiring {
+	return wireBridgeWithFactory(dataDir, getenv, authority, log, open, func(deps bridgeruntime.Dependencies) bridgeactivation.Factory { return bridgeruntime.NewFactory(deps) }, executorFactory...)
 }
-func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority *ownercommand.BridgeAuthority, log *slog.Logger, open func(string) (*sql.DB, error), makeFactory func(bridgeruntime.Dependencies) bridgeactivation.Factory) *bridgeWiring {
+func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority *ownercommand.BridgeAuthority, log *slog.Logger, open func(string) (*sql.DB, error), makeFactory func(bridgeruntime.Dependencies) bridgeactivation.Factory, executorFactory ...func(*sql.DB, devicebridge.Executor) devicebridge.Executor) *bridgeWiring {
 	cfg, e := bridgeactivation.LoadLocalConfig(getenv)
 	if e != nil {
 		log.Warn("local Waldo bridge configuration invalid; bridge disabled")
@@ -162,7 +162,13 @@ func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority
 	// One relay per daemon: notify_local text reaches the desktop shell only through
 	// the authenticated loopback display endpoints below.
 	display := bridgeruntime.NewDisplayRelay()
-	factory := makeFactory(bridgeruntime.Dependencies{Fence: activationrepo.New(repoDB), Keys: custody, SessionStore: bridgepersist.New(runtimeDB), Logger: log, KeyDirectory: keyDir, Display: display, ReadyProbe: func(ctx context.Context) error {
+	// K0 classes keep the honest display relay; v0.3 machine requests wrap them.
+	k0 := devicebridge.Handlers{Queries: bridgeruntime.UnknownQueries{}, Display: display}
+	var executor devicebridge.Executor
+	if len(executorFactory) == 1 {
+		executor = executorFactory[0](runtimeDB, k0)
+	}
+	factory := makeFactory(bridgeruntime.Dependencies{Executor: executor, Fence: activationrepo.New(repoDB), Keys: custody, SessionStore: bridgepersist.New(runtimeDB), Logger: log, KeyDirectory: keyDir, Display: display, ReadyProbe: func(ctx context.Context) error {
 		var n int
 		return repoDB.QueryRowContext(ctx, "SELECT count(*) FROM device_bridge_activations").Scan(&n)
 	}})

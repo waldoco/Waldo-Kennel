@@ -14,9 +14,17 @@ type commandSocket struct {
 	commands [][]byte
 	index    int
 	writes   [][]byte
+	results  chan struct{}
 }
 
-func (s *commandSocket) Read(context.Context) ([]byte, error) {
+func (s *commandSocket) Read(ctx context.Context) ([]byte, error) {
+	if s.index > 0 {
+		select {
+		case <-s.results:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	if s.index == len(s.commands) {
 		return nil, io.EOF
 	}
@@ -26,12 +34,16 @@ func (s *commandSocket) Read(context.Context) ([]byte, error) {
 }
 func (s *commandSocket) Write(_ context.Context, raw []byte) error {
 	s.writes = append(s.writes, append([]byte(nil), raw...))
+	var frame map[string]any
+	if json.Unmarshal(raw, &frame) == nil && frame["type"] == "result" {
+		s.results <- struct{}{}
+	}
 	return nil
 }
 func (s *commandSocket) Close() error { return nil }
 func TestHandlersShipUnknownAndDeliveryUnknown(t *testing.T) {
 	repo, store, d, keys, dir := realIdentity(t)
-	socket := &commandSocket{}
+	socket := &commandSocket{results: make(chan struct{}, 2)}
 	for i, class := range []string{"machine_state_query", "notify_local"} {
 		payload := map[string]any{"query_id": "q", "query_kind": "session_status"}
 		id := "query"

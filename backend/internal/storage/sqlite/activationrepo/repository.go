@@ -143,7 +143,19 @@ func (r *Repository) Reserve(ctx context.Context, owner string) (out bridgeactiv
 		v, e := read(ctx, c, owner)
 		if e == nil {
 			if v.revoked {
-				return fmt.Errorf("reserve: %w", ErrRevoked)
+				var n int
+				if e = c.QueryRowContext(ctx, `SELECT count(*) FROM device_bridge_devices WHERE owner_id=? AND state='paired'`, owner).Scan(&n); e != nil {
+					return e
+				}
+				if n != 0 {
+					return ErrReservationActive
+				}
+				_, e = c.ExecContext(ctx, `INSERT INTO device_bridge_revoked_identities(owner_id,device_id,generation,revoked_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, owner, v.device.String, v.generation, time.Now().UTC())
+				if e != nil {
+					return e
+				}
+				_, e = c.ExecContext(ctx, `UPDATE device_bridge_activations SET attempt=?,phase='pending',device_id=NULL,revoked=0,checkpoint_device_id='',checkpoint_key_custody_ref='',checkpoint_public_key='',claim_generation=claim_generation+1,updated_at=? WHERE owner_id=?`, out.Attempt, time.Now().UTC(), owner)
+				return e
 			}
 			return fmt.Errorf("reserve: %w", ErrReservationActive)
 		}
@@ -245,6 +257,9 @@ func (r *Repository) Revoke(ctx context.Context, owner string, id domain.DeviceB
 			if _, e = c.ExecContext(ctx, `UPDATE device_bridge_devices SET state='revoked',revoked_at=?,updated_at=? WHERE device_id=? AND owner_id=?`, now, now, id, owner); e != nil {
 				return e
 			}
+		}
+		if _, e = c.ExecContext(ctx, `INSERT INTO device_bridge_revoked_identities(owner_id,device_id,generation,revoked_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, owner, id, v.generation+1, now); e != nil {
+			return e
 		}
 		_, e = c.ExecContext(ctx, `UPDATE device_bridge_activations SET phase='revoked',attempt='',revoked=1,claim_generation=claim_generation+1,updated_at=? WHERE owner_id=?`, now, owner)
 		return e

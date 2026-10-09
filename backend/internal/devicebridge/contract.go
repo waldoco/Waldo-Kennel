@@ -3,12 +3,17 @@ package devicebridge
 import (
 	"encoding/base64"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/bridgecontract"
+	"strings"
 )
 
 // Contract constants are collected here so jointly reviewed proposed limits
 // and labels can be changed without hunting through transport code.
 const (
 	ContractVersion           = bridgecontract.Version
+	ApprovalTTLSeconds        = bridgecontract.ApprovalTTLSeconds
+	ExecutionDefaultSeconds   = bridgecontract.ExecutionDefaultSeconds
+	ExecutionMaxSeconds       = bridgecontract.ExecutionMaxSeconds
+	OutputTailBytes           = bridgecontract.OutputTailBytes
 	RedeemPath                = bridgecontract.RedeemPath
 	ConnectPath               = bridgecontract.ConnectPath
 	ConnectVersionQueryPrefix = bridgecontract.ConnectVersionQueryPrefix
@@ -18,6 +23,14 @@ const (
 	TypeResult                = bridgecontract.TypeResult
 	TypeReceipt               = bridgecontract.TypeReceipt
 	TypeHeartbeat             = bridgecontract.TypeHeartbeat
+	TypeSessionEvent          = bridgecontract.TypeSessionEvent
+	ClassShellExec            = bridgecontract.ClassShellExec
+	ClassSessionQuery         = bridgecontract.ClassSessionQuery
+	ClassSessionControl       = bridgecontract.ClassSessionControl
+	ResultCompleted           = bridgecontract.ResultCompleted
+	ResultDenied              = bridgecontract.ResultDenied
+	ResultExpired             = bridgecontract.ResultExpired
+	ResultOutcomeUnknown      = bridgecontract.ResultOutcomeUnknown
 	ClassMachineStateQuery    = bridgecontract.ClassMachineStateQuery
 	ClassNotifyLocal          = bridgecontract.ClassNotifyLocal
 	AckAccepted               = bridgecontract.AckAccepted
@@ -73,10 +86,7 @@ func ConnectRequestTarget(capabilities []string) (string, error) {
 	if !validCapabilities(capabilities) {
 		return "", ErrInvalidSigningInput
 	}
-	target := ConnectPath + ConnectVersionQueryPrefix + ContractVersion + ConnectCapabilitiesQuery + capabilities[0]
-	if len(capabilities) == 2 {
-		target += "," + capabilities[1]
-	}
+	target := ConnectPath + ConnectVersionQueryPrefix + ContractVersion + ConnectCapabilitiesQuery + strings.Join(capabilities, ",")
 	return target, nil
 }
 

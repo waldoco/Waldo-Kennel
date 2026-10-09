@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 var ErrTerminalFrame = errors.New("terminal device bridge frame rejection")
@@ -101,8 +102,8 @@ func (c *Client) Connect(ctx context.Context) error {
 	return c.RunConnection(ctx, socket)
 }
 
-// RunConnection requires an authenticated TLS socket. Drain and reconciliation
-// finish before reads/new work; every connection emits a fresh heartbeat first.
+// RunConnection requires an authenticated TLS socket. Execution and recovery run
+// off the read loop; acknowledgements, receipts and heartbeats remain responsive.
 func (c *Client) RunConnection(ctx context.Context, socket Socket) (runErr error) {
 	if !c.valid() || socket == nil {
 		return ErrInvalidSigningInput
@@ -111,6 +112,7 @@ func (c *Client) RunConnection(ctx context.Context, socket Socket) (runErr error
 	defer socket.Close()
 	socket = &serializedSocket{Socket: socket}
 	heartbeatErrors := make(chan error, 1)
+	eventPulse := make(chan struct{}, 1)
 	ticks := c.heartbeatTicks
 	var ticker *time.Ticker
 	if ticks == nil {
@@ -125,6 +127,10 @@ func (c *Client) RunConnection(ctx context.Context, socket Socket) (runErr error
 			case <-ctx.Done():
 				return
 			case <-ticks:
+				select {
+				case eventPulse <- struct{}{}:
+				default:
+				}
 				if err := c.heartbeat(ctx, socket); err != nil {
 					heartbeatErrors <- err
 					cancel()
@@ -151,6 +157,9 @@ func (c *Client) RunConnection(ctx context.Context, socket Socket) (runErr error
 	}
 	c.state(ConnectionOnline)
 	sent := newDrainIdentities()
+	if err := c.spoolSessionEvents(ctx); err != nil {
+		return err
+	}
 	if err := c.drainUnique(ctx, socket, sent); err != nil {
 		return err
 	}
@@ -158,25 +167,54 @@ func (c *Client) RunConnection(ctx context.Context, socket Socket) (runErr error
 	if err != nil {
 		return err
 	}
+	type completion struct{ err error }
+	completed := make(chan completion, 1)
+	var active string
+	var workers sync.WaitGroup
+	defer func() { cancel(); workers.Wait() }()
+	dispatch := func(raw []byte, command map[string]any, reconcile bool) error {
+		id := command["idempotency_key"].(string)
+		if active == id {
+			return nil
+		} // A redelivery never repeats active work.
+		if active != "" {
+			return ErrTerminalFrame
+		}
+		active = id
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			var payload map[string]any
+			var err error
+			if reconcile {
+				payload, err = c.Executor.Reconcile(ctx, c.Scope, command)
+			} else {
+				payload, err = c.Executor.Handle(ctx, c.Scope, command)
+			}
+			if err == nil {
+				err = c.persistResult(ctx, raw, command, payload)
+			}
+			completed <- completion{err}
+		}()
+		return nil
+	}
+	if len(commands) > 1 {
+		return ErrTerminalFrame
+	}
 	for _, raw := range commands {
 		command, err := ParseBackendFrame(raw)
 		if err != nil || command["type"] != TypeCommand || !c.Scope.matches(command) || !c.declares(command["class"]) {
 			return ErrTerminalFrame
 		}
 		expires, _ := parseInteger(command["expires_at"])
-		if expires <= c.clock().Unix() {
+		if expires <= c.clock().Unix() && !newCommandClass(command["class"]) {
 			return ErrExpiredRecovery
 		}
-		payload, err := c.Executor.Reconcile(ctx, c.Scope, command)
-		if err != nil {
+		// New Mac commands reconcile durable started evidence before expiry:
+		// started without a result is unknown, never an invitation to rerun.
+		if err = dispatch(raw, command, true); err != nil {
 			return err
 		}
-		if err = c.persistResult(ctx, raw, command, payload); err != nil {
-			return err
-		}
-	}
-	if err := c.drainUnique(ctx, socket, sent); err != nil {
-		return err
 	}
 	type incoming struct {
 		raw []byte
@@ -200,11 +238,26 @@ func (c *Client) RunConnection(ctx context.Context, socket Socket) (runErr error
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-eventPulse:
+			if err := c.spoolSessionEvents(ctx); err != nil {
+				return err
+			}
+			if err := c.drainUnique(ctx, socket, sent); err != nil {
+				return err
+			}
+		case result := <-completed:
+			active = ""
+			if result.err != nil {
+				return result.err
+			}
+			if err := c.drainUnique(ctx, socket, sent); err != nil {
+				return err
+			}
 		case read := <-reads:
 			if read.err != nil {
 				return read.err
 			}
-			if err := c.processUnique(ctx, socket, read.raw, sent); err != nil {
+			if err := c.processDispatched(ctx, socket, read.raw, sent, dispatch); err != nil {
 				return err
 			}
 		}
@@ -244,7 +297,7 @@ func (c *Client) drainUnique(ctx context.Context, socket Socket, sent *drainIden
 		}
 		previous = row.Seq
 		frame, err := parseJSONObject(row.Frame)
-		if err != nil || !c.Scope.matches(frame) || frame["type"] != TypeResult {
+		if err != nil || !c.Scope.matches(frame) || (frame["type"] != TypeResult && frame["type"] != TypeSessionEvent) {
 			return ErrTerminalFrame
 		}
 		fingerprint, err := LogicalFingerprint(frame)
@@ -252,7 +305,10 @@ func (c *Client) drainUnique(ctx context.Context, socket Socket, sent *drainIden
 			return errors.Join(ErrTerminalFrame, err)
 		}
 		message := frame["message_id"].(string)
-		idem := frame["idempotency_key"].(string)
+		idem, _ := frame["idempotency_key"].(string)
+		if frame["type"] == TypeSessionEvent {
+			idem = message
+		}
 		oldMessage, hasMessage := sent.messages[message]
 		oldIdem, hasIdem := sent.idempotency[idem]
 		if (hasMessage && oldMessage != fingerprint) || (hasIdem && oldIdem != fingerprint) {
@@ -284,6 +340,9 @@ func (c *Client) process(ctx context.Context, s Socket, raw []byte) error {
 	return c.processUnique(ctx, s, raw, newDrainIdentities())
 }
 func (c *Client) processUnique(ctx context.Context, s Socket, raw []byte, sent *drainIdentities) error {
+	return c.processDispatched(ctx, s, raw, sent, nil)
+}
+func (c *Client) processDispatched(ctx context.Context, s Socket, raw []byte, sent *drainIdentities, dispatch func([]byte, map[string]any, bool) error) error {
 	frame, reason, err := classifyInbound(raw, c.Scope, c.clock())
 	if err != nil {
 		if errors.Is(err, ErrTerminalFrame) && c.Diagnostic != nil {
@@ -337,6 +396,9 @@ func (c *Client) processUnique(ctx context.Context, s Socket, raw []byte, sent *
 			}
 			return c.sendResult(ctx, s, result)
 		}
+		if dispatch != nil {
+			return dispatch(raw, frame, true)
+		}
 		payload, err := c.Executor.Reconcile(ctx, c.Scope, frame)
 		if err != nil {
 			return err
@@ -345,6 +407,9 @@ func (c *Client) processUnique(ctx context.Context, s Socket, raw []byte, sent *
 			return err
 		}
 		return c.drainUnique(ctx, s, sent)
+	}
+	if dispatch != nil {
+		return dispatch(raw, frame, false)
 	}
 	payload, err := c.Executor.Handle(ctx, c.Scope, frame)
 	if err != nil {
@@ -380,9 +445,38 @@ func (c *Client) persistResult(ctx context.Context, raw []byte, command, payload
 	if err != nil {
 		return err
 	}
-	signed, err := SignFrame(unsigned, c.Key, now, nonce)
-	if err != nil {
-		return err
+	// Escaping may expand a 6144-byte tail beyond the signed 8192-byte frame.
+	// Shrink only output, preserving valid UTF-8 and the complete local log.
+	var signed []byte
+	for {
+		signed, err = SignFrame(unsigned, c.Key, now, nonce)
+		if err == nil {
+			break
+		}
+		tailMap := payload
+		if answer, ok := payload["answer"].(map[string]any); ok {
+			tailMap = answer
+		}
+		tail, ok := tailMap["output_tail"].(string)
+		if !ok || len(tail) == 0 {
+			if sessions, ok := tailMap["sessions"].([]any); ok && len(sessions) > 0 {
+				tailMap["sessions"] = sessions[:len(sessions)-1]
+				tailMap["truncated"] = true
+				unsigned, err = marshalCanonical(frame)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			return err
+		}
+		_, size := utf8.DecodeRuneInString(tail)
+		tailMap["output_tail"] = tail[size:]
+		tailMap["truncated"] = true
+		unsigned, err = marshalCanonical(frame)
+		if err != nil {
+			return err
+		}
 	}
 	parsed, err := parseJSONObject(signed)
 	if err != nil {
@@ -437,14 +531,14 @@ func classifyInbound(raw []byte, scope Scope, now time.Time) (map[string]any, st
 	if frame["contract_version"] != ContractVersion {
 		return frame, ReasonVersionMismatch, nil
 	}
-	if !oneOf(frame["class"], ClassMachineStateQuery, ClassNotifyLocal) {
+	if !validCommandClass(frame["class"]) {
 		return frame, ReasonUnknownCommand, nil
 	}
 	if validateFrameShape(frame, false) != nil {
 		return frame, ReasonInvalidShape, nil
 	}
 	expires, _ := parseInteger(frame["expires_at"])
-	if expires > now.Unix()+CommandTTLMaxSeconds {
+	if expires > now.Unix()+commandTTLMax(frame) {
 		return frame, ReasonInvalidShape, nil
 	}
 	if expires <= now.Unix() {

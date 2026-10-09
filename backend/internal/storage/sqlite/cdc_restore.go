@@ -452,6 +452,8 @@ var changeLogWriters = []struct {
 		name: "governed_controls_needs_you_update", table: "governed_control_commands", deps: []string{"sessions"}, columns: []string{"request_instance_id"}, since: "0149",
 		sql: "CREATE TRIGGER governed_controls_needs_you_update AFTER UPDATE ON governed_control_commands WHEN NEW.command_class='answer' AND OLD.state<>NEW.state BEGIN INSERT INTO change_log(project_id,session_id,event_type,payload,created_at) SELECT s.project_id,s.id,'session_updated',json_object('id',s.id,'needsYou',json_object('generation',NEW.request_instance_id,'commandId',NEW.id,'status',NEW.state)),NEW.updated_at FROM sessions s WHERE s.id=NEW.session_id; END;",
 	},
+	{name: "mac_approval_insert", table: "mac_action_requests", deps: []string{"change_log"}, since: "0166", sql: "CREATE TRIGGER mac_approval_insert AFTER INSERT ON mac_action_requests BEGIN\n INSERT INTO change_log(project_id,event_type,payload) VALUES(NEW.project_id,'mac_approval_changed',json_object('device_id',NEW.device_id,'command_id',NEW.command_id,'kind','approval','state',NEW.state));\nEND;"},
+	{name: "mac_approval_update", table: "mac_action_requests", deps: []string{"change_log"}, since: "0166", sql: "CREATE TRIGGER mac_approval_update AFTER UPDATE ON mac_action_requests WHEN OLD.state<>NEW.state BEGIN\n INSERT INTO change_log(project_id,event_type,payload) VALUES(NEW.project_id,'mac_approval_changed',json_object('device_id',NEW.device_id,'command_id',NEW.command_id,'kind','approval','state',NEW.state));\nEND;"},
 }
 
 // restoreChangeLogWriters recreates any missing change_log-writing trigger

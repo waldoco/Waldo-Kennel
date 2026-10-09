@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestV030GoldenVectors(t *testing.T) {
@@ -42,6 +43,21 @@ func TestV030GoldenVectors(t *testing.T) {
 					t.Fatal("canonical bytes mismatch")
 				}
 			}
+			if v.Surface == "backend" {
+				if _, err := ParseBackendFrame([]byte(v.Wire)); err != nil {
+					t.Fatal("backend shape", err)
+				}
+			}
+			if v.Surface == "http" && v.Canonical != "" {
+				if _, err := ParseRedeemBody([]byte(v.Canonical)); err != nil {
+					t.Fatal("redeem shape", err)
+				}
+			}
+			if v.Surface == "device" {
+				if _, err := VerifyFrame([]byte(v.Wire), public, vectorClock(v.Wire)); err != nil {
+					t.Fatal("device shape", err)
+				}
+			}
 			if v.Signature != "" {
 				signature, err := base64.RawURLEncoding.DecodeString(v.Signature)
 				if err != nil || !ed25519.Verify(public, []byte(v.Base), signature) {
@@ -56,4 +72,10 @@ func TestV030GoldenVectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func vectorClock(raw string) time.Time {
+	f, _ := parseJSONObject([]byte(raw))
+	n, _ := parseInteger(f["timestamp"])
+	return time.Unix(n, 0)
 }

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/bridgecontract"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/devicebridge"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 )
@@ -141,7 +142,16 @@ func (c *Controller) Status(ctx context.Context) (Status, error) {
 	return Status{Ready: ready, Phase: phase, DeviceID: string(r.Device.DeviceID), Label: r.Device.Label}, nil
 }
 
-func (c *Controller) Pair(ctx context.Context, code, label string, capabilities []string) error {
+func (c *Controller) Pair(ctx context.Context, code, label string, capabilities []string, consent ...bool) error {
+	sessionConsent := len(consent) == 1 && consent[0]
+	for _, cap := range capabilities {
+		if (cap == devicebridge.ClassSessionQuery || cap == devicebridge.ClassSessionControl) && !sessionConsent {
+			return ErrInvalid
+		}
+	}
+	if len(consent) > 1 {
+		return ErrInvalid
+	}
 	// Reject invalid inputs before reserving; secrets never enter Repository.
 	decoded, e := base64.RawURLEncoding.DecodeString(code)
 	if e != nil || len(decoded) != 32 || base64.RawURLEncoding.EncodeToString(decoded) != code || !utf8.ValidString(label) || len(label) < 1 || len(label) > 120 || !validCapabilities(capabilities) {
@@ -162,7 +172,7 @@ func (c *Controller) Pair(ctx context.Context, code, label string, capabilities 
 	if r.OwnerID != c.owner || r.Attempt == "" {
 		return ErrInvalid
 	}
-	d, err := c.pairer.Pair(ctx, devicebridge.PairRequest{OwnerID: c.owner, Code: code, Label: label, Capabilities: append([]string(nil), capabilities...), Checkpoint: func(_ context.Context, observed devicebridge.PairingRecoveryError) error {
+	d, err := c.pairer.Pair(ctx, devicebridge.PairRequest{OwnerID: c.owner, Code: code, Label: label, SessionConsent: sessionConsent, Capabilities: append([]string(nil), capabilities...), Checkpoint: func(_ context.Context, observed devicebridge.PairingRecoveryError) error {
 		safe := devicebridge.PairingRecoveryError{OwnerID: observed.OwnerID, KeyCustodyRef: observed.KeyCustodyRef, PublicKey: observed.PublicKey}
 		return cp.Checkpoint(context.WithoutCancel(ctx), c.owner, r.Attempt, safe)
 	}})
@@ -307,7 +317,7 @@ func (c *Controller) Stop(ctx context.Context) error {
 }
 
 func validCapabilities(classes []string) bool {
-	return len(classes) == 1 && (classes[0] == "machine_state_query" || classes[0] == "notify_local") || len(classes) == 2 && classes[0] == "machine_state_query" && classes[1] == "notify_local"
+	return bridgecontract.ValidCapabilities(classes)
 }
 
 func sameCapabilities(a, b []string) bool {

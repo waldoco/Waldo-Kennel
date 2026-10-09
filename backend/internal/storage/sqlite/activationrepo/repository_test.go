@@ -317,8 +317,7 @@ func TestRevokedNeverResurrected(t *testing.T) {
 	d := seed(t, r, "owner")
 	must(t, r.Revoke(bg, "owner", d.DeviceID))
 	before := snapshot(t, r.db)
-	_, e := r.Reserve(bg, "owner")
-	want(t, e, ErrRevoked)
+	var e error
 	want(t, r.Complete(bg, "owner", "old", d), ErrAttemptMismatch)
 	for _, q := range []string{`UPDATE device_bridge_activations SET phase='paired',revoked=0`, `UPDATE device_bridge_activations SET revoked=0`, `UPDATE device_bridge_activations SET claim_generation=0`, `DELETE FROM device_bridge_activations`, `UPDATE device_bridge_activations SET owner_id='other'`, `UPDATE device_bridge_activations SET created_at='2000-01-01'`, `UPDATE device_bridge_activations SET device_id='other'`} {
 		if _, e = r.db.Exec(q); e == nil {
@@ -426,4 +425,28 @@ type testFactory struct{}
 func (testFactory) Ready(context.Context) error { return nil }
 func (testFactory) New(context.Context, string, domain.DeviceBridgeDevice, func(devicebridge.ConnectionState)) (bridgeactivation.Session, error) {
 	return nil, bridgeactivation.ErrNotReady
+}
+
+func TestRevokeThenRepairFencesOldDevice(t *testing.T) {
+	r, other := repos(t)
+	old := seed(t, r, "owner")
+	claim, e := r.ClaimActivation(bg, "owner", old.DeviceID)
+	must(t, e)
+	must(t, r.Revoke(bg, "owner", old.DeviceID))
+	reservation := reserve(t, other, "owner")
+	next := pairedDevice("owner")
+	next.DeviceID = "fresh-device"
+	must(t, other.Complete(bg, "owner", reservation.Attempt, next))
+	if r.VerifyClaim(bg, "owner", old.DeviceID, claim) == nil {
+		t.Fatal("old claim resurrected")
+	}
+	if _, e = r.ClaimActivation(bg, "owner", old.DeviceID); e == nil {
+		t.Fatal("old device claimed")
+	}
+	if _, e = r.ClaimActivation(bg, "owner", next.DeviceID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = r.db.Exec(`UPDATE device_bridge_devices SET state='paired',revoked_at=NULL WHERE device_id=?`, old.DeviceID); e == nil {
+		t.Fatal("old identity resurrected")
+	}
 }

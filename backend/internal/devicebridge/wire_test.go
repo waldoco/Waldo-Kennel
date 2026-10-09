@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-const commandFixture = `{"class":"machine_state_query","command_id":"cmd_1","contract_version":"0.2.3","device_id":"dev_1","expires_at":1790700000,"idempotency_key":"idem_1","message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","owner_id":"owner_1","payload":{"query_id":"query_1","query_kind":"session_status"},"revision":1,"type":"command"}`
-const receiptFixture = `{"command_id":"cmd_1","contract_version":"0.2.3","device_id":"dev_1","idempotency_key":"idem_1","message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAY","owner_id":"owner_1","payload":{"received_at":1790200802,"result_message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAX"},"revision":1,"type":"receipt"}`
-const resultFixture = `{"command_id":"cmd_1","contract_version":"0.2.3","device_id":"dev_1","idempotency_key":"idem_1","message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAX","owner_id":"owner_1","payload":{"answer":{"query_id":"query_1","query_kind":"session_status","state":"idle"},"status":"answered"},"revision":1,"type":"result"}`
+const commandFixture = `{"class":"machine_state_query","command_id":"cmd_1","contract_version":"0.3.0","device_id":"dev_1","expires_at":1790700000,"idempotency_key":"idem_1","message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","owner_id":"owner_1","payload":{"query_id":"query_1","query_kind":"session_status"},"revision":1,"type":"command"}`
+const receiptFixture = `{"command_id":"cmd_1","contract_version":"0.3.0","device_id":"dev_1","idempotency_key":"idem_1","message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAY","owner_id":"owner_1","payload":{"received_at":1790200802,"result_message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAX"},"revision":1,"type":"receipt"}`
+const resultFixture = `{"command_id":"cmd_1","contract_version":"0.3.0","device_id":"dev_1","idempotency_key":"idem_1","message_id":"01ARZ3NDEKTSV4RRFFQ69G5FAX","owner_id":"owner_1","payload":{"answer":{"query_id":"query_1","query_kind":"session_status","state":"idle"},"status":"answered"},"revision":1,"type":"result"}`
 
 func TestClosedBackendFrameShapes(t *testing.T) {
 	for _, raw := range []string{commandFixture, receiptFixture} {
@@ -18,7 +18,7 @@ func TestClosedBackendFrameShapes(t *testing.T) {
 			t.Fatalf("rejected fixture: %v", err)
 		}
 	}
-	wrongVersion := bytes.ReplaceAll([]byte(commandFixture), []byte(`"contract_version":"0.2.3"`), []byte(`"contract_version":"0.2.1"`))
+	wrongVersion := bytes.ReplaceAll([]byte(commandFixture), []byte(`"contract_version":"0.3.0"`), []byte(`"contract_version":"0.2.1"`))
 	if _, err := ParseBackendFrame(wrongVersion); !errors.Is(err, ErrContractVersionMismatch) {
 		t.Fatalf("wrong version error = %v", err)
 	}
