@@ -191,15 +191,17 @@ describe("preload owner-command bridge", () => {
 });
 
 describe("preload Waldo bridge", () => {
- it("invokes exactly status and pair channels and exposes no credential", async () => {
+ it("exposes pairing and read-only output channels without credentials", async () => {
   const surface = exposedBridge().waldoBridge!;
-  expect(Object.keys(surface).sort()).toStrictEqual(["pair", "status"]);
+  expect(Object.keys(surface).sort()).toStrictEqual(["history", "output", "pair", "status"]);
   await surface.status();
   expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:status");
   electronMocks.invoke.mockClear();
   const input = { code: "A".repeat(43), label: "Mac", capabilities: ["notify_local"] };
   await surface.pair(input);
   expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:pair", input);
+  electronMocks.invoke.mockClear(); await surface.history(); expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:history");
+  electronMocks.invoke.mockClear(); await surface.output({deviceId:"dev",id:"cmd"}); expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:output",{deviceId:"dev",id:"cmd"});
   expect(JSON.stringify(exposedBridge())).not.toMatch(/bridgeLocalToken|ownerCommandToken/);
  });
 });

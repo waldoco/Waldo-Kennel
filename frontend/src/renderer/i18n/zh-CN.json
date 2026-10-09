@@ -2862,5 +2862,13 @@
 	"newTask.tmux.installingStatus": "Installing tmux with Homebrew. This can take a few minutes.",
 	"newTask.tmux.installing": "Installing tmux…",
 	"newTask.tmux.install": "Install tmux with Homebrew",
-	"createProject.needsGitInit": "Needs git init"
+	"createProject.needsGitInit": "Needs git init",
+	"settings.waldo.commands": "Waldo 可以请求 Mac 命令。每条命令都需要在 Mac 原生对话框中批准。未批准的请求在 15 分钟后过期。",
+	"settings.waldo.sessionConsent": "允许会话状态和输出末尾（最多 6 KB）离开此 Mac",
+	"settings.waldo.outputTitle": "此 Mac 上的命令输出",
+	"settings.waldo.outputHelp": "每条命令在本地最多保留 1 MiB 输出。Waldo 仅接收最新的末尾部分，最多 6 KB。",
+	"settings.waldo.refreshOutput": "刷新命令输出",
+	"settings.waldo.macAction": "Mac 操作",
+	"settings.waldo.outputUnavailable": "命令输出不可用。",
+	"settings.waldo.noOutput": "未捕获输出。"
 }

@@ -2896,5 +2896,13 @@
 	"newTask.tmux.installingStatus": "Installing tmux with Homebrew. This can take a few minutes.",
 	"newTask.tmux.installing": "Installing tmux…",
 	"newTask.tmux.install": "Install tmux with Homebrew",
-	"createProject.needsGitInit": "Needs git init"
+	"createProject.needsGitInit": "Needs git init",
+	"settings.waldo.commands": "Waldo peut demander des commandes Mac. Chaque commande nécessite une approbation dans une boîte de dialogue native du Mac. Les demandes non approuvées expirent après 15 minutes.",
+	"settings.waldo.sessionConsent": "Autoriser l’envoi de l’état des sessions et de la fin de leur sortie (jusqu’à 6 KB) hors de ce Mac",
+	"settings.waldo.outputTitle": "Sortie des commandes sur ce Mac",
+	"settings.waldo.outputHelp": "La capture locale conserve jusqu’à 1 MiB par commande. Waldo reçoit uniquement la fin la plus récente, jusqu’à 6 KB.",
+	"settings.waldo.refreshOutput": "Actualiser la sortie des commandes",
+	"settings.waldo.macAction": "Action Mac",
+	"settings.waldo.outputUnavailable": "La sortie de la commande est indisponible.",
+	"settings.waldo.noOutput": "Aucune sortie capturée."
 }
