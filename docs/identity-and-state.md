@@ -13,6 +13,7 @@ This contract prevents a Kennel development build, packaged app, daemon, updater
 | Global data root | `~/.kennel` |
 | Electron `userData` | `~/.kennel/electron` |
 | Daemon data / run file | `~/.kennel/data`, `~/.kennel/running.json` |
+| Agent Browser runtime roots | `~/.kennel/br` (`KENNEL_BROWSER_RUNTIME_DIR` overrides) |
 | Updater cache | `kennel-updater` |
 | Release owner/repository | `waldoco/Waldo-Kennel` |
 | Runtime environment variables | `KENNEL_*` |
