@@ -41,7 +41,29 @@ type Dependencies struct {
 }
 type Factory struct{ deps Dependencies }
 
-var _ bridgeactivation.Factory = (*Factory)(nil)
+// KeyClearer is key custody that can destroy a key it holds. Clearing an absent
+// key must succeed so a retried retirement is harmless.
+type KeyClearer interface {
+	Clear(context.Context, string) error
+}
+
+var (
+	_ bridgeactivation.Factory    = (*Factory)(nil)
+	_ bridgeactivation.KeyRetirer = (*Factory)(nil)
+)
+
+// RetireKey destroys a durably revoked identity's private key. Custody that cannot
+// clear is reported rather than silently keeping the key.
+func (f *Factory) RetireKey(ctx context.Context, d domain.DeviceBridgeDevice) error {
+	if f == nil || d.KeyCustodyRef == "" {
+		return fmt.Errorf("bridge custody: %w", bridgeactivation.ErrNotReady)
+	}
+	clearer, ok := f.deps.Keys.(KeyClearer)
+	if !ok {
+		return fmt.Errorf("bridge custody cannot clear keys: %w", bridgeactivation.ErrNotReady)
+	}
+	return clearer.Clear(ctx, d.KeyCustodyRef)
+}
 
 func NewFactory(deps Dependencies) *Factory { return &Factory{deps: deps} }
 func (f *Factory) Ready(ctx context.Context) error {

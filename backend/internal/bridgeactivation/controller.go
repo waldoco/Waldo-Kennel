@@ -18,6 +18,9 @@ var (
 	ErrBlocked  = errors.New("pairing requires reconciliation")
 	ErrNotReady = errors.New("bridge activation dependencies are not ready")
 	ErrInvalid  = errors.New("invalid bridge activation request")
+	// ErrKeyRetirement reports that a durably revoked identity's private key could
+	// not be destroyed. The revocation itself stands.
+	ErrKeyRetirement = errors.New("revoked device private key retirement failed")
 )
 
 type Phase string
@@ -69,6 +72,13 @@ type Checkpointer interface {
 
 type Session interface{ Run(context.Context) error }
 
+// KeyRetirer is optionally implemented by a Factory whose custody can destroy a
+// revoked identity's private key. It is called only after Revoke is durable, so a
+// failed revocation never strands a paired record without its key.
+type KeyRetirer interface {
+	RetireKey(context.Context, domain.DeviceBridgeDevice) error
+}
+
 // Factory must bind sessions to the stored owner, device, pinned origin and key
 // custody. It must not widen capabilities or create a new identity. New must
 // acquire/check the Repository revocation fence atomically with activation;
@@ -97,6 +107,7 @@ type Controller struct {
 	phase         Phase
 	revokedID     domain.DeviceBridgeDeviceID
 	revocationErr error
+	retireErr     error
 }
 
 // New requires an owner bound by trusted local configuration, not caller input.
@@ -220,8 +231,15 @@ func (c *Controller) Start(ctx context.Context) error {
 			// Immediate local latch is not durable proof. Return a persistence failure
 			// through Stop and require repair before reuse; never silently retry it.
 			err := c.repo.Revoke(context.WithoutCancel(runctx), c.owner, r.Device.DeviceID)
+			var retireErr error
+			if retirer, ok := c.factory.(KeyRetirer); ok && err == nil {
+				if e := retirer.RetireKey(context.WithoutCancel(runctx), r.Device); e != nil {
+					retireErr = errors.Join(ErrKeyRetirement, e)
+				}
+			}
 			c.stateMu.Lock()
 			c.revocationErr = err
+			c.retireErr = retireErr
 			c.stateMu.Unlock()
 			cancel()
 			return
@@ -237,6 +255,7 @@ func (c *Controller) Start(ctx context.Context) error {
 	c.stateMu.Lock()
 	c.phase = Offline
 	c.revocationErr = nil
+	c.retireErr = nil
 	c.stateMu.Unlock()
 	session, err := c.factory.New(runctx, c.origin, r.Device, state)
 	if err != nil || session == nil {
@@ -271,7 +290,7 @@ func (c *Controller) Stop(ctx context.Context) error {
 	c.mu.Unlock()
 	if cancel == nil {
 		c.stateMu.Lock()
-		err := c.revocationErr
+		err := errors.Join(c.revocationErr, c.retireErr)
 		c.stateMu.Unlock()
 		return err
 	}
@@ -279,7 +298,7 @@ func (c *Controller) Stop(ctx context.Context) error {
 	select {
 	case <-done:
 		c.stateMu.Lock()
-		err := c.revocationErr
+		err := errors.Join(c.revocationErr, c.retireErr)
 		c.stateMu.Unlock()
 		return err
 	case <-ctx.Done():

@@ -44,8 +44,12 @@ func (b *bridgeWiring) close() {
 		if b.stop != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			if b.stop(ctx) != nil && b.log != nil {
-				b.log.Warn("local Waldo bridge revocation persistence or stop failed")
+			if e := b.stop(ctx); e != nil && b.log != nil {
+				msg := "local Waldo bridge revocation persistence or stop failed"
+				if errors.Is(e, bridgeactivation.ErrKeyRetirement) {
+					msg = "local Waldo bridge revocation persistence, stop or private key retirement failed"
+				}
+				b.log.Warn(msg)
 			}
 		}
 		for _, db := range b.dbs {
