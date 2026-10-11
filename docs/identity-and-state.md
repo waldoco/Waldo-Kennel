@@ -15,6 +15,7 @@ This contract prevents a Kennel development build, packaged app, daemon, updater
 | Daemon data / run file | `~/.kennel/data`, `~/.kennel/running.json` |
 | Agent Browser runtime roots | `~/.kennel/br` (`KENNEL_BROWSER_RUNTIME_DIR` overrides) |
 | Updater cache | `kennel-updater` |
+| Bridge device keys | macOS: login Keychain, service `in.heywaldo.kennel.device-bridge-key`; elsewhere and for earlier `device-key:` references: `<data>/secrets/device-keys` |
 | Release owner/repository | `waldoco/Waldo-Kennel` |
 | Runtime environment variables | `KENNEL_*` |
 | Default loopback / dev / opt-in LAN port | `3031` / `3032` / `3041` |
