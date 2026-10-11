@@ -7,8 +7,9 @@ import (
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/devicebridge"
 )
 
-// UnknownQueries intentionally ships no machine evidence. Notifications have
-// no Display adapter either, so connected means unknown / delivery_unknown.
+// UnknownQueries intentionally ships no machine evidence, so queries answer
+// unknown. Notifications use the injected Display (DisplayRelay); without one,
+// or without the shell's acknowledgement, they stay delivery_unknown.
 type UnknownQueries struct{}
 
 var _ devicebridge.QueryEvidenceSource = UnknownQueries{}

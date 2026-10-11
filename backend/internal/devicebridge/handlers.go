@@ -9,8 +9,9 @@ type QueryEvidenceSource interface {
 	QueryState(context.Context, Scope, string, string) (state string, found bool, err error)
 }
 
-// DisplaySurface is an injected, display-only boundary. S4 supplies only test
-// fakes; no native notification implementation or owner grant is created.
+// DisplaySurface is an injected, display-only boundary. The runtime injects
+// bridgeruntime.DisplayRelay, which reports delivered only on the desktop shell's
+// acknowledgement that the OS showed the text; it never creates an owner grant.
 type DisplaySurface interface {
 	Display(context.Context, Scope, Notification) (delivered bool, err error)
 }

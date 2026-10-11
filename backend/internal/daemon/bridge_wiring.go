@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -151,7 +152,10 @@ func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority
 	if e = os.MkdirAll(keyDir, 0700); e != nil {
 		return fail()
 	}
-	factory := makeFactory(bridgeruntime.Dependencies{Fence: activationrepo.New(repoDB), Keys: secretstore.NewDeviceKeyStore(dataDir), SessionStore: bridgepersist.New(runtimeDB), Logger: log, KeyDirectory: keyDir, ReadyProbe: func(ctx context.Context) error {
+	// One relay per daemon: notify_local text reaches the desktop shell only through
+	// the authenticated loopback display endpoints below.
+	display := bridgeruntime.NewDisplayRelay()
+	factory := makeFactory(bridgeruntime.Dependencies{Fence: activationrepo.New(repoDB), Keys: secretstore.NewDeviceKeyStore(dataDir), SessionStore: bridgepersist.New(runtimeDB), Logger: log, KeyDirectory: keyDir, Display: display, ReadyProbe: func(ctx context.Context) error {
 		var n int
 		return repoDB.QueryRowContext(ctx, "SELECT count(*) FROM device_bridge_activations").Scan(&n)
 	}})
@@ -162,7 +166,16 @@ func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority
 	b.controller = c
 	b.start = c.Start
 	b.stop = c.Stop
-	b.handler = b.afterPair(bridgeactivation.Handler(c, func(r *http.Request) bool { return authority.Authenticate(r.Header.Get("Authorization")) }))
+	authorize := func(r *http.Request) bool { return authority.Authenticate(r.Header.Get("Authorization")) }
+	activation := b.afterPair(bridgeactivation.Handler(c, authorize))
+	displayHandler := display.Handler(authorize)
+	b.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/display/") {
+			displayHandler.ServeHTTP(w, r)
+			return
+		}
+		activation.ServeHTTP(w, r)
+	})
 	return b
 }
 

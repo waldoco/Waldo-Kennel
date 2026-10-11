@@ -35,6 +35,9 @@ type Dependencies struct {
 	Logger       *slog.Logger
 	ReadyProbe   func(context.Context) error
 	KeyDirectory string
+	// Display is the notify_local surface. Nil keeps every notification
+	// delivery_unknown; no adapter is invented here.
+	Display devicebridge.DisplaySurface
 }
 type Factory struct{ deps Dependencies }
 
@@ -99,7 +102,7 @@ func (f *Factory) New(ctx context.Context, origin string, d domain.DeviceBridgeD
 		dialer = devicebridge.WebSocketDialer{}
 	}
 	rejected := &atomic.Bool{}
-	client := &devicebridge.Client{Origin: origin, Scope: devicebridge.Scope{OwnerID: d.OwnerID, DeviceID: string(d.DeviceID)}, Capabilities: append([]string(nil), d.CapabilityClasses...), Key: append(ed25519.PrivateKey(nil), key...), Store: f.deps.SessionStore, Executor: devicebridge.Handlers{Queries: UnknownQueries{}}, Dialer: authDialer{dialer, rejected}, State: state, Diagnostic: func(reason string) {
+	client := &devicebridge.Client{Origin: origin, Scope: devicebridge.Scope{OwnerID: d.OwnerID, DeviceID: string(d.DeviceID)}, Capabilities: append([]string(nil), d.CapabilityClasses...), Key: append(ed25519.PrivateKey(nil), key...), Store: f.deps.SessionStore, Executor: devicebridge.Handlers{Queries: UnknownQueries{}, Display: f.deps.Display}, Dialer: authDialer{dialer, rejected}, State: state, Diagnostic: func(reason string) {
 		if f.deps.Logger != nil {
 			switch reason {
 			case devicebridge.ReasonInvalidShape, devicebridge.ReasonUnknownMessage:
