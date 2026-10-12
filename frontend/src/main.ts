@@ -29,6 +29,7 @@ import {
 } from "./main/auto-updater";
 import { listFeatureBuilds, getActiveFeatureBuild } from "./main/feature-builds";
 import { createWaldoBridgeHandlers } from "./main/waldo-bridge-handler";
+import { createNotificationShower, createWaldoBridgeDisplayLoop } from "./main/waldo-bridge-display";
 import { createAttemptReplacementHandler } from "./main/owner-command-handler";
 import { createHarnessAuthorityHandler } from "./main/harness-authority-handler";
 import {
@@ -1639,6 +1640,17 @@ const waldoBridgeHandlers = createWaldoBridgeHandlers({
 });
 ipcMain.handle("waldoBridge:status", waldoBridgeHandlers.status);
 ipcMain.handle("waldoBridge:pair", waldoBridgeHandlers.pair);
+// notify_local text reaches the OS only through this loop; it acknowledges
+// shown=true to the daemon solely on the native notification's "show" event.
+const waldoBridgeDisplay = createWaldoBridgeDisplayLoop({
+	getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
+	bridgeLocalToken: () => bridgeLocalToken,
+	fetch: globalThis.fetch,
+	show: createNotificationShower({
+		isSupported: () => ElectronNotification.isSupported(),
+		create: (options) => new ElectronNotification({ ...options, icon: process.platform === "darwin" ? undefined : windowIconPath() }),
+	}),
+});
 
 ipcMain.handle("ownerCommand:approveAttemptReplacement", createAttemptReplacementHandler({
 	getWindow: () => mainWindow,
@@ -2329,6 +2341,8 @@ app.whenReady().then(async () => {
 	}
 	await createWindow();
 	void startDaemon();
+	// Bridge configuration is trusted only from this process's own environment.
+	if (process.env.KENNEL_WALDO_BRIDGE_ENABLED === "1") waldoBridgeDisplay.start();
 	initAutoUpdates();
 
 	// Windows/Linux: on first launch, the deep-link URL may arrive as a
@@ -2353,6 +2367,7 @@ app.whenReady().then(async () => {
 // the process exits for any reason (Cmd+Q, crash, SIGKILL). Sessions survive.
 app.on("before-quit", (event) => {
 	browserQuitRequested = true;
+	void waldoBridgeDisplay.stop();
 	disposeBrowserRuntimeLink();
 	sessionDeepLinks.dispose();
 	trayLifecycle.dispose();

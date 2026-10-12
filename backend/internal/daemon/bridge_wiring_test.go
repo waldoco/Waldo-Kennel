@@ -202,3 +202,42 @@ func TestShutdownStopsBeforeClosingDBs(t *testing.T) {
 		t.Fatal("unsafe shutdown log")
 	}
 }
+
+func TestDaemonBridgeWiringRoutesDisplayBehindBridgeAuthority(t *testing.T) {
+	dir := t.TempDir()
+	s, e := sqlite.Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	b := wireBridgeWithFactory(dir, wiringEnv("1"), ownercommand.NewBridgeAuthority(wiringToken), slog.New(slog.NewTextHandler(io.Discard, nil)), activationrepo.OpenDedicated, func(bridgeruntime.Dependencies) bridgeactivation.Factory { return wiringFactory{} })
+	if b == nil {
+		t.Fatal("not mounted")
+	}
+	defer b.close()
+	ack := func(body string, token string) int {
+		r := httptest.NewRequest(http.MethodPost, "/display/ack", strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:42"
+		r.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			r.Header.Set("Authorization", "KennelBridge "+token)
+		}
+		w := httptest.NewRecorder()
+		b.handler.ServeHTTP(w, r)
+		return w.Code
+	}
+	known := `{"request_id":"` + strings.Repeat("a", 32) + `","shown":true}`
+	if code := ack(known, ""); code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated display ack: %d", code)
+	}
+	if code := ack(known, "wrong-token"); code != http.StatusUnauthorized {
+		t.Fatalf("wrong-token display ack: %d", code)
+	}
+	// 400 proves the display relay (not the activation handler's 404) served it.
+	if code := ack(`{}`, wiringToken); code != http.StatusBadRequest {
+		t.Fatalf("malformed display ack: %d", code)
+	}
+	if code := ack(known, wiringToken); code != http.StatusNotFound {
+		t.Fatalf("unknown display request: %d", code)
+	}
+}
