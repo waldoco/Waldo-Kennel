@@ -29,8 +29,8 @@ const STATUS_CHIPS: { label: string; className: string; indicatorClassName: stri
 
 function GallerySection({ title, children }: { title: string; children: React.ReactNode }) {
 	return (
-		<section className="flex flex-col gap-3 border-b border-border/70 pb-6">
-			<h2 className="text-xs font-semibold uppercase tracking-wide text-passive">{title}</h2>
+		<section className="flex flex-col gap-3 hairline-b border-wd-hairline pb-8">
+			<h2 className="wd-label text-wd-secondary">{title}</h2>
 			{children}
 		</section>
 	);
@@ -42,7 +42,7 @@ export function MissionPrimitivesGallery() {
 	const [activityOpen, setActivityOpen] = useState(false);
 
 	return (
-		<div className="flex flex-col gap-6 bg-background p-6 text-foreground">
+		<div className="flex flex-col gap-8 bg-wd-canvas p-6 text-wd-primary">
 			<GallerySection title="MissionStatusChip — icon + text, never color alone">
 				<div className="flex flex-wrap gap-2">
 					{STATUS_CHIPS.map((chip) => (
@@ -82,7 +82,7 @@ export function MissionPrimitivesGallery() {
 				<div className="flex flex-col gap-2">
 					<TaskRow
 						freshnessLabel="2h ago"
-						nextAction={<button className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 text-2xs text-primary" type="button">Resume</button>}
+						nextAction={<button className="rounded-xs text-2xs text-(--text-link) underline underline-offset-2" type="button">Resume</button>}
 						statusChip={
 							<MissionStatusChip
 								className="text-status-needs-you"
@@ -183,17 +183,17 @@ export function MissionPrimitivesGallery() {
 
 			<GallerySection title="InspectorShell — summary, host-controlled disclosure, explicit footer">
 				<InspectorShell
-					activity={<p className="text-2xs text-muted-foreground">Session started 2h ago; last check ran 10m ago.</p>}
+					activity={<p className="text-2xs text-wd-secondary">Session started 2h ago; last check ran 10m ago.</p>}
 					activityLabel="Activity"
 					activityOpen={activityOpen}
 					footer={
 						<>
-							<button className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 text-2xs text-error" type="button"><X className="mr-1 inline size-icon-2xs" />Deny</button>
-							<button className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 text-2xs text-primary" type="button">Accept</button>
+							<button className="rounded-xs text-2xs text-critical underline underline-offset-2" type="button"><X className="mr-1 inline size-icon-2xs" />Deny</button>
+							<button className="rounded-xs text-2xs text-(--text-link) underline underline-offset-2" type="button">Accept</button>
 						</>
 					}
 					onActivityOpenChange={setActivityOpen}
-					summary={<p className="text-2xs text-muted-foreground">WorkUnit wu-42 is proven; awaiting Accept.</p>}
+					summary={<p className="text-2xs text-wd-secondary">WorkUnit wu-42 is proven; awaiting Accept.</p>}
 					title="WorkUnit wu-42"
 				/>
 			</GallerySection>

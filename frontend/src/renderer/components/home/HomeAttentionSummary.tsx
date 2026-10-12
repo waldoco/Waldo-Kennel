@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { HomeFixtureState } from "../../lib/home-fixture";
+import { NeedsYouBadge } from "./HomeCards";
 
 export function HomeAttentionSummary({
   fixture,
@@ -16,43 +17,33 @@ export function HomeAttentionSummary({
   if (!item) {
     return (
       <section aria-label={t("home.visual.attention.needsYou")}>
-        <p className="text-xs font-medium text-muted-foreground">{t("home.visual.attention.needsYou")}</p>
-        <p className="mt-2 text-sm text-foreground">{t("home.visual.attention.empty")}</p>
+        <p className="wd-body text-wd-primary">{t("home.visual.attention.empty")}</p>
       </section>
     );
   }
 
   return (
-    <section aria-labelledby="needs-you-heading">
-      <div className="flex items-center justify-between gap-3">
-        <h2
-          className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
-          id="needs-you-heading"
-        >
-          {t("home.visual.attention.needsYou")} · {fixture.attention.length}
-        </h2>
-        <span className="text-xs text-muted-foreground">{t("home.visual.attention.oneDecision")}</span>
-      </div>
+    <section aria-labelledby="needs-you-heading" className="flex flex-col gap-3">
+      <h2 className="wd-title text-wd-primary" id="needs-you-heading">
+        {t("home.visual.attention.needsYou")}
+      </h2>
       <button
         aria-label={t("home.visual.brief.review.catchUp")}
-        className="group mt-3 flex w-full items-start justify-between gap-5 rounded-xl border border-border bg-raised/35 px-5 py-4 text-left transition-[background-color,border-color] hover:border-border-strong hover:bg-raised/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 motion-reduce:transition-none"
+        className="group block rounded-lg text-left"
         onClick={onReview}
         ref={reviewRef}
         type="button"
       >
-        <span className="min-w-0">
-          <span className="block text-sm font-medium text-foreground">
+        <span className="flex flex-col gap-3 rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-5 transition-colors duration-fast group-hover:bg-wd-hover group-active:bg-wd-pressed motion-reduce:transition-none">
+          <span className="flex min-h-7 items-center gap-2">
+            <NeedsYouBadge />
+            <span className="wd-caption ml-auto text-wd-tertiary">{t("home.visual.attention.oneDecision")}</span>
+          </span>
+          <span className="wd-headline block text-wd-primary">
             {t("home.visual.attention.proposedMeaning")}
           </span>
-          <span className="mt-1.5 block text-xs leading-relaxed text-muted-foreground">
-            {item.sourceSummary}
-          </span>
-          <span className="mt-1 block text-xs leading-relaxed text-warning">
-            {item.sourceGap}
-          </span>
-        </span>
-        <span className="shrink-0 pt-0.5 text-xs font-medium text-foreground group-hover:underline">
-          {t("home.visual.review")}
+          <span className="wd-body-s block text-wd-secondary">{item.sourceSummary}</span>
+          <span className="wd-body-s block text-caution">{item.sourceGap}</span>
         </span>
       </button>
     </section>

@@ -100,7 +100,7 @@ function SwitchTargetPicker({
 			renderTrigger={(_selected, placeholder) => (
 				<span className="flex min-w-0 items-center gap-2">
 					{selected ? <AgentAvatar className="size-icon-base" decorative provider={selected.id} /> : null}
-					<span className="min-w-0 truncate text-control text-foreground" title={selected?.label ?? placeholder}>
+					<span className="min-w-0 truncate text-sm text-wd-primary" title={selected?.label ?? placeholder}>
 						{selected?.label ?? placeholder}
 					</span>
 				</span>
@@ -243,7 +243,7 @@ export function SwitchAgentDialog({ container, open, session, onOpenChange }: Sw
 					/>
 				}
 				showCloseButton={false}
-				className="absolute left-1/2 top-1/2 z-overlay w-[min(var(--size-dialog-md),calc(100%-var(--space-8)))] max-w-none -translate-x-1/2 -translate-y-1/2 gap-0 overflow-hidden rounded-xl border border-border-strong bg-surface/95 p-0 text-foreground shadow-xl shadow-black/20 data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out motion-reduce:animate-none"
+				className="absolute left-1/2 top-1/2 z-overlay w-[min(var(--size-dialog-md),calc(100%-var(--space-8)))] max-w-none -translate-x-1/2 -translate-y-1/2 gap-0 overflow-hidden rounded-xl border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-raised p-0 text-wd-primary shadow-[var(--shadow-overlay)] data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out motion-reduce:animate-none"
 			>
 				<DialogClose asChild>
 					<button
@@ -255,20 +255,20 @@ export function SwitchAgentDialog({ container, open, session, onOpenChange }: Sw
 						<X className="size-icon-base" aria-hidden="true" />
 					</button>
 				</DialogClose>
-				<DialogTitle className="settings-dialog-title px-4 pr-12 pt-3">{t("switchAgent.title")}</DialogTitle>
-				<DialogDescription className="px-4 pr-12 pt-0.5 text-caption leading-4 text-muted-foreground">
+				<DialogTitle className="settings-dialog-title px-6 pr-14 pt-6">{t("switchAgent.title")}</DialogTitle>
+				<DialogDescription className="wd-body-s px-6 pr-14 pt-1 text-wd-secondary">
 					{t("switchAgent.description", { current: agentLabel(session.provider) })}
 				</DialogDescription>
 
 				{recoveryRequired ? (
-					<div className="flex flex-col gap-4 px-4 pb-4 pt-4">
-						<div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/5 px-3 py-3">
-							<TriangleAlert aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-warning" />
+					<div className="flex flex-col gap-4 px-6 pb-6 pt-4">
+						<div className="flex items-start gap-3 rounded-md bg-caution-bg px-4 py-3">
+							<TriangleAlert aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-caution" />
 							<div className="min-w-0">
-								<p className="font-mono text-control font-medium text-foreground">{t(recoveryTitleKey, { source: sourceLabel })}</p>
-								<p className="mt-1 text-caption leading-4 text-muted-foreground">{t(recoveryDescriptionKey, { source: sourceLabel })}</p>
+								<p className="wd-label text-wd-primary">{t(recoveryTitleKey, { source: sourceLabel })}</p>
+								<p className="wd-body-s mt-1 text-wd-secondary">{t(recoveryDescriptionKey, { source: sourceLabel })}</p>
 								{sourceRecoveryRequired && recoverAgentSwitch.error instanceof Error ? (
-									<p className="mt-2 text-caption leading-4 text-error" role="alert">{recoverAgentSwitch.error.message}</p>
+									<p className="wd-body-s mt-2 text-critical" role="alert">{recoverAgentSwitch.error.message}</p>
 								) : null}
 							</div>
 						</div>
@@ -278,9 +278,8 @@ export function SwitchAgentDialog({ container, open, session, onOpenChange }: Sw
 								disabled={recoverAgentSwitch.isPending}
 								onClick={() => recoverAgentSwitch.mutate({ sessionId: session.id, switchId: durableSwitch.id })}
 								type="button"
-								variant="outline"
+								variant="secondary"
 							>
-								{recoverAgentSwitch.isPending ? <LoaderCircle aria-hidden="true" className="size-icon-sm animate-spin" /> : null}
 								{t(sourceRecoveryActionKey, { source: sourceLabel })}
 							</Button>
 						) : (
@@ -289,19 +288,18 @@ export function SwitchAgentDialog({ container, open, session, onOpenChange }: Sw
 								disabled={refreshingRecovery}
 								onClick={() => void refreshRecovery()}
 								type="button"
-								variant="outline"
+								variant="secondary"
 							>
-								{refreshingRecovery ? <LoaderCircle aria-hidden="true" className="size-icon-sm animate-spin" /> : null}
 								{t("settings.project.refresh")}
 							</Button>
 						)}
 					</div>
 				) : (
-					<form className="flex flex-col gap-3 px-4 pb-4 pt-4" onSubmit={submit}>
+					<form className="flex flex-col gap-3 px-6 pb-6 pt-4" onSubmit={submit}>
 						{error || modelWarning ? (
 							<div>
-								{error ? <p className="text-caption leading-4 text-error" role="alert">{error}</p> : null}
-								{!error && modelWarning ? <p className="text-caption text-warning">{modelWarning}</p> : null}
+								{error ? <p className="wd-body-s text-critical" role="alert">{error}</p> : null}
+								{!error && modelWarning ? <p className="wd-body-s text-caution">{modelWarning}</p> : null}
 							</div>
 						) : null}
 
@@ -312,7 +310,7 @@ export function SwitchAgentDialog({ container, open, session, onOpenChange }: Sw
 						  this conversation.
 						*/}
 						{!agentsQuery.isFetching && readyOtherTargets.length === 0 ? (
-							<p className="text-caption leading-4 text-warning" role="status">
+							<p className="wd-body-s text-caution" role="status">
 								{agentsQuery.isError
 									? t("switchAgent.catalogUnavailable")
 									: t("switchAgent.noContinuationTargets")}
@@ -355,7 +353,7 @@ export function SwitchAgentDialog({ container, open, session, onOpenChange }: Sw
 									) : (
 										<button
 											aria-label={t("newTask.model")}
-											className="composer-chip composer-toolbar-option w-full justify-between opacity-50"
+											className="composer-chip composer-toolbar-option w-full justify-between text-wd-disabled"
 											disabled
 											type="button"
 										>

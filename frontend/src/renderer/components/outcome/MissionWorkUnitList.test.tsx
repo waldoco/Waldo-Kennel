@@ -225,8 +225,9 @@ describe("MissionWorkUnitList", () => {
 		});
 		render(<MissionWorkUnitList missionQuery={missionQuery(mission)} planApproved />);
 		const strip = screen.getByTestId("mission-attention-strip");
-		expect(strip).toHaveTextContent("Needs approval · 1");
-		expect(strip).toHaveTextContent("Needs choice · 1");
-		expect(strip).toHaveTextContent("Needs input · 2");
+		const kind = (value: string) => strip.querySelector(`[data-mission-attention-kind="${value}"]`);
+		expect(kind("needs_approval")).toHaveTextContent(/^Needs approval\s*1$/);
+		expect(kind("needs_choice")).toHaveTextContent(/^Needs choice\s*1$/);
+		expect(kind("needs_input")).toHaveTextContent(/^Needs input\s*2$/);
 	});
 });

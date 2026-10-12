@@ -141,7 +141,7 @@ describe("SessionsBoardView", () => {
 		);
 
 		expect(screen.getAllByTestId("board-list-lane")).toHaveLength(4);
-		expect(screen.getByRole("region", { name: "Needs Choice sessions" })).toHaveTextContent("0");
+		expect(screen.getByRole("region", { name: "Needs choice sessions" })).toHaveTextContent("0");
 		const readyLane = screen.getByRole("region", { name: "Ready sessions" });
 		expect(within(readyLane).getByLabelText("2 Ready sessions")).toHaveTextContent("2");
 		expect(within(readyLane).getAllByText("Investor Memo")).toHaveLength(2);

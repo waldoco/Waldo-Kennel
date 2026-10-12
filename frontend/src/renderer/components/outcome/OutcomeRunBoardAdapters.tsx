@@ -57,8 +57,8 @@ type AttemptPhase = AttemptRecord["presentation"]["phase"];
 /**
  * Where one attempt's daemon-derived phase lands on the board's four lanes.
  * A phase that needs the owner to pick among recovery verbs (contain /
- * reconcile / replace / the two-step owner-stop) lands in "Needs Choice"; a
- * live question from the agent lands in "Needs Input"; anything still moving
+ * reconcile / replace / the two-step owner-stop) lands in "Needs choice"; a
+ * live question from the agent lands in "Needs input"; anything still moving
  * is "Running"; a finished attempt is "Ready" for Prove & Close. This is a
  * presentation-only grouping of a real daemon-derived field (`presentation.phase`),
  * mirroring how `attentionZone()` already buckets session status client-side.
@@ -92,13 +92,23 @@ const ZONE_DRIVER_STATUS: Record<AttentionZone, SessionStatus> = {
 	done: "terminated",
 };
 
+/** Waldo's state tones written inline: Needs you (choice or input) is primary
+ *  text behind a Spot dot, a finished attempt is good, running is primary
+ *  text behind the live blue dot, history is secondary. */
 const ZONE_TEXT_CLASSNAME: Record<AttentionZone, string> = {
-	action: "text-status-needs-you",
-	pending: "text-status-in-review",
-	merge: "text-status-ready",
-	working: "text-status-working",
-	done: "text-status-terminated-foreground",
+	action: "text-wd-primary",
+	pending: "text-wd-primary",
+	merge: "text-good",
+	working: "text-wd-primary",
+	done: "text-wd-secondary",
 };
+
+function zoneIndicatorClassName(zone: AttentionZone, phase: AttemptPhase): string {
+	if (zone === "action" || zone === "pending") return "bg-spot";
+	// The live dot only where execution is actually moving; static, never pulsing.
+	if (phase === "executing") return "bg-wd-accent";
+	return "";
+}
 
 export function attemptZone(phase: AttemptPhase): AttentionZone {
 	return ATTEMPT_ZONE[phase] ?? "action";
@@ -122,10 +132,7 @@ export function toAttemptBoardPresentation(
 		status: ZONE_DRIVER_STATUS[zone],
 		statusPresentation: {
 			className: ZONE_TEXT_CLASSNAME[zone],
-			// A dot only where it carries motion: an executing attempt is the one
-			// live thing on this board (DESIGN.md — the state line carries a dot
-			// only when it is moving).
-			indicatorClassName: attempt.presentation.phase === "executing" ? "bg-status-working animate-status-pulse" : "",
+			indicatorClassName: zoneIndicatorClassName(zone, attempt.presentation.phase),
 			label: attempt.presentation.nextAction,
 		},
 		title,
@@ -170,7 +177,7 @@ function EngageAttemptButton({ onEngage }: { onEngage: () => void }) {
 	return (
 		<button
 			aria-label={t("outcome.run.engageCta")}
-			className="relative z-10 inline-flex h-[30px] min-w-[72px] items-center justify-center rounded-md border border-border-strong bg-popover px-2.5 text-brand font-medium text-foreground transition-colors hover:bg-white/10"
+			className="relative z-10 inline-flex h-control-md min-w-[72px] items-center justify-center rounded-full bg-wd-inverse px-3 text-xs font-medium text-wd-on-inverse transition-opacity duration-fast hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none"
 			onClick={(event) => {
 				event.stopPropagation();
 				onEngage();
@@ -186,7 +193,7 @@ function MergeAttemptLink({ href }: { href: string }) {
 	const { t } = useTranslation();
 	return (
 		<ProductExternalLink
-			className="relative z-10 inline-flex h-[30px] items-center justify-center rounded-md border border-border-strong bg-popover px-2.5 text-brand font-medium text-foreground transition-colors hover:bg-white/10"
+			className="relative z-10 inline-flex h-control-md items-center justify-center rounded-full hairline border-wd-strong px-3 text-xs font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none"
 			href={href}
 			stopPropagation
 		>

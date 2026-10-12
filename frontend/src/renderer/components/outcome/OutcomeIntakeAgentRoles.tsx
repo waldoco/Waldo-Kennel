@@ -95,7 +95,7 @@ export function OutcomeIntakeAgentRoles({ projectId }: { projectId: string }) {
 				{/* Two chips that differ only by the agent inside them would be
 				    unreadable, so each carries its role in plain text rather than
 				    hiding it in a tooltip or an icon the reader has to learn. */}
-				<span aria-hidden="true" className="text-2xs text-passive">
+				<span aria-hidden="true" className="text-xs text-wd-secondary">
 					{t("outcome.intake.roles.workerShort")}
 				</span>
 				<RequiredAgentField
@@ -112,7 +112,7 @@ export function OutcomeIntakeAgentRoles({ projectId }: { projectId: string }) {
 					value={roles.worker}
 					variant="chip"
 				/>
-				<span aria-hidden="true" className="text-2xs text-passive">
+				<span aria-hidden="true" className="text-xs text-wd-secondary">
 					{t("outcome.intake.roles.orchestratorShort")}
 				</span>
 				<RequiredAgentField

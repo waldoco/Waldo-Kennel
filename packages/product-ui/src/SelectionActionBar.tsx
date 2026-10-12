@@ -27,22 +27,22 @@ export function SelectionActionBar({ selectionLabel, actions, className }: Selec
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 items-center gap-2 rounded-md hairline border-border bg-card px-3 py-2",
+				"flex min-w-0 items-center gap-3 rounded-lg hairline border-wd-hairline bg-wd-surface px-4 py-2.5",
 				className,
 			)}
 			data-testid="selection-action-bar"
 		>
-			<span className="min-w-0 flex-1 truncate text-2xs font-medium text-foreground">{selectionLabel}</span>
+			<span className="min-w-0 flex-1 truncate text-sm font-medium text-wd-primary">{selectionLabel}</span>
 			<div className="flex shrink-0 items-center gap-1.5">
 				{actions.map((action) => (
 					<button
 						className={cn(
-							"rounded-md border px-2.5 py-1 text-2xs font-medium transition-colors motion-reduce:transition-none",
-							"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-							"disabled:pointer-events-none disabled:opacity-50",
+							"inline-flex h-8 items-center rounded-full px-3 text-sm font-medium transition-colors duration-fast motion-reduce:transition-none",
+							"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
+							"disabled:pointer-events-none disabled:bg-wd-inset disabled:text-wd-disabled",
 							action.destructive
-								? "border-error/40 text-error hover:bg-error/10"
-								: "border-border text-foreground hover:bg-interactive-hover",
+								? "bg-critical-bg text-critical hover:bg-[color-mix(in_oklab,var(--critical-bg),var(--critical)_10%)]"
+								: "text-wd-primary hover:bg-wd-hover",
 						)}
 						data-destructive={action.destructive || undefined}
 						disabled={action.disabled}

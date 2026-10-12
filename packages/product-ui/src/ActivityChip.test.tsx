@@ -6,7 +6,7 @@ describe("ActivityChip", () => {
 	it("renders its label as secondary, muted text", () => {
 		render(<ActivityChip label="3 checks passed" />);
 		expect(screen.getByTestId("activity-chip")).toHaveTextContent("3 checks passed");
-		expect(screen.getByTestId("activity-chip")).toHaveClass("text-passive");
+		expect(screen.getByTestId("activity-chip")).toHaveClass("text-wd-tertiary");
 	});
 
 	it("renders without an icon when none is supplied", () => {

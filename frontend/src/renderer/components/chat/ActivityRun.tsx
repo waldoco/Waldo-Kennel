@@ -12,9 +12,9 @@
  */
 
 import { useState } from "react";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { ActivityRow } from "./ChatTimelineItems";
+import { ActivityRow, RunningMark } from "./ChatTimelineItems";
 import { ACTIVITY_SUMMARY_BUTTON_CLASS, commandCategory } from "./activity-command";
 import type { ConversationActivity } from "../../types/conversation";
 
@@ -47,33 +47,31 @@ export function ActivityRun({ activities }: { activities: ConversationActivity[]
 				aria-expanded={open}
 				className={ACTIVITY_SUMMARY_BUTTON_CLASS}
 			>
-				<span className="text-[11.5px] text-muted-foreground">{summarize(activities)}</span>
+				<span className="text-[11.5px] text-wd-secondary">{summarize(activities)}</span>
 				{failed > 0 ? (
-					<span className="text-[11px] text-destructive">
+					<span className="text-[11px] text-critical">
 						{failed} failed
 					</span>
 				) : null}
 				{cancelled > 0 ? (
-					<span className="text-[11px] text-muted-foreground/70">
+					<span className="text-[11px] text-wd-tertiary">
 						{cancelled} stopped
 					</span>
 				) : null}
-				{running ? (
-					<Loader2 aria-hidden="true" className="size-3 animate-spin text-muted-foreground/60" />
-				) : null}
+				{running ? <RunningMark /> : null}
 				{/* Always visible: the line has to read as openable, or a reader who
 				    wants the detail has no reason to think it is there. */}
 				<ChevronRight
 					aria-hidden="true"
 					className={cn(
-						"size-3 shrink-0 text-muted-foreground/40 transition-transform group-hover/run:text-muted-foreground",
+						"size-3 shrink-0 text-wd-tertiary transition-transform duration-fast group-hover/run:text-wd-secondary",
 						open && "rotate-90",
 					)}
 				/>
 			</button>
 
 			{open ? (
-				<div className="cursor-chat-activity-panel mt-0.5 flex flex-col overflow-hidden rounded-md border border-border">
+				<div className="cursor-chat-activity-panel mt-1 flex flex-col overflow-hidden rounded-md hairline border-wd-hairline bg-wd-surface">
 					{hierarchy.map((node) => <ActivityTree key={node.activity.id} node={node} />)}
 				</div>
 			) : null}
@@ -97,21 +95,21 @@ function NestedAgentRun({ nodes }: { nodes: ActivityNode[] }) {
 	const count = countNodes(nodes);
 	const running = nodes.some(nodeRunning);
 	return (
-		<div className="mx-3 mb-2 ml-8 overflow-hidden rounded-md border border-border/70 bg-background/40">
+		<div className="mx-3 mb-2 ml-8 overflow-hidden rounded-sm bg-wd-inset">
 			<button
 				type="button"
 				onClick={() => setOpen((current) => !current)}
 				aria-label={`Subagent ${count} ${count === 1 ? "step" : "steps"}`}
 				aria-expanded={open}
-				className="flex min-h-8 w-full items-center gap-2 px-2.5 text-left text-[11px] text-muted-foreground transition-colors hover:bg-interactive-hover"
+				className="flex min-h-8 w-full items-center gap-2 px-3 text-left text-[11px] text-wd-secondary transition-colors duration-fast hover:bg-wd-hover"
 			>
-				<ChevronRight aria-hidden="true" className={cn("size-3 transition-transform", open && "rotate-90")} />
-				<span className="font-medium text-foreground/80">Subagent</span>
+				<ChevronRight aria-hidden="true" className={cn("size-3 transition-transform duration-fast", open && "rotate-90")} />
+				<span className="font-medium text-wd-primary">Subagent</span>
 				<span>{count} {count === 1 ? "step" : "steps"}</span>
-				{running ? <Loader2 aria-hidden="true" className="ml-auto size-3 animate-spin" /> : null}
+				{running ? <span className="ml-auto"><RunningMark /></span> : null}
 			</button>
 			{open ? (
-				<div className="border-t border-border/70">
+				<div className="hairline-t border-wd-hairline">
 					{nodes.map((node) => <ActivityTree key={node.activity.id} node={node} />)}
 				</div>
 			) : null}

@@ -211,8 +211,12 @@ export const BrowserTabsRail = forwardRef<BrowserTabsRailHandle, BrowserTabsRail
 	return (
 		<div
 			className={cn(
-				"browser-tabs-rail relative flex h-full shrink-0 flex-col border-border bg-surface",
-				expanded ? "border-r" : pinned ? "border-l" : "",
+				"browser-tabs-rail relative flex h-full shrink-0 flex-col border-wd-hairline bg-wd-canvas",
+				expanded
+					? "border-r-[length:var(--stroke-hairline)]"
+					: pinned
+						? "border-l-[length:var(--stroke-hairline)]"
+						: "",
 				expanded ? "w-(--kennel-browser-tabs-w)" : pinned ? "w-8" : "w-0",
 			)}
 			data-testid="browser-tabs-rail"
@@ -236,9 +240,9 @@ export const BrowserTabsRail = forwardRef<BrowserTabsRailHandle, BrowserTabsRail
 				<button
 					aria-label={t("browser.openNewTab")}
 					className={cn(
-						"flex h-8 w-full shrink-0 items-center gap-1.5 border-b border-border p-1.5 text-left text-sm transition-colors",
-						"text-muted-foreground hover:bg-interactive-hover hover:text-foreground",
-						"disabled:pointer-events-none disabled:opacity-50",
+						"flex h-8 w-full shrink-0 items-center gap-1.5 hairline-b border-wd-hairline p-1.5 text-left text-sm transition-colors",
+						"text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
+						"disabled:pointer-events-none disabled:text-wd-disabled",
 					)}
 					disabled={!canOpenTab}
 					onClick={() => void onOpenTab()}
@@ -251,8 +255,8 @@ export const BrowserTabsRail = forwardRef<BrowserTabsRailHandle, BrowserTabsRail
 				<button
 					aria-label={t("browser.unpinTabs")}
 					className={cn(
-						"flex h-8 w-full shrink-0 items-center justify-center border-b border-border p-1.5 transition-colors",
-						"text-muted-foreground hover:bg-interactive-hover hover:text-foreground",
+						"flex h-8 w-full shrink-0 items-center justify-center hairline-b border-wd-hairline p-1.5 transition-colors",
+						"text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 					)}
 					onClick={() => onPinnedChange(false)}
 					title={t("browser.unpinTabs")}
@@ -312,8 +316,8 @@ export const BrowserTabsRail = forwardRef<BrowserTabsRailHandle, BrowserTabsRail
 			{!expanded ? (
 				<div
 					className={cn(
-						"absolute inset-y-0 right-full z-chrome w-56 overflow-hidden border border-border bg-card shadow-(--shadow-popover)",
-						"transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+						"absolute inset-y-0 right-full z-chrome w-56 overflow-hidden hairline border-wd-hairline bg-wd-raised shadow-(--shadow-overlay)",
+						"transition-[opacity,transform] duration-[240ms] ease-(--ease-enter)",
 						"data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0 data-[state=closed]:-translate-x-3",
 						"data-[state=open]:opacity-100 data-[state=open]:translate-x-0",
 					)}
@@ -331,8 +335,8 @@ export const BrowserTabsRail = forwardRef<BrowserTabsRailHandle, BrowserTabsRail
 						    row height out of sync between the two lists. */}
 						<button
 							className={cn(
-								"flex h-8 w-full shrink-0 items-center gap-1.5 border-b border-border p-1.5 text-left text-sm transition-colors",
-								"text-muted-foreground hover:bg-interactive-hover hover:text-foreground",
+								"flex h-8 w-full shrink-0 items-center gap-1.5 hairline-b border-wd-hairline p-1.5 text-left text-sm transition-colors",
+								"text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 							)}
 							onClick={() => {
 								if (pinned) {
@@ -390,7 +394,7 @@ function TabFavicon({ className, tab }: { className: string; tab: BrowserTabStat
 	// aspect ratio (some sites' favicons aren't perfectly square), so it can
 	// never spill past its box into the row next to it.
 	if (tab.favicon) return <img alt="" className={cn("shrink-0 object-cover", className)} src={tab.favicon} />;
-	return <Globe2 aria-hidden="true" className={cn("shrink-0 text-passive", className)} />;
+	return <Globe2 aria-hidden="true" className={cn("shrink-0 text-wd-tertiary", className)} />;
 }
 
 function IconTabRow({ active, chrome, onSelect, tab }: TabRowProps) {
@@ -400,9 +404,9 @@ function IconTabRow({ active, chrome, onSelect, tab }: TabRowProps) {
 			aria-current={active ? "true" : undefined}
 			aria-label={`${label.title} — ${label.subtitle}`}
 			className={cn(
-				"flex h-8 w-full items-center justify-center overflow-hidden p-1.5 transition-colors",
-				"hover:bg-interactive-hover",
-				active && "bg-interactive-active",
+				"flex h-8 w-full items-center justify-center overflow-hidden p-1.5 transition-colors duration-fast",
+				"hover:bg-wd-hover",
+				active && "bg-wd-selected",
 			)}
 			onClick={onSelect}
 			ref={chrome?.setNodeRef}
@@ -422,9 +426,9 @@ function ExpandedTabRow({ active, chrome, closeTitle, onClose, onSelect, onlyTab
 	return (
 		<div
 			className={cn(
-				"group/tab-row flex h-8 w-full items-center overflow-hidden transition-colors",
-				"hover:bg-interactive-hover",
-				active && "bg-interactive-active",
+				"group/tab-row flex h-8 w-full items-center overflow-hidden transition-colors duration-fast",
+				"hover:bg-wd-hover",
+				active && "bg-wd-selected",
 			)}
 			ref={chrome?.setNodeRef}
 			style={chrome?.style}
@@ -439,7 +443,7 @@ function ExpandedTabRow({ active, chrome, closeTitle, onClose, onSelect, onlyTab
 				<span
 					className={cn(
 						"min-w-0 flex-1 truncate text-sm",
-						active ? "text-foreground" : "text-muted-foreground group-hover/tab-row:text-foreground",
+						active ? "font-medium text-wd-primary" : "text-wd-secondary group-hover/tab-row:text-wd-primary",
 					)}
 				>
 					{label.title}
@@ -448,8 +452,8 @@ function ExpandedTabRow({ active, chrome, closeTitle, onClose, onSelect, onlyTab
 			<button
 				aria-label={closeLabel}
 				className={cn(
-					"grid size-5 shrink-0 place-items-center overflow-hidden text-passive opacity-0",
-					"transition-opacity hover:bg-interactive-hover hover:text-foreground",
+					"mr-1 grid size-5 shrink-0 place-items-center overflow-hidden rounded-full text-wd-tertiary opacity-0",
+					"transition-opacity duration-fast hover:bg-wd-pressed hover:text-wd-primary",
 					"group-hover/tab-row:opacity-100 group-focus-within/tab-row:opacity-100",
 					"disabled:pointer-events-none",
 				)}

@@ -1,6 +1,6 @@
 import { useSettings } from "../../hooks/useSettings";
 import { ReasoningSettingsSection } from "../settings/ReasoningSettingsSection";
-import { Loader2 } from "lucide-react";
+import { StateMark } from "@pin4sf/kennel-product-ui";
 import { useTranslation } from "react-i18next";
 import waldoMark from "../../../../assets/waldo-mark.svg";
 
@@ -59,16 +59,17 @@ export function IntakeAnalysisWaiting({
 			className="mx-auto flex h-full w-full max-w-xl flex-col items-center justify-center gap-4 px-4 text-center sm:px-8"
 			data-testid="intake-analysis-waiting"
 		>
+			{/* Who is working, said once and held still: no spinner, no pulse.
+			    The sentence below is the working state. */}
 			<div className="flex items-center gap-2.5">
 				{harnessId ? <AgentAvatar provider={harnessId} className="size-icon-lg" decorative /> : null}
-				<img alt="" aria-hidden="true" className="size-icon-sm opacity-75" data-brand="waldo" src={waldoMark} />
-				<Loader2 aria-hidden="true" className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none" />
+				<img alt="" aria-hidden="true" className="size-icon-sm" data-brand="waldo" src={waldoMark} />
 			</div>
-			<div className="flex flex-col gap-1.5">
-				<h2 className="text-lg font-medium text-foreground">
+			<div className="flex flex-col gap-2">
+				<h2 className="wd-display-4 text-wd-primary">
 					{harness ? t("outcome.intake.waiting.titleNamed", { harness }) : t("outcome.intake.waiting.title")}
 				</h2>
-				<p className="text-sm leading-body text-muted-foreground">{t("outcome.intake.waiting.body")}</p>
+				<p className="text-sm leading-body text-wd-secondary">{t("outcome.intake.waiting.body")}</p>
 			</div>
 
 			{/* Always present, never behind a disclosure: the whole point is that
@@ -115,39 +116,38 @@ export function IntakeAnalysisRefused({
 			className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-4 py-8 sm:px-8"
 			data-testid="intake-analysis-refused"
 		>
-			<div className="flex flex-col gap-1">
-				<h2 className="text-lg font-medium text-foreground">
+			<div className="flex flex-col gap-2">
+				<h2 className="wd-display-4 text-wd-primary">
 					{harness ? t("outcome.intake.refused.titleNamed", { harness }) : t("outcome.intake.reasoningFailedTitle")}
 				</h2>
-				<p className="text-sm leading-body text-muted-foreground">
+				<p className="text-sm leading-body text-wd-secondary">
 					{t(request?.rawProposal ? "outcome.intake.refused.body" : "outcome.intake.reasoningFailedBody")}
 				</p>
 			</div>
 			{safeFailure ? (
-				<p
-					className="rounded-group hairline border-border bg-card px-4.5 py-3.5 text-sm leading-body text-warning"
-					role="alert"
-				>
-					{safeFailure}
+				<p className="flex items-start gap-2 rounded-md bg-wd-inset p-3 text-sm leading-body text-wd-primary" role="alert">
+					<StateMark className="mt-1 text-critical" tone="critical" />
+					<span className="min-w-0">{safeFailure}</span>
 				</p>
 			) : null}
 			{nativeReason ? (
-				<p className="rounded-group hairline border-border bg-card px-4.5 py-3.5 text-sm leading-body text-warning" role="status">
-					{nativeReason}
+				<p className="flex items-start gap-2 rounded-md bg-wd-inset p-3 text-sm leading-body text-wd-primary" role="status">
+					<StateMark className="mt-1 text-caution" tone="caution" />
+					<span className="min-w-0">{nativeReason}</span>
 				</p>
 			) : null}
 			{request?.rawProposal ? (
-				<details className="rounded-group hairline border-border bg-card px-4.5 py-3.5">
-					<summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+				<details className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4">
+					<summary className="cursor-pointer rounded-sm text-sm font-medium text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)">
 						{t("outcome.intake.refused.showDraft")}
 					</summary>
-					<pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-2xs leading-body text-passive">
+					<pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-wd-inset p-3 font-mono text-xs leading-body text-wd-secondary">
 						{request.rawProposal}
 					</pre>
 				</details>
 			) : null}
-			<details className="rounded-group border border-border p-3">
-				<summary className="cursor-pointer text-sm font-medium">{t("outcome.intake.configureReasoning")}</summary>
+			<details className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4">
+				<summary className="cursor-pointer rounded-sm text-sm font-medium text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)">{t("outcome.intake.configureReasoning")}</summary>
 				<div className="mt-3">
 					<ReasoningSettingsSection />
 				</div>
@@ -157,7 +157,7 @@ export function IntakeAnalysisRefused({
 					disabled={pending || !settings?.reasoning.ready}
 					onClick={onRetry}
 					size="sm"
-					variant="outline"
+					variant="primary"
 					type="button"
 				>
 					{t("outcome.intake.refused.retry")}
@@ -180,14 +180,14 @@ export function ProposalProvenanceNote({ kind, harness }: { kind: "agent" | "una
 	const label = useHarnessLabel(harness);
 	if (kind === "agent") {
 		return (
-			<p className="flex items-center gap-1.5 text-2xs text-passive" data-testid="proposal-provenance">
+			<p className="flex items-center gap-1.5 text-xs text-wd-tertiary" data-testid="proposal-provenance">
 				{harness ? <AgentAvatar provider={harness} className="size-icon-sm" decorative /> : null}
 				{label ? t("outcome.intake.provenance.agentNamed", { harness: label }) : t("outcome.intake.provenance.agent")}
 			</p>
 		);
 	}
 	return (
-		<p className="text-2xs text-passive" data-testid="proposal-provenance">
+		<p className="text-xs text-wd-tertiary" data-testid="proposal-provenance">
 			{t("outcome.intake.provenance.unattributed")}
 		</p>
 	);

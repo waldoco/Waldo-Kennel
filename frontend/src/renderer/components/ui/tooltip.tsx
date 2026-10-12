@@ -14,8 +14,8 @@ export function TooltipContent({
 		<TooltipPrimitive.Portal>
 			<TooltipPrimitive.Content
 				className={cn(
-					"z-overlay rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md",
-					// Scale from the trigger, not from the tooltip's own centre.
+					"z-overlay rounded-sm bg-wd-inverse px-2 py-1 text-xs text-wd-on-inverse",
+					// Tooltips are the one flipped surface (inverse ink). Fade from the trigger.
 					"origin-(--radix-tooltip-content-transform-origin)",
 					"data-[state=delayed-open]:animate-tooltip-in data-[state=closed]:animate-tooltip-out",
 					// instant-open means the user already has a tooltip open and moved

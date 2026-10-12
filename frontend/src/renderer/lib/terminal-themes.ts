@@ -15,7 +15,12 @@ export function buildTerminalThemes(): { dark: ITheme; light: ITheme } {
 		? cssVar("--background")
 		: cssVar("--color-bg-terminal-opaque") || cssVar("--color-bg-terminal");
 	const terminalForeground = namedThemeActive ? cssVar("--foreground") : cssVar("--color-text-terminal");
-	const terminalCursor = namedThemeActive ? cssVar("--primary") : cssVar("--color-working");
+	// Waldo: the cursor is ink (text-primary), not the live accent blue; a named
+	// palette still owns its own cursor. Selection stays neutral (tokens.css).
+	// The ANSI slots below are exempt: agent TUIs own their meaning.
+	const terminalCursor = namedThemeActive
+		? cssVar("--primary")
+		: cssVar("--text-primary") || terminalForeground;
 	const dark: ITheme = {
 		background: terminalBg,
 		foreground: terminalForeground,
@@ -45,10 +50,8 @@ export function buildTerminalThemes(): { dark: ITheme; light: ITheme } {
 		background: terminalBg,
 		foreground: terminalForeground,
 		// xterm block cursor fills with `cursor` and paints cell text in
-		// `cursorAccent`. --color-working is fine on dark plates but reads as a
-		// low-contrast wash on the light terminal bg (#f5f5f4), especially while
-		// blinking. Use the terminal foreground so the block stays visible.
-		cursor: terminalForeground,
+		// `cursorAccent`; ink on the light plate keeps the block visible.
+		cursor: namedThemeActive ? terminalForeground : cssVar("--text-primary") || terminalForeground,
 		cursorAccent: terminalBg,
 		selectionBackground: cssVar("--color-term-selection-light"),
 		selectionInactiveBackground: cssVar("--color-term-selection-inactive-light"),

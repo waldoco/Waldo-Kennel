@@ -1,11 +1,12 @@
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, FolderSearch } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { components } from "../../../api/schema";
 import { useSettings, useUpdateRepositoryContextLimits } from "../../hooks/useSettings";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { SettingsRow } from "./SettingsRow";
+import { SettingsRow, settingsRowInputClass } from "./SettingsRow";
+import { cn } from "../../lib/utils";
 import { SettingsSection } from "./SettingsSection";
 
 type LimitName = "maxFiles" | "maxBytes" | "maxVisited";
@@ -80,19 +81,24 @@ export function RepositoryContextSettingsSection({ titleHidden }: { titleHidden?
 	return (
 		<SettingsSection title={t("settings.repositoryContext.title")} titleHidden={titleHidden} grouped>
 			<details className="group">
-				<summary className="settings-row-bar cursor-pointer list-none">
-					<span className="text-sm leading-5 text-settings-label">{t("settings.repositoryContext.advanced")}</span>
-					<ChevronDown aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+				<summary className="settings-row-bar cursor-pointer list-none transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-offset-[-2px] [&::-webkit-details-marker]:hidden">
+					<span className="flex min-w-0 items-center gap-3">
+						<span className="settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary" aria-hidden="true">
+							<FolderSearch className="size-4" />
+						</span>
+						<span className="wd-body truncate text-wd-primary">{t("settings.repositoryContext.advanced")}</span>
+					</span>
+					<ChevronDown aria-hidden="true" className="size-4 shrink-0 text-wd-tertiary transition-transform duration-fast group-open:rotate-180" />
 				</summary>
-				<div className="flex flex-col border-t border-border/50">
-					<p className="px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+				<div className="flex flex-col border-t-[length:var(--stroke-hairline)] border-wd-hairline [&>*+*]:border-t-[length:var(--stroke-hairline)] [&>*+*]:border-wd-hairline">
+					<p className="wd-body-s px-4 py-3 text-wd-secondary">
 						{t("settings.repositoryContext.help")}
 					</p>
 					{limitNames.map((name) => (
 						<SettingsRow key={name} label={labels[name]}>
 							<Input
 								aria-label={labels[name]}
-								className="w-32"
+								className={cn(settingsRowInputClass, "w-32")}
 								disabled={isLoading || saving}
 								inputMode="numeric"
 								min={0}
@@ -103,10 +109,10 @@ export function RepositoryContextSettingsSection({ titleHidden }: { titleHidden?
 							/>
 						</SettingsRow>
 					))}
-					<div className="flex items-center justify-between gap-3 px-3 py-3">
+					<div className="flex items-center justify-between gap-3 px-4 py-3">
 						<p
 							aria-live="polite"
-							className={invalid || loadError || saveError ? "text-xs text-error" : "text-xs text-muted-foreground"}
+							className={cn("wd-body-s", invalid || loadError || saveError ? "text-critical" : "text-wd-secondary")}
 							role="status"
 						>
 							{loadError ?? saveError ?? (invalid ? t("settings.repositoryContext.invalid") : t("settings.repositoryContext.zeroHelp"))}
@@ -115,13 +121,13 @@ export function RepositoryContextSettingsSection({ titleHidden }: { titleHidden?
 							disabled={saving || isLoading || invalid || dirty.size === 0}
 							onClick={() => void save().catch(() => undefined)}
 							type="button"
-							variant="secondary"
+							variant="primary"
 						>
 							{saving ? (
 								t("settings.repositoryContext.saving")
 							) : saved ? (
 								<>
-									<Check aria-hidden="true" className="mr-1.5 inline size-3.5" />
+									<Check aria-hidden="true" className="size-3.5" />
 									{t("settings.repositoryContext.saved")}
 								</>
 							) : (
@@ -129,8 +135,9 @@ export function RepositoryContextSettingsSection({ titleHidden }: { titleHidden?
 							)}
 						</Button>
 					</div>
+					<div className="px-2 py-2">
 					<Button
-						className="mx-3 mb-3 self-start"
+						className="self-start"
 						disabled={saving || isLoading}
 						onClick={() => {
 							setDraft({ maxFiles: "", maxBytes: "", maxVisited: "" });
@@ -143,6 +150,7 @@ export function RepositoryContextSettingsSection({ titleHidden }: { titleHidden?
 					>
 						{t("settings.repositoryContext.reset")}
 					</Button>
+					</div>
 				</div>
 			</details>
 		</SettingsSection>

@@ -506,8 +506,10 @@ describe("ChatWorkspace timeline", () => {
 		expect(relay).toBeGreaterThan(answer);
 
 		const relayCard = screen.getByText(/Checks failed on the base branch/).parentElement;
-		expect(relayCard).toHaveClass("border-l-logo-accent/60");
-		expect(relayCard?.querySelector("svg")).toHaveClass("text-logo-accent");
+		// A relay is a quiet card on the surface: no coloured rail, no tinted icon.
+		expect(relayCard).toHaveClass("rounded-lg", "bg-wd-surface");
+		expect(relayCard?.className).not.toMatch(/border-l-/);
+		expect(relayCard?.querySelector("svg")).toHaveClass("text-wd-secondary");
 	});
 
 	it("offers Jump to latest only once the reader has scrolled away from the bottom", async () => {

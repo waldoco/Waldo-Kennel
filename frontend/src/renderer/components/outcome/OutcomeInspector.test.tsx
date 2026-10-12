@@ -30,7 +30,7 @@ function view(overrides: Partial<MissionNodeView> = {}): MissionNodeView {
 	return {
 		workUnitId: "wu-1",
 		title: "Ship the thing",
-		status: { status: "runnable", label: "Ready", className: "text-status-ready", indicatorClassName: "bg-status-ready" },
+		status: { status: "runnable", label: "Ready", className: "text-status-ready", indicatorClassName: "bg-status-ready", tone: "good" },
 		criteria: { kind: "ready", ready: 1, total: 2 },
 		responsibilityLabel: "Unconfirmed",
 		dependencyUnavailable: false,
@@ -69,6 +69,7 @@ describe("OutcomeInspector", () => {
 						summary: "The agent asked a question",
 						className: "",
 						indicatorClassName: "",
+						tone: "needsYou",
 						markerKey: "wu-1:g:needs_input",
 					},
 				})}

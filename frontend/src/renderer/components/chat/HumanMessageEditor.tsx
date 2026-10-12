@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Loader2, X } from "lucide-react";
+import { ArrowUp, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ConversationContentSummary } from "../../types/conversation";
 import { Button } from "../ui/button";
@@ -57,7 +57,7 @@ export function HumanMessageEditor({
 	}
 
 	return (
-		<div className="cursor-chat-composer relative flex w-full max-w-3xl flex-col gap-2 rounded-[10px] border border-border-strong p-2.5 transition-[background,border-color,box-shadow]">
+		<div className="cursor-chat-composer relative flex w-full max-w-3xl flex-col gap-2 rounded-[calc(var(--size-field)/2)] hairline border-wd-hairline bg-wd-inset px-3 py-2.5">
 		<textarea
 			ref={textarea}
 			value={draft}
@@ -69,7 +69,7 @@ export function HumanMessageEditor({
 			aria-label={t("chat.edit.label")}
 			autoFocus
 			rows={2}
-			className="chat-composer-scrollbar max-h-56 min-h-[3.25rem] w-full resize-none overflow-y-auto overscroll-contain bg-transparent px-1.5 py-1.5 text-sm leading-relaxed text-foreground outline-none"
+			className="chat-composer-scrollbar max-h-56 min-h-[3.25rem] w-full resize-none overflow-y-auto overscroll-contain bg-transparent px-1 py-1.5 text-sm leading-relaxed text-wd-primary outline-none"
 		/>
 		<ConversationContentItems
 			content={content}
@@ -79,11 +79,13 @@ export function HumanMessageEditor({
 		/>
 		<div className="mt-2 flex min-h-7 items-center justify-end gap-1.5">
 			{error ? (
-				<span role="alert" className="mr-auto text-[11px] text-destructive">
+				<span role="alert" className="mr-auto text-[11px] text-critical">
 					{error}
 				</span>
 			) : busyMessage ? (
-				<span className="mr-auto text-[11px] text-muted-foreground">{busyMessage}</span>
+				<span className="mr-auto text-[11px] text-wd-secondary">{busyMessage}</span>
+			) : pending ? (
+				<span className="mr-auto text-[11px] text-wd-secondary">{t("chat.edit.sending")}</span>
 			) : null}
 			<Button
 				type="button"
@@ -104,9 +106,10 @@ export function HumanMessageEditor({
 				disabled={sendDisabled}
 				aria-label={t("chat.edit.send")}
 				title={busyMessage ?? t("chat.edit.sendShortcut")}
-				className="size-7 rounded-full"
+				variant="primary"
+				className="size-7 rounded-full disabled:bg-wd-inverse disabled:text-wd-on-inverse disabled:opacity-40"
 			>
-				{pending ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : <ArrowUp aria-hidden="true" className="size-3.5" />}
+				<ArrowUp aria-hidden="true" className="size-3.5" />
 			</Button>
 		</div>
 	</div>

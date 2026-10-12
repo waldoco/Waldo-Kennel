@@ -22,7 +22,7 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
 		<span
 			aria-current="page"
 			data-slot="breadcrumb-page"
-			className={cn("truncate font-bold text-foreground", className)}
+			className={cn("truncate font-medium text-wd-primary", className)}
 			{...props}
 		/>
 	);
@@ -33,7 +33,7 @@ function BreadcrumbSeparator({ children, className, ...props }: React.ComponentP
 		<li
 			aria-hidden="true"
 			data-slot="breadcrumb-separator"
-			className={cn("inline-flex shrink-0 items-center text-passive [&>svg]:size-3.5", className)}
+			className={cn("inline-flex shrink-0 items-center text-wd-tertiary [&>svg]:size-3.5", className)}
 			{...props}
 		>
 			{children ?? <ChevronRightIcon />}

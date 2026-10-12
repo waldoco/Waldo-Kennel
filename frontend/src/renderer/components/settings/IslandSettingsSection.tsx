@@ -1,3 +1,4 @@
+import { PanelTop, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { IslandVisibilityState } from "../../../shared/island";
@@ -92,8 +93,13 @@ export function IslandSettingsSection() {
 			title={t("settings.island.title", { defaultValue: "Island" })}
 			sectionId="island"
 			grouped
+			footer={
+				<span role={error ? "alert" : undefined} className={error ? "text-critical" : undefined}>
+					{helperCopy}
+				</span>
+			}
 		>
-			<SettingsRow label={t("settings.island.visibility", { defaultValue: "Show Island" })}>
+			<SettingsRow icon={PanelTop} label={t("settings.island.visibility", { defaultValue: "Show Island" })}>
 				<Switch
 					aria-label={t("settings.island.visibility", { defaultValue: "Show Island" })}
 					checked={state?.enabled ?? false}
@@ -102,16 +108,11 @@ export function IslandSettingsSection() {
 				/>
 			</SettingsRow>
 			<SettingsLinkRow
+				icon={SlidersHorizontal}
 				label={t("settings.island.openSettings", { defaultValue: "Open Island settings" })}
 				disabled={!supported}
 				onClick={openSettings}
 			/>
-			<p
-				role={error ? "alert" : undefined}
-				className={error ? "px-3 pt-1 text-xs leading-relaxed text-destructive" : "px-3 pt-1 text-xs leading-relaxed text-muted-foreground"}
-			>
-				{helperCopy}
-			</p>
 		</SettingsSection>
 	);
 }

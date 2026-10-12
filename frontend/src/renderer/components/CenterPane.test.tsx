@@ -229,9 +229,10 @@ describe("CenterPane toolbar session label", () => {
 		const arrow = within(card).getByTestId("agent-switch-transfer-arrow");
 		const shaft = within(arrow).getByTestId("agent-switch-transfer-shaft");
 		const arrowIcon = within(arrow).getByTestId("agent-switch-transfer-arrow-icon");
-		expect(arrowIcon).toHaveClass("lucide-arrow-right", "text-foreground/55");
+		expect(arrowIcon).toHaveClass("lucide-arrow-right", "text-wd-tertiary");
+		// Waldo: no shimmer loop along the arrow; the status line carries the work.
 		expect(arrowIcon.querySelector(".agent-switch-transfer-pulse")).toBeNull();
-		expect(shaft.querySelector(".agent-switch-transfer-pulse")).not.toBeNull();
+		expect(shaft.querySelector(".agent-switch-transfer-pulse")).toBeNull();
 
 		const statusGroup = within(card).getByTestId("agent-switch-status-group");
 		const progress = within(statusGroup).getByRole("list", { name: "Switching…" });
@@ -548,12 +549,7 @@ describe("CenterPane toolbar session label", () => {
 
 		const sessionTab = screen.getByRole("tab", { name: /^do the thing/ });
 		expect(sessionTab).toHaveAttribute("aria-selected", "true");
-		expect(sessionTab.parentElement).toHaveClass(
-			"self-stretch",
-			"bg-overlay",
-			"after:h-0.5",
-			"after:bg-foreground/80",
-		);
+		expect(sessionTab.parentElement).toHaveClass("self-center", "rounded-full", "bg-wd-selected");
 		expect(sessionTab.parentElement).not.toHaveClass("session-primary-tab");
 		expect(sessionTab.parentElement).not.toHaveClass("rounded-md");
 		expect(sessionTab).toHaveAccessibleName("do the thing · Working");
@@ -562,11 +558,11 @@ describe("CenterPane toolbar session label", () => {
 		expect(screen.queryByRole("tab", { name: "review the change" })).not.toBeInTheDocument();
 	});
 
-	it("places the active session indicator along the bottom edge", () => {
+	it("marks the active session tab without a coloured underline", () => {
 		renderCenterPane({ session: worker });
 
 		const classes = screen.getByRole("tab", { name: /^do the thing/ }).parentElement?.classList;
-		expect(classes?.contains("after:bottom-0")).toBe(true);
+		expect(classes?.contains("after:bottom-0")).toBe(false);
 		expect(classes?.contains("after:top-0")).toBe(false);
 	});
 
@@ -586,7 +582,7 @@ describe("CenterPane toolbar session label", () => {
 		const mainTab = screen.getByRole("tab", { name: /^do the thing/ });
 		const mainContainer = mainTab.parentElement;
 		expect(mainContainer).toHaveAttribute("data-terminal-role", "primary");
-		expect(mainContainer).toHaveClass("self-stretch", "bg-surface");
+		expect(mainContainer).toHaveClass("self-center", "rounded-full");
 		expect(mainContainer).not.toHaveClass("session-primary-tab");
 		expect(mainContainer).not.toHaveClass("rounded-md");
 		expect(mainContainer).not.toHaveClass("before:bg-accent");
@@ -704,16 +700,15 @@ describe("CenterPane toolbar session label", () => {
 		expect(reviewerTab.parentElement).toHaveClass(
 			"min-w-shell-tab-min",
 			"shrink-0",
-			"self-stretch",
+			"self-center",
 			"w-shell-tab-connected",
-			"border-x",
-			"border-border-strong",
-			"bg-overlay",
+			"rounded-full",
+			"bg-wd-selected",
 		);
 		expect(shellTab.parentElement).toHaveClass(
 			"min-w-shell-tab-min",
 			"shrink-0",
-			"self-stretch",
+			"self-center",
 			"w-shell-tab-connected",
 		);
 		expect(reviewerTab.parentElement).not.toHaveAttribute("data-terminal-role", "primary");

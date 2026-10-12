@@ -257,9 +257,9 @@ describe("ActivityRow command labels", () => {
 		expect(screen.getByText("Checked repository")).toHaveClass(
 			"text-[11.5px]",
 			"font-normal",
-			"text-muted-foreground",
+			"text-wd-secondary",
 		);
-		expect(screen.getByText("exit 1")).toHaveClass("text-destructive");
+		expect(screen.getByText("exit 1")).toHaveClass("text-critical");
 		expect(container.querySelector(".lucide-square-terminal")).toBeNull();
 		expect(row.querySelector(".flex-1")).toBeNull();
 		expect(row.textContent).toMatch(/^Checked repositoryexit 1/);

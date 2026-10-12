@@ -1,4 +1,4 @@
-import { ContractCoverage } from "@pin4sf/kennel-product-ui";
+import { ContractCoverage, StateLabel, StateMark } from "@pin4sf/kennel-product-ui";
 import { ExternalLink, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -28,17 +28,17 @@ export function OutcomeInspector({ node, view, onClose, onOpenSession, withinDia
 	return (
 		<div
 			aria-label={withinDialog ? undefined : t("mission.inspector.heading" satisfies MessageKey)}
-			className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto rounded-group hairline border-border bg-card p-4.5"
+			className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto rounded-lg hairline border-wd-hairline bg-wd-surface p-5"
 			data-testid="outcome-inspector"
 			role={withinDialog ? undefined : "region"}
 		>
 			<div className="flex items-start justify-between gap-2">
-				<h3 className="text-sm font-semibold">{view.title}</h3>
+				<h3 className="wd-headline break-words text-wd-primary">{view.title}</h3>
 				<Button
 					aria-label={t("mission.inspector.close" satisfies MessageKey)}
 					data-testid="outcome-inspector-close"
 					onClick={onClose}
-					size="icon"
+					size="icon-sm"
 					variant="ghost"
 				>
 					<X aria-hidden="true" className="size-4" />
@@ -46,33 +46,33 @@ export function OutcomeInspector({ node, view, onClose, onOpenSession, withinDia
 			</div>
 
 			<section>
-				<h4 className="text-muted-foreground text-xs font-medium uppercase">
+				<h4 className="wd-label text-wd-secondary">
 					{t("mission.inspector.objective" satisfies MessageKey)}
 				</h4>
-				<p className="mt-1 text-sm">{view.title}</p>
+				<p className="mt-1 text-sm text-wd-primary">{view.title}</p>
 			</section>
 
 			<section>
-				<h4 className="text-muted-foreground text-xs font-medium uppercase">
+				<h4 className="wd-label text-wd-secondary">
 					{t("mission.inspector.currentState" satisfies MessageKey)}
 				</h4>
-				<p className={`mt-1 text-sm font-medium ${view.status.className}`} data-testid="outcome-inspector-state">
-					{view.status.label}
+				<p className="mt-1 text-sm font-medium" data-testid="outcome-inspector-state">
+					<StateLabel label={view.status.label} tone={view.status.tone} />
 				</p>
 			</section>
 
 			{view.attention && (
-				<section
-					className="rounded-md hairline border-warning/40 bg-warning/5 p-3"
-					data-testid="outcome-inspector-needs-you"
-				>
-					<h4 className="flex items-center gap-1.5 text-sm font-medium">{view.attention.label}</h4>
-					<p className="mt-1 text-muted-foreground text-sm">{view.attention.summary}</p>
+				<section className="rounded-md bg-wd-inset p-3" data-testid="outcome-inspector-needs-you">
+					<h4 className="flex items-center gap-2 text-sm font-medium text-wd-primary">
+						<StateMark tone="needsYou" />
+						{view.attention.label}
+					</h4>
+					<p className="mt-1 text-sm text-wd-secondary">{view.attention.summary}</p>
 				</section>
 			)}
 
 			<section>
-				<h4 className="text-muted-foreground text-xs font-medium uppercase">
+				<h4 className="wd-label text-wd-secondary">
 					{t("mission.inspector.contractCoverage" satisfies MessageKey)}
 				</h4>
 				<div className="mt-1">
@@ -93,16 +93,16 @@ export function OutcomeInspector({ node, view, onClose, onOpenSession, withinDia
 			</section>
 
 			<section>
-				<h4 className="text-muted-foreground text-xs font-medium uppercase">
+				<h4 className="wd-label text-wd-secondary">
 					{t("mission.inspector.latestAttempt" satisfies MessageKey)}
 				</h4>
 				{view.attemptLabel ? (
-					<p className="mt-1 text-sm" data-testid="outcome-inspector-attempt">
+					<p className="mt-1 text-sm text-wd-primary" data-testid="outcome-inspector-attempt">
 						{view.attemptLabel}
 						{view.sessionStatusLabel ? ` — ${view.sessionStatusLabel}` : ""}
 					</p>
 				) : (
-					<p className="mt-1 text-muted-foreground text-sm">{t("mission.inspector.noAttempt" satisfies MessageKey)}</p>
+					<p className="mt-1 text-sm text-wd-secondary">{t("mission.inspector.noAttempt" satisfies MessageKey)}</p>
 				)}
 			</section>
 
@@ -114,18 +114,18 @@ export function OutcomeInspector({ node, view, onClose, onOpenSession, withinDia
 			) : null}
 
 			<details className="mt-auto">
-				<summary className="cursor-pointer text-muted-foreground text-xs font-medium uppercase">
+				<summary className="wd-label cursor-pointer text-wd-secondary">
 					{t("mission.inspector.technicalDetails" satisfies MessageKey)}
 				</summary>
-				<dl className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground" data-testid="outcome-inspector-technical">
+				<dl className="mt-2 flex flex-col gap-1 text-xs text-wd-secondary" data-testid="outcome-inspector-technical">
 					<div className="flex justify-between gap-2">
 						<dt>{t("mission.inspector.workUnitId" satisfies MessageKey)}</dt>
-						<dd className="truncate font-mono">{node.workUnitId}</dd>
+						<dd className="wd-data truncate text-wd-tertiary">{node.workUnitId}</dd>
 					</div>
 					{node.currentAttempt && (
 						<div className="flex justify-between gap-2">
 							<dt>{t("mission.inspector.attemptId" satisfies MessageKey)}</dt>
-							<dd className="truncate font-mono">{node.currentAttempt.attemptId}</dd>
+							<dd className="wd-data truncate text-wd-tertiary">{node.currentAttempt.attemptId}</dd>
 						</div>
 					)}
 				</dl>

@@ -1,3 +1,4 @@
+import type { StateTone } from "@pin4sf/kennel-product-ui";
 import type { TFunction } from "i18next";
 
 import type {
@@ -28,8 +29,27 @@ export type MissionCanonStatus = MissionScheduleState | "unavailable";
 export interface MissionStatusView {
 	status: MissionCanonStatus;
 	label: string;
+	/** Waldo state tone: render through StateLabel/StateBadge/StateMark. */
+	tone: StateTone;
+	/** Text colour for the tone, for consumers not yet on StateLabel. */
 	className: string;
+	/** The tone's still dot colour (never animated). */
 	indicatorClassName: string;
+}
+
+/** Text and dot classes per Waldo tone, kept for consumers that draw their
+ *  own mark. Nothing here pulses: running is a still accent dot. */
+const TONE_CLASSES: Record<StateTone, { className: string; indicatorClassName: string }> = {
+	needsYou: { className: "text-wd-primary", indicatorClassName: "bg-spot" },
+	live: { className: "text-wd-primary", indicatorClassName: "bg-wd-accent" },
+	neutral: { className: "text-wd-secondary", indicatorClassName: "bg-wd-tertiary" },
+	good: { className: "text-good", indicatorClassName: "bg-good" },
+	caution: { className: "text-caution", indicatorClassName: "bg-caution" },
+	critical: { className: "text-critical", indicatorClassName: "bg-critical" },
+};
+
+function toneView(tone: StateTone): { tone: StateTone; className: string; indicatorClassName: string } {
+	return { tone, ...TONE_CLASSES[tone] };
 }
 
 const STATUS_LABEL_KEYS: Record<MissionScheduleState, MessageKey> = {
@@ -41,13 +61,16 @@ const STATUS_LABEL_KEYS: Record<MissionScheduleState, MessageKey> = {
 	paused: "mission.status.paused",
 };
 
-const STATUS_TONES: Record<MissionScheduleState, { className: string; indicatorClassName: string }> = {
-	blocked: { className: "text-status-idle", indicatorClassName: "bg-status-idle" },
-	runnable: { className: "text-status-ready", indicatorClassName: "bg-status-ready" },
-	executing: { className: "text-status-working", indicatorClassName: "bg-status-working animate-status-pulse" },
-	proven: { className: "text-status-merged", indicatorClassName: "bg-status-merged" },
-	retryable: { className: "text-status-needs-you", indicatorClassName: "bg-status-needs-you" },
-	paused: { className: "text-status-idle", indicatorClassName: "bg-status-idle" },
+// Waldo's state vocabulary: running is the live accent, ready and proven are
+// good, a retryable unit is the owner's next move (Needs you), waiting and
+// paused are neutral words with no colour.
+const STATUS_TONES: Record<MissionScheduleState, StateTone> = {
+	blocked: "neutral",
+	runnable: "good",
+	executing: "live",
+	proven: "good",
+	retryable: "needsYou",
+	paused: "neutral",
 };
 
 function isMissionScheduleState(value: string): value is MissionScheduleState {
@@ -63,14 +86,13 @@ export function missionStatusView(scheduleState: string, t: TFunction): MissionS
 		return {
 			status: "unavailable",
 			label: t("mission.status.unavailable" satisfies MessageKey),
-			className: "text-status-unknown",
-			indicatorClassName: "bg-status-unknown",
+			...toneView("neutral"),
 		};
 	}
 	return {
 		status: scheduleState,
 		label: t(STATUS_LABEL_KEYS[scheduleState]),
-		...STATUS_TONES[scheduleState],
+		...toneView(STATUS_TONES[scheduleState]),
 	};
 }
 
@@ -86,6 +108,8 @@ export interface MissionAttentionView {
 	visualCategory: MissionAttentionVisualCategory;
 	label: string;
 	summary: string;
+	/** Always `needsYou`: every typed question is the owner's next move. */
+	tone: StateTone;
 	className: string;
 	indicatorClassName: string;
 	/** One-time disclosure marker key. `attention.generation` (a string) is the
@@ -122,10 +146,9 @@ export function missionAttentionView(
 ): MissionAttentionView | undefined {
 	if (!attention || !isMissionAttentionKind(attention.kind)) return undefined;
 	const visualCategory = ATTENTION_VISUAL_CATEGORY[attention.kind];
-	const tone =
-		visualCategory === "owner_decision"
-			? { className: "text-status-needs-you", indicatorClassName: "bg-status-needs-you" }
-			: { className: "text-status-in-review", indicatorClassName: "bg-status-in-review" };
+	// Approval, choice and input all put the next move with the owner, so
+	// all three are Needs you; the word and icon keep the kinds distinct.
+	const tone = toneView("needsYou");
 	return {
 		kind: attention.kind,
 		visualCategory,

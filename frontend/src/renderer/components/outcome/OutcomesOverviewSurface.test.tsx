@@ -253,7 +253,7 @@ it("hosts the List/Board switch in the overview header, wired to the shared stor
 	expect(useUiStore.getState().outcomeRunViewMode).toBe("list");
 });
 
-it("renders board cards with the project, relative activity time, and the lane's canon status color", async () => {
+it("renders board cards with the project, relative activity time, and the lane's state badge", async () => {
 	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Waldo Kennel")], isLoading: false });
 	const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 	projectOutcomesQueryMock.mockReturnValue({
@@ -264,25 +264,25 @@ it("renders board cards with the project, relative activity time, and the lane's
 	useUiStore.setState({ outcomeRunViewMode: "board" });
 	renderSurface();
 	const row = (await screen.findByText("Review the drafted plan")).closest("button") as HTMLElement;
-	// Top row: real project name, real relative activity time, revision authority.
+	// Eyebrow: real project name and the state badge; caption: relative activity time.
 	expect(within(row).getByText("Waldo Kennel")).toBeInTheDocument();
 	expect(within(row).getByText("2h ago")).toBeInTheDocument();
-	// Status sentence carries the Ready lane's canon color.
-	const sentence = within(row).getByText("Review proof and decide");
-	expect(sentence.className).toContain("text-status-ready");
-	// List mode shows the same activity time beside the lane label, and the
-	// status sentence carries the lane's canon dot - the row's only lane cue.
+	// The next move names its actor, and the state word carries the Ready
+	// lane's tone with its shape cue - colour never alone.
+	expect(within(row).getByText("You review the proof and decide")).toBeInTheDocument();
+	const badge = within(row).getByTestId("state-badge");
+	expect(badge).toHaveTextContent("Ready for review");
+	expect(badge).toHaveAttribute("data-state-tone", "good");
+	// List mode shows the same activity time and state word, without the project.
 	act(() => useUiStore.setState({ outcomeRunViewMode: "list" }));
 	const listRow = screen.getByText("Review the drafted plan").closest("button") as HTMLElement;
 	expect(within(listRow).getByText("2h ago")).toBeInTheDocument();
 	expect(within(listRow).queryByText("Waldo Kennel")).not.toBeInTheDocument();
-	const listSentence = within(listRow).getByText("Review proof and decide");
-	expect(listSentence.className).toContain("text-status-ready");
-	const dot = listSentence.querySelector("span[aria-hidden]");
-	expect(dot?.className).toContain("bg-status-ready");
+	expect(within(listRow).getByText("You review the proof and decide")).toBeInTheDocument();
+	expect(within(listRow).getByTestId("state-badge")).toHaveAttribute("data-state-tone", "good");
 });
 
-it("colors an unavailable Outcome's sentence with the lane it actually sits in", async () => {
+it("files an unavailable Outcome under Needs input but states it as unknown, not as a decision", async () => {
 	workspaceQueryMock.mockReturnValue({ data: [workspace("p", "Project")], isLoading: false });
 	projectOutcomesQueryMock.mockReturnValue({
 		outcomes: [outcome("unavailable-1", "Status not yet known")],
@@ -292,12 +292,14 @@ it("colors an unavailable Outcome's sentence with the lane it actually sits in",
 	useUiStore.setState({ outcomeRunViewMode: "board" });
 	renderSurface();
 	const row = (await screen.findByText("Status not yet known")).closest("button") as HTMLElement;
-	// Unavailable buckets into Needs input, so the sentence wears that lane's
-	// canon color instead of falling through to muted gray.
+	// Unavailable buckets into Needs input; its own badge stays neutral
+	// rather than borrowing the Needs you dot.
 	const needsInputHeading = await screen.findByRole("heading", { name: /Needs input/ });
 	expect(needsInputHeading.closest("section")!.textContent).toContain("Status not yet known");
-	const sentence = within(row).getByText("Refresh to read the current Outcome status.");
-	expect(sentence.className).toContain("text-status-in-review");
+	expect(within(row).getByText("Refresh to read the current Outcome status.")).toBeInTheDocument();
+	const badge = within(row).getByTestId("state-badge");
+	expect(badge).toHaveTextContent("Status unavailable");
+	expect(badge).toHaveAttribute("data-state-tone", "neutral");
 });
 
 it("shows skeleton cards inside the real lane shells while a project's Outcomes load", async () => {
@@ -312,7 +314,7 @@ it("shows skeleton cards inside the real lane shells while a project's Outcomes 
 	expect(status.length).toBeGreaterThan(0);
 	// Lane names and dots are static canon, so the board's shape is already honest.
 	expect(screen.getByRole("heading", { name: /Needs choice/i })).toBeInTheDocument();
-	expect(screen.queryByText("Loading outcomes…")).not.toBeInTheDocument();
+	expect(screen.queryByText("Reading Outcomes…")).not.toBeInTheDocument();
 });
 
 it("shows skeleton project groups while the workspace list loads", () => {
@@ -320,7 +322,8 @@ it("shows skeleton project groups while the workspace list loads", () => {
 	renderSurface();
 	const status = screen.getByTestId("outcomes-overview-loading");
 	expect(status).toHaveAttribute("role", "status");
-	expect(screen.queryByText("Loading outcomes…")).not.toBeInTheDocument();
+	// A specific line says what is being read; no "Loading…".
+	expect(within(status).getByText("Reading Outcomes…")).toBeInTheDocument();
 });
 
 it("invites the first Outcome with a working CTA when the scoped project is empty", async () => {

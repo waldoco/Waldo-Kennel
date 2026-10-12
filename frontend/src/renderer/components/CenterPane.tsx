@@ -534,7 +534,7 @@ export function CenterPane({
 				>
 					<div
 							aria-label={t("terminal.tabsAria")}
-							className="flex h-full min-w-flex-min flex-1 items-center"
+							className="flex h-full min-w-flex-min flex-1 items-center gap-1 pl-2"
 							onKeyDown={handleTerminalTabListKeyDown}
 							role="tablist"
 						>
@@ -549,6 +549,7 @@ export function CenterPane({
 							) : (
 								<SessionPaneTab isActive={target.kind === "worker"} label={sessionTabLabel} />
 							)}
+							<span aria-hidden="true" className="mx-1 h-4 shrink-0 border-l-[length:var(--stroke-hairline)] border-wd-hairline" />
 							<div
 								ref={tabsOverflowRef}
 								className="scrollbar-none flex min-w-flex-min flex-1 self-stretch items-center overflow-x-auto"
@@ -556,7 +557,7 @@ export function CenterPane({
 								<Reorder.Group
 									as="div"
 									axis="x"
-									className="flex self-stretch"
+									className="flex items-center gap-1 self-stretch"
 									onReorder={reorderAuxiliaryTerminals}
 									values={orderedAuxiliaryTerminals.map((terminal) => terminal.key)}
 								>
@@ -724,33 +725,28 @@ function AgentSwitchTerminalOverlay({
 		>
 			{sourceInput || staticWarning || success ? (
 				<div className={cn(
-					"agent-switch-attention-card pointer-events-auto relative flex max-w-md items-start gap-3 rounded-lg border bg-surface/95 px-4 py-3 text-left shadow-lg",
+					"agent-switch-attention-card pointer-events-auto relative flex max-w-md items-start gap-3 rounded-lg bg-wd-raised px-4 py-3 text-left shadow-(--shadow-overlay)",
 					onDismiss && "pr-11",
-					success
-						? "border-success/40"
-						: presentation.tone === "danger"
-							? "border-danger/40"
-							: "border-warning/40",
 				)}>
 					{success ? (
-						<CheckCircle2 aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-success" />
+						<CheckCircle2 aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-good" />
 					) : (
 						<TriangleAlert
 							aria-hidden="true"
 							className={cn(
 								"mt-0.5 size-5 shrink-0",
-								presentation.tone === "danger" ? "text-danger" : "text-warning",
+								presentation.tone === "danger" ? "text-critical" : "text-caution",
 							)}
 						/>
 					)}
 					<div className="min-w-0">
-						<p className="font-mono text-control font-medium text-foreground">{title}</p>
-						<p className="mt-1 text-caption leading-4 text-muted-foreground">{description}</p>
+						<p className="wd-label text-wd-primary">{title}</p>
+						<p className="wd-caption mt-1 text-wd-secondary">{description}</p>
 					</div>
 					{onDismiss ? (
 						<button
 							aria-label={t("common.close")}
-							className="absolute right-2 top-2 grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50"
+							className="absolute right-2 top-2 grid size-7 place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 							onClick={onDismiss}
 							type="button"
 						>
@@ -760,33 +756,31 @@ function AgentSwitchTerminalOverlay({
 				</div>
 			) : (
 				<div
-					className="flex max-w-lg animate-modal-in flex-col items-center gap-5 rounded-xl border border-border-strong bg-surface/95 px-8 py-6 text-center shadow-xl shadow-black/20 motion-reduce:animate-none"
+					className="flex max-w-lg animate-modal-in flex-col items-center gap-5 rounded-xl bg-wd-raised px-8 py-6 text-center shadow-(--shadow-overlay) motion-reduce:animate-none"
 					data-testid="agent-switch-transition-card"
 				>
 					<div className="flex items-center gap-5 sm:gap-7">
 						<SwitchingAgentMark harness={agentSwitch.fromHarness} />
 						<div
 							aria-hidden="true"
-							className="relative h-4 w-20 shrink-0 text-accent sm:w-28"
+							className="relative h-4 w-20 shrink-0 text-wd-tertiary sm:w-28"
 							data-testid="agent-switch-transfer-arrow"
 						>
 							<ArrowRight
-								className="absolute inset-0 size-full text-foreground/55"
+								className="absolute inset-0 size-full text-wd-tertiary"
 								data-testid="agent-switch-transfer-arrow-icon"
 								strokeWidth={1.5}
 							/>
 							<span
 								className="absolute inset-y-[7px] left-0 right-3 overflow-hidden"
 								data-testid="agent-switch-transfer-shaft"
-							>
-								<span className="agent-switch-transfer-pulse absolute inset-y-0 w-10 bg-gradient-to-r from-transparent via-accent to-transparent" />
-							</span>
+							/>
 						</div>
 						<SwitchingAgentMark harness={agentSwitch.targetHarness} />
 					</div>
 					<div className="flex w-full flex-col items-center" data-testid="agent-switch-status-group">
-						<p className="font-mono text-control font-medium text-foreground">{title}</p>
-						<p className="mt-2 text-caption leading-4 text-muted-foreground">{description}</p>
+						<p className="wd-label text-wd-primary">{title}</p>
+						<p className="wd-caption mt-2 text-wd-secondary">{description}</p>
 						<AgentSwitchProgressTrack stage={presentation.stage} />
 					</div>
 				</div>
@@ -808,14 +802,14 @@ function AgentSwitchTerminalStrip({
 			aria-label={t(presentation.titleKey, presentation.values)}
 			aria-atomic="true"
 			aria-live="polite"
-			className="agent-switch-shell-strip absolute inset-x-3 top-3 z-20 flex items-center justify-between gap-3 rounded-lg border border-border-strong bg-surface/95 px-3 py-2 shadow-lg"
+			className="agent-switch-shell-strip absolute inset-x-3 top-3 z-20 flex items-center justify-between gap-3 rounded-lg bg-wd-raised px-3 py-2 shadow-(--shadow-overlay)"
 			role="status"
 		>
-			<span className="min-w-0 truncate text-caption text-muted-foreground">
+			<span className="wd-caption min-w-0 truncate text-wd-secondary">
 				{t(presentation.descriptionKey, presentation.values)}
 			</span>
 			<button
-				className="shrink-0 rounded-md border border-border-strong bg-background px-2.5 py-1 text-caption font-medium text-foreground transition-colors hover:bg-interactive-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/50"
+				className="h-control-md shrink-0 rounded-full bg-wd-inset px-3 text-caption font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-pressed"
 				onClick={onSelectSessionTerminal}
 				type="button"
 			>
@@ -842,12 +836,12 @@ function AgentSwitchProgressTrack({ stage }: { stage: AgentSwitchPresentation["s
 					key={step.key}
 					aria-current={index === activeIndex ? "step" : undefined}
 					className={cn(
-						"agent-switch-progress-step relative flex min-w-0 flex-1 flex-col items-center gap-1.5 px-0.5 text-[10px] leading-3 text-passive",
-						index < activeIndex && "is-complete text-muted-foreground",
-						index === activeIndex && "is-current text-foreground",
+						"agent-switch-progress-step wd-micro relative flex min-w-0 flex-1 flex-col items-center gap-1.5 px-0.5 text-wd-tertiary",
+						index < activeIndex && "is-complete text-wd-secondary",
+						index === activeIndex && "is-current text-wd-primary",
 					)}
 				>
-					<span aria-hidden="true" className="agent-switch-progress-dot relative z-10 size-2 rounded-full border border-border-strong bg-surface" />
+					<span aria-hidden="true" className="agent-switch-progress-dot relative z-10 size-2 rounded-full border border-wd-strong bg-wd-raised" />
 					<span className="min-h-6 max-w-16 break-words whitespace-normal text-balance text-center">
 						{t(step.labelKey)}
 					</span>
@@ -860,10 +854,10 @@ function AgentSwitchProgressTrack({ stage }: { stage: AgentSwitchPresentation["s
 function SwitchingAgentMark({ harness }: { harness: string }) {
 	return (
 		<div className="flex min-w-20 flex-col items-center gap-2">
-			<span className="grid size-14 place-items-center rounded-xl border border-border-strong bg-surface/90 shadow-lg shadow-black/20">
+			<span className="grid size-14 place-items-center rounded-md bg-wd-inset">
 				<AgentAvatar className="size-8" decorative provider={harness} />
 			</span>
-			<span className="text-caption font-medium text-muted-foreground">{agentLabel(harness)}</span>
+			<span className="wd-caption text-wd-secondary">{agentLabel(harness)}</span>
 		</div>
 	);
 }
@@ -878,8 +872,8 @@ type SessionPaneTabProps = {
 	title?: string;
 };
 
-// Shared tab chrome: the open tab is highlighted with the same rounded
-// background as the inspector rail tabs (Summary · Reviews · Browser), and
+// Shared tab chrome: Waldo pills, the open tab on bg-selected (no underline),
+// a static activity dot whose word is in the accessible name and tooltip, and
 // the full label only becomes the hover tooltip when the tab strip is
 // crowded enough to truncate it.
 function SessionPaneTab({
@@ -896,24 +890,15 @@ function SessionPaneTab({
 	const activity = session ? getAgentActivityView(session.activity, t) : undefined;
 	const activityLabel = activity?.label;
 	const activityTone = activity?.tone;
-	const activityBreathe = activity?.breathe;
 	const tabIcon = session ? <AgentAvatar className="size-terminal-agent-icon" decorative provider={session.provider} /> : icon;
 	const connected = appearance === "connected";
 	return (
 		<span
 			data-terminal-role={connected ? undefined : "primary"}
 			className={cn(
-				"group relative inline-flex min-w-shell-tab-min shrink-0 self-stretch items-center gap-1.5 transition-colors",
-				connected
-					? "w-shell-tab-connected border-x border-transparent px-2"
-					: "border-r border-border bg-surface px-3 text-foreground",
-				connected
-					? isActive
-						? "border-border-strong bg-overlay text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground/80"
-						: "text-passive hover:bg-interactive-hover/60 hover:text-foreground"
-					: isActive
-						? "bg-overlay text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground/80"
-						: "text-muted-foreground hover:bg-raised hover:text-foreground",
+				"group relative inline-flex h-control-md min-w-shell-tab-min shrink-0 self-center items-center gap-1.5 rounded-full transition-colors duration-fast",
+				connected ? "w-shell-tab-connected px-2.5" : "px-3",
+				isActive ? "bg-wd-selected text-wd-primary" : "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 			)}
 		>
 			<button
@@ -926,7 +911,7 @@ function SessionPaneTab({
 					connected
 						? "min-w-0 w-full text-left font-normal"
 						: "min-w-flex-min max-w-shell-tab-max font-medium",
-					isActive ? "text-foreground" : "text-passive group-hover:text-foreground",
+					isActive ? "text-wd-primary" : "text-wd-secondary group-hover:text-wd-primary",
 				)}
 				onClick={onSelect}
 				role="tab"
@@ -943,10 +928,7 @@ function SessionPaneTab({
 						style={{ color: activityTone }}
 						title={activityLabel}
 					>
-						<span
-							className={cn("size-1.5 rounded-full", activityBreathe && "animate-status-pulse")}
-							style={{ background: activityTone }}
-						/>
+						<span className="size-1.5 rounded-full" style={{ background: activityTone }} />
 					</span>
 				) : null}
 			</button>

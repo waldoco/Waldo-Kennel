@@ -1,3 +1,4 @@
+import { Compass, Flag, Keyboard } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { GeneralSettingsSection } from "./settings/GeneralSettingsSection";
@@ -48,12 +49,14 @@ export function GlobalSettingsForm({
 						/>
 						<SettingsSection title={t("settings.preferences")} grouped>
 							<SettingsLinkRow
+								icon={Keyboard}
 								label={t("settings.keyboardShortcuts")}
 								onClick={() => onOpenKeyboardShortcuts?.()}
 							/>
 							{/* Settings has to get out of the way first: the tour is a modal,
 							    and two stacked modals leave no way back to the one beneath. */}
 							<SettingsLinkRow
+								icon={Compass}
 								label={t("settings.welcomeTour")}
 								onClick={() => {
 									closeSettings();
@@ -74,7 +77,7 @@ export function GlobalSettingsForm({
 				)}
 				{(section === "all" || section === "help") && (
 					<SettingsSection title={t("settings.getHelp")} titleHidden={leadingTitleHidden} grouped>
-						<SettingsLinkRow label={t("settings.reportProblem")} onClick={() => setReportProblemOpen(true)} />
+						<SettingsLinkRow icon={Flag} label={t("settings.reportProblem")} onClick={() => setReportProblemOpen(true)} />
 					</SettingsSection>
 				)}
 			</div>

@@ -50,7 +50,7 @@ describe("ElicitationCard", () => {
 
 		await user.click(screen.getByRole("radio", { name: /Native/ }));
 		await user.type(screen.getByLabelText("Other"), "Hybrid");
-		await user.click(screen.getByRole("button", { name: "Continue" }));
+		await user.click(screen.getByRole("button", { name: "Send answer" }));
 		expect(onResolve).toHaveBeenCalledWith("request-1", "accept", {
 			question_0: "Native",
 			question_0_custom: "Hybrid",
@@ -73,7 +73,7 @@ describe("ElicitationCard", () => {
 				onResolve={onResolve}
 			/>,
 		);
-		await user.click(screen.getByRole("button", { name: "Continue" }));
+		await user.click(screen.getByRole("button", { name: "Send answer" }));
 		expect(screen.getByText("This field is required.")).toBeInTheDocument();
 		expect(onResolve).not.toHaveBeenCalled();
 	});

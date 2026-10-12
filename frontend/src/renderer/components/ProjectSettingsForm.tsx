@@ -26,7 +26,6 @@ import { apiClient, apiErrorMessage } from "../lib/api-client";
 import { captureOrchestratorReplacementFailure } from "../lib/orchestrator-replacement-telemetry";
 import { OrchestratorSpawnError, spawnOrchestrator } from "../lib/spawn-orchestrator";
 import { captureRendererEvent } from "../lib/telemetry";
-import { cn } from "../lib/utils";
 import { type OrchestratorReplacementFailure, useUiStore } from "../stores/ui-store";
 import { newestActiveOrchestrator } from "../types/workspace";
 import { RequiredAgentField } from "./CreateProjectAgentSheet";
@@ -91,9 +90,9 @@ export function ProjectSettingsForm({
 	return (
 		<>
 			{query.isLoading ? (
-				<p className="text-sm text-settings-muted">{t("settings.project.loading")}</p>
+				<p className="wd-body-s text-wd-secondary">{t("settings.project.loading")}</p>
 			) : query.isError || !query.data ? (
-				<p className="text-sm text-error">
+				<p role="alert" className="wd-body-s text-critical">
 					{query.error instanceof Error ? query.error.message : t("settings.project.loadFailed")}
 				</p>
 			) : (
@@ -527,13 +526,7 @@ function SettingsBody({
 						}}
 						refresh={{
 							actionIcon: (
-								<RefreshCw
-									className={cn(
-										"size-icon-base",
-										refreshAgentsMutation.isPending && "animate-spin",
-									)}
-									aria-hidden="true"
-								/>
+								<RefreshCw className="size-icon-base" aria-hidden="true" />
 							),
 							disabled: refreshAgentsMutation.isPending,
 							label: t("settings.project.refreshAgents"),
@@ -551,14 +544,10 @@ function SettingsBody({
 						}
 						missingRequiredMessage={null}
 					/>
-					<div className="mt-5 rounded-card border border-border bg-card p-4 hairline">
-						<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-							{t("settings.project.missionRoles")}
-						</p>
-						<p className="mt-1 text-xs leading-body text-muted-foreground">
-							{t("settings.project.missionRolesHint")}
-						</p>
-						<div className="mt-3 grid gap-3 sm:grid-cols-2">
+					<section className="mt-8 flex flex-col gap-2">
+						<h2 className="wd-label px-4 text-wd-secondary">{t("settings.project.missionRoles")}</h2>
+						<div className="flex flex-col gap-4 rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4">
+						<div className="grid gap-4 sm:grid-cols-2">
 							<MissionRolePreference
 								label={t("settings.project.missionRoleWorker")}
 								value={form.agentPreferences.defaultWorker}
@@ -587,7 +576,9 @@ function SettingsBody({
 						{resolvedRolesQuery.data ? (
 							<ResolvedMissionRolesList roles={resolvedRolesQuery.data} />
 						) : null}
-					</div>
+						</div>
+						<p className="wd-caption px-4 text-wd-tertiary">{t("settings.project.missionRolesHint")}</p>
+					</section>
 				</>
 			)}
 
@@ -633,7 +624,7 @@ function SettingsBody({
 							/>
 						</>
 					) : (
-						<p className="px-1 text-xs text-settings-muted">{t("settings.project.workflow")}</p>
+						<p className="wd-body-s px-4 text-wd-secondary">{t("settings.project.workflow")}</p>
 					)}
 				</>
 			)}
@@ -650,7 +641,7 @@ function SettingsBody({
 							/>
 						</ProjectSettingsSection>
 					) : (
-						<p className="px-1 text-xs text-settings-muted">{t("settings.project.trackerIntake")}</p>
+						<p className="wd-body-s px-4 text-wd-secondary">{t("settings.project.trackerIntake")}</p>
 					)}
 				</>
 			)}
@@ -747,7 +738,7 @@ function AgentModelField({
 						/>
 					</div>
 				</SettingsRow>
-				{warning && <p className="px-1 text-xs leading-row text-warning">{warning}</p>}
+				{warning && <p className="wd-body-s px-4 pb-3 text-caution">{warning}</p>}
 			</>
 		);
 	}
@@ -830,7 +821,7 @@ function AgentModelField({
 					/>
 				</SettingsRow>
 			)}
-			{warning && <p className="px-1 text-xs leading-row text-warning">{warning}</p>}
+			{warning && <p className="wd-body-s px-4 pb-3 text-caution">{warning}</p>}
 		</>
 	);
 }
@@ -852,11 +843,11 @@ function ModelRefreshButton({
 			type="button"
 			aria-label={t("settings.models.refreshAria", { label: label.toLocaleLowerCase() })}
 			title={t("settings.models.refreshAria", { label: label.toLocaleLowerCase() })}
-			className="settings-option-trigger shrink-0 disabled:pointer-events-none disabled:opacity-50"
+			className="settings-option-trigger shrink-0 px-2 disabled:pointer-events-none disabled:text-wd-disabled"
 			disabled={disabled || pending}
 			onClick={onClick}
 		>
-			<RefreshCw className={cn("size-icon-sm", pending && "animate-spin")} aria-hidden="true" />
+			<RefreshCw className="size-icon-sm" aria-hidden="true" />
 		</button>
 	);
 }
@@ -968,12 +959,13 @@ function MissionRolePreference({
 		...options.map((option) => ({ value: option.id, label: option.label })),
 	];
 	return (
-		<label className="flex flex-col gap-1 text-xs font-medium">
-			{label}
+		<label className="flex flex-col items-start gap-1.5">
+			<span className="wd-label text-wd-secondary">{label}</span>
 			<SettingsOptionMenu
 				aria-label={label}
 				value={value || "__none__"}
 				options={menuOptions}
+				triggerClassName="-ml-3 text-wd-primary"
 				onChange={(v) => onChange(v === "__none__" ? "" : v)}
 			/>
 		</label>
@@ -992,19 +984,19 @@ function ResolvedMissionRolesList({ roles }: { roles: components["schemas"]["Res
 		{ label: t("settings.project.missionRoleVerifier"), role: roles.verifier },
 	];
 	return (
-		<dl className="mt-4 grid gap-2 border-t border-border pt-3 text-xs leading-snug">
+		<dl className="wd-body-s grid gap-2 border-t-[length:var(--stroke-hairline)] border-wd-hairline pt-4">
 			{rows.map(({ label, role }) => {
 				const unassigned = !role.harness;
 				return (
 					<div key={label} className="flex items-baseline justify-between gap-3">
-						<dt className="text-muted-foreground">{label}</dt>
-						<dd className="flex items-baseline gap-2 text-right">
+						<dt className="text-wd-secondary">{label}</dt>
+						<dd className="flex items-baseline gap-2 text-right text-wd-primary">
 							<span>{role.harness || t("settings.project.missionRoleNoPreference")}</span>
 							<span
 								className={
 									role.source === "preference"
-										? "rounded-xs bg-[--color-status-ready] px-1.5 py-0.5 text-2xs text-background"
-										: "rounded-xs bg-popover px-1.5 py-0.5 text-2xs text-muted-foreground"
+										? "wd-micro rounded-xs bg-wd-inverse px-1.5 py-0.5 text-wd-on-inverse"
+										: "wd-micro rounded-xs bg-wd-inset px-1.5 py-0.5 text-wd-secondary"
 								}
 							>
 								{role.source === "preference"
@@ -1014,7 +1006,7 @@ function ResolvedMissionRolesList({ roles }: { roles: components["schemas"]["Res
 										: t("settings.project.missionRoleFromDefault")}
 							</span>
 							{!role.ready && role.reason ? (
-								<span className="text-2xs text-muted-foreground">{role.reason}</span>
+								<span className="wd-micro text-wd-secondary">{role.reason}</span>
 							) : null}
 						</dd>
 					</div>

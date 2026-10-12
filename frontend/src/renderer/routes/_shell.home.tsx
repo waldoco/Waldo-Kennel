@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { HomeComingSoon } from "../components/home/HomeComingSoon";
 import { HomeShell } from "../components/home/HomeShell";
 import {
   resolveHomeDayPhase,
@@ -48,15 +47,12 @@ function HomeRoute() {
       : "offline";
   return (
     <div className="relative flex min-h-0 flex-1">
-      <div className="flex min-h-0 flex-1" inert>
-        <HomeShell
-          fixture={homeFixture("today", availability, {
-            dayPhase,
-            contextFlow: previewOverrides.contextFlow,
-          })}
-        />
-      </div>
-      <HomeComingSoon />
+      <HomeShell
+        fixture={homeFixture("today", availability, {
+          dayPhase,
+          contextFlow: previewOverrides.contextFlow,
+        })}
+      />
     </div>
   );
 }

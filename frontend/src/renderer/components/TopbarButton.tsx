@@ -1,26 +1,30 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
+// Waldo topbar controls: pills and 28px round quiet icon buttons. `primary`
+// is the ink plate, `accent`/`feature` the inset (secondary) fill, `icon` the
+// quiet round button. Destructive variants name the effect in critical.
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)";
 const topbarButtonVariants = cva(
-	"topbar-control inline-flex items-center transition-[filter,background,color,border-color] duration-fast disabled:opacity-60",
+	`topbar-control inline-flex items-center transition-[background-color,color,border-color,opacity] duration-fast outline-none ${FOCUS} disabled:cursor-not-allowed disabled:bg-wd-inset disabled:text-wd-disabled`,
 	{
 		variants: {
 			variant: {
 				primary:
-					"topbar-control--primary h-control-lg gap-1.5 rounded-md bg-accent-strong px-3.5 text-sm font-semibold leading-none text-accent-foreground hover:brightness-110 active:brightness-95",
+					"topbar-control--primary h-control-lg gap-1.5 rounded-full bg-wd-inverse px-3.5 text-sm font-medium leading-none text-wd-on-inverse hover:opacity-90",
 				accent:
-					"topbar-control--accent h-control-lg gap-1.5 rounded-md border border-border px-3.5 text-sm font-semibold leading-none bg-raised text-muted-foreground hover:bg-surface hover:text-foreground",
+					"topbar-control--accent h-control-lg gap-1.5 rounded-full border border-transparent bg-wd-inset px-3.5 text-sm font-medium leading-none text-wd-primary hover:bg-wd-pressed",
 				feature:
-					"topbar-control--feature h-control-lg gap-1.5 rounded-md border px-3 text-control font-semibold leading-none",
+					"topbar-control--feature h-control-lg gap-1.5 rounded-full border border-transparent bg-wd-inset px-3 text-control font-medium leading-none text-wd-primary hover:bg-wd-pressed",
 				icon:
-					"topbar-control--icon grid size-control-md place-items-center rounded-md text-muted-foreground hover:bg-interactive-hover hover:text-foreground",
-				kill: "h-control-lg gap-1.5 rounded-md border border-transparent bg-transparent px-3.5 text-sm font-semibold leading-none text-error/80 hover:border-error/50 hover:bg-error/10 hover:text-error",
+					"topbar-control--icon grid size-control-md place-items-center rounded-full text-wd-secondary hover:bg-wd-hover hover:text-wd-primary active:bg-wd-pressed disabled:bg-transparent",
+				kill: "h-control-lg gap-1.5 rounded-full border border-transparent bg-transparent px-3.5 text-sm font-medium leading-none text-critical hover:bg-critical-bg",
 				killIcon:
-					"topbar-control--icon topbar-control--danger-icon grid size-control-md place-items-center rounded-md text-error/80 hover:bg-error/10 hover:text-error",
+					"topbar-control--icon topbar-control--danger-icon grid size-control-md place-items-center rounded-full text-wd-secondary hover:bg-critical-bg hover:text-critical disabled:bg-transparent",
 				killConfirm:
-					"h-control-lg gap-1.5 rounded-md border border-error/40 bg-error/10 px-3 text-control font-semibold leading-none text-error hover:bg-error/16",
+					"h-control-lg gap-1.5 rounded-full border border-transparent bg-critical-bg px-3 text-control font-medium leading-none text-critical hover:bg-[color-mix(in_oklab,var(--critical-bg),var(--critical)_10%)]",
 				killCancel:
-					"h-control-lg rounded-md px-2.5 text-control font-semibold leading-none text-muted-foreground hover:text-foreground",
+					"h-control-lg rounded-full px-2.5 text-control font-medium leading-none text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 			},
 		},
 		defaultVariants: { variant: "primary" },
@@ -37,11 +41,11 @@ export function TopbarButton({
 }
 
 export function TopbarKillError({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
-	return <span className={cn("text-caption text-destructive", className)} role="alert" {...props} />;
+	return <span className={cn("text-caption text-critical", className)} role="alert" {...props} />;
 }
 
 export const topbarHeaderClass =
-	"center-panel-titlebar flex h-toolbar shrink-0 items-center gap-3 border-b border-border pr-4 z-chrome";
+	"center-panel-titlebar flex h-toolbar shrink-0 items-center gap-3 border-b border-wd-hairline [border-bottom-width:var(--stroke-hairline)] bg-wd-canvas pr-4 z-chrome";
 
 export const topbarProjectLabelClass =
-	"text-brand font-semibold tracking-tight leading-none text-foreground whitespace-nowrap";
+	"text-brand font-medium leading-none text-wd-primary whitespace-nowrap";

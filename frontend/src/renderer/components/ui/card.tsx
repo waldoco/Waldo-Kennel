@@ -12,7 +12,7 @@ function Card({
 			data-slot="card"
 			data-size={size}
 			className={cn(
-				"group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-card bg-card py-(--card-spacing) text-sm text-card-foreground shadow-md ring-1 ring-foreground/5 [--card-spacing:--spacing(6)] data-[size=sm]:[--card-spacing:--spacing(4)] dark:ring-foreground/10",
+				"group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-card bg-wd-surface py-(--card-spacing) text-sm text-card-foreground border-[length:var(--stroke-hairline)] border-wd-hairline [--card-spacing:--spacing(5)] data-[size=sm]:[--card-spacing:--spacing(4)]",
 				className,
 			)}
 			{...props}
@@ -34,11 +34,11 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
-	return <div data-slot="card-title" className={cn("font-heading text-base font-medium", className)} {...props} />;
+	return <div data-slot="card-title" className={cn("wd-headline", className)} {...props} />;
 }
 
 function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
-	return <div data-slot="card-description" className={cn("text-sm text-muted-foreground", className)} {...props} />;
+	return <div data-slot="card-description" className={cn("wd-body-s text-wd-secondary", className)} {...props} />;
 }
 
 function CardAction({ className, ...props }: React.ComponentProps<"div">) {

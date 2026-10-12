@@ -55,14 +55,14 @@ function DialogContent({
 			<DialogPrimitive.Content
 				data-slot="dialog-content"
 				className={cn(
-					"fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] flex flex-col gap-4 bg-background shadow-lg data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out motion-reduce:animate-none hairline border-border p-4 sm:rounded-panel",
+					"fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] flex flex-col gap-4 rounded-xl bg-wd-raised p-6 text-wd-primary shadow-xl outline-none data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out motion-reduce:animate-none",
 					className,
 				)}
 				{...props}
 			>
 				{children}
 				{showCloseButton && (
-					<DialogPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+					<DialogPrimitive.Close className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) disabled:pointer-events-none">
 						<XIcon className="size-4" />
 						<span className="sr-only">{t("common.close")}</span>
 					</DialogPrimitive.Close>
@@ -84,7 +84,7 @@ function DialogTitle({ className, ...props }: React.ComponentProps<typeof Dialog
 	return (
 		<DialogPrimitive.Title
 			data-slot="dialog-title"
-			className={cn("font-semibold text-foreground", className)}
+			className={cn("wd-title text-wd-primary", className)}
 			{...props}
 		/>
 	);
@@ -94,7 +94,7 @@ function DialogDescription({ className, ...props }: React.ComponentProps<typeof 
 	return (
 		<DialogPrimitive.Description
 			data-slot="dialog-description"
-			className={cn("text-sm text-muted-foreground", className)}
+			className={cn("text-sm text-wd-secondary", className)}
 			{...props}
 		/>
 	);
@@ -118,13 +118,13 @@ export {
 // share the same frame, spacing, and typography. Every value resolves to a
 // design token; no raw pixel values here.
 export const settingsDialogContentClass =
-	"z-overlay flex max-h-[min(var(--size-settings-dialog-max-h),calc(100svh-var(--space-8)))] w-[min(var(--size-settings-dialog),calc(100vw-var(--space-8)))] max-w-none flex-col gap-0 overflow-hidden rounded-(--radius-settings-dialog-lg) border border-[var(--color-border-settings-dialog)] bg-popover p-0 text-settings-label shadow-[var(--shadow-settings-dialog)]";
+	"z-overlay flex max-h-[min(var(--size-settings-dialog-max-h),calc(100svh-var(--space-8)))] w-[min(var(--size-settings-dialog),calc(100vw-var(--space-8)))] max-w-none flex-col gap-0 overflow-hidden rounded-xl border-0 bg-wd-raised p-0 text-settings-label shadow-xl";
 
 export const settingsDialogHeaderClass =
-	"flex shrink-0 flex-col gap-1 border-b border-(--color-border-settings-dialog-header) p-(--size-modal-padding)";
+	"flex shrink-0 flex-col gap-1 p-(--size-modal-padding) pb-0";
 
 export const settingsDialogBodyClass =
 	"flex min-h-0 flex-col gap-4 overflow-y-auto p-(--size-modal-padding)";
 
 export const settingsDialogFooterClass =
-	"flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-[var(--color-border-settings-dialog-header)] p-(--size-modal-padding)";
+	"flex shrink-0 flex-wrap items-center justify-end gap-3 p-(--size-modal-padding) pt-0";

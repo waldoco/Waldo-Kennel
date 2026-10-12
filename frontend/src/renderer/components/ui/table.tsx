@@ -11,7 +11,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
 }
 
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
-	return <thead data-slot="table-header" className={cn("[&_tr]:border-b", className)} {...props} />;
+	return <thead data-slot="table-header" className={cn("[&_tr]:border-b [&_tr]:border-wd-hairline [&_tr]:hover:bg-transparent", className)} {...props} />;
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
@@ -22,7 +22,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
 	return (
 		<tfoot
 			data-slot="table-footer"
-			className={cn("border-t bg-muted/50 font-medium [&>tr]:last:border-b-0", className)}
+			className={cn("border-t border-wd-hairline font-medium [&>tr]:last:border-b-0", className)}
 			{...props}
 		/>
 	);
@@ -33,7 +33,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 		<tr
 			data-slot="table-row"
 			className={cn(
-				"border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+				"border-b border-wd-hairline [border-bottom-width:var(--stroke-hairline)] transition-colors duration-fast hover:bg-wd-hover has-aria-expanded:bg-wd-hover data-[state=selected]:bg-wd-selected",
 				className,
 			)}
 			{...props}
@@ -46,7 +46,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
 		<th
 			data-slot="table-head"
 			className={cn(
-				"h-table-head px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-0.5",
+				"wd-label h-table-head px-2 text-left align-middle whitespace-nowrap text-wd-secondary [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-0.5",
 				className,
 			)}
 			{...props}
@@ -69,7 +69,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
 
 function TableCaption({ className, ...props }: React.ComponentProps<"caption">) {
 	return (
-		<caption data-slot="table-caption" className={cn("mt-4 text-sm text-muted-foreground", className)} {...props} />
+		<caption data-slot="table-caption" className={cn("mt-4 text-sm text-wd-secondary", className)} {...props} />
 	);
 }
 

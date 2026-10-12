@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Loader2, MessageSquare, SquareTerminal, TriangleAlert, X } from "lucide-react";
+import { ArrowRightLeft, Clock, MessageSquare, SquareTerminal, TriangleAlert, X } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
 	SessionInterfaceMode,
@@ -74,32 +74,33 @@ export function SessionInterfaceSwitchButton({
 				role="status"
 				aria-live="polite"
 				className={cn(
-					"flex h-7 items-center gap-1 rounded-md bg-muted/55 pl-2 text-xs text-muted-foreground",
-					cancellable ? "pr-0.5" : "pr-2",
+					"flex h-7 items-center gap-1.5 rounded-full bg-wd-inset pl-2.5 text-xs text-wd-secondary",
+					cancellable ? "pr-0.5" : "pr-3",
 					className,
 				)}
 				title={cancelError || `${phaseCopy[transition.phase]} Switching to ${targetTitleLabel(transition.targetMode)}.`}
 			>
-				<Loader2 aria-hidden="true" className="size-3.5 shrink-0 animate-spin" />
+				{/* Live work is a static accent dot beside a specific line, never a spinner. */}
+				<span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-wd-accent" />
 				<span className="whitespace-nowrap">
-					{phaseCopy[transition.phase]} <span className="text-foreground">{targetTitleLabel(transition.targetMode)}</span>
+					{phaseCopy[transition.phase]} <span className="text-wd-primary">{targetTitleLabel(transition.targetMode)}</span>
 				</span>
 				{cancellable ? (
 					<Button
 						type="button"
 						size="sm"
 						variant="ghost"
-						className="ml-1 h-6 gap-1 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+						className="ml-0.5 h-6 gap-1 px-2 text-[11px] text-wd-secondary hover:text-wd-primary"
 						disabled={cancelling}
 						onClick={onCancel}
 						aria-label={`Cancel switch to ${targetTitleLabel(transition.targetMode)}`}
 					>
-						{cancelling ? <Loader2 aria-hidden="true" className="size-3 animate-spin" /> : <X aria-hidden="true" className="size-3" />}
+						<X aria-hidden="true" className="size-3" />
 						{cancelling ? "Cancelling" : "Cancel"}
 					</Button>
 				) : null}
 				{cancelError ? (
-					<span role="alert" className="ml-1 whitespace-nowrap pr-1.5 text-[11px] text-destructive">
+					<span role="alert" className="ml-1 whitespace-nowrap pr-1.5 text-[11px] text-critical">
 						Cancel failed
 					</span>
 				) : null}
@@ -116,18 +117,15 @@ export function SessionInterfaceSwitchButton({
 				<span className="inline-flex">
 					<TopbarButton
 						aria-label={label}
-						className={cn(!supported && "opacity-50", className)}
+						aria-busy={pending || undefined}
+						className={className}
 						disabled={!supported || pending}
 						onClick={onClick}
 						title={tooltipLabel}
 						type="button"
 						variant="icon"
 					>
-						{pending ? (
-							<Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-						) : (
-							<TargetIcon aria-hidden="true" className="size-icon-md" />
-						)}
+						<TargetIcon aria-hidden="true" className="size-icon-md" />
 					</TopbarButton>
 				</span>
 			</TooltipTrigger>
@@ -156,13 +154,13 @@ export function SessionInterfaceSwitchDialog({
 	const targetName = targetTitleLabel(target);
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-md gap-0 overflow-hidden rounded-xl border-border bg-popover p-0">
-				<DialogHeader className="border-b border-border px-5 py-4">
-					<DialogTitle className="flex items-center gap-2 text-sm">
-						<ArrowRightLeft aria-hidden="true" className="size-4 text-muted-foreground" />
+			<DialogContent className="max-w-md gap-0 overflow-hidden rounded-xl p-0">
+				<DialogHeader className="hairline-b border-wd-hairline px-5 py-4">
+					<DialogTitle className="wd-headline flex items-center gap-2 text-wd-primary">
+						<ArrowRightLeft aria-hidden="true" className="size-4 text-wd-secondary" />
 						Switch to {targetName}?
 					</DialogTitle>
-					<DialogDescription className="pt-1 text-xs leading-5">
+					<DialogDescription className="wd-body-s pt-1 text-wd-secondary">
 						The same Kennel session, worktree, and agent-native conversation continue in the other interface.
 						Completed messages and tool work stay in the agent's context.
 					</DialogDescription>
@@ -171,43 +169,44 @@ export function SessionInterfaceSwitchDialog({
 				<div className="grid gap-2 px-5 py-4">
 					<button
 						type="button"
-						className="rounded-lg border border-border bg-background px-3.5 py-3 text-left transition-colors hover:border-border-strong hover:bg-muted disabled:opacity-50"
+						className="rounded-md bg-wd-inset px-4 py-3 text-left transition-colors duration-fast hover:bg-wd-hover disabled:text-wd-disabled"
 						disabled={busy}
 						onClick={() => onChoose("drain")}
 					>
-						<strong className="block text-sm font-medium text-foreground">Finish work, then switch</strong>
-						<span className="mt-1 block text-xs leading-5 text-muted-foreground">
+						<span className="wd-label block text-wd-primary">Finish work, then switch</span>
+						<span className="wd-caption mt-1 block text-wd-secondary">
 							Wait for the running turn and anything already queued to finish. New Kennel messages wait safely
 							for {targetName}.
 						</span>
 					</button>
 					<button
 						type="button"
-						className="rounded-lg border border-border bg-background px-3.5 py-3 text-left transition-colors hover:border-warning/60 hover:bg-muted disabled:opacity-50"
+						className="rounded-md bg-wd-inset px-4 py-3 text-left transition-colors duration-fast hover:bg-wd-hover disabled:text-wd-disabled"
 						disabled={busy}
 						onClick={() => onChoose("interrupt")}
 					>
-						<strong className="block text-sm font-medium text-foreground">Stop now and switch</strong>
-						<span className="mt-1 block text-xs leading-5 text-muted-foreground">
+						<span className="wd-label block text-wd-primary">Stop now and switch</span>
+						<span className="wd-caption mt-1 block text-wd-secondary">
 							Cancel the running turn before switching. Files already changed remain in the worktree, but
 							unfinished output and queued Chat turns are cancelled.
 						</span>
 					</button>
 					{waitingForInput ? (
-						<p className="text-[11px] leading-4 text-warning">
+						<p className="wd-caption flex items-start gap-1.5 text-wd-primary">
+							<Clock aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-caution" />
 							This turn is waiting for your input. “Finish work” will wait until you answer it; use “Stop
 							now” to switch immediately.
 						</p>
 					) : null}
 					{error ? (
-						<p role="alert" className="text-xs leading-5 text-destructive">
+						<p role="alert" className="wd-caption text-critical">
 							{error}
 						</p>
 					) : null}
 				</div>
 
-				<DialogFooter className="border-t border-border px-5 py-3">
-					<Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+				<DialogFooter className="hairline-t border-wd-hairline px-5 py-3">
+					<Button type="button" variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>
 						Keep current interface
 					</Button>
 				</DialogFooter>
@@ -227,17 +226,17 @@ export function SessionInterfaceTransitionNotice({
 		return null;
 	}
 	return (
-		<div className="absolute left-1/2 top-3 z-20 flex w-[min(34rem,calc(100%-1.5rem))] -translate-x-1/2 items-start gap-2 rounded-lg border border-warning/30 bg-popover px-3 py-2.5 shadow-md">
-		<TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+		<div className="absolute left-1/2 top-3 z-20 flex w-[min(34rem,calc(100%-1.5rem))] -translate-x-1/2 items-start gap-2 rounded-lg bg-wd-raised px-3 py-2.5 shadow-(--shadow-overlay)">
+		<TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-caution" />
 		<div className="min-w-0 flex-1">
-			<strong className="block text-xs font-medium text-foreground">{phaseCopy[transition.phase]}</strong>
-			<p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+			<span className="wd-label block text-wd-primary">{phaseCopy[transition.phase]}</span>
+			<p className="wd-caption mt-0.5 text-wd-secondary">
 				{transition.errorDetail || "The original interface remains available. You can retry the switch."}
 			</p>
 		</div>
 		<button
 			type="button"
-			className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+			className="grid size-6 shrink-0 place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 			onClick={onDismiss}
 			aria-label="Dismiss interface switch message"
 		>

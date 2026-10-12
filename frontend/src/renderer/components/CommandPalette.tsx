@@ -1,6 +1,6 @@
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, CornerDownLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useCommandPaletteEnabled } from "../hooks/useCommandPaletteEnabled";
@@ -472,16 +472,16 @@ export function CommandPalette() {
 				}}
 			>
 				{view.mode !== "root" && (
-					<div className="flex items-center gap-2 border-b border-border px-3 py-2">
+					<div className="flex items-center gap-2 border-b border-wd-hairline [border-bottom-width:var(--stroke-hairline)] px-3 py-2">
 						<button
 							type="button"
 							onClick={() => requestDismiss("pop")}
-							className="grid size-10 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
+							className="grid size-8 place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 							aria-label={t("command.back")}
 						>
 							<ArrowLeft className="size-icon-base" aria-hidden="true" />
 						</button>
-						<span className="min-w-0 truncate rounded-md bg-surface px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+						<span className="min-w-0 truncate rounded-full bg-wd-inset px-2.5 py-0.5 text-xs font-medium text-wd-secondary">
 							{contextLabel}
 						</span>
 					</div>
@@ -490,13 +490,13 @@ export function CommandPalette() {
 				{view.mode === "new-task" ? (
 					<div onKeyDown={(event) => event.stopPropagation()}>
 						{pendingDismiss !== null && (
-							<div className="mx-3 mt-3 rounded-md border border-border bg-surface px-3 py-2 text-xs text-foreground">
-								<p className="text-muted-foreground">{t("command.discardDraft")}</p>
-								<div className="mt-2 flex justify-end gap-3">
-									<Button type="button" variant="footer" onClick={() => setPendingDismiss(null)}>
+							<div className="mx-3 mt-3 rounded-md bg-wd-inset px-4 py-3 text-sm text-wd-primary">
+								<p className="text-wd-secondary">{t("command.discardDraft")}</p>
+								<div className="mt-3 flex justify-end gap-2">
+									<Button type="button" size="sm" variant="ghost" onClick={() => setPendingDismiss(null)}>
 										{t("command.keepEditing")}
 									</Button>
-									<Button type="button" variant="footer" className="text-destructive" onClick={confirmDiscard}>
+									<Button type="button" size="sm" variant="critical" onClick={confirmDiscard}>
 										{t("command.discard")}
 									</Button>
 								</div>
@@ -538,7 +538,7 @@ export function CommandPalette() {
 							{error && (
 								<div
 									role="alert"
-									className="mx-1 mb-1 overflow-hidden rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs wrap-break-word text-destructive"
+									className="mx-2 mb-1 overflow-hidden rounded-md bg-critical-bg px-3 py-2 text-sm wrap-break-word text-critical"
 								>
 									{error}
 								</div>
@@ -557,13 +557,13 @@ export function CommandPalette() {
 											{Icon ? <Icon strokeWidth={1.75} aria-hidden="true" /> : null}
 											<span className="min-w-0 flex-1 truncate">{item.title}</span>
 											{pendingId === item.id ? (
-												<Loader2 className="ml-auto size-3.5 animate-spin text-[var(--color-text-command-muted)]" aria-hidden="true" />
+												<span className="ml-auto text-control text-wd-secondary">{t("command.opening")}</span>
 											) : item.disabled && item.disabledReason ? (
-												<span className="ml-auto text-control text-[var(--color-text-command-muted)]">
+												<span className="ml-auto text-control text-wd-tertiary">
 													{item.disabledReason}
 												</span>
 											) : item.subtitle ? (
-												<span className="ml-auto max-w-command-subtitle truncate text-control text-[var(--color-text-command-muted)]">
+												<span className="ml-auto max-w-command-subtitle truncate text-control text-wd-tertiary">
 													{item.subtitle}
 												</span>
 											) : null}
@@ -575,11 +575,14 @@ export function CommandPalette() {
 						</CommandList>
 						<CommandFooter aria-hidden="true">
 							<span className="inline-flex items-center gap-1.5">
-								<span>↑↓</span>
+								<span className="inline-flex items-center [&_svg]:size-3">
+									<ArrowUp aria-hidden="true" />
+									<ArrowDown aria-hidden="true" />
+								</span>
 								<span>{t("command.select")}</span>
 							</span>
 							<span className="inline-flex items-center gap-1.5">
-								<span>↵</span>
+								<CornerDownLeft aria-hidden="true" className="size-3" />
 								<span>{t("command.open")}</span>
 							</span>
 						</CommandFooter>

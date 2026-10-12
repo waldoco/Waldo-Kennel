@@ -7,7 +7,7 @@
  * preview and live data here.
  */
 
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ChatWorkspace } from "./ChatWorkspace";
 import { useSwitchAgentState } from "../../hooks/useSwitchAgent";
@@ -120,8 +120,9 @@ export function SessionChatSurface({
 	if (isLoading && !renderShellFallback) {
 		return (
 			<Centered>
-				<Loader2 aria-hidden="true" className="size-4 animate-spin text-muted-foreground" />
-				<span className="text-xs text-muted-foreground">Loading conversation…</span>
+				<span className="text-xs text-wd-secondary">
+					Reading this session&rsquo;s conversation history…
+				</span>
 			</Centered>
 		);
 	}
@@ -133,12 +134,12 @@ export function SessionChatSurface({
 	if (unavailable && !renderShellFallback) {
 		return (
 			<Centered>
-				<AlertTriangle aria-hidden="true" className="size-4 text-warning" />
-				<strong className="text-sm text-foreground">Conversation unavailable</strong>
-				<p className="max-w-sm text-center text-xs leading-relaxed text-muted-foreground">
+				<AlertTriangle aria-hidden="true" className="size-4 text-caution" />
+				<strong className="text-sm font-medium text-wd-primary">Conversation unavailable</strong>
+				<p className="max-w-sm text-center text-xs leading-relaxed text-wd-secondary">
 					{unavailable.message}
 				</p>
-				<p className="max-w-sm text-center text-xs leading-relaxed text-muted-foreground">
+				<p className="max-w-sm text-center text-xs leading-relaxed text-wd-secondary">
 					The worktree is untouched. Open a shell from the inspector to work in it directly.
 				</p>
 			</Centered>
@@ -148,8 +149,8 @@ export function SessionChatSurface({
 	if (error || !renderSnapshot) {
 		return (
 			<Centered>
-				<AlertTriangle aria-hidden="true" className="size-4 text-destructive" />
-				<p className="max-w-sm text-center text-xs leading-relaxed text-muted-foreground">
+				<AlertTriangle aria-hidden="true" className="size-4 text-critical" />
+				<p className="max-w-sm text-center text-xs leading-relaxed text-wd-secondary">
 					{error ?? "Could not load this conversation."}
 				</p>
 			</Centered>
@@ -277,7 +278,7 @@ function unavailableConversationSnapshot(session: WorkspaceSession): Conversatio
 
 function Centered({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="flex h-full flex-col items-center justify-center gap-2 bg-background px-6">
+		<div className="flex h-full flex-col items-center justify-center gap-2 bg-wd-canvas px-6">
 			{children}
 		</div>
 	);

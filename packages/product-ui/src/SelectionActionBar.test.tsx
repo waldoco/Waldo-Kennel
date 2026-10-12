@@ -39,7 +39,7 @@ describe("SelectionActionBar", () => {
 		);
 		const button = screen.getByRole("button", { name: "Delete" });
 		expect(button).toHaveAttribute("data-destructive", "true");
-		expect(button).toHaveClass("text-error");
+		expect(button).toHaveClass("text-critical");
 	});
 
 	it("respects a disabled action", () => {

@@ -38,9 +38,9 @@ export function SettingsPanel({
 			<div className="flex w-full max-w-(--size-settings-content-width) flex-col items-stretch gap-(--size-settings-section-gap) px-(--size-settings-panel-padding-x) pb-(--size-settings-panel-padding-bottom) pt-(--size-settings-panel-padding-top)">
 				<div className="flex shrink-0 items-start justify-between gap-4 self-stretch">
 					<div className="flex min-w-0 items-baseline gap-3">
-						<h1 className="text-settings-heading font-bold text-settings-title">{t("settings.title")}</h1>
+						<h1 className="wd-display-3 font-display font-normal text-wd-primary">{t("settings.title")}</h1>
 						{subtitle ? (
-							<span className="truncate font-mono text-md-sm text-settings-muted" title={subtitle}>
+							<span className="wd-data truncate text-wd-secondary" title={subtitle}>
 								{subtitle}
 							</span>
 						) : null}

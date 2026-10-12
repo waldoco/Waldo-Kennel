@@ -19,8 +19,8 @@ type ShellTerminalTabProps = {
 
 // One standalone-shell tab, shared by the session pane's tab strip (CenterPane)
 // and the standalone /terminals screen (ShellTerminalsView) so the two never
-// drift. Session-pane tabs use a connected treatment that visually continues
-// into xterm below; the standalone terminals screen keeps its compact pill.
+// drift. Both are Waldo pills: the selected tab sits on bg-selected (never a
+// coloured underline); the close control is a quiet round button.
 // The full title only becomes the hover tooltip when the strip truncates it.
 //
 // Renaming happens inline with the platform's native gesture: double-click on
@@ -105,17 +105,13 @@ export function ShellTerminalTab({
 	return (
 		<span
 			className={cn(
-				"group relative min-w-shell-tab-min shrink-0 items-center transition-colors",
+				"group relative min-w-shell-tab-min shrink-0 items-center rounded-full transition-colors duration-fast",
 				appearance === "connected"
-					? "grid w-shell-tab-connected grid-cols-[auto_minmax(0,1fr)_auto] self-stretch border-x border-transparent pl-2 pr-0"
-					: "inline-flex gap-1 rounded-md px-2 py-1",
-				appearance === "connected"
-					? isActive
-						? "border-border-strong bg-overlay text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground/80"
-						: "border-transparent text-passive hover:bg-interactive-hover/60 hover:text-foreground"
-					: isActive
-						? "bg-interactive-active"
-						: "hover:bg-interactive-hover/60",
+					? "grid h-control-md w-shell-tab-connected grid-cols-[auto_minmax(0,1fr)_auto] self-center pl-2.5 pr-0"
+					: "inline-flex gap-1 px-2.5 py-1",
+				isActive
+					? "bg-wd-selected text-wd-primary"
+					: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 			)}
 			{...containerRenameHandlers}
 		>
@@ -126,7 +122,7 @@ export function ShellTerminalTab({
 				<input
 					aria-label={t("terminal.rename", { title: shell.title })}
 					className={cn(
-						"rounded-sm border border-accent bg-background px-1 font-mono text-control font-semibold text-foreground shadow-sm outline-none ring-1 ring-accent",
+						"rounded-xs bg-wd-inset px-1 text-control font-medium text-wd-primary outline-2 outline-offset-0 outline-(--border-focus)",
 						appearance === "connected" ? "min-w-0 w-full text-left" : "min-w-flex-min max-w-shell-tab-max",
 					)}
 					onBlur={commit}
@@ -151,8 +147,7 @@ export function ShellTerminalTab({
 					className={cn(
 						"select-none truncate text-control transition-colors",
 						appearance === "connected" ? "min-w-0 w-full text-left" : "min-w-flex-min max-w-shell-tab-max",
-						appearance === "connected" ? "font-normal" : "font-mono font-semibold",
-						isActive ? "text-foreground" : "text-passive group-hover:text-foreground",
+						isActive ? "font-medium text-wd-primary" : "font-normal text-wd-secondary group-hover:text-wd-primary",
 					)}
 					role="tab"
 					tabIndex={isActive ? 0 : -1}
@@ -172,7 +167,7 @@ export function ShellTerminalTab({
 				aria-label={t("terminal.closeNamed", { title: shell.title })}
 				data-terminal-tab-action
 				className={cn(
-					"inline-flex h-control-sm shrink-0 items-center justify-center overflow-hidden rounded-sm text-passive transition-[width,margin,background,color,opacity] hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50",
+					"inline-flex h-control-sm shrink-0 items-center justify-center overflow-hidden rounded-full text-wd-tertiary transition-[width,margin,background,color,opacity] duration-fast hover:bg-wd-hover hover:text-wd-primary",
 					appearance === "connected"
 						? isActive
 							? "ml-1 mr-1 w-control-sm opacity-100"

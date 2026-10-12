@@ -67,14 +67,16 @@ describe("PRSummaryParts", () => {
 			"href",
 			"https://github.com/acme/repo/pull/7/checks",
 		);
-		expect(container.querySelector(".animate-status-pulse")).toBeInTheDocument();
+		// Running checks read as live (accent dot), never as a pulse.
+		expect(container.querySelector('[data-state-mark="live"]')).toBeInTheDocument();
+		expect(container.querySelector(".animate-status-pulse")).toBeNull();
 	});
 
 	it("optically centers the primary status marker with its text line", () => {
 		const { container } = render(<PRCardStatusSummary pr={summary()} />);
 
-		const marker = container.querySelector(".size-dot-sm");
-		expect(marker).toHaveClass("size-dot-sm");
+		const marker = container.querySelector("[data-pr-status-mark]");
+		expect(marker).toHaveClass("h-4");
 		expect(marker).not.toHaveClass("mt-1");
 	});
 

@@ -119,8 +119,10 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 						: "mission.attention.needsInput") satisfies MessageKey,
 			),
 			count: counts[kind],
-			className: kind === "needs_input" ? "text-status-in-review border-status-in-review/40" : "text-status-needs-you border-status-needs-you/40",
-			indicatorClassName: kind === "needs_input" ? "bg-status-in-review" : "bg-status-needs-you",
+			// Each typed question is the owner's next move: one Spot dot, the
+			// word in ink, a hairline pill. Kinds stay separate by word and icon.
+			className: "border-wd-hairline text-wd-primary",
+			indicatorClassName: "bg-spot",
 			icon: (() => {
 				const Icon = ATTENTION_ICONS[kind];
 				return <Icon aria-hidden="true" />;
@@ -155,12 +157,12 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 	if (missionQuery.failure && !displayMission) {
 		return (
 			<div
-				className="rounded-group hairline border-warning/40 bg-warning/5 px-4.5 py-3.5"
+				className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4"
 				data-testid="mission-list-error"
 			>
-				<h3 className="text-sm font-medium">{t("mission.list.error.title" satisfies MessageKey)}</h3>
-				<p className="mt-1 text-muted-foreground text-sm">{missionQuery.failure.message}</p>
-				<Button className="mt-2" data-testid="mission-list-retry" onClick={missionQuery.refetch} size="sm" variant="outline">
+				<h3 className="text-sm font-medium text-wd-primary">{t("mission.list.error.title" satisfies MessageKey)}</h3>
+				<p className="mt-1 text-sm text-wd-secondary">{missionQuery.failure.message}</p>
+				<Button className="mt-3" data-testid="mission-list-retry" onClick={missionQuery.refetch} size="sm" variant="secondary">
 					{t("mission.list.retry" satisfies MessageKey)}
 				</Button>
 			</div>
@@ -174,14 +176,14 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 	if (!displayMission && missionQuery.isLoading) {
 		if (planWorkUnits && planWorkUnits.length > 0) {
 			return (
-				<div className="rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="mission-list-plan-pending">
-					<h3 className="text-sm font-medium">{t("mission.list.planPending.title" satisfies MessageKey)}</h3>
-					<p className="mt-1 text-muted-foreground text-sm">{t("mission.list.planPending.body" satisfies MessageKey)}</p>
+				<div className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="mission-list-plan-pending">
+					<h3 className="text-sm font-medium text-wd-primary">{t("mission.list.planPending.title" satisfies MessageKey)}</h3>
+					<p className="mt-1 text-sm text-wd-secondary">{t("mission.list.planPending.body" satisfies MessageKey)}</p>
 				</div>
 			);
 		}
 		return (
-			<p className="text-muted-foreground text-sm" data-testid="mission-list-loading">
+			<p className="text-sm text-wd-secondary" data-testid="mission-list-loading">
 				{t("mission.list.loading" satisfies MessageKey)}
 			</p>
 		);
@@ -191,9 +193,9 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 
 	if (graph.nodes.length === 0) {
 		return (
-			<div className="rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="mission-list-empty">
-				<h3 className="text-sm font-medium">{t("mission.list.empty.title" satisfies MessageKey)}</h3>
-				<p className="mt-1 text-muted-foreground text-sm">{t("mission.list.empty.body" satisfies MessageKey)}</p>
+			<div className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="mission-list-empty">
+				<h3 className="text-sm font-medium text-wd-primary">{t("mission.list.empty.title" satisfies MessageKey)}</h3>
+				<p className="mt-1 text-sm text-wd-secondary">{t("mission.list.empty.body" satisfies MessageKey)}</p>
 			</div>
 		);
 	}
@@ -205,22 +207,22 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 			</span>
 
 			{frozen && (
-				<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-list-stale-banner">
-					<p className="text-muted-foreground text-xs">
+				<div className="flex items-center justify-between gap-3 rounded-md bg-wd-inset px-3 py-2" data-testid="mission-list-stale-banner">
+					<p className="text-xs text-wd-primary">
 						{t("mission.list.stale.banner" satisfies MessageKey, { time: displayMission.updatedAt })}
 					</p>
-					<Button data-testid="mission-list-refresh" onClick={missionQuery.refetch} size="sm" variant="outline">
+					<Button data-testid="mission-list-refresh" onClick={missionQuery.refetch} size="sm" variant="secondary">
 						{t("mission.list.stale.refresh" satisfies MessageKey)}
 					</Button>
 				</div>
 			)}
 
 			{refreshFailed && (
-				<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-list-refresh-failed-banner">
-					<p className="text-muted-foreground text-xs">
+				<div className="flex items-center justify-between gap-3 rounded-md bg-wd-inset px-3 py-2" data-testid="mission-list-refresh-failed-banner">
+					<p className="text-xs text-wd-primary">
 						{t("mission.list.refreshFailed.banner" satisfies MessageKey, { message: missionQuery.failure?.message ?? "" })}
 					</p>
-					<Button data-testid="mission-list-refresh-failed-retry" onClick={missionQuery.refetch} size="sm" variant="outline">
+					<Button data-testid="mission-list-refresh-failed-retry" onClick={missionQuery.refetch} size="sm" variant="secondary">
 						{t("mission.list.retry" satisfies MessageKey)}
 					</Button>
 				</div>
@@ -231,7 +233,7 @@ export function MissionWorkUnitList({ missionQuery, planApproved, planWorkUnits,
 			<div className="flex min-h-0 flex-1 gap-3">
 				<div
 					aria-label={t("mission.list.heading" satisfies MessageKey)}
-					className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto"
+					className="flex min-h-0 flex-1 flex-col self-start overflow-y-auto rounded-lg hairline border-wd-hairline bg-wd-surface max-h-full"
 					data-testid="mission-list-listbox"
 					onKeyDown={handleRowKeyNavigation}
 					role="listbox"

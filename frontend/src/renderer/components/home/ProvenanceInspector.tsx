@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { HomeFixtureState } from "../../lib/home-fixture";
+import { Button } from "../ui/button";
+import { HomeFacts } from "./HomeCards";
 
 export function ProvenanceInspector({
   fixture,
@@ -35,56 +37,36 @@ export function ProvenanceInspector({
   };
   return (
     <>
-      <button
-        className="text-xs font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-        onClick={inspect}
-        ref={triggerRef}
-        type="button"
-      >
+      <Button onClick={inspect} ref={triggerRef} size="sm" type="button" variant="ghost">
         {t("home.visual.provenance.inspect")}
-      </button>
+      </Button>
       {open ? (
         <div
           aria-label={t("home.visual.provenance.label")}
-          className="mt-4 rounded-lg border border-border bg-raised p-4"
+          className="ml-3 mt-2 flex flex-col gap-3 rounded-md bg-wd-inset p-3"
           onKeyDown={onDialogKeyDown}
           ref={dialogRef}
           role="dialog"
           tabIndex={-1}
         >
-          <h2 className="text-base font-semibold text-foreground">
+          <h2 className="wd-label text-wd-primary">
             {t("home.visual.provenance.label")}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          <p className="wd-body-s text-wd-secondary">
             {t("home.visual.provenance.fixtureDescription", { sourceLabel: fixture.sourceLabel })}
           </p>
-          <dl className="mt-4 space-y-3 border-t border-border pt-4 text-xs">
-            <div>
-              <dt className="font-medium text-muted-foreground">{t("home.visual.provenance.originalSource")}</dt>
-              <dd className="mt-1 leading-relaxed text-foreground">
-                {t("home.visual.provenance.originalStatement")}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium text-muted-foreground">{t("home.visual.knownGap")}</dt>
-              <dd className="mt-1 leading-relaxed text-warning">
-                {t("home.visual.provenance.gapDescription")}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium text-muted-foreground">{t("home.visual.provenance.boundary")}</dt>
-              <dd className="mt-1 leading-relaxed text-foreground">
-                {t("home.visual.provenance.boundaryDescription")}
-              </dd>
-            </div>
-          </dl>
-          <button
-            className="mt-4 rounded-md bg-interactive-active px-3 py-2 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-            onClick={returnToHome}
-            type="button"
-          >
-            {t("home.visual.provenance.returnToCatchUp")}
-          </button>
+          <HomeFacts
+            facts={[
+              { label: t("home.visual.provenance.originalSource"), value: t("home.visual.provenance.originalStatement") },
+              { label: t("home.visual.knownGap"), tone: "caution", value: t("home.visual.provenance.gapDescription") },
+              { label: t("home.visual.provenance.boundary"), value: t("home.visual.provenance.boundaryDescription") },
+            ]}
+          />
+          <div>
+            <Button onClick={returnToHome} size="sm" type="button" variant="secondary">
+              {t("home.visual.provenance.returnToCatchUp")}
+            </Button>
+          </div>
         </div>
       ) : null}
     </>

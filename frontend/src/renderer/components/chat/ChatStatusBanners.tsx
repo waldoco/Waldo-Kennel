@@ -14,7 +14,6 @@
 
 import { memo } from "react";
 import { Hourglass, KeyRound, Plug, RefreshCw, TriangleAlert } from "lucide-react";
-import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import type {
 	ConversationAccount,
@@ -47,23 +46,23 @@ export const ReauthBanner = memo(function ReauthBanner({
 	return (
 		<div
 			role="alert"
-			className="flex shrink-0 items-start gap-2.5 border-b border-destructive/40 bg-destructive/10 px-4 py-3"
+			className="flex shrink-0 items-start gap-3 hairline-b border-wd-hairline bg-critical-bg px-4 py-3"
 		>
-			<KeyRound aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
+			<KeyRound aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-critical" />
 			<div className="flex min-w-0 flex-col gap-1">
-				<strong className="text-xs font-semibold text-destructive">
+				<strong className="text-xs font-medium text-wd-primary">
 					Sign in again to keep going
 				</strong>
-				<p className="text-[11px] leading-relaxed text-foreground">
+				<p className="text-[11px] leading-relaxed text-wd-primary">
 					{account.reauthReason ??
 						"The provider rejected this session's credentials."}{" "}
 					Nothing will run until it is fixed, and the worktree is untouched.
 				</p>
-				<p className="text-[11px] leading-relaxed text-muted-foreground">
+				<p className="text-[11px] leading-relaxed text-wd-secondary">
 					{command ? (
 						<>
 							Run{" "}
-							<code className="rounded bg-background px-1 py-0.5 font-mono text-[10.5px] text-foreground">
+							<code className="rounded-xs bg-wd-inset px-1 py-0.5 font-mono text-[10.5px] text-wd-primary">
 								{command}
 							</code>{" "}
 							in a terminal, then send your message again. Kennel holds no credentials of its own.
@@ -135,14 +134,14 @@ export const ThreadStateBanner = memo(function ThreadStateBanner({
 		<div
 			role="alert"
 			aria-atomic="true"
-			className="flex shrink-0 items-start gap-2.5 border-b border-border bg-surface px-4 py-2.5"
+			className="flex shrink-0 items-start gap-3 hairline-b border-wd-hairline bg-caution-bg px-4 py-2.5"
 		>
-			<TriangleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+			<TriangleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-caution" />
 			<div className="flex min-w-0 flex-col gap-0.5">
-				<strong className="text-xs font-medium text-warning">{copy.title}</strong>
-				<span className="text-[11px] leading-snug text-muted-foreground">{copy.body}</span>
+				<strong className="text-xs font-medium text-wd-primary">{copy.title}</strong>
+				<span className="text-[11px] leading-snug text-wd-secondary">{copy.body}</span>
 				{threadState.waitingOn?.length ? (
-					<span className="text-[11px] leading-snug text-muted-foreground">
+					<span className="text-[11px] leading-snug text-wd-secondary">
 						Waiting on: {threadState.waitingOn.join(", ")}
 					</span>
 				) : null}
@@ -176,23 +175,23 @@ export const GovernedDispatchBlockedBanner = memo(function GovernedDispatchBlock
 		<div
 			role="alert"
 			aria-atomic="true"
-			className="flex shrink-0 items-start gap-2.5 border-b border-warning/40 bg-warning/10 px-4 py-2.5"
+			className="flex shrink-0 items-start gap-3 hairline-b border-wd-hairline bg-caution-bg px-4 py-2.5"
 		>
-			<Hourglass aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+			<Hourglass aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-caution" />
 			<div className="flex min-w-0 flex-col gap-1">
-				<strong className="text-xs font-medium text-warning">
+				<strong className="text-xs font-medium text-wd-primary">
 					Nothing else will send until the following settle
 				</strong>
 				<ul className="flex flex-col gap-0.5">
 					{turnBlocks.map((block) => (
-						<li key={`turn-${block.turnId}`} className="text-[11px] leading-snug text-muted-foreground">
-							Turn <span className="font-mono text-foreground">{block.turnId}</span>
+						<li key={`turn-${block.turnId}`} className="text-[11px] leading-snug text-wd-secondary">
+							Turn <span className="wd-data text-[11px] text-wd-primary">{block.turnId}</span>
 							{" — "}
 							{governedBlockCopy("turn", block.state, block.quiescence)}
 						</li>
 					))}
 					{controlBlocks.map((block) => (
-						<li key={`control-${block.id}`} className="text-[11px] leading-snug text-muted-foreground">
+						<li key={`control-${block.id}`} className="text-[11px] leading-snug text-wd-secondary">
 							{block.kind.charAt(0).toUpperCase() + block.kind.slice(1)}
 							{" — "}
 							{governedBlockCopy(block.kind, block.state, block.quiescence)}
@@ -235,24 +234,24 @@ export const McpServerBanner = memo(function McpServerBanner({
 		<div
 			role="status"
 			aria-atomic="true"
-			className="flex shrink-0 items-start gap-2.5 border-b border-border bg-surface px-4 py-2.5"
+			className="flex shrink-0 items-start gap-3 hairline-b border-wd-hairline bg-caution-bg px-4 py-2.5"
 		>
-			<Plug aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+			<Plug aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-caution" />
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
-				<strong className="text-xs font-medium text-warning">
+				<strong className="text-xs font-medium text-wd-primary">
 					{servers.length === 1
 						? "A tool server did not start"
 						: `${servers.length} tool servers did not start`}
 				</strong>
-				<span className="text-[11px] leading-snug text-muted-foreground">
+				<span className="text-[11px] leading-snug text-wd-secondary">
 					The agent has none of their tools and will not say so — it works around them
 					silently.
 				</span>
 				<ul className="flex flex-col gap-0.5">
 					{servers.map((server) => (
 						<li key={server.name} className="text-[11px] leading-snug">
-							<span className="font-mono text-foreground">{server.name}</span>
-							<span className="text-muted-foreground">
+							<span className="font-mono text-wd-primary">{server.name}</span>
+							<span className="text-wd-secondary">
 								{" · "}
 								{server.status}
 								{/* The classification first, then the raw text: one is actionable,
@@ -260,14 +259,14 @@ export const McpServerBanner = memo(function McpServerBanner({
 								{server.failureReason ? ` · ${server.failureReason}` : ""}
 							</span>
 							{server.error ? (
-								<span className="block truncate text-[10.5px] text-muted-foreground/70" title={server.error}>
+								<span className="block truncate text-[10.5px] text-wd-tertiary" title={server.error}>
 									{server.error}
 								</span>
 							) : null}
 						</li>
 					))}
 				</ul>
-				{error ? <span className="text-[11px] text-destructive">{error}</span> : null}
+				{error ? <span className="text-[11px] text-critical">{error}</span> : null}
 			</div>
 			{onReload ? (
 				<Button
@@ -283,11 +282,8 @@ export const McpServerBanner = memo(function McpServerBanner({
 					}
 					className="shrink-0 gap-1.5"
 				>
-					<RefreshCw
-						aria-hidden="true"
-						className={cn("size-3", reloading && "animate-spin")}
-					/>
-					{reloading ? "Reloading…" : "Reload"}
+					<RefreshCw aria-hidden="true" className="size-3" />
+					{reloading ? "Restarting tool servers" : "Reload"}
 				</Button>
 			) : null}
 		</div>

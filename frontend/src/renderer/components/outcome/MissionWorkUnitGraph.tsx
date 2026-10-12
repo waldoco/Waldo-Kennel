@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Minus, Plus } from "lucide-react";
+import { StateLabel, type StateTone } from "@pin4sf/kennel-product-ui";
+import { ArrowRight, Maximize2, Minus, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { components } from "../../../api/schema";
@@ -32,13 +33,16 @@ type Node = {
 	entry?: ScheduleWorkUnit;
 };
 
-const STATE_TONE: Record<string, string> = {
-	proven: "border-l-status-ready",
-	executing: "border-l-status-working",
-	paused: "border-l-status-needs-you",
-	retryable: "border-l-status-needs-you",
-	blocked: "border-l-border-strong",
-	runnable: "border-l-accent",
+// Schedule state as Waldo's typed state vocabulary: the word is always
+// written, the mark is the shape cue, and only Running is the live accent.
+// No coloured rails.
+const STATE_TONE: Record<string, StateTone> = {
+	proven: "good",
+	executing: "live",
+	paused: "neutral",
+	retryable: "caution",
+	blocked: "neutral",
+	runnable: "good",
 };
 
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.15, 1.3] as const;
@@ -126,32 +130,32 @@ export function MissionWorkUnitGraph({
 		<section className="flex min-w-0 flex-col gap-2" data-testid="mission-work-unit-graph">
 			<div className="flex flex-wrap items-start justify-between gap-2">
 				<div className="min-w-0">
-					<h3 className="text-sm font-medium text-foreground">{t("outcome.missionGraph.heading")}</h3>
-					<p className="text-2xs leading-body text-passive">
+					<h3 className="text-sm font-medium text-wd-primary">{t("outcome.missionGraph.heading")}</h3>
+					<p className="text-xs leading-body text-wd-secondary">
 						{proposedOnly ? t("outcome.missionGraph.proposedNote") : t("outcome.missionGraph.serialNote")}
 					</p>
 				</div>
-				<div aria-label={t("outcome.missionGraph.zoomGroup")} className="flex shrink-0 items-center gap-1" role="group">
+				<div aria-label={t("outcome.missionGraph.zoomGroup")} className="flex shrink-0 items-center gap-0.5" role="group">
 					<GraphControl
 						disabled={zoomIndex <= 0}
 						label={t("outcome.missionGraph.zoomOut")}
 						onClick={() => setZoomIndex((index) => Math.max(index - 1, 0))}
 					>
-						<Minus aria-hidden="true" className="size-icon-2xs" />
+						<Minus aria-hidden="true" className="size-3.5" />
 					</GraphControl>
 					<GraphControl
 						disabled={zoomIndex >= ZOOM_STEPS.length - 1}
 						label={t("outcome.missionGraph.zoomIn")}
 						onClick={() => setZoomIndex((index) => Math.min(index + 1, ZOOM_STEPS.length - 1))}
 					>
-						<Plus aria-hidden="true" className="size-icon-2xs" />
+						<Plus aria-hidden="true" className="size-3.5" />
 					</GraphControl>
 					<GraphControl
 						disabled={zoomIndex === DEFAULT_ZOOM_INDEX}
 						label={t("outcome.missionGraph.fit")}
 						onClick={() => setZoomIndex(DEFAULT_ZOOM_INDEX)}
 					>
-						<Maximize2 aria-hidden="true" className="size-icon-2xs" />
+						<Maximize2 aria-hidden="true" className="size-3.5" />
 					</GraphControl>
 				</div>
 			</div>
@@ -159,20 +163,20 @@ export function MissionWorkUnitGraph({
 			{/* Nothing runnable is always explained, never left as a spinner. The
 			    reason is a daemon fact; this only renders it. */}
 			{schedule?.noRunnableReason ? (
-				<p className="text-2xs leading-body text-passive" data-testid="mission-graph-no-runnable">
+				<p className="text-xs leading-body text-wd-secondary" data-testid="mission-graph-no-runnable">
 					{t(`outcome.missionGraph.noRunnable.${schedule.noRunnableReason}`)}
 				</p>
 			) : null}
 
 			{edges.length > 0 && (
-				<section aria-label={t("outcome.missionGraph.edgesAria")} className="rounded-md border border-border bg-muted/20 p-2" data-testid="mission-graph-edges">
-					<h4 className="text-2xs font-medium uppercase tracking-wide text-passive">{t("outcome.missionGraph.edgesHeading")}</h4>
-					<div className="mt-1 space-y-1">
+				<section aria-label={t("outcome.missionGraph.edgesAria")} className="rounded-md bg-wd-inset p-3" data-testid="mission-graph-edges">
+					<h4 className="text-xs font-medium text-wd-secondary">{t("outcome.missionGraph.edgesHeading")}</h4>
+					<div className="mt-1.5 space-y-1">
 						{edges.map(({ from, to }) => (
-							<div className="flex min-w-0 items-center gap-2 text-2xs" data-from={from} data-testid="mission-graph-edge" data-to={to} key={`${from}:${to}`}>
-								<span className="min-w-0 flex-1 truncate">{titleOf.get(from) ?? t("outcome.missionGraph.unknownDependency")}</span>
-								<span aria-hidden="true" className="text-passive">→</span>
-								<span className="min-w-0 flex-1 truncate font-medium">{titleOf.get(to) ?? t("outcome.missionGraph.unknownWorkUnit")}</span>
+							<div className="flex min-w-0 items-center gap-2 text-xs" data-from={from} data-testid="mission-graph-edge" data-to={to} key={`${from}:${to}`}>
+								<span className="min-w-0 flex-1 truncate text-wd-secondary">{titleOf.get(from) ?? t("outcome.missionGraph.unknownDependency")}</span>
+								<ArrowRight aria-hidden="true" className="size-3 shrink-0 text-wd-tertiary" />
+								<span className="min-w-0 flex-1 truncate font-medium text-wd-primary">{titleOf.get(to) ?? t("outcome.missionGraph.unknownWorkUnit")}</span>
 							</div>
 						))}
 					</div>
@@ -189,7 +193,7 @@ export function MissionWorkUnitGraph({
 			>
 				{levels.map((level, index) => (
 					<li className="flex flex-col gap-1.5" key={index}>
-						<p className="text-2xs uppercase tracking-wide text-passive">
+						<p className="text-xs text-wd-secondary">
 							{index === 0
 								? t("outcome.missionGraph.startsFirst")
 								: t("outcome.missionGraph.step", { n: index + 1 })}
@@ -234,9 +238,10 @@ function GraphControl({
 		<button
 			aria-label={label}
 			className={cn(
-				"grid size-6 place-items-center rounded-md hairline border-border text-muted-foreground",
-				"transition-colors motion-reduce:transition-none hover:bg-interactive-hover hover:text-foreground",
-				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+				// Quiet icon button: no plate until hover, pill shape.
+				"grid size-7 place-items-center rounded-full text-wd-secondary",
+				"transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover hover:text-wd-primary",
+				"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
 				"disabled:opacity-40 disabled:hover:bg-transparent",
 			)}
 			disabled={disabled}
@@ -296,11 +301,12 @@ function GraphNode({
 				detail: reason ?? "",
 			})}
 			className={cn(
-				"flex min-w-0 max-w-72 flex-col gap-0.5 rounded-md hairline border-border bg-card px-3 py-2 border-l-2 text-left",
-				"transition-colors motion-reduce:transition-none hover:bg-interactive-hover",
-				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-				STATE_TONE[state ?? ""] ?? "border-l-border",
-				selected && "bg-interactive-hover ring-1 ring-ring/40",
+				// A small hairline card. Selection is the quiet selected fill with
+				// an ink hairline - never a coloured glow or rail.
+				"flex min-w-0 max-w-72 flex-col gap-1 rounded-md hairline border-wd-hairline bg-wd-surface px-3 py-2 text-left",
+				"transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover",
+				"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
+				selected && "border-wd-strong bg-wd-selected hover:bg-wd-selected",
 			)}
 			data-state={state ?? "proposed"}
 			data-testid="mission-graph-node"
@@ -321,16 +327,16 @@ function GraphNode({
 			type="button"
 		>
 			<span className="flex min-w-0 items-baseline gap-2">
-				<span className="min-w-0 flex-1 truncate text-xs text-foreground">{node.unit.title}</span>
-				<span className="shrink-0 text-2xs text-passive">{stateLabel}</span>
+				<span className="min-w-0 flex-1 truncate text-sm font-medium text-wd-primary">{node.unit.title}</span>
+				<StateLabel className="shrink-0 text-xs" label={stateLabel} tone={STATE_TONE[state ?? ""] ?? "neutral"} />
 			</span>
-			{reason ? <span className="text-2xs leading-body text-warning">{reason}</span> : null}
+			{reason ? <span className="text-xs leading-body text-wd-secondary">{reason}</span> : null}
 			{criteria.length > 0 ? (
-				<span className="line-clamp-2 text-2xs leading-body text-passive">{criteria.join(" · ")}</span>
+				<span className="line-clamp-2 text-xs leading-body text-wd-tertiary">{criteria.join(" · ")}</span>
 			) : null}
 			{/* Exact approved execution semantics. provider_default is shown as
 			    that semantic rather than invented as a model name. */}
-			<span className="text-2xs text-passive">
+			<span className="text-xs text-wd-tertiary">
 				{node.unit.provider
 					? t("outcome.missionGraph.binding", {
 							provider: node.unit.provider,

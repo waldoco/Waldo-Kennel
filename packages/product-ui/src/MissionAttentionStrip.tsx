@@ -1,18 +1,23 @@
 import type { ReactNode } from "react";
-import { cn } from "./utils";
+import { StateMark } from "./StateBadge";
 
 /**
  * The Mission-wide Needs You summary: approval, choice, and input are counted
  * separately (never collapsed into one "attention" total), because they are
  * different typed questions with different owner actions.
+ *
+ * Each kind reads as a quiet inline state — the Needs you dot, the kind in
+ * primary text, the count in tabular figures — never a coloured pill.
  */
 export type MissionAttentionCount = {
 	kind: string;
 	label: string;
 	count: number;
-	className: string;
-	indicatorClassName: string;
-	icon: ReactNode;
+	/** Legacy tone classes from older hosts; the strip now carries the
+	 *  needs-you tone itself and ignores them. */
+	className?: string;
+	indicatorClassName?: string;
+	icon?: ReactNode;
 };
 
 export type MissionAttentionStripProps = {
@@ -26,29 +31,22 @@ export type MissionAttentionStripProps = {
 export function MissionAttentionStrip({ items, announcement }: MissionAttentionStripProps) {
 	const visible = items.filter((item) => item.count > 0);
 	return (
-		<div className="flex flex-wrap items-center gap-2" data-testid="mission-attention-strip">
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-1" data-testid="mission-attention-strip">
 			<span aria-live="polite" className="sr-only">
 				{announcement ?? ""}
 			</span>
-			{visible.length === 0 ? null : (
-				<>
-					{visible.map((item) => (
-						<span
-							className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium", item.className)}
-							data-mission-attention-kind={item.kind}
-							key={item.kind}
-						>
-							<span aria-hidden="true" className={cn("size-dot-sm shrink-0 rounded-full", item.indicatorClassName)} />
-							<span aria-hidden="true" className="inline-flex size-3.5 shrink-0 items-center [&>svg]:size-3.5">
-								{item.icon}
-							</span>
-							<span>
-								{item.label} · {item.count}
-							</span>
-						</span>
-					))}
-				</>
-			)}
+			{visible.map((item) => (
+				<span
+					className="inline-flex min-w-0 items-center gap-1.5 text-sm text-wd-primary"
+					data-mission-attention-kind={item.kind}
+					data-state-tone="needsYou"
+					key={item.kind}
+				>
+					<StateMark tone="needsYou" />
+					<span className="truncate">{item.label}</span>
+					<span className="tabular-nums text-wd-tertiary">{item.count}</span>
+				</span>
+			))}
 		</div>
 	);
 }

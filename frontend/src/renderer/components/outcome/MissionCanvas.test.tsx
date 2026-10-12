@@ -316,7 +316,7 @@ describe("MissionCanvas interactions", () => {
 		// The RF node wrapper is the single focus owner.
 		nodeEl("wu-schema").focus();
 		expect(focusedId()).toBe("wu-schema");
-		expect(nodeEl("wu-schema")).toHaveClass("focus-visible:ring-2", "focus-visible:ring-ring", "focus-visible:ring-offset-2");
+		expect(nodeEl("wu-schema")).toHaveClass("focus-visible:ring-2", "focus-visible:ring-(--border-focus)", "focus-visible:ring-offset-2");
 
 		// Right crosses into the successor layer; layer 0 holds exactly one node,
 		// so only the landing sibling is topology-dependent.

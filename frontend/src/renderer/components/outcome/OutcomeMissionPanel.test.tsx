@@ -99,24 +99,22 @@ it("keeps tab navigation working around the drawer", async () => {
 	expect(screen.getByTestId("mission-tab-plan")).toHaveAttribute("aria-pressed", "true");
 });
 
-it("carries the lane's canon color into the mission state readout", () => {
+it("carries the lane's state tone into the mission state readout", () => {
 	const cases = [
-		["define", "Define", "text-status-needs-you", "bg-status-needs-you"],
-		["needsYou", "Needs you", "text-status-in-review", "bg-status-in-review"],
-		["review", "Ready for review", "text-status-ready", "bg-status-ready"],
-		["observe", "In progress", "text-status-working", "bg-status-working"],
-		["accepted", "Accepted", "text-muted-foreground", "bg-muted-foreground"],
-		// Unknown states honestly wear the Needs you tone, matching the board.
-		["unavailable", "Status unavailable", "text-status-in-review", "bg-status-in-review"],
+		["define", "Define", "needsYou"],
+		["needsYou", "Needs you", "needsYou"],
+		["review", "Ready for review", "good"],
+		["observe", "In progress", "live"],
+		["accepted", "Accepted", "neutral"],
+		// Unknown states are stated as unknown, never as a decision.
+		["unavailable", "Status unavailable", "neutral"],
 	] as const;
-	for (const [lane, label, textTone, dotTone] of cases) {
+	for (const [lane, label, tone] of cases) {
 		attentionMock.lane = lane;
 		const { unmount } = renderPanel();
 		const glance = within(screen.getByTestId("mission-glance"));
-		const state = glance.getByText(label);
-		expect(state.className).toContain(textTone);
-		const dot = state.querySelector("span[aria-hidden]");
-		expect(dot?.className).toContain(dotTone);
+		const state = glance.getByText(label).closest("[data-state-tone]");
+		expect(state).toHaveAttribute("data-state-tone", tone);
 		unmount();
 	}
 	attentionMock.lane = "define";

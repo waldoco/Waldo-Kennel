@@ -2,9 +2,7 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
-  Circle,
   Eye,
-  LoaderCircle,
   LockKeyhole,
   MessageCircle,
   Paperclip,
@@ -16,12 +14,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import waldoMark from "../../../../assets/waldo-mark.svg";
 import { cn } from "../../lib/utils";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import {
   useWaldoRail,
   type WaldoPreviewEpisode,
   type WaldoPreviewMode,
 } from "./WaldoRailContext";
-import { ProjectWaldoConversation } from "./ProjectWaldoConversation";
+import { NeedsYouBadge, ProjectWaldoConversation } from "./ProjectWaldoConversation";
 
 type WaldoRailProps = {
   contextLabel: string;
@@ -38,6 +38,14 @@ type WaldoRailProps = {
 };
 
 const previewStepStates = ["evidenced", "evidenced", "active", "blocked"] as const;
+
+// Waldo card anatomy: surface, 0.6px hairline, radius-lg, no shadow.
+const cardClass = "flex flex-col gap-3 rounded-lg hairline border-wd-hairline bg-wd-surface p-4";
+// Inset block: bg-inset, radius-md, no border.
+const insetClass = "rounded-md bg-wd-inset p-3";
+// Segmented track (inset) with an ink thumb for the selected segment.
+const segmentClass =
+  "inline-flex items-center justify-center gap-1.5 rounded-full px-3 wd-label text-wd-secondary transition-colors duration-fast ease-out hover:text-wd-primary motion-reduce:transition-none aria-selected:bg-wd-inverse aria-selected:text-wd-on-inverse aria-selected:hover:text-wd-on-inverse";
 
 export function WaldoRail({
   contextLabel,
@@ -94,30 +102,34 @@ export function WaldoRail({
     setContextDetached(false);
     setResultExpanded(false);
   };
+  const surfaceLabel = projectId
+    ? t("waldo.project.badge")
+    : previewEnabled
+      ? t("waldo.rail.previewBadge")
+      : t("waldo.rail.localBadge");
 
   return (
     <section
       aria-label={t("waldo.rail.aria")}
       className={cn(
-        "waldo-rail flex min-h-0 min-w-0 flex-1 flex-col bg-background",
-        presentation === "destination" && "rounded-2xl border border-border shadow-xs",
+        "waldo-rail flex min-h-0 min-w-0 flex-1 flex-col bg-wd-surface text-wd-primary",
+        presentation === "destination" && "rounded-lg hairline border-wd-hairline",
       )}
       id="waldo-rail"
     >
-      <header className="shrink-0 border-b border-border px-4 pb-3 pt-3.5">
+      <header className="shrink-0 hairline-b border-wd-hairline px-4 pb-3 pt-3">
         {onReturnToInspector ? (
-          <div aria-label={t("waldo.rail.workTabs")} className="mb-3 flex items-center gap-1" role="tablist">
-            <button
-              aria-selected="true"
-              className="rounded-md bg-interactive-active px-2.5 py-1 text-xs font-medium text-foreground"
-              role="tab"
-              type="button"
-            >
+          <div
+            aria-label={t("waldo.rail.workTabs")}
+            className="mb-3 inline-flex items-center gap-0.5 rounded-full bg-wd-inset p-0.5"
+            role="tablist"
+          >
+            <button aria-selected="true" className={cn(segmentClass, "h-7")} role="tab" type="button">
               {t("waldo.rail.identity")}
             </button>
             <button
               aria-selected="false"
-              className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-interactive-hover hover:text-foreground"
+              className={cn(segmentClass, "h-7")}
               onClick={onReturnToInspector}
               role="tab"
               type="button"
@@ -126,25 +138,18 @@ export function WaldoRail({
             </button>
           </div>
         ) : null}
-        <div className="flex items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-border bg-raised text-foreground shadow-xs">
-            <img alt="" aria-hidden="true" className="size-4.5 object-contain" data-brand="waldo" src={waldoMark} />
-          </span>
+        <div className="flex items-center gap-3">
+          <img alt="" aria-hidden="true" className="size-6 shrink-0 object-contain" data-brand="waldo" src={waldoMark} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-foreground">{t("waldo.rail.identity")}</h2>
-              <span className="rounded-full border border-border px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
-                {projectId ? t("waldo.project.badge") : previewEnabled ? t("waldo.rail.previewBadge") : t("waldo.rail.localBadge")}
-              </span>
-            </div>
-            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-              {t("waldo.rail.relationship")}
+            <h2 className="wd-label-l text-wd-primary">{t("waldo.rail.identity")}</h2>
+            <p className="truncate wd-caption text-wd-tertiary">
+              {surfaceLabel} · {contextLabel}
             </p>
           </div>
           {presentation === "rail" && onClose ? (
             <button
               aria-label={t("waldo.rail.close")}
-              className="waldo-rail-close inline-flex size-8 shrink-0 items-center justify-center gap-1.5 rounded-lg text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+              className="waldo-rail-close inline-flex size-9 shrink-0 items-center justify-center gap-1.5 rounded-full text-wd-secondary transition-colors duration-fast ease-out hover:bg-wd-hover hover:text-wd-primary active:bg-wd-pressed motion-reduce:transition-none"
               onClick={onClose}
               type="button"
             >
@@ -153,63 +158,38 @@ export function WaldoRail({
             </button>
           ) : null}
         </div>
-        {!previewEnabled ? (
-          <div className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-raised px-2.5 py-1 text-xs text-muted-foreground">
-            <span className="shrink-0 font-medium text-foreground">{t("waldo.rail.context")}</span>
-            <span aria-hidden="true">·</span>
-            <span className="truncate">{contextLabel}</span>
-          </div>
-        ) : null}
       </header>
 
       <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-5", projectId && "overflow-hidden p-0")} data-testid="waldo-rail-body">
         {projectId ? (
           <ProjectWaldoConversation daemonReady={daemonReady} onOpenHome={onOpenHome} outcomeId={outcomeId} outcomeTitle={outcomeTitle} projectId={projectId} projectName={projectName || projectId} />
         ) : !previewEnabled ? (
-          <div className="flex min-h-full flex-col justify-between gap-10">
-            <div>
-              <div className="grid size-10 place-items-center rounded-xl bg-muted text-muted-foreground">
-                <Circle aria-hidden="true" className="size-4 fill-current" />
-              </div>
-              <h3 className="mt-5 text-lg font-semibold tracking-tight text-foreground">
-                {t("waldo.rail.unconfigured.title")}
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {t("waldo.rail.unconfigured.description")}
-              </p>
+          <div className="flex min-h-full flex-col justify-between gap-8">
+            <div className="flex flex-col gap-2">
+              <h3 className="wd-title text-wd-primary">{t("waldo.rail.unconfigured.title")}</h3>
+              <p className="wd-body-s text-wd-secondary">{t("waldo.rail.unconfigured.description")}</p>
             </div>
-            <div className="border-t border-border pt-4">
-              <p className="text-xs font-medium text-foreground">{t("waldo.rail.unconfigured.localTitle")}</p>
-              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
-                {t("waldo.rail.unconfigured.localDescription")}
-              </p>
+            <div className="flex flex-col gap-1 hairline-t border-wd-hairline pt-4">
+              <p className="wd-label text-wd-primary">{t("waldo.rail.unconfigured.localTitle")}</p>
+              <p className="wd-caption text-wd-secondary">{t("waldo.rail.unconfigured.localDescription")}</p>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div
-              aria-label={t("waldo.rail.previewBoundaryLabel")}
-              className="rounded-xl border border-dashed border-border bg-muted/45 px-3.5 py-3"
-              role="status"
-            >
-              <p className="text-xs font-semibold text-foreground">{t("waldo.rail.previewBoundaryTitle")}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                {t("waldo.rail.previewBoundaryDescription")}
-              </p>
+          <div className="flex flex-col gap-4">
+            <div aria-label={t("waldo.rail.previewBoundaryLabel")} className={cn(insetClass, "flex flex-col gap-1")} role="status">
+              <p className="wd-label text-wd-primary">{t("waldo.rail.previewBoundaryTitle")}</p>
+              <p className="wd-caption text-wd-secondary">{t("waldo.rail.previewBoundaryDescription")}</p>
             </div>
 
             <div
               aria-label={t("waldo.rail.modeLabel")}
-              className="grid grid-cols-2 rounded-xl bg-muted p-1"
+              className="grid grid-cols-2 gap-0.5 rounded-full bg-wd-inset p-0.5"
               role="tablist"
             >
               {(["conversation", "activity"] as const).map((previewMode) => (
                 <button
                   aria-selected={mode === previewMode}
-                  className={cn(
-                    "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                    mode === previewMode && "bg-background text-foreground shadow-xs",
-                  )}
+                  className={cn(segmentClass, "h-8")}
                   data-waldo-mode={previewMode}
                   key={previewMode}
                   onKeyDown={(event) => {
@@ -237,13 +217,14 @@ export function WaldoRail({
             </div>
 
             <div aria-label={t("waldo.rail.episodeLabel")} className="overflow-x-auto" role="group">
-              <div className="flex min-w-max gap-1.5 pb-0.5">
+              <div className="flex min-w-max gap-2 pb-0.5">
                 {(["fresh", "contextual", "returning"] as const).map((episodeId) => (
                   <button
                     aria-pressed={episode === episodeId}
                     className={cn(
-                      "rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                      episode === episodeId && "border-foreground/25 bg-raised font-medium text-foreground",
+                      "inline-flex h-8 items-center rounded-full hairline border-wd-hairline px-3 wd-caption text-wd-secondary transition-colors duration-fast ease-out hover:bg-wd-hover hover:text-wd-primary motion-reduce:transition-none",
+                      episode === episodeId &&
+                        "border-transparent bg-wd-inverse text-wd-on-inverse hover:bg-wd-inverse hover:text-wd-on-inverse",
                     )}
                     key={episodeId}
                     onClick={() => selectEpisode(episodeId)}
@@ -255,35 +236,34 @@ export function WaldoRail({
               </div>
             </div>
 
-            <section className="border-b border-border pb-4" aria-labelledby="waldo-episode-title">
+            <section className="flex flex-col gap-2 hairline-b border-wd-hairline pb-4" aria-labelledby="waldo-episode-title">
               <div className="flex items-center justify-between gap-3">
-                <span className="rounded-full bg-muted px-2 py-1 text-micro font-semibold uppercase tracking-wide text-muted-foreground">
-                  {entryStateLabels[episode]}
-                </span>
-                <span className="text-micro text-muted-foreground">{t("waldo.rail.episodeLocal")}</span>
+                <Badge variant="neutral">{entryStateLabels[episode]}</Badge>
+                <span className="wd-caption text-wd-tertiary">{t("waldo.rail.episodeLocal")}</span>
               </div>
-              <h3 className="mt-3 text-base font-semibold tracking-tight text-foreground" id="waldo-episode-title">
+              <h3 className="wd-headline text-wd-primary" id="waldo-episode-title">
                 {episode === "fresh" ? t("waldo.rail.fresh.title") : episodeTitles[episode]}
               </h3>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {t(`waldo.rail.${episode}.description`)}
-              </p>
+              <p className="wd-body-s text-wd-secondary">{t(`waldo.rail.${episode}.description`)}</p>
               {episode !== "fresh" ? (
-                <div className="mt-3 flex min-w-0 items-center gap-2 rounded-xl border border-border bg-raised px-3 py-2">
-                  <Paperclip aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                <div className="mt-1 flex min-w-0 items-center gap-2 rounded-md bg-wd-inset py-1 pl-3 pr-1">
+                  <Paperclip aria-hidden="true" className="size-3.5 shrink-0 text-wd-tertiary" />
+                  <span className="min-w-0 flex-1 truncate wd-body-s text-wd-primary">
                     {contextDetached ? t("waldo.rail.noContext") : contextLabel}
                   </span>
                   {!contextDetached ? (
-                    <button
+                    <Button
                       aria-label={t("waldo.rail.detachContext")}
-                      className="shrink-0 rounded-md px-1.5 py-1 text-micro font-medium text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
                       onClick={() => setContextDetached(true)}
+                      size="sm"
                       type="button"
+                      variant="ghost"
                     >
                       {t("waldo.rail.detach")}
-                    </button>
-                  ) : null}
+                    </Button>
+                  ) : (
+                    <span aria-hidden="true" className="h-control-md" />
+                  )}
                 </div>
               ) : null}
             </section>
@@ -305,15 +285,18 @@ export function WaldoRail({
       </div>
 
       {!projectId && previewEnabled && mode === "conversation" ? (
-        <footer className="shrink-0 border-t border-border p-3.5">
-          <textarea
-            aria-label={t("waldo.rail.composerLabel")}
-            className="min-h-16 w-full resize-none rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground"
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={t("waldo.rail.composerPlaceholder")}
-            value={draft}
-          />
-          <p className="mt-2 text-micro leading-4 text-muted-foreground">{t("waldo.rail.composerBoundary")}</p>
+        <footer className="flex shrink-0 flex-col gap-2 hairline-t border-wd-hairline px-3 pb-3 pt-2">
+          <div className="min-h-(--size-field) rounded-[calc(var(--size-field)/2)] hairline border-wd-hairline bg-wd-inset px-4 py-3 outline-2 outline-offset-2 outline-transparent transition-[outline-color] duration-fast ease-out focus-within:outline-(--border-focus) motion-reduce:transition-none">
+            <textarea
+              aria-label={t("waldo.rail.composerLabel")}
+              className="block max-h-[6lh] min-h-6 w-full resize-none bg-transparent wd-body text-wd-primary field-sizing-content placeholder:text-wd-tertiary focus-visible:outline-none"
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder={t("waldo.rail.composerPlaceholder")}
+              rows={1}
+              value={draft}
+            />
+          </div>
+          <p className="px-4 wd-caption text-wd-tertiary">{t("waldo.rail.composerBoundary")}</p>
         </footer>
       ) : null}
     </section>
@@ -339,12 +322,12 @@ function ConversationPreview({
 
   if (episode === "fresh") {
     return (
-      <div className="space-y-4">
-        <p className="max-w-sm text-sm leading-6 text-foreground">{t("waldo.rail.fresh.opening")}</p>
+      <div className="flex flex-col gap-4">
+        <p className="wd-body-l text-wd-primary">{t("waldo.rail.fresh.opening")}</p>
         <div aria-label={t("waldo.rail.suggestedPrompts")} className="flex flex-wrap gap-2" role="group">
           {(["orient", "explain", "prepare"] as const).map((prompt) => (
             <button
-              className="rounded-full border border-border bg-raised px-3 py-2 text-left text-xs text-foreground hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+              className="inline-flex min-h-8 items-center rounded-full hairline border-wd-hairline px-3 py-1.5 text-left wd-caption text-wd-primary transition-colors duration-fast ease-out hover:bg-wd-hover active:bg-wd-pressed motion-reduce:transition-none"
               key={prompt}
               type="button"
             >
@@ -358,93 +341,82 @@ function ConversationPreview({
 
   if (episode === "returning") {
     return (
-      <section aria-label={t("waldo.rail.resultLabel")} className="rounded-2xl border border-border bg-card p-4 shadow-xs">
-        <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <ShieldCheck aria-hidden="true" className="size-3.5" />
-            {t("waldo.rail.resultReady")}
-          </span>
-          <span className="rounded-full bg-warning-subtle px-2 py-1 text-micro font-semibold text-warning-foreground">
-            {t("waldo.rail.outcomeUnknown")}
-          </span>
+      <section aria-label={t("waldo.rail.resultLabel")} className={cardClass}>
+        <div className="flex min-h-6 items-center gap-2">
+          <ShieldCheck aria-hidden="true" className="size-4 shrink-0 text-wd-secondary" />
+          <span className="wd-caption text-wd-secondary">{t("waldo.rail.resultReady")}</span>
+          <Badge className="ml-auto" variant="neutral">{t("waldo.rail.outcomeUnknown")}</Badge>
         </div>
-        <h4 className="mt-3 text-sm font-semibold text-foreground">{t("waldo.rail.resultTitle")}</h4>
-        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{t("waldo.rail.resultSummary")}</p>
+        <h4 className="wd-headline text-wd-primary">{t("waldo.rail.resultTitle")}</h4>
+        <p className="wd-body-s text-wd-secondary">{t("waldo.rail.resultSummary")}</p>
         {resultExpanded ? (
-          <div className="mt-3 space-y-2 border-t border-border pt-3 text-xs leading-5 text-muted-foreground">
-            <p className="font-medium text-foreground">{t("waldo.rail.resultDetail")}</p>
-            <p>{t("waldo.rail.resultBoundary")}</p>
+          <div className={cn(insetClass, "flex flex-col gap-2 wd-body-s")}>
+            <p className="text-wd-primary">{t("waldo.rail.resultDetail")}</p>
+            <p className="text-wd-secondary">{t("waldo.rail.resultBoundary")}</p>
           </div>
         ) : null}
-        <button
+        <Button
           aria-expanded={resultExpanded}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-foreground hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          className="-ml-3 self-start"
           onClick={() => setResultExpanded(!resultExpanded)}
+          size="sm"
           type="button"
+          variant="ghost"
         >
-          <ChevronDown aria-hidden="true" className={cn("size-3.5", resultExpanded && "rotate-180")} />
+          <ChevronDown aria-hidden="true" className={cn("size-3.5 transition-transform duration-fast ease-out motion-reduce:transition-none", resultExpanded && "rotate-180")} />
           {resultExpanded ? t("waldo.rail.hideResult") : t("waldo.rail.showResult")}
-        </button>
+        </Button>
       </section>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2.5" aria-label={t("waldo.rail.conversation")}>
-        <div className="ml-8 rounded-2xl rounded-br-md bg-foreground px-3.5 py-3 text-sm leading-5 text-background">
-          {submittedQuestion ?? t("waldo.rail.previewRequest")}
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5" aria-label={t("waldo.rail.conversation")}>
+        <div className="flex justify-end">
+          <p className="max-w-[80%] rounded-lg rounded-br-xs bg-wd-inset px-4 py-3 wd-body text-wd-primary">
+            {submittedQuestion ?? t("waldo.rail.previewRequest")}
+          </p>
         </div>
-        <div className="mr-5 rounded-2xl rounded-bl-md border border-border bg-raised px-3.5 py-3 text-sm leading-5 text-foreground">
-          {t("waldo.rail.previewResponse")}
+        <div className="flex flex-col gap-2">
+          <p className="wd-caption text-wd-secondary">{t("waldo.rail.identity")}</p>
+          <p className="wd-body-l text-wd-primary">{t("waldo.rail.previewResponse")}</p>
         </div>
       </div>
 
-      <section aria-label={t("waldo.rail.observationLabel")} className="rounded-2xl border border-border bg-card p-4 shadow-xs">
-        <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Eye aria-hidden="true" className="size-3.5" />
-            {t("waldo.rail.noticed")}
-          </span>
-          <span className="rounded-full bg-info-subtle px-2 py-1 text-micro font-semibold text-info-foreground">
-            {t("waldo.rail.candidate")}
-          </span>
+      <section aria-label={t("waldo.rail.observationLabel")} className={cardClass}>
+        <div className="flex min-h-6 items-center gap-2">
+          <Eye aria-hidden="true" className="size-4 shrink-0 text-wd-secondary" />
+          <span className="wd-caption text-wd-secondary">{t("waldo.rail.noticed")}</span>
+          <Badge className="ml-auto" variant="neutral">{t("waldo.rail.candidate")}</Badge>
         </div>
-        <h4 className="mt-3 text-sm font-semibold text-foreground">{t("waldo.rail.observationTitle")}</h4>
-        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{t("waldo.rail.observationDescription")}</p>
-        <p className="mt-3 border-t border-border pt-3 text-micro leading-4 text-muted-foreground">
-          {t("waldo.rail.observationBoundary")}
-        </p>
+        <h4 className="wd-headline text-wd-primary">{t("waldo.rail.observationTitle")}</h4>
+        <p className="wd-body-s text-wd-secondary">{t("waldo.rail.observationDescription")}</p>
+        <p className="wd-note text-wd-tertiary">{t("waldo.rail.observationBoundary")}</p>
       </section>
 
-      <section aria-label={t("waldo.rail.proposalPreviewLabel")} className="rounded-2xl border border-border bg-card p-4 shadow-xs">
-        <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <ArrowUpRight aria-hidden="true" className="size-3.5" />
-            {t("waldo.rail.proposal")}
-          </span>
-          <span className="rounded-full bg-warning-subtle px-2 py-1 text-micro font-semibold text-warning-foreground">
-            {t("waldo.rail.approvalRequired")}
-          </span>
+      <section aria-label={t("waldo.rail.proposalPreviewLabel")} className={cardClass}>
+        <div className="flex min-h-6 items-center gap-2">
+          <ArrowUpRight aria-hidden="true" className="size-4 shrink-0 text-wd-secondary" />
+          <NeedsYouBadge>{t("waldo.project.needsYou")}</NeedsYouBadge>
+          <span className="ml-auto wd-caption text-wd-tertiary">{t("waldo.rail.proposal")}</span>
         </div>
-        <h4 className="mt-3 text-sm font-semibold text-foreground">{t("waldo.rail.proposalTitle")}</h4>
-        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{t("waldo.rail.proposalDescription")}</p>
-        <button
-          className="mt-4 inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          onClick={() => setProposalReviewed(true)}
-          type="button"
-        >
-          {t("waldo.rail.proposalReview")}
-        </button>
+        <h4 className="wd-title text-wd-primary">{t("waldo.rail.proposalTitle")}</h4>
+        <p className={cn(insetClass, "wd-body-s text-wd-primary")}>{t("waldo.rail.proposalDescription")}</p>
         <p
           aria-label={t("waldo.rail.proposalStatusLabel")}
-          className="mt-3 text-xs leading-5 text-muted-foreground"
+          className="wd-note text-wd-secondary"
           role="status"
         >
           {proposalReviewed
             ? t("waldo.rail.proposalStatusReviewed")
             : t("waldo.rail.proposalStatusInitial")}
         </p>
+        <div className="flex items-center justify-end">
+          <Button onClick={() => setProposalReviewed(true)} size="sm" type="button" variant="primary">
+            {t("waldo.rail.proposalReview")}
+          </Button>
+        </div>
       </section>
     </div>
   );
@@ -475,117 +447,102 @@ function ActivityPreview({
   const [specialist, setSpecialist] = useState<typeof specialistDefaults | null>(null);
   const [specialistStatus, setSpecialistStatus] = useState<SpecialistStatus>("Ready");
   return (
-    <div className="space-y-4">
-      <section
-        aria-label={t("waldo.rail.activityLabel")}
-        className="rounded-2xl border border-border bg-card p-4 shadow-xs"
-      >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">{t("waldo.rail.activityEyebrow")}</p>
-          <h3 className="mt-1 text-sm font-semibold text-foreground">{t("waldo.rail.activityTitle")}</h3>
-        </div>
-        <span className="rounded-full bg-info-subtle px-2 py-1 text-micro font-semibold text-info-foreground">
-          {t("waldo.rail.running")}
-        </span>
-      </div>
-      <p className="mt-2 text-micro leading-4 text-muted-foreground">{t("waldo.rail.activityPreviewBoundary")}</p>
-      <dl className="mt-4 grid gap-3 border-t border-border pt-3 text-xs">
-        <div>
-          <dt className="font-medium text-muted-foreground">{t("waldo.rail.activityGoalLabel")}</dt>
-          <dd className="mt-1 leading-5 text-foreground">{t("waldo.rail.activityCompletion")}</dd>
-        </div>
-        <div>
-          <dt className="font-medium text-muted-foreground">{t("waldo.rail.activityCurrentStep")}</dt>
-          <dd className="mt-1 leading-5 text-foreground">{t("waldo.rail.activity.step.prepare")}</dd>
-        </div>
-      </dl>
-      <div className="mt-4 grid gap-2 rounded-xl bg-muted/45 p-3 text-xs leading-5">
-        <p><span className="font-medium text-foreground">{t("waldo.rail.activityApproval")}</span> · {t("waldo.rail.activityApprovalDetail")}</p>
-        <p><span className="font-medium text-foreground">{t("waldo.rail.activityEvidence")}</span> · {t("waldo.rail.activityEvidenceDetail")}</p>
-        <p><span className="font-medium text-foreground">{t("waldo.rail.activityReturn")}</span> · {t("waldo.rail.activityReturnDetail")}</p>
-      </div>
-      <button
-        aria-expanded={expanded}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-foreground hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-        onClick={() => setExpanded(!expanded)}
-        type="button"
-      >
-        <ChevronDown aria-hidden="true" className={cn("size-3.5", expanded && "rotate-180")} />
-        {expanded ? t("waldo.rail.hideRun") : t("waldo.rail.inspectRun")}
-      </button>
-      {expanded ? (
-        <div className="mt-3 space-y-4 border-t border-border pt-4">
-          <dl className="grid gap-3 text-xs">
-            <RunDetail label={t("waldo.rail.activityGoalLabel")} value={t("waldo.rail.activityCompletion")} />
-            <RunDetail label={t("waldo.rail.activityCompletionLabel")} value={t("waldo.rail.activityCompletionCondition")} />
-            <RunDetail label={t("waldo.rail.activityScopeLabel")} value={t("waldo.rail.activityScope")} />
-            <RunDetail label={t("waldo.rail.activityDelegationLabel")} value={t("waldo.rail.activityDelegation")} />
-            <RunDetail label={t("waldo.rail.activitySourcesLabel")} value={t("waldo.rail.activitySources")} />
-          </dl>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{t("waldo.rail.activityPlanLabel")}</p>
-            <ol className="mt-2 space-y-2.5">
-              {previewSteps.map((step, index) => {
-                const state = previewStepStates[index];
-                return (
-                  <li className="flex items-start gap-2.5 text-xs" key={step}>
-                    <span
-                      className={cn(
-                        "mt-0.5 grid size-4 shrink-0 place-items-center rounded-full",
-                        state === "evidenced" && "bg-success-subtle text-success-foreground",
-                        state === "active" && "bg-info-subtle text-info-foreground",
-                        state === "blocked" && "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {state === "evidenced" ? <Check aria-hidden="true" className="size-2.5" /> : null}
-                      {state === "active" ? <LoaderCircle aria-hidden="true" className="size-2.5" /> : null}
-                      {state === "blocked" ? <LockKeyhole aria-hidden="true" className="size-2.5" /> : null}
-                    </span>
-                    <span className="min-w-0 flex-1 leading-5 text-foreground">{step}</span>
-                    <span className="shrink-0 text-micro font-medium text-muted-foreground">
-                      {t(`waldo.rail.activity.state.${state}`)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
+    <div className="flex flex-col gap-4">
+      <section aria-label={t("waldo.rail.activityLabel")} className={cardClass}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="wd-caption text-wd-secondary">{t("waldo.rail.activityEyebrow")}</p>
+            <h3 className="wd-headline text-wd-primary">{t("waldo.rail.activityTitle")}</h3>
           </div>
-          <dl className="grid gap-3 border-t border-border pt-3 text-xs">
-            <RunDetail label={t("waldo.rail.activityAuthorityLabel")} value={t("waldo.rail.activityAuthority")} />
-            <RunDetail label={t("waldo.rail.activityApproval")} value={t("waldo.rail.activityApprovalDetail")} />
-            <RunDetail label={t("waldo.rail.activityEvidence")} value={t("waldo.rail.activityEvidenceDetail")} />
-            <RunDetail label={t("waldo.rail.activityReturn")} value={t("waldo.rail.activityReturnDetail")} />
-            <RunDetail label={t("waldo.rail.activityStatusLabel")} value={`${t("waldo.rail.resultReady")} · ${t("waldo.rail.outcomeUnknown")}`} />
-          </dl>
-          <p className="rounded-xl border border-dashed border-border px-3 py-2 text-micro leading-4 text-muted-foreground">
-            {t("waldo.rail.activityDelegationBoundary")}
-          </p>
+          <Badge variant="neutral">
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-wd-accent" />
+            {t("waldo.rail.running")}
+          </Badge>
         </div>
-      ) : null}
+        <p className="wd-note text-wd-tertiary">{t("waldo.rail.activityPreviewBoundary")}</p>
+        <dl className="grid gap-3 hairline-t border-wd-hairline pt-3">
+          <RunDetail label={t("waldo.rail.activityGoalLabel")} value={t("waldo.rail.activityCompletion")} />
+          <RunDetail label={t("waldo.rail.activityCurrentStep")} value={t("waldo.rail.activity.step.prepare")} />
+        </dl>
+        <div className={cn(insetClass, "grid gap-2 wd-body-s text-wd-primary")}>
+          <p><span className="text-wd-secondary">{t("waldo.rail.activityApproval")}</span> <span aria-hidden="true" className="text-wd-tertiary">·</span> {t("waldo.rail.activityApprovalDetail")}</p>
+          <p><span className="text-wd-secondary">{t("waldo.rail.activityEvidence")}</span> <span aria-hidden="true" className="text-wd-tertiary">·</span> {t("waldo.rail.activityEvidenceDetail")}</p>
+          <p><span className="text-wd-secondary">{t("waldo.rail.activityReturn")}</span> <span aria-hidden="true" className="text-wd-tertiary">·</span> {t("waldo.rail.activityReturnDetail")}</p>
+        </div>
+        <Button
+          aria-expanded={expanded}
+          className="-ml-3 self-start"
+          onClick={() => setExpanded(!expanded)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <ChevronDown aria-hidden="true" className={cn("size-3.5 transition-transform duration-fast ease-out motion-reduce:transition-none", expanded && "rotate-180")} />
+          {expanded ? t("waldo.rail.hideRun") : t("waldo.rail.inspectRun")}
+        </Button>
+        {expanded ? (
+          <div className="flex flex-col gap-4 hairline-t border-wd-hairline pt-4">
+            <dl className="grid gap-3">
+              <RunDetail label={t("waldo.rail.activityGoalLabel")} value={t("waldo.rail.activityCompletion")} />
+              <RunDetail label={t("waldo.rail.activityCompletionLabel")} value={t("waldo.rail.activityCompletionCondition")} />
+              <RunDetail label={t("waldo.rail.activityScopeLabel")} value={t("waldo.rail.activityScope")} />
+              <RunDetail label={t("waldo.rail.activityDelegationLabel")} value={t("waldo.rail.activityDelegation")} />
+              <RunDetail label={t("waldo.rail.activitySourcesLabel")} value={t("waldo.rail.activitySources")} />
+            </dl>
+            <div className="flex flex-col gap-2">
+              <p className="wd-caption text-wd-secondary">{t("waldo.rail.activityPlanLabel")}</p>
+              <ol className="flex flex-col gap-2.5">
+                {previewSteps.map((step, index) => {
+                  const state = previewStepStates[index];
+                  return (
+                    <li className="flex items-start gap-2.5 wd-body-s" key={step}>
+                      <span className="mt-0.5 grid size-4 shrink-0 place-items-center">
+                        {state === "evidenced" ? <Check aria-hidden="true" className="size-3.5 text-good" /> : null}
+                        {state === "active" ? <span aria-hidden="true" className="size-2 rounded-full bg-wd-accent" /> : null}
+                        {state === "blocked" ? <LockKeyhole aria-hidden="true" className="size-3.5 text-wd-tertiary" /> : null}
+                      </span>
+                      <span className="min-w-0 flex-1 text-wd-primary">{step}</span>
+                      <span className="shrink-0 wd-caption text-wd-secondary">
+                        {t(`waldo.rail.activity.state.${state}`)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+            <dl className="grid gap-3 hairline-t border-wd-hairline pt-3">
+              <RunDetail label={t("waldo.rail.activityAuthorityLabel")} value={t("waldo.rail.activityAuthority")} />
+              <RunDetail label={t("waldo.rail.activityApproval")} value={t("waldo.rail.activityApprovalDetail")} />
+              <RunDetail label={t("waldo.rail.activityEvidence")} value={t("waldo.rail.activityEvidenceDetail")} />
+              <RunDetail label={t("waldo.rail.activityReturn")} value={t("waldo.rail.activityReturnDetail")} />
+              <RunDetail label={t("waldo.rail.activityStatusLabel")} value={`${t("waldo.rail.resultReady")} · ${t("waldo.rail.outcomeUnknown")}`} />
+            </dl>
+            <p className={cn(insetClass, "wd-caption text-wd-secondary")}>
+              {t("waldo.rail.activityDelegationBoundary")}
+            </p>
+          </div>
+        ) : null}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-4 shadow-xs">
+      <section className={cardClass}>
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{t("waldo.rail.specialist.sectionTitle")}</p>
-            <h3 className="mt-1 text-sm font-semibold text-foreground">{t("waldo.rail.specialist.delegateTitle")}</h3>
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="wd-caption text-wd-secondary">{t("waldo.rail.specialist.sectionTitle")}</p>
+            <h3 className="wd-headline text-wd-primary">{t("waldo.rail.specialist.delegateTitle")}</h3>
           </div>
-          <span className="rounded-full border border-border px-2 py-1 text-micro font-semibold text-muted-foreground">
-            {t("waldo.rail.specialist.previewOnly")}
-          </span>
+          <Badge variant="neutral">{t("waldo.rail.specialist.previewOnly")}</Badge>
         </div>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          {t("waldo.rail.specialist.description")}
-        </p>
-        <button
+        <p className="wd-body-s text-wd-secondary">{t("waldo.rail.specialist.description")}</p>
+        <Button
           aria-expanded={builderOpen}
-          className="mt-3 inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          className="self-start"
           onClick={() => setBuilderOpen(!builderOpen)}
+          size="sm"
           type="button"
+          variant="secondary"
         >
           {builderOpen ? t("waldo.rail.specialist.hideBuilder") : t("waldo.rail.specialist.create")}
-        </button>
+        </Button>
 
         {builderOpen ? (
           <SpecialistBuilder
@@ -600,18 +557,22 @@ function ActivityPreview({
         {specialist ? (
           <article
             aria-label={t("waldo.rail.specialist.profileTitle")}
-            className="mt-4 rounded-xl border border-border bg-raised p-3.5"
+            className={cn(insetClass, "flex flex-col gap-3")}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-micro font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t("waldo.rail.specialist.underWaldo")}</p>
-                <h4 className="mt-1 text-sm font-semibold text-foreground">{t("waldo.rail.specialist.profileTitle")}</h4>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <p className="wd-caption text-wd-tertiary">{t("waldo.rail.specialist.underWaldo")}</p>
+                <h4 className="wd-label-l text-wd-primary">{t("waldo.rail.specialist.profileTitle")}</h4>
               </div>
-              <span className="rounded-full bg-muted px-2 py-1 text-micro font-semibold text-foreground">
+              <Badge
+                variant={specialistStatus === "Ready" ? "success" : specialistStatus === "Revoked" ? "error" : "neutral"}
+              >
+                {specialistStatus === "Ready" ? <Check aria-hidden="true" /> : null}
+                {specialistStatus === "Revoked" ? <X aria-hidden="true" /> : null}
                 {t("waldo.rail.specialist.status", { status: specialistStatus })}
-              </span>
+              </Badge>
             </div>
-            <dl className="mt-4 grid gap-3 text-xs">
+            <dl className="grid gap-3">
               <RunDetail label={t("waldo.rail.specialist.purpose")} value={specialist.purpose} />
               <RunDetail label={t("waldo.rail.specialist.scope")} value={specialist.scope} />
               <RunDetail label={t("waldo.rail.specialist.sources")} value={specialist.sources} />
@@ -621,26 +582,26 @@ function ActivityPreview({
               <RunDetail label={t("waldo.rail.specialist.evidence")} value={specialist.evidence} />
               <RunDetail label={t("waldo.rail.specialist.returnDestination")} value={t("waldo.rail.specialist.returnsTo", { destination: contextLabel })} />
             </dl>
-            <p className="mt-4 rounded-lg border border-dashed border-border px-3 py-2 text-micro leading-4 text-muted-foreground">
-              {t("waldo.rail.specialist.profileBoundary")}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+            <p className="wd-note text-wd-tertiary">{t("waldo.rail.specialist.profileBoundary")}</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
                 disabled={specialistStatus === "Revoked"}
                 onClick={() => setSpecialistStatus(specialistStatus === "Paused" ? "Ready" : "Paused")}
+                size="sm"
                 type="button"
+                variant="outline"
               >
                 {specialistStatus === "Paused" ? t("waldo.rail.specialist.resume") : t("waldo.rail.specialist.pause")}
-              </button>
-              <button
-                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive disabled:opacity-40"
+              </Button>
+              <Button
                 disabled={specialistStatus === "Revoked"}
                 onClick={() => setSpecialistStatus("Revoked")}
+                size="sm"
                 type="button"
+                variant="critical"
               >
                 {t("waldo.rail.specialist.revoke")}
-              </button>
+              </Button>
             </div>
           </article>
         ) : null}
@@ -667,46 +628,43 @@ function SpecialistBuilder({
     ["completion", t("waldo.rail.specialist.completion")],
     ["evidence", t("waldo.rail.specialist.evidence")],
   ] as const;
+  const inputClass =
+    "h-10 min-w-0 rounded-sm hairline border-wd-hairline bg-wd-inset px-3 wd-body-s";
 
   return (
-    <section aria-label={t("waldo.rail.specialist.builderAria")} className="mt-4 border-t border-border pt-4">
-      <p className="text-micro font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t("waldo.rail.specialist.previewOnly")}</p>
+    <section aria-label={t("waldo.rail.specialist.builderAria")} className="flex flex-col gap-3 hairline-t border-wd-hairline pt-4">
+      <p className="wd-caption text-wd-tertiary">{t("waldo.rail.specialist.previewOnly")}</p>
       <form
-        className="mt-3 grid gap-3"
+        className="grid gap-3"
         onSubmit={(event) => {
           event.preventDefault();
           onPreview(draft);
         }}
       >
         {fields.map(([key, label]) => (
-          <label className="grid gap-1.5 text-xs font-medium text-foreground" key={key}>
+          <label className="grid gap-1.5 wd-caption text-wd-secondary" key={key}>
             {label}
             <input
               aria-label={label}
-              className="h-9 min-w-0 rounded-lg border border-border bg-background px-3 text-xs font-normal text-foreground"
+              className={cn(inputClass, "text-wd-primary")}
               onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
               value={draft[key]}
             />
           </label>
         ))}
-        <label className="grid gap-1.5 text-xs font-medium text-foreground">
+        <label className="grid gap-1.5 wd-caption text-wd-secondary">
           {t("waldo.rail.specialist.returnDestination")}
           <input
             aria-label={t("waldo.rail.specialist.returnDestination")}
-            className="h-9 min-w-0 rounded-lg border border-border bg-muted px-3 text-xs font-normal text-muted-foreground"
+            className={cn(inputClass, "text-wd-secondary")}
             readOnly
             value={contextLabel}
           />
         </label>
-        <button
-          className="mt-1 inline-flex h-8 w-fit items-center rounded-lg bg-foreground px-3 text-xs font-medium text-background"
-          type="submit"
-        >
+        <Button className="mt-1 w-fit" size="sm" type="submit" variant="primary">
           {t("waldo.rail.specialist.previewAction")}
-        </button>
-        <p className="text-micro leading-4 text-muted-foreground">
-          {t("waldo.rail.specialist.builderBoundary")}
-        </p>
+        </Button>
+        <p className="wd-note text-wd-tertiary">{t("waldo.rail.specialist.builderBoundary")}</p>
       </form>
     </section>
   );
@@ -714,9 +672,9 @@ function SpecialistBuilder({
 
 function RunDetail({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <dt className="font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1 leading-5 text-foreground">{value}</dd>
+    <div className="flex flex-col gap-0.5">
+      <dt className="wd-caption text-wd-secondary">{label}</dt>
+      <dd className="wd-body-s text-wd-primary">{value}</dd>
     </div>
   );
 }

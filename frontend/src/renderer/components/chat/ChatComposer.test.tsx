@@ -96,14 +96,15 @@ describe("send keys", () => {
 		expect(field).not.toHaveClass("min-h-[3.25rem]");
 	});
 
-	it("uses the Kennel logo palette for the send control", async () => {
+	it("draws send as a round ink control, never Spot", async () => {
 		const { field } = renderComposer();
 		const send = screen.getByRole("button", { name: "Send message" });
-		expect(send).toHaveClass("bg-logo-accent", "text-logo-accent-foreground");
+		expect(send).toHaveClass("bg-wd-inverse", "text-wd-on-inverse", "rounded-full");
+		expect(send).not.toHaveClass("bg-spot");
 
 		await userEvent.type(field, "hello");
 		expect(send).toBeEnabled();
-		expect(send).toHaveClass("hover:bg-logo-accent-bright", "focus-visible:ring-logo-accent/45");
+		expect(send).toHaveClass("bg-wd-inverse", "rounded-full");
 	});
 
 	it("turns the empty send action into Stop while the agent is working", async () => {

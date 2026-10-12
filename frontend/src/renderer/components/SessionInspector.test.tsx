@@ -296,7 +296,7 @@ describe("SessionInspector tabs", () => {
 
 
 		expect(summaryTab).not.toHaveClass("flex-1");
-		expect(summaryTab).toHaveClass("h-control-md", "px-1", "shrink-0");
+		expect(summaryTab).toHaveClass("h-7", "px-2", "shrink-0", "rounded-full");
 		expect(summaryTab).toHaveAttribute("title", "Summary");
 	});
 
@@ -485,10 +485,11 @@ describe("SessionInspector PR section", () => {
     expect(
       prSection("Pull request").getByRole("link", { name: "PR 7" }),
     ).toHaveAttribute("href", "https://github.com/acme/repo/pull/7");
-    expect(prSection("Pull request").getByText("open")).toHaveClass(
-      "text-[9px]",
-      "leading-none",
-    );
+    expect(
+      prSection("Pull request")
+        .getByText("open")
+        .closest("[data-testid='state-badge']"),
+    ).toHaveAttribute("data-state-tone", "neutral");
     expect(
       prSection("Pull request").getByRole("button", { name: "Merge PR #7" }),
     ).toBeInTheDocument();
@@ -593,11 +594,11 @@ describe("SessionInspector PR section", () => {
     const card = prSection("Pull request")
       .getByText("PR #7")
       .closest("article") as HTMLElement;
-    expect(within(card).getByText("merged", { exact: true })).toHaveClass(
-      "border-border-strong",
-      "bg-overlay",
-      "text-success",
-    );
+    expect(
+      within(card)
+        .getByText("merged", { exact: true })
+        .closest("[data-testid='state-badge']"),
+    ).toHaveAttribute("data-state-tone", "good");
     expect(
       within(card).queryByText("Pull request merged"),
     ).not.toBeInTheDocument();
@@ -753,10 +754,7 @@ describe("SessionInspector PR section", () => {
       prSection("Pull requests (2)").getByRole("link", { name: "Open PR #41" }),
       prSection("Pull requests (2)").getByRole("link", { name: "Open PR #42" }),
     ];
-    expect(links[0]).toHaveClass(
-      "text-settings-label",
-      "hover:text-settings-label",
-    );
+    expect(links[0]).toHaveClass("text-wd-secondary", "hover:text-wd-primary");
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "https://example.com/pr/41",
       "https://example.com/pr/42",
@@ -1021,7 +1019,7 @@ describe("SessionInspector Activity section", () => {
   it.each([
     ["idle", "Idle"],
     ["active", "Working"],
-    ["waiting_input", "Input Needed"],
+    ["waiting_input", "Input needed"],
     ["exited", "Exited"],
   ] as const)("renders %s from raw session activity", (state, label) => {
     renderWithQuery(
@@ -1076,7 +1074,7 @@ describe("SessionInspector Activity section", () => {
     const activityRow = activitySection()
       .getByText("Idle")
       .closest("[data-testid='inspector-timeline-event']") as HTMLElement;
-    expect(within(activityRow).getByText("No Signal")).toBeInTheDocument();
+    expect(within(activityRow).getByText("No signal")).toBeInTheDocument();
   });
 
   it("does not derive the Activity label from PR-oriented session status", () => {
@@ -1091,13 +1089,13 @@ describe("SessionInspector Activity section", () => {
 
     expect(activitySection().getByText("Idle")).toBeInTheDocument();
     expect(
-      activitySection().queryByText("Input Needed"),
+      activitySection().queryByText("Input needed"),
     ).not.toBeInTheDocument();
   });
 
   it.each([
-    ["ci_failed", "CI Failed"],
-    ["changes_requested", "Changes Requested"],
+    ["ci_failed", "CI failed"],
+    ["changes_requested", "Changes requested"],
   ] as const)(
     "renders %s as an SCM state in the current Activity row",
     (status, label) => {
@@ -1208,7 +1206,8 @@ describe("SessionInspector Activity section", () => {
     const marker = activityRow.querySelector(
       "span[aria-hidden='true'].rounded-full",
     ) as HTMLElement;
-    expect(marker).toHaveClass("animate-status-pulse");
+    // Waldo: the live node is a static dot, never pulsing.
+    expect(marker).not.toHaveClass("animate-status-pulse");
     expect(
       within(activityRow).getByText("Working").querySelector(".rounded-full"),
     ).not.toBeInTheDocument();
@@ -1254,9 +1253,9 @@ describe("SessionInspector Activity section", () => {
     const activityRow = activitySection()
       .getByText("Idle")
       .closest("[data-testid='inspector-timeline-event']") as HTMLElement;
-    expect(within(activityRow).getByText("CI Failed")).toBeInTheDocument();
+    expect(within(activityRow).getByText("CI failed")).toBeInTheDocument();
     expect(
-      within(activityRow).getByText("Changes Requested"),
+      within(activityRow).getByText("Changes requested"),
     ).toBeInTheDocument();
   });
 

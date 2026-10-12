@@ -28,7 +28,7 @@ test("Project Waldo restores offline durable truth and local intent across rende
   await expect(rail.getByText("Offline · showing last durable snapshot")).toBeVisible();
   await expect(rail.getByRole("log", { name: "Project Waldo conversation" }).getByRole("article")).toHaveCount(2);
   await expect(rail.getByText("Continued safely")).toBeVisible();
-  await expect(rail.getByText("Needs You")).toBeVisible();
+  await expect(rail.getByText("Needs you")).toBeVisible();
 
   await rail.getByRole("textbox", { name: "Message Waldo" }).fill("Read this back after another restart");
   await expect(rail.getByText("Draft stays local; it is not queued or sent.")).toBeVisible();

@@ -55,27 +55,37 @@ export function BoundedComposer({
 	};
 
 	return (
-		<div className={cn("flex flex-col gap-1.5 rounded-md hairline border-border bg-card p-2.5", className)} data-testid="bounded-composer">
+		<div className={cn("flex flex-col gap-2", className)} data-testid="bounded-composer">
 			{scopeDisclosure ? (
-				<div className="text-2xs text-passive" data-testid="bounded-composer-scope">
+				<div className="text-2xs text-wd-tertiary" data-testid="bounded-composer-scope">
 					{scopeDisclosure}
 				</div>
 			) : null}
-			<textarea
-				aria-label={inputLabel}
+			{/* Composer contract: one inset field with a hairline; the 2px focus ring
+			    draws around the field, so the textarea itself stays unringed. */}
+			<div
 				className={cn(
-					"min-h-16 w-full resize-none bg-transparent text-xs text-foreground placeholder:text-passive",
-					"focus-visible:outline-none disabled:opacity-60",
+					"rounded-md hairline border-wd-hairline bg-wd-inset px-3 py-2",
+					"outline-2 outline-offset-2 outline-transparent transition-[outline-color] duration-fast motion-reduce:transition-none",
+					"focus-within:outline-(--border-focus)",
 				)}
-				disabled={blocked}
-				onChange={(event) => onChange(event.target.value)}
-				onKeyDown={handleKeyDown}
-				placeholder={placeholder}
-				value={value}
-			/>
+			>
+				<textarea
+					aria-label={inputLabel}
+					className={cn(
+						"block min-h-16 w-full resize-none bg-transparent text-xs text-wd-primary placeholder:text-wd-tertiary",
+						"focus-visible:outline-none disabled:cursor-not-allowed disabled:text-wd-secondary",
+					)}
+					disabled={blocked}
+					onChange={(event) => onChange(event.target.value)}
+					onKeyDown={handleKeyDown}
+					placeholder={placeholder}
+					value={value}
+				/>
+			</div>
 			<div className="flex items-center justify-between gap-2">
 				{sourceDisclosure ? (
-					<div className="min-w-0 truncate text-2xs text-passive" data-testid="bounded-composer-source">
+					<div className="min-w-0 truncate text-2xs text-wd-tertiary" data-testid="bounded-composer-source">
 						{sourceDisclosure}
 					</div>
 				) : (
@@ -83,9 +93,8 @@ export function BoundedComposer({
 				)}
 				<button
 					className={cn(
-						"shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-2xs font-medium text-primary-foreground transition-colors motion-reduce:transition-none",
-						"hover:bg-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-						"disabled:pointer-events-none disabled:opacity-50",
+						"inline-flex h-7 shrink-0 items-center rounded-full bg-wd-inverse px-3 text-2xs font-medium text-wd-on-inverse transition-opacity duration-fast motion-reduce:transition-none",
+						"hover:opacity-90 disabled:pointer-events-none disabled:opacity-40",
 					)}
 					data-testid="bounded-composer-submit"
 					disabled={!canSubmit}

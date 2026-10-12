@@ -2,23 +2,18 @@ import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
-import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogTitle,
-	settingsDialogBodyClass,
-	settingsDialogContentClass,
-	settingsDialogFooterClass,
-	settingsDialogHeaderClass,
-} from "./ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, settingsDialogContentClass } from "./ui/dialog";
 
 type ConfirmDialogProps = {
 	open: boolean;
+	/** Names the object as a question ("Remove kennel-web?"), never "Are you sure?". */
 	title: string;
+	/** States the consequence: what stops, what is kept. */
 	description: React.ReactNode;
+	/** Spells out the effect in the title's words ("Remove project"), never "Confirm". */
 	confirmLabel: string;
+	/** The quiet way out, named for the status quo where it reads well ("Keep project"). */
+	cancelLabel?: string;
 	destructive?: boolean;
 	busy?: boolean;
 	error?: string | null;
@@ -26,15 +21,15 @@ type ConfirmDialogProps = {
 	onOpenChange: (open: boolean) => void;
 };
 
-// Shared confirmation modal styled exactly like the settings dialogs
-// (ReportProblemDialog) — same frame, header typography, and footer buttons
-// via the shared settingsDialog* class constants. Destructive confirms fill
-// with the deep danger-strong token instead of the settings accent.
+// Waldo ConfirmSheet as a centred dialog: raised plane, radius-xl, space-6
+// padding, a .wd-title question, the consequence in text-secondary, then the
+// quiet way out and the action spelled out — `critical` when it destroys.
 export function ConfirmDialog({
 	open,
 	title,
 	description,
 	confirmLabel,
+	cancelLabel,
 	destructive,
 	busy,
 	error,
@@ -44,12 +39,15 @@ export function ConfirmDialog({
 	const { t } = useTranslation();
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent showCloseButton={false} className={settingsDialogContentClass}>
+			<DialogContent
+				showCloseButton={false}
+				className={cn(settingsDialogContentClass, "w-[min(var(--size-dialog-lg),calc(100vw-var(--space-8)))] gap-4 p-6")}
+			>
 				<DialogClose asChild>
 					<button
 						type="button"
 						disabled={busy}
-						className="settings-dialog-close-button settings-close-button"
+						className="settings-dialog-close-button settings-close-button disabled:pointer-events-none disabled:text-wd-disabled"
 						aria-label={t("confirm.close")}
 						title={t("confirm.closeEsc")}
 					>
@@ -57,31 +55,28 @@ export function ConfirmDialog({
 					</button>
 				</DialogClose>
 
-				<div className={settingsDialogHeaderClass}>
-					<DialogTitle className="settings-dialog-title">{title}</DialogTitle>
+				<div className="flex flex-col gap-2 pr-8">
+					<DialogTitle className="text-wd-primary">{title}</DialogTitle>
 					<DialogDescription asChild>
-						<div className="text-control leading-4 text-settings-muted">{description}</div>
+						<div className="text-sm text-wd-secondary">{description}</div>
 					</DialogDescription>
 				</div>
 
 				{error ? (
-					<div className={settingsDialogBodyClass}>
-						<p role="alert" className="text-caption leading-4 text-error">
-							{error}
-						</p>
-					</div>
+					<p role="alert" className="text-sm text-critical">
+						{error}
+					</p>
 				) : null}
 
-				<div className={settingsDialogFooterClass}>
+				<div className="flex flex-wrap items-center justify-end gap-2 pt-2">
 					<DialogClose asChild>
-						<Button type="button" variant="footer" disabled={busy}>
-							{t("confirm.cancel")}
+						<Button type="button" variant="ghost" disabled={busy}>
+							{cancelLabel ?? t("confirm.cancel")}
 						</Button>
 					</DialogClose>
 					<Button
 						type="button"
-						variant="footer-primary"
-						className={cn(destructive && "bg-danger-strong hover:bg-danger-strong")}
+						variant={destructive ? "critical" : "primary"}
 						disabled={busy}
 						onClick={onConfirm}
 					>

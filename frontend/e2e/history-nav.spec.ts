@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 test("titlebar back/forward arrows traverse Home history", async ({ page }) => {
 	await page.goto("/#/home");
 	await expect(page).toHaveURL(/\/home$/);
-	await page.getByRole("link", { name: "Open Loops" }).click();
+	await page.getByRole("link", { name: "Open loops" }).click();
 	await expect(page).toHaveURL(/home\/open-loops/);
 
 	const back = page.getByRole("button", { name: "Go back" });

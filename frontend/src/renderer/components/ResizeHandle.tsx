@@ -13,7 +13,7 @@ export function ResizeHandle({ className, side, ...props }: ResizeHandleProps) {
 			className={cn(
 				"absolute top-0 bottom-0 z-[5] w-[length:var(--size-resize-handle)] cursor-col-resize touch-none bg-transparent",
 				"after:absolute after:inset-y-0 after:left-1/2 after:w-[length:var(--size-hairline)] after:-translate-x-1/2 after:bg-transparent after:transition-[background] after:duration-fast after:content-['']",
-				"hover:after:bg-border",
+				"hover:after:bg-wd-strong",
 				side === "right" && "right-[calc(-1*var(--size-resize-handle-offset))]",
 				side === "left" && "left-[calc(-1*var(--size-resize-handle-offset))]",
 				className,

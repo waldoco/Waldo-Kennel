@@ -4,6 +4,7 @@ import type {
 	SessionStatus,
 	SessionStatusModel,
 } from "./session-models";
+import type { StateTone } from "./StateBadge";
 
 export type SessionPresentationMessageKey =
 	| `activity.${SessionActivityState}`
@@ -19,8 +20,8 @@ export type ProductUITranslator = (
 const englishLabels: Record<SessionPresentationMessageKey, string> = {
 	"activity.active": "Working",
 	"activity.idle": "Idle",
-	"activity.waiting_input": "Input Needed",
-	"activity.blocked": "Awaiting Decision",
+	"activity.waiting_input": "Input needed",
+	"activity.blocked": "Awaiting decision",
 	"activity.exited": "Exited",
 	"activity.unknown": "Unknown",
 	"status.working": "Working",
@@ -39,13 +40,13 @@ const englishLabels: Record<SessionPresentationMessageKey, string> = {
 	"status.terminated": "Terminated",
 	"status.unknown": "Unknown status",
 	"zone.merge": "Ready",
-	"zone.action": "Needs Choice",
-	"zone.pending": "Needs Input",
+	"zone.action": "Needs choice",
+	"zone.pending": "Needs input",
 	"zone.working": "Running",
 	"zone.done": "Terminated",
-	"timeline.no_signal": "No Signal",
-	"timeline.ci_failed": "CI Failed",
-	"timeline.changes_requested": "Changes Requested",
+	"timeline.no_signal": "No signal",
+	"timeline.ci_failed": "CI failed",
+	"timeline.changes_requested": "Changes requested",
 };
 
 export const defaultProductUITranslator: ProductUITranslator = (key) => englishLabels[key];
@@ -56,7 +57,11 @@ export type AgentActivityView = {
 	tone: string;
 	dotClassName: string;
 	indicatorClassName: string;
+	/** True for live work. Hosts may mark it with a static halo; it never
+	 *  animates — Waldo states don't pulse. */
 	breathe: boolean;
+	/** The Waldo state tone (shape cue + colour) for this activity. */
+	stateTone: StateTone;
 };
 
 type AgentActivityBase = Omit<AgentActivityView, "label" | "indicatorClassName"> & {
@@ -70,6 +75,7 @@ const agentActivityBases: Record<SessionActivityState, AgentActivityBase> = {
 		tone: "var(--color-status-working)",
 		dotClassName: "bg-status-working",
 		breathe: true,
+		stateTone: "live",
 	},
 	idle: {
 		state: "idle",
@@ -77,6 +83,7 @@ const agentActivityBases: Record<SessionActivityState, AgentActivityBase> = {
 		tone: "var(--color-status-idle)",
 		dotClassName: "bg-status-idle",
 		breathe: false,
+		stateTone: "neutral",
 	},
 	waiting_input: {
 		state: "waiting_input",
@@ -84,6 +91,7 @@ const agentActivityBases: Record<SessionActivityState, AgentActivityBase> = {
 		tone: "var(--color-status-needs-you)",
 		dotClassName: "bg-status-needs-you",
 		breathe: false,
+		stateTone: "needsYou",
 	},
 	blocked: {
 		state: "blocked",
@@ -91,6 +99,7 @@ const agentActivityBases: Record<SessionActivityState, AgentActivityBase> = {
 		tone: "var(--color-status-needs-you)",
 		dotClassName: "bg-status-needs-you",
 		breathe: false,
+		stateTone: "needsYou",
 	},
 	exited: {
 		state: "exited",
@@ -98,6 +107,7 @@ const agentActivityBases: Record<SessionActivityState, AgentActivityBase> = {
 		tone: "var(--color-status-exited)",
 		dotClassName: "bg-status-exited",
 		breathe: false,
+		stateTone: "critical",
 	},
 	unknown: {
 		state: "unknown",
@@ -105,6 +115,7 @@ const agentActivityBases: Record<SessionActivityState, AgentActivityBase> = {
 		tone: "var(--color-status-unknown)",
 		dotClassName: "bg-status-unknown",
 		breathe: false,
+		stateTone: "neutral",
 	},
 };
 
@@ -118,7 +129,8 @@ export function getAgentActivityView(
 	return {
 		...view,
 		label: translate(labelKey),
-		indicatorClassName: `${view.dotClassName}${view.breathe ? " animate-status-pulse" : ""}`,
+		// No pulse: live work is a still dot plus its word.
+		indicatorClassName: view.dotClassName,
 	};
 }
 
@@ -130,27 +142,30 @@ export type SessionStatusView = {
 	label: string;
 	className: string;
 	cardClassName?: string;
+	/** The Waldo state tone (shape cue + colour) for this status. */
+	stateTone: StateTone;
 };
 
 const sessionStatusStyles: Record<SessionStatus, Omit<SessionStatusView, "label">> = {
-	working: { className: "text-status-working" },
-	idle: { className: "text-status-idle" },
-	needs_input: { className: "text-status-needs-you" },
-	exited: { className: "text-status-exited" },
-	no_signal: { className: "text-status-unknown" },
-	ci_failed: { className: "text-status-exited" },
-	changes_requested: { className: "text-status-needs-you" },
-	review_pending: { className: "text-status-in-review" },
-	draft: { className: "text-status-in-review" },
-	pr_open: { className: "text-status-in-review" },
-	approved: { className: "text-status-ready" },
-	mergeable: { className: "text-status-ready" },
-	merged: { className: "text-status-merged" },
+	working: { className: "text-status-working", stateTone: "live" },
+	idle: { className: "text-status-idle", stateTone: "neutral" },
+	needs_input: { className: "text-status-needs-you", stateTone: "needsYou" },
+	exited: { className: "text-status-exited", stateTone: "critical" },
+	no_signal: { className: "text-status-unknown", stateTone: "neutral" },
+	ci_failed: { className: "text-status-exited", stateTone: "critical" },
+	changes_requested: { className: "text-status-needs-you", stateTone: "needsYou" },
+	review_pending: { className: "text-status-in-review", stateTone: "caution" },
+	draft: { className: "text-status-in-review", stateTone: "neutral" },
+	pr_open: { className: "text-status-in-review", stateTone: "caution" },
+	approved: { className: "text-status-ready", stateTone: "good" },
+	mergeable: { className: "text-status-ready", stateTone: "good" },
+	merged: { className: "text-status-merged", stateTone: "good" },
 	terminated: {
 		className: "text-status-terminated-foreground",
 		cardClassName: "session-card-terminated",
+		stateTone: "neutral",
 	},
-	unknown: { className: "text-status-unknown" },
+	unknown: { className: "text-status-unknown", stateTone: "neutral" },
 };
 
 export function getSessionStatusView(
@@ -174,6 +189,8 @@ export type AttentionZoneView = {
 	dotGlow: boolean;
 	titleClassName: string;
 	dotClassName: string;
+	/** The Waldo state tone for the lane heading's shape cue. */
+	stateTone: StateTone;
 };
 
 type AttentionZoneBase = Omit<AttentionZoneView, "label"> & {
@@ -189,6 +206,7 @@ const attentionZoneBases: Record<AttentionZone, AttentionZoneBase> = {
 		dotGlow: true,
 		titleClassName: "text-status-working",
 		dotClassName: "bg-status-working",
+		stateTone: "live",
 	},
 	action: {
 		zone: "action",
@@ -198,6 +216,7 @@ const attentionZoneBases: Record<AttentionZone, AttentionZoneBase> = {
 		dotGlow: true,
 		titleClassName: "text-status-needs-you",
 		dotClassName: "bg-status-needs-you",
+		stateTone: "needsYou",
 	},
 	pending: {
 		zone: "pending",
@@ -207,6 +226,7 @@ const attentionZoneBases: Record<AttentionZone, AttentionZoneBase> = {
 		dotGlow: false,
 		titleClassName: "text-status-in-review",
 		dotClassName: "bg-status-in-review",
+		stateTone: "caution",
 	},
 	merge: {
 		zone: "merge",
@@ -216,6 +236,7 @@ const attentionZoneBases: Record<AttentionZone, AttentionZoneBase> = {
 		dotGlow: true,
 		titleClassName: "text-status-ready",
 		dotClassName: "bg-status-ready",
+		stateTone: "good",
 	},
 	done: {
 		zone: "done",
@@ -225,6 +246,7 @@ const attentionZoneBases: Record<AttentionZone, AttentionZoneBase> = {
 		dotGlow: false,
 		titleClassName: "text-status-terminated-foreground",
 		dotClassName: "bg-status-terminated",
+		stateTone: "neutral",
 	},
 };
 

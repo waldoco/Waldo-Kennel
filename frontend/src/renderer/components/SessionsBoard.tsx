@@ -272,7 +272,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 				</TopbarButton>
 			) : null}
 			{tmuxInstallMessage && !showProjectEmpty ? (
-				<span className="max-w-content-max truncate text-xs text-muted-foreground" role="status">
+				<span className="max-w-content-max truncate text-xs text-wd-secondary" role="status">
 					{tmuxInstallMessage}
 				</span>
 			) : null}
@@ -342,7 +342,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 			    chooser was review feedback on #2432. */}
 			{!showWelcome && !showStartup && boardActionsInPanel && (boardLabel || actions) ? (
 				<div
-					className="workspace-topbar-container center-panel-titlebar flex h-toolbar shrink-0 items-center gap-2 border-b border-border-strong pr-4"
+					className="workspace-topbar-container center-panel-titlebar flex h-toolbar shrink-0 items-center gap-2 hairline-b border-wd-hairline pr-4"
 					style={dragStyle}
 				>
 					{boardLabel ? (
@@ -367,8 +367,8 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 			    board so lane height (and Needs You scrollbars) stay stable. */}
 			<div className={cn("min-h-0 flex-1 overflow-hidden", hasArchive && archiveToggleOffsetClassName)}>
 				{projectId && health.state !== "ok" ? (
-					<div className="mx-3 my-3 flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
-						<AlertTriangle className="size-icon-base shrink-0 text-warning" aria-hidden="true" />
+					<div className="mx-3 my-3 flex items-center gap-3 rounded-md bg-caution-bg px-3 py-2 text-sm text-wd-primary">
+						<AlertTriangle className="size-icon-base shrink-0 text-caution" aria-hidden="true" />
 						<span className="min-w-0 flex-1">{health.message}</span>
 						{health.state === "restart_needed" || health.state === "duplicates" ? (
 							<TopbarButton disabled={isProjectRestarting} onClick={() => void restartOrchestrator()} variant="primary">
@@ -381,7 +381,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 				{showStartup ? (
 					<DaemonStartupLoader />
 				) : workspaceStartupState === "error" || workspaceQuery.isError ? (
-					<p className="py-10 text-center text-xs text-passive">{t("shell.couldNotLoadSessions")}</p>
+					<p className="py-10 text-center text-sm text-wd-secondary">{t("shell.couldNotLoadSessions")}</p>
 				) : showWelcome ? (
 					<BoardWelcome />
 				) : showProjectEmpty ? (

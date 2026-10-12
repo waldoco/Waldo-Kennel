@@ -1,9 +1,19 @@
+import { ChevronRight, Clock } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { HomeFixtureState, HomeMemoryCandidate } from "../../lib/home-fixture";
+import { cn } from "../../lib/utils";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { HomeCardActions, HomeFacts } from "./HomeCards";
 
 type MemoryPreviewStatus = "review" | "correction" | "rejected" | "deferred";
 
+// Memory review on the Waldo MemoryClaim contract: a radius-md frame with the
+// kind tag leading, the statement in body, the provenance as quiet facts, and
+// the action unit with Forget and Defer leading as quiet buttons and Correct
+// trailing as the secondary button. The desk keeps its master/detail panes,
+// divided by a hairline.
 function CandidateDetail({
   candidate,
   correction,
@@ -25,75 +35,75 @@ function CandidateDetail({
     sensitive: t("home.visual.memory.sensitivity.sensitive"),
   };
   return (
-    <article className="home-memory-review-detail min-w-0" aria-labelledby={`${candidate.id}-memory-heading`}>
-      <button className="home-memory-review-back mb-6 text-xs font-medium text-muted-foreground underline underline-offset-4" onClick={onBack} type="button">
+    <article className="home-memory-review-detail flex min-w-0 flex-col gap-4" aria-labelledby={`${candidate.id}-memory-heading`}>
+      <Button className="home-memory-review-back -ml-3 self-start" onClick={onBack} size="sm" type="button" variant="ghost">
         {t("home.visual.memory.back")}
-      </button>
+      </Button>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="flex min-w-0 flex-col gap-3 rounded-md border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="wd-caption rounded-xs border border-wd-control px-2 py-0.5 text-wd-secondary">
             {t("home.visual.memory.candidateBoundary")}
           </p>
-          <h3 className="mt-2 text-xl font-semibold tracking-tight text-foreground" id={`${candidate.id}-memory-heading`}>
-            {candidate.label}
-          </h3>
+          <span className="wd-caption ml-auto text-wd-tertiary">
+            {sensitivityLabel[candidate.sensitivity]}
+          </span>
         </div>
-        <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
-          {sensitivityLabel[candidate.sensitivity]}
-        </span>
-      </div>
+        <h3 className="wd-headline text-wd-primary" id={`${candidate.id}-memory-heading`}>
+          {candidate.label}
+        </h3>
 
-      <p className="mt-6 max-w-2xl text-base leading-relaxed text-foreground">
-        {candidate.statement}
-      </p>
+        <p className="wd-body text-wd-primary">
+          {candidate.statement}
+        </p>
 
-      <dl className="mt-7 grid gap-x-8 gap-y-5 border-y border-border py-5 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-xs uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.memory.origin")}</dt>
-          <dd className="mt-1.5 leading-relaxed text-foreground">{candidate.sourceSummary}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.memory.validity")}</dt>
-          <dd className="mt-1.5 leading-relaxed text-foreground">{candidate.validUntil}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.memory.uncertainty")}</dt>
-          <dd className="mt-1.5 leading-relaxed text-foreground">{candidate.uncertainty}</dd>
-        </div>
-      </dl>
+        <HomeFacts
+          facts={[
+            { id: "origin", label: t("home.visual.memory.origin"), value: candidate.sourceSummary },
+            { id: "validity", label: t("home.visual.memory.validity"), value: candidate.validUntil },
+            { id: "uncertainty", label: t("home.visual.memory.uncertainty"), value: candidate.uncertainty },
+          ]}
+        />
 
-      {candidate.sourceGap ? (
-        <section className="mt-6 border-l border-warning/50 pl-4" aria-labelledby={`${candidate.id}-gap-heading`}>
-          <h4 className="text-xs font-medium uppercase tracking-[0.1em] text-warning" id={`${candidate.id}-gap-heading`}>
-            {t("home.visual.knownSourceGap")}
-          </h4>
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{candidate.sourceGap}</p>
-        </section>
-      ) : null}
+        {candidate.sourceGap ? (
+          <section className="flex flex-col gap-1 rounded-md bg-wd-inset p-3" aria-labelledby={`${candidate.id}-gap-heading`}>
+            <h4 className="wd-label flex items-center gap-1 text-caution" id={`${candidate.id}-gap-heading`}>
+              <Clock aria-hidden="true" className="size-3.5" />
+              {t("home.visual.knownSourceGap")}
+            </h4>
+            <p className="wd-body-s text-wd-secondary">{candidate.sourceGap}</p>
+          </section>
+        ) : null}
 
-      {showCorrection ? (
-        <label className="mt-6 block text-xs font-medium text-muted-foreground">
-          {t("home.visual.memory.correction")}
-          <textarea
-            aria-label={t("home.visual.memory.correction")}
-            className="mt-2 min-h-24 w-full resize-y rounded-md border border-border bg-transparent px-3 py-2 text-sm font-normal leading-relaxed text-foreground outline-none focus:border-border-strong"
-            onChange={(event) => onCorrectionChange(event.target.value)}
-            value={correction}
-          />
-        </label>
-      ) : null}
+        {showCorrection ? (
+          <label className="wd-label flex flex-col gap-2 text-wd-secondary">
+            {t("home.visual.memory.correction")}
+            <textarea
+              aria-label={t("home.visual.memory.correction")}
+              className="wd-body min-h-24 w-full resize-y rounded-sm bg-wd-inset px-3 py-2 text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
+              onChange={(event) => onCorrectionChange(event.target.value)}
+              value={correction}
+            />
+          </label>
+        ) : null}
 
-      <div className="mt-7 flex flex-wrap gap-2">
-        <button className="rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-interactive-hover" onClick={() => onOutcome("correct")} type="button">
-          {t("home.visual.correct")}
-        </button>
-        <button className="rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-interactive-hover" onClick={() => onOutcome("defer")} type="button">
-          {t("home.visual.defer")}
-        </button>
-        <button className="rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-interactive-hover" onClick={() => onOutcome("reject")} type="button">
-          {t("home.visual.reject")}
-        </button>
+        <HomeCardActions
+          lead={
+            <>
+              <Button data-quiet onClick={() => onOutcome("reject")} size="sm" type="button" variant="ghost">
+                {t("home.visual.reject")}
+              </Button>
+              <Button data-quiet onClick={() => onOutcome("defer")} size="sm" type="button" variant="ghost">
+                {t("home.visual.defer")}
+              </Button>
+            </>
+          }
+          trail={
+            <Button onClick={() => onOutcome("correct")} size="sm" type="button" variant="secondary">
+              {t("home.visual.correct")}
+            </Button>
+          }
+        />
       </div>
     </article>
   );
@@ -127,29 +137,34 @@ export function HomeMemoryReview({ fixture }: { fixture: HomeFixtureState }) {
   };
 
   return (
-    <section aria-labelledby="memory-review-heading">
-      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-        {t("home.visual.memory.eyebrow")}
-      </p>
-      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground" id="memory-review-heading">
-        {t("home.visual.memory.title")}
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        {t("home.visual.memory.description")}
-      </p>
+    <section aria-labelledby="memory-review-heading" className="flex flex-col gap-6">
+      <header className="flex max-w-(--layout-measure) flex-col gap-2">
+        <p className="wd-caption text-wd-tertiary">
+          {t("home.visual.memory.eyebrow")}
+        </p>
+        <h2 className="wd-display-3 text-wd-primary" id="memory-review-heading">
+          {t("home.visual.memory.title")}
+        </h2>
+        <p className="wd-body text-wd-secondary">
+          {t("home.visual.memory.description")}
+        </p>
+      </header>
 
-      <div className="home-memory-review-desk mt-8" data-mobile-view={mobileView}>
-        <div className="home-memory-review-index">
-          <div className="flex items-baseline justify-between gap-3 pb-3">
-            <p className="text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.memory.candidates")}</p>
-            <span className="text-xs text-muted-foreground">{t("home.visual.memory.toReview", { count: fixture.memoryCandidates.length })}</span>
+      <div className="home-memory-review-desk" data-mobile-view={mobileView}>
+        <div className="home-memory-review-index flex min-w-0 flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="wd-label text-wd-secondary">{t("home.visual.memory.candidates")}</p>
+            <span className="wd-caption text-wd-tertiary">{t("home.visual.memory.toReview", { count: fixture.memoryCandidates.length })}</span>
           </div>
-          <div className="divide-y divide-border border-y border-border">
+          <div className="flex flex-col">
             {fixture.memoryCandidates.map((candidate) => (
               <button
                 aria-current={selected?.id === candidate.id ? "true" : undefined}
                 aria-label={candidate.label}
-                className="w-full px-1 py-4 text-left hover:bg-interactive-hover aria-current:bg-interactive-active"
+                className={cn(
+                  "-mx-3 flex min-h-11 w-[calc(100%+1.5rem)] items-center gap-3 rounded-md p-3 text-left transition-colors duration-fast hover:bg-wd-hover active:bg-wd-pressed aria-current:bg-wd-selected",
+                  "[&+&]:rounded-t-none [&+&]:border-t-[length:var(--stroke-hairline)] [&+&]:border-wd-hairline",
+                )}
                 key={candidate.id}
                 onClick={(event) => {
                   selectedRowRef.current = event.currentTarget;
@@ -159,8 +174,11 @@ export function HomeMemoryReview({ fixture }: { fixture: HomeFixtureState }) {
                 }}
                 type="button"
               >
-                <span className="block text-sm font-medium text-foreground">{candidate.label}</span>
-                <span className="mt-1.5 block text-xs text-muted-foreground">{t("home.visual.memory.needsReview")}</span>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="wd-body text-wd-primary">{candidate.label}</span>
+                </span>
+                <Badge>{t("home.visual.memory.needsReview")}</Badge>
+                <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-wd-tertiary" />
               </button>
             ))}
           </div>
@@ -181,7 +199,7 @@ export function HomeMemoryReview({ fixture }: { fixture: HomeFixtureState }) {
         ) : null}
       </div>
 
-      <p aria-label={t("home.visual.memory.statusLabel")} className="mt-6 text-xs leading-relaxed text-muted-foreground" role="status">
+      <p aria-label={t("home.visual.memory.statusLabel")} className="wd-caption max-w-(--layout-measure) text-wd-tertiary" role="status">
         {t(`home.visual.memory.status.${status}`)}
       </p>
     </section>

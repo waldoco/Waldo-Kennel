@@ -327,13 +327,13 @@ export function KeyboardShortcutsSettingsDialog({
 				>
 					<DialogClose
 						aria-label={t("settings.close")}
-						className="settings-dialog-close-button settings-close-button border border-transparent transition-colors hover:border-(--color-border-settings-input) hover:bg-[var(--color-bg-settings-input)]"
+						className="settings-dialog-close-button settings-close-button"
 					>
 						<X aria-hidden="true" className="size-4" />
 					</DialogClose>
 					<DialogHeader className={settingsDialogHeaderClass}>
 						<DialogTitle className="settings-dialog-title">{t("shortcut.dialogTitle")}</DialogTitle>
-						<DialogDescription className="text-control leading-4 text-settings-muted">
+						<DialogDescription className="wd-body-s text-wd-secondary">
 							{t("shortcut.dialogDescriptionSettings")}
 						</DialogDescription>
 					</DialogHeader>
@@ -341,19 +341,19 @@ export function KeyboardShortcutsSettingsDialog({
 					<div className={cn(settingsDialogBodyClass, "min-h-0 flex-1 gap-3")}>
 						<label className="relative">
 							<Search
-								className="pointer-events-none absolute left-3 top-1/2 size-icon-base -translate-y-1/2 text-settings-muted"
+								className="pointer-events-none absolute left-3 top-1/2 size-icon-base -translate-y-1/2 text-wd-secondary"
 								aria-hidden="true"
 							/>
 							<Input
 								type="search"
-								className="h-10 pl-9 pr-3"
+								className="h-11 rounded-md border-transparent bg-wd-inset pl-9 pr-3 placeholder:text-wd-tertiary focus-visible:border-(--border-focus) focus-visible:ring-0"
 								placeholder={t("shortcut.searchPlaceholder")}
 								value={query}
 								onChange={(event) => setQuery(event.target.value)}
 							/>
 						</label>
 
-						<div className="flex flex-col gap-2">
+						<div className={cn("flex flex-col", filteredShortcuts.length > 0 && "settings-grouped-rows")}>
 							{filteredShortcuts.map((shortcut) => {
 								const bindings = effectiveShortcutBindings(shortcut.id, isMac, overrides);
 								const modified = Object.hasOwn(overrides, shortcut.id);
@@ -361,49 +361,49 @@ export function KeyboardShortcutsSettingsDialog({
 								return (
 									<div
 										className={cn(
-											"flex min-h-(--size-settings-row) items-center rounded-lg bg-(--color-bg-settings-row) px-3 py-3",
-											isRecording && "bg-settings-row-hover",
+											"flex min-h-(--size-settings-row) items-center px-4 py-3",
+											isRecording && "bg-wd-selected",
 										)}
 										key={shortcut.id}
 									>
 										<div className="flex min-w-0 flex-1 items-center gap-3">
 											<div className="min-w-0 flex-1">
 												<div className="flex items-center gap-2">
-													<span className="text-sm font-medium text-settings-label">{shortcutLabel(shortcut.id, t)}</span>
+													<span className="wd-body text-wd-primary">{shortcutLabel(shortcut.id, t)}</span>
 													{modified ? (
-														<span className="rounded-full bg-settings-menu-selected px-2 py-0.5 text-micro text-settings-muted">
+														<span className="wd-micro rounded-xs bg-wd-inset px-1.5 py-0.5 text-wd-secondary">
 															{t("shortcut.modified")}
 														</span>
 													) : null}
 												</div>
-												<span className="text-caption text-settings-muted">{shortcutCategoryLabel(shortcut.category, t)}</span>
+												<span className="wd-body-s text-wd-secondary">{shortcutCategoryLabel(shortcut.category, t)}</span>
 											</div>
 
 											{shortcut.customizable === false ? (
-												<span className="ml-auto text-caption text-settings-muted">{t("shortcut.fixedIndexed")}</span>
+												<span className="wd-body-s ml-auto text-wd-secondary">{t("shortcut.fixedIndexed")}</span>
 											) : isRecording ? (
-												<div className="ml-auto flex min-w-52 items-center gap-2 rounded-md border border-(--color-settings-accent) px-3 py-2 text-caption text-settings-label">
-													<Keyboard className="size-icon-base animate-pulse" aria-hidden="true" />
+												<div className="wd-body-s ml-auto flex min-w-52 items-center gap-2 rounded-md border border-(--border-focus) bg-wd-inset px-3 py-2 text-wd-primary">
+													<Keyboard className="size-icon-base" aria-hidden="true" />
 													{t("shortcut.pressRecording")}
 												</div>
 											) : (
 													<div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
 													{bindings.length === 0 ? (
-														<span className="text-caption text-settings-muted">{t("shortcut.unassigned")}</span>
+														<span className="wd-body-s text-wd-secondary">{t("shortcut.unassigned")}</span>
 													) : (
 														bindings.map((candidate, index) => (
 															<span
-																className="inline-flex items-center rounded-md border border-(--color-border-settings-input) bg-(--color-bg-settings-input)"
+																className="inline-flex items-center rounded-sm bg-wd-inset"
 																key={`${candidate.key}-${index}`}
 															>
-																<kbd className="px-2 py-1.5 font-mono text-caption text-settings-label">
+																<kbd className="wd-data px-2 py-1.5 text-wd-primary">
 																	{shortcutBindingLabel(candidate, isMac)}
 																</kbd>
 																<Tooltip>
 																	<TooltipTrigger asChild>
 																		<button
 																			type="button"
-																			className="mr-1 inline-flex size-5 items-center justify-center rounded text-settings-muted hover:bg-settings-menu-selected hover:text-settings-label"
+																			className="mr-1 inline-flex size-5 items-center justify-center rounded-full text-wd-secondary hover:bg-wd-hover hover:text-wd-primary"
 																			aria-label={t("shortcut.removeBindingAria", { binding: shortcutBindingLabel(candidate, isMac), name: shortcutLabel(shortcut.id, t) })}
 																			onClick={() => void handleRemoveBinding(shortcut.id, index)}
 																		>
@@ -419,7 +419,7 @@ export function KeyboardShortcutsSettingsDialog({
 														<TooltipTrigger asChild>
 															<button
 																type="button"
-																className="inline-flex size-8 items-center justify-center rounded-md text-settings-muted hover:bg-settings-menu-selected hover:text-settings-label"
+																className="inline-flex size-8 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 																aria-label={t("shortcut.changeAria", { name: shortcutLabel(shortcut.id, t) })}
 																onClick={() => void beginRecording({ id: shortcut.id, mode: "replace" })}
 															>
@@ -433,7 +433,7 @@ export function KeyboardShortcutsSettingsDialog({
 															<TooltipTrigger asChild>
 																<button
 																	type="button"
-																	className="inline-flex size-8 items-center justify-center rounded-md text-settings-muted hover:bg-settings-menu-selected hover:text-settings-label"
+																	className="inline-flex size-8 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 																	aria-label={t("shortcut.addAltAria", { name: shortcutLabel(shortcut.id, t) })}
 																	onClick={() => void beginRecording({ id: shortcut.id, mode: "add" })}
 																>
@@ -448,7 +448,7 @@ export function KeyboardShortcutsSettingsDialog({
 															<TooltipTrigger asChild>
 																<button
 																	type="button"
-																	className="inline-flex size-8 items-center justify-center rounded-md text-settings-muted hover:bg-settings-menu-selected hover:text-settings-label"
+																	className="inline-flex size-8 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 																	aria-label={t("shortcut.resetAria", { name: shortcutLabel(shortcut.id, t) })}
 																	onClick={() => void handleResetBinding(shortcut.id)}
 																>
@@ -465,7 +465,7 @@ export function KeyboardShortcutsSettingsDialog({
 								);
 							})}
 							{filteredShortcuts.length === 0 ? (
-								<p className="py-8 text-center text-sm text-settings-muted">{t("shortcut.noMatching")}</p>
+								<p className="wd-body-s py-8 text-center text-wd-secondary">{t("shortcut.noMatching")}</p>
 							) : null}
 						</div>
 					</div>
@@ -473,14 +473,13 @@ export function KeyboardShortcutsSettingsDialog({
 					<div className={settingsDialogFooterClass}>
 						{confirmResetAll ? (
 							<>
-								<span className="mr-auto text-caption text-settings-muted">{t("shortcut.resetAllConfirm")}</span>
-								<Button type="button" variant="footer" className="rounded-md" onClick={() => setConfirmResetAll(false)}>
+								<span className="wd-body-s mr-auto text-wd-secondary">{t("shortcut.resetAllConfirm")}</span>
+								<Button type="button" variant="ghost" onClick={() => setConfirmResetAll(false)}>
 									{t("confirm.cancel")}
 								</Button>
 								<Button
 									type="button"
-									variant="footer-primary"
-									className="rounded-md"
+									variant="critical"
 									onClick={() => {
 										void resetAll().then(() => {
 											setConfirmResetAll(false);
@@ -494,8 +493,7 @@ export function KeyboardShortcutsSettingsDialog({
 						) : (
 							<Button
 								type="button"
-								variant="footer"
-								className="rounded-md"
+								variant="secondary"
 								disabled={Object.keys(overrides).length === 0}
 								onClick={() => setConfirmResetAll(true)}
 							>
@@ -507,20 +505,20 @@ export function KeyboardShortcutsSettingsDialog({
 
 					{toast ? (
 						<div
-							className="pointer-events-auto absolute bottom-4 right-4 z-[calc(var(--z-overlay)+2)] flex w-[min(24rem,calc(100%-2rem))] items-start gap-3 rounded-xl border border-(--color-border-settings-dialog) bg-settings-dialog px-4 py-3 shadow-[var(--shadow-settings-dialog)]"
+							className="pointer-events-auto absolute bottom-4 right-4 z-[calc(var(--z-overlay)+2)] flex w-[min(24rem,calc(100%-2rem))] items-start gap-3 rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-raised px-4 py-3 shadow-[var(--shadow-overlay)]"
 							role="status"
 							aria-live="polite"
 							aria-atomic="true"
 						>
-							<Check className="mt-0.5 size-icon-base shrink-0 text-success" aria-hidden="true" />
+							<Check className="mt-0.5 size-icon-base shrink-0 text-good" aria-hidden="true" />
 							<div className="min-w-0 flex-1">
-								<p className="text-sm font-medium text-settings-label">{toast.title}</p>
-								{toast.body ? <p className="mt-0.5 text-caption text-settings-muted">{toast.body}</p> : null}
+								<p className="wd-label text-wd-primary">{toast.title}</p>
+								{toast.body ? <p className="wd-body-s mt-0.5 text-wd-secondary">{toast.body}</p> : null}
 							</div>
 							{toast.undo ? (
 								<button
 									type="button"
-									className="text-caption font-medium text-settings-label hover:underline"
+									className="wd-label rounded-full px-2 text-wd-primary hover:bg-wd-hover"
 									onClick={() => void toast.undo?.()}
 								>
 									{t("shortcut.undo")}
@@ -528,7 +526,7 @@ export function KeyboardShortcutsSettingsDialog({
 							) : null}
 							<button
 								type="button"
-								className="text-settings-muted hover:text-settings-label"
+								className="text-wd-secondary hover:text-wd-primary"
 								aria-label={t("shortcut.dismissNotification")}
 								onClick={() => setToast(null)}
 							>

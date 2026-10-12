@@ -1,4 +1,5 @@
-import { FileText, Loader2, RefreshCw } from "lucide-react";
+import { StateBadge, StateMark } from "@pin4sf/kennel-product-ui";
+import { FileText, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,7 +8,6 @@ import {
 	useOutcomeDocumentContext,
 	useSelectOutcomeDocuments,
 } from "../../hooks/useOutcomeArtifacts";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 
 type LocalFile = File & { path?: string };
@@ -62,20 +62,25 @@ export function OutcomeDocumentsPanel({ outcomeId }: { outcomeId: string }) {
 	}
 
 	return (
-		<section className="mt-5 rounded-md border border-border p-4" data-testid="outcome-documents-panel">
+		<section className="mt-5 flex flex-col gap-3 rounded-lg hairline border-wd-hairline bg-wd-surface p-5" data-testid="outcome-documents-panel">
 			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div>
+				<div className="flex min-w-0 flex-col gap-1">
 					<div className="flex items-center gap-2">
-						<FileText aria-hidden="true" className="size-4 text-muted-foreground" />
-						<h3 className="text-sm font-medium">{t("mission.documents.heading")}</h3>
-						{context && <Badge variant={context.state === "approved" ? "success" : "outline"}>{context.state}</Badge>}
+						<FileText aria-hidden="true" className="size-4 text-wd-secondary" />
+						<h3 className="text-sm font-medium text-wd-primary">{t("mission.documents.heading")}</h3>
+						{context && (
+							<StateBadge
+								label={context.state === "approved" ? t("mission.documents.state.approved") : t("mission.documents.state.selected")}
+								tone={context.state === "approved" ? "good" : "neutral"}
+							/>
+						)}
 						{!context && !contextQuery.isLoading && !failure && (
-							<Badge variant="outline">{t("mission.documents.optional")}</Badge>
+							<StateBadge label={t("mission.documents.optional")} tone="neutral" />
 						)}
 					</div>
-					<p className="mt-1 text-xs text-muted-foreground">{t("mission.documents.intro")}</p>
+					<p className="text-xs text-wd-secondary">{t("mission.documents.intro")}</p>
 					{!context && !contextQuery.isLoading && !failure && (
-						<p className="mt-1 text-xs text-muted-foreground" data-testid="outcome-documents-optional">
+						<p className="text-xs text-wd-secondary" data-testid="outcome-documents-optional">
 							{t("mission.documents.optionalEmpty")}
 						</p>
 					)}
@@ -88,11 +93,11 @@ export function OutcomeDocumentsPanel({ outcomeId }: { outcomeId: string }) {
 				)}
 			</div>
 
-			<label className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="outcome-document-picker">
+			<label className="flex flex-col gap-1 text-xs text-wd-secondary" htmlFor="outcome-document-picker">
 				<span>{t("mission.documents.choose")}</span>
 				<input
 					accept=".md,.markdown,.txt,.pdf,.doc,.docx,.json,.yaml,.yml,.csv"
-					className="block w-full rounded-md border border-input bg-background px-2 py-2 text-xs text-foreground file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
+					className="block w-full rounded-md bg-wd-inset px-3 py-2 text-xs text-wd-primary file:mr-3 file:rounded-full file:border-0 file:bg-wd-surface file:px-3 file:py-1 file:text-xs file:font-medium file:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 					disabled={pending}
 					id="outcome-document-picker"
 					multiple
@@ -100,54 +105,70 @@ export function OutcomeDocumentsPanel({ outcomeId }: { outcomeId: string }) {
 					type="file"
 				/>
 			</label>
-			<p className="mt-1 text-2xs text-muted-foreground">{t("mission.documents.pathNote")}</p>
+			<p className="-mt-2 text-xs text-wd-tertiary">{t("mission.documents.pathNote")}</p>
 
 			{paths.length > 0 && (
-				<div className="mt-3 rounded border border-border p-2">
-					<p className="text-xs font-medium">{t("mission.documents.pendingSelection", { count: paths.length })}</p>
-					<ul className="mt-1 space-y-1 text-2xs text-muted-foreground">
+				<div className="flex flex-col gap-2 rounded-md bg-wd-inset p-3">
+					<p className="text-sm font-medium text-wd-primary">{t("mission.documents.pendingSelection", { count: paths.length })}</p>
+					<ul className="flex flex-col gap-1 font-mono text-xs text-wd-secondary">
 						{paths.map((path) => <li className="break-all" key={path}>{path}</li>)}
 					</ul>
-					<Button className="mt-2" disabled={pending} onClick={() => void select()} size="sm" variant="outline">
-						{selectMutation.pending && <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />}
-						{t("mission.documents.select")}
+					<Button aria-busy={selectMutation.pending || undefined} className="self-start" disabled={pending} onClick={() => void select()} size="sm" variant="secondary">
+						{selectMutation.pending ? t("mission.documents.selecting") : t("mission.documents.select")}
 					</Button>
 				</div>
 			)}
 
-			{pickerMessage && <p className="mt-2 text-xs text-warning">{pickerMessage}</p>}
+			{pickerMessage && (
+				<p className="flex items-start gap-1.5 text-xs text-wd-primary">
+					<StateMark className="mt-0.5 text-caution" tone="caution" />
+					{pickerMessage}
+				</p>
+			)}
 
 			{context && (
-				<div className="mt-3 rounded border border-border p-3" data-testid="outcome-document-context">
+				<div className="flex flex-col gap-2 rounded-md bg-wd-inset p-3" data-testid="outcome-document-context">
 					<div className="flex items-center justify-between gap-2">
-						<h4 className="text-xs font-medium">{t("mission.documents.selected")}</h4>
-						<span className="text-2xs text-muted-foreground">{t("mission.documents.revision", { revision: context.revision })}</span>
+						<h4 className="text-sm font-medium text-wd-primary">{t("mission.documents.selected")}</h4>
+						<span className="text-xs tabular-nums text-wd-tertiary">{t("mission.documents.revision", { revision: context.revision })}</span>
 					</div>
-					<ul className="mt-2 space-y-2">
+					<ul className="flex flex-col gap-2">
 						{context.sources.map((source) => (
-							<li className="text-xs" key={source.id}>
-								<p className="font-medium">{source.name}</p>
-								<p className="break-all text-2xs text-muted-foreground">
-									{source.sourcePath} · {t("mission.documents.bytes", { size: source.sizeBytes })}
+							<li className="flex flex-col gap-0.5 text-xs" key={source.id}>
+								<p className="text-sm text-wd-primary">{source.name}</p>
+								<p className="break-all text-wd-tertiary">
+									<span className="font-mono">{source.sourcePath}</span> · <span className="tabular-nums">{t("mission.documents.bytes", { size: source.sizeBytes })}</span>
 								</p>
 							</li>
 						))}
 					</ul>
 					{context.changedSources.length > 0 && (
-						<p className="mt-2 text-xs text-warning">{t("mission.documents.changed", { count: context.changedSources.length })}</p>
+						<p className="flex items-start gap-1.5 text-xs text-wd-primary">
+							<StateMark className="mt-0.5 text-caution" tone="caution" />
+							{t("mission.documents.changed", { count: context.changedSources.length })}
+						</p>
 					)}
 					{context.state === "selected" && (
-						<Button className="mt-3" disabled={pending || context.changedSources.length > 0} onClick={() => void approve()} size="sm">
-							{approveMutation.pending && <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />}
-							{t("mission.documents.approve")}
+						<Button aria-busy={approveMutation.pending || undefined} className="mt-1 self-start" disabled={pending || context.changedSources.length > 0} onClick={() => void approve()} size="sm">
+							{approveMutation.pending ? t("mission.documents.approving") : t("mission.documents.approve")}
 						</Button>
 					)}
-					{context.state === "approved" && <p className="mt-2 text-xs text-status-ready">{t("mission.documents.approved")}</p>}
+					{context.state === "approved" && (
+						<p className="flex items-center gap-1.5 text-xs text-wd-primary">
+							<StateMark className="text-good" tone="good" />
+							{t("mission.documents.approved")}
+						</p>
+					)}
 				</div>
 			)}
 
-			{contextQuery.isLoading && <p className="mt-2 text-xs text-muted-foreground">{t("mission.documents.loading")}</p>}
-			{failure && <p className="mt-2 text-xs text-destructive" role="alert">{failure.message}</p>}
+			{contextQuery.isLoading && <p className="text-xs text-wd-secondary" role="status">{t("mission.documents.loading")}</p>}
+			{failure && (
+				<p className="flex items-start gap-1.5 text-xs text-wd-primary" role="alert">
+					<StateMark className="mt-0.5 text-critical" tone="critical" />
+					{failure.message}
+				</p>
+			)}
 		</section>
 	);
 }

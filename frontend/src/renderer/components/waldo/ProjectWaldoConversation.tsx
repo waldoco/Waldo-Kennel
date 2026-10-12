@@ -1,5 +1,5 @@
-import { AlertTriangle, CheckCircle2, ChevronDown, Link2, Link2Off, Send } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowUp, ArrowUpRight, CheckCircle2, ChevronDown, Clock, Link2, Link2Off } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { components } from "../../../api/schema";
 import {
@@ -9,6 +9,7 @@ import {
   apiErrorRequestId,
 } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 type Snapshot = components["schemas"]["WaldoConversationSnapshotResponse"];
 type ContextAttachment = components["schemas"]["WaldoContextAttachmentResponse"];
@@ -63,7 +64,7 @@ function continuationBindingStatus(previous: unknown, replacement: unknown, fiel
 }
 
 export function ProjectWaldoConversation({ daemonReady, onOpenHome, outcomeId, outcomeTitle, projectId, projectName }: ProjectWaldoConversationProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(() => readSnapshot(projectId));
   const [draft, setDraft] = useState(() => localStorage.getItem(draftKey(projectId, outcomeId)) ?? "");
   const [loading, setLoading] = useState(daemonReady);
@@ -239,52 +240,77 @@ export function ProjectWaldoConversation({ daemonReady, onOpenHome, outcomeId, o
     });
   }
 
+  const timeFormat = useMemo(() => new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit" }), [i18n.language]);
+  const formatTime = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : timeFormat.format(date);
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-border px-4 py-3">
+      <div className="flex flex-col gap-2 hairline-b border-wd-hairline px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-foreground px-2.5 py-1 text-xs font-semibold text-background">{projectName}</span>
-          {selectedContextLabel ? <span className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground">{selectedContextLabel}</span> : null}
+          <span className="inline-flex h-7 items-center rounded-full bg-wd-inset px-3 wd-label text-wd-primary">{projectName}</span>
+          {selectedContextLabel ? <span className="inline-flex h-7 items-center rounded-full hairline border-wd-hairline px-3 wd-caption text-wd-primary">{selectedContextLabel}</span> : null}
           {selectedAttachment ? (
             <>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-foreground">
-                <Link2 aria-hidden="true" className="size-3" /> {outcomeId ? t("waldo.project.outcomeContextAttached") : t("waldo.project.contextAttached")}
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-full hairline border-wd-hairline px-3 wd-caption text-wd-secondary">
+                <Link2 aria-hidden="true" className="size-3.5" /> {outcomeId ? t("waldo.project.outcomeContextAttached") : t("waldo.project.contextAttached")}
               </span>
-              <button aria-label={outcomeId ? t("waldo.project.detachOutcomeAria") : t("waldo.project.detachAria")} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-interactive-hover" disabled={!daemonReady || busy} onClick={() => void detachContext(selectedAttachment)} type="button">
+              <Button aria-label={outcomeId ? t("waldo.project.detachOutcomeAria") : t("waldo.project.detachAria")} className="h-7" disabled={!daemonReady || busy} onClick={() => void detachContext(selectedAttachment)} size="sm" type="button" variant="ghost">
                 {t("waldo.project.detach")}
-              </button>
+              </Button>
             </>
           ) : (
-            <button className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-interactive-hover disabled:opacity-50" disabled={!daemonReady || !snapshot || busy} onClick={() => void attachSelectedContext()} type="button">
-              <Link2 aria-hidden="true" className="size-3" /> {outcomeId ? t("waldo.project.attachOutcome") : t("waldo.project.attach")}
-            </button>
+            <Button className="h-7" disabled={!daemonReady || !snapshot || busy} onClick={() => void attachSelectedContext()} size="sm" type="button" variant="outline">
+              <Link2 aria-hidden="true" className="size-3.5" /> {outcomeId ? t("waldo.project.attachOutcome") : t("waldo.project.attach")}
+            </Button>
           )}
         </div>
-        {!daemonReady ? <p className="mt-2 text-xs text-warning-foreground">{t("waldo.project.offline")}</p> : null}
+        {!daemonReady ? (
+          <p className="inline-flex items-center gap-1.5 wd-caption text-caution">
+            <Clock aria-hidden="true" className="size-3.5 shrink-0" /> {t("waldo.project.offline")}
+          </p>
+        ) : null}
         {onOpenHome ? (
-          <button aria-label={t("waldo.project.homeAria")} className="mt-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" onClick={onOpenHome} type="button">
+          <Button aria-label={t("waldo.project.homeAria")} className="-ml-3 self-start text-wd-secondary hover:text-wd-primary" onClick={onOpenHome} size="sm" type="button" variant="ghost">
             {t("waldo.project.home")}
-          </button>
+            <ArrowUpRight aria-hidden="true" className="size-3.5" />
+          </Button>
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {loading ? <p className="text-sm text-muted-foreground">{t("waldo.project.loading")}</p> : null}
-        {!loading && !snapshot ? <p className="text-sm text-muted-foreground">{t("waldo.project.noState")}</p> : null}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        {loading ? <p className="wd-note text-wd-secondary">{t("waldo.project.loading")}</p> : null}
+        {!loading && !snapshot ? <p className="wd-body-s text-wd-secondary">{t("waldo.project.noState")}</p> : null}
         {snapshot ? (
-          <div aria-label={t("waldo.project.logAria")} className="space-y-3" role="log">
-            {snapshot.turns.length === 0 ? <p className="text-sm leading-6 text-muted-foreground">{t("waldo.project.empty")}</p> : null}
-            {snapshot.turns.map((turn) => (
-              <article className={cn("max-w-[92%] rounded-2xl px-3.5 py-3 text-sm leading-5", turn.role === "user" ? "ml-auto rounded-br-md bg-foreground text-background" : "mr-auto rounded-bl-md border border-border bg-raised text-foreground")} key={turn.id}>
-                <span className="sr-only">{t("waldo.project.turn", { sequence: turn.sequence, role: turn.role })}</span>
-                {turn.message}
-              </article>
-            ))}
+          <div aria-label={t("waldo.project.logAria")} className="flex flex-col gap-5" role="log">
+            {snapshot.turns.length === 0 ? <p className="wd-body-s text-wd-secondary">{t("waldo.project.empty")}</p> : null}
+            {snapshot.turns.map((turn) => {
+              const time = formatTime(turn.createdAt);
+              return turn.role === "user" ? (
+                <article className="flex justify-end" key={turn.id}>
+                  <div className="max-w-[80%] whitespace-pre-wrap rounded-lg rounded-br-xs bg-wd-inset px-4 py-3 wd-body text-wd-primary">
+                    <span className="sr-only">{t("waldo.project.turn", { sequence: turn.sequence, role: turn.role })}</span>
+                    {turn.message}
+                  </div>
+                </article>
+              ) : (
+                <article className="flex flex-col gap-2" key={turn.id}>
+                  <span className="sr-only">{t("waldo.project.turn", { sequence: turn.sequence, role: turn.role })}</span>
+                  <p className="flex items-baseline gap-2">
+                    <span className="wd-caption text-wd-secondary">{t("waldo.rail.identity")}</span>
+                    {time ? <time className="wd-data text-wd-tertiary" dateTime={turn.createdAt}>{time}</time> : null}
+                  </p>
+                  <p className="whitespace-pre-wrap wd-body-l text-wd-primary">{turn.message}</p>
+                </article>
+              );
+            })}
           </div>
         ) : null}
 
         {(snapshot?.continuationReceipts.length ?? 0) > 0 ? (
-          <section aria-label={t("waldo.project.receiptsAria")} className="mt-5 space-y-2 border-t border-border pt-4">
+          <section aria-label={t("waldo.project.receiptsAria")} className="mt-6 flex flex-col gap-3">
             {snapshot?.continuationReceipts.map((receipt) => {
               const expanded = expandedReceiptIds.has(receipt.id);
               const detailsId = `waldo-continuation-details-${receipt.id}`;
@@ -300,70 +326,80 @@ export function ProjectWaldoConversation({ daemonReady, onOpenHome, outcomeId, o
                 if (status === "changed") return t("waldo.project.continuationChanged");
                 return t("waldo.project.continuationUnavailable");
               };
+              const receiptTime = formatTime(receipt.createdAt);
               return (
-                <article className="rounded-xl border border-border bg-card p-3" key={receipt.id}>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                    {receipt.action === "automatic" ? <CheckCircle2 aria-hidden="true" className="size-3.5 text-success-foreground" /> : <AlertTriangle aria-hidden="true" className="size-3.5 text-warning-foreground" />}
-                    {receipt.action === "automatic" ? t("waldo.project.continuedSafely") : t("waldo.project.needsYou")}
+                <article className="flex flex-col gap-2 rounded-lg hairline border-wd-hairline bg-wd-surface p-4" key={receipt.id}>
+                  <div className="flex min-h-6 items-center gap-2">
+                    {receipt.action === "automatic" ? (
+                      <span className="inline-flex items-center gap-1.5 wd-label text-wd-primary">
+                        <CheckCircle2 aria-hidden="true" className="size-4 shrink-0 text-good" />
+                        {t("waldo.project.continuedSafely")}
+                      </span>
+                    ) : (
+                      <NeedsYouBadge>{t("waldo.project.needsYou")}</NeedsYouBadge>
+                    )}
+                    {receiptTime ? <time className="ml-auto wd-data text-wd-tertiary" dateTime={receipt.createdAt}>{receiptTime}</time> : null}
                   </div>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{receipt.action === "automatic" ? receipt.reasonDetail : receipt.needsUserReason || receipt.reasonDetail}</p>
-                  {receipt.action === "automatic" ? <p className="mt-1 text-micro text-muted-foreground">{t("waldo.project.continuationSummary", { scope: statusLabel(bindingStatus.scope), provider: statusLabel(bindingStatus.provider), workspace: statusLabel(bindingStatus.workspace), authority: statusLabel(bindingStatus.authority), budget: statusLabel(bindingStatus.budget) })}</p> : null}
-                  <p className="mt-1 text-micro text-muted-foreground">{receipt.oldSessionFenced ? t("waldo.project.predecessorFenced") : t("waldo.project.fencingUnconfirmed")} · {receipt.replacementIdentityConfirmed ? t("waldo.project.replacementConfirmed") : t("waldo.project.noReplacement")}</p>
-                  <button
+                  <p className="wd-body-s text-wd-primary">{receipt.action === "automatic" ? receipt.reasonDetail : receipt.needsUserReason || receipt.reasonDetail}</p>
+                  {receipt.action === "automatic" ? <p className="wd-caption text-wd-secondary">{t("waldo.project.continuationSummary", { scope: statusLabel(bindingStatus.scope), provider: statusLabel(bindingStatus.provider), workspace: statusLabel(bindingStatus.workspace), authority: statusLabel(bindingStatus.authority), budget: statusLabel(bindingStatus.budget) })}</p> : null}
+                  <p className="wd-caption text-wd-tertiary">{receipt.oldSessionFenced ? t("waldo.project.predecessorFenced") : t("waldo.project.fencingUnconfirmed")} · {receipt.replacementIdentityConfirmed ? t("waldo.project.replacementConfirmed") : t("waldo.project.noReplacement")}</p>
+                  <Button
                     aria-controls={detailsId}
                     aria-expanded={expanded}
                     aria-label={expanded ? t("waldo.project.hideReceiptDetails") : t("waldo.project.showReceiptDetails")}
-                    className="mt-2 inline-flex items-center gap-1 text-micro font-medium text-muted-foreground hover:text-foreground"
+                    className="-ml-3 self-start text-wd-secondary hover:text-wd-primary"
                     onClick={() => toggleReceiptDetails(receipt.id)}
+                    size="sm"
                     type="button"
+                    variant="ghost"
                   >
-                    <ChevronDown aria-hidden="true" className={cn("size-3 transition-transform", expanded && "rotate-180")} />
+                    <ChevronDown aria-hidden="true" className={cn("size-3.5 transition-transform duration-fast ease-out motion-reduce:transition-none", expanded && "rotate-180")} />
                     {expanded ? t("waldo.project.hideReceiptDetails") : t("waldo.project.showReceiptDetails")}
-                  </button>
+                  </Button>
                   {expanded ? (
-                    <div aria-label={t("waldo.project.receiptDetailsAria")} className="mt-3 border-t border-border pt-3" id={detailsId} role="region">
-                      <dl className="space-y-2 text-micro">
-                        <div>
-                          <dt className="font-medium text-foreground">{t("waldo.project.oldSession")}</dt>
-                          <dd className="break-all text-muted-foreground">{receipt.fromAgentSessionRef}</dd>
+                    <div aria-label={t("waldo.project.receiptDetailsAria")} className="rounded-md bg-wd-inset p-3" id={detailsId} role="region">
+                      <dl className="flex flex-col gap-2.5">
+                        <div className="flex flex-col gap-0.5">
+                          <dt className="wd-caption text-wd-secondary">{t("waldo.project.oldSession")}</dt>
+                          <dd className="break-all wd-data text-wd-primary">{receipt.fromAgentSessionRef}</dd>
                         </div>
                         {receipt.toAgentSessionRef ? (
-                          <div>
-                            <dt className="font-medium text-foreground">{t("waldo.project.newSession")}</dt>
-                            <dd className="break-all text-muted-foreground">{receipt.toAgentSessionRef}</dd>
+                          <div className="flex flex-col gap-0.5">
+                            <dt className="wd-caption text-wd-secondary">{t("waldo.project.newSession")}</dt>
+                            <dd className="break-all wd-data text-wd-primary">{receipt.toAgentSessionRef}</dd>
                           </div>
                         ) : null}
-                        <div>
-                          <dt className="font-medium text-foreground">{t("waldo.project.triggerEvidence")}</dt>
-                          <dd className="break-all text-muted-foreground">{receipt.triggerEvidence.kind} · {receipt.triggerEvidence.reference}</dd>
+                        <div className="flex flex-col gap-0.5">
+                          <dt className="wd-caption text-wd-secondary">{t("waldo.project.triggerEvidence")}</dt>
+                          <dd className="break-all wd-data text-wd-primary">{receipt.triggerEvidence.kind} · {receipt.triggerEvidence.reference}</dd>
                         </div>
-                        <div>
-                          <dt className="font-medium text-foreground">{t("waldo.project.contextCheckpoint")}</dt>
-                          <dd className="break-all text-muted-foreground">{receipt.contextDigest || t("waldo.project.continuationUnavailable")}</dd>
+                        <div className="flex flex-col gap-0.5">
+                          <dt className="wd-caption text-wd-secondary">{t("waldo.project.contextCheckpoint")}</dt>
+                          <dd className="break-all wd-data text-wd-primary">{receipt.contextDigest || t("waldo.project.continuationUnavailable")}</dd>
                         </div>
                         {(receipt.contextRefs?.length ?? 0) > 0 ? (
-                          <div>
-                            <dt className="font-medium text-foreground">{t("waldo.project.contextReferences")}</dt>
-                            <dd className="space-y-1 text-muted-foreground">
+                          <div className="flex flex-col gap-0.5">
+                            <dt className="wd-caption text-wd-secondary">{t("waldo.project.contextReferences")}</dt>
+                            <dd className="flex flex-col gap-1 wd-data text-wd-primary">
                               {receipt.contextRefs.map((ref, index) => (
                                 <div className="break-all" key={`${ref.kind}-${ref.objectId}-${ref.revision ?? index}`}>
                                   <div>{ref.kind} · {ref.objectId}{ref.revision ? ` · ${t("waldo.project.revision", { revision: ref.revision })}` : ""}</div>
-                                  <div>{ref.provenance.kind} · {ref.provenance.sourceId}</div>
+                                  <div className="text-wd-secondary">{ref.provenance.kind} · {ref.provenance.sourceId}</div>
                                 </div>
                               ))}
                             </dd>
                           </div>
                         ) : null}
                         {receipt.fenceReceiptRef ? (
-                          <div>
-                            <dt className="font-medium text-foreground">{t("waldo.project.fenceReceipt")}</dt>
-                            <dd className="break-all text-muted-foreground">{receipt.fenceReceiptRef}</dd>
+                          <div className="flex flex-col gap-0.5">
+                            <dt className="wd-caption text-wd-secondary">{t("waldo.project.fenceReceipt")}</dt>
+                            <dd className="break-all wd-data text-wd-primary">{receipt.fenceReceiptRef}</dd>
                           </div>
                         ) : null}
                         {receipt.reconciliationRef ? (
-                          <div>
-                            <dt className="font-medium text-foreground">{t("waldo.project.reconciliation")}</dt>
-                            <dd className="break-all text-muted-foreground">{receipt.reconciliationRef}</dd>
+                          <div className="flex flex-col gap-0.5">
+                            <dt className="wd-caption text-wd-secondary">{t("waldo.project.reconciliation")}</dt>
+                            <dd className="break-all wd-data text-wd-primary">{receipt.reconciliationRef}</dd>
                           </div>
                         ) : null}
                       </dl>
@@ -376,29 +412,42 @@ export function ProjectWaldoConversation({ daemonReady, onOpenHome, outcomeId, o
         ) : null}
 
         {error ? (
-          <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive" role="alert">
-            {error}{requestId ? ` · Request ${requestId}` : ""}
+          <div className="mt-4 flex items-start gap-2 rounded-md bg-critical-bg p-3 wd-body-s text-critical" role="alert">
+            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <span className="min-w-0">{error}{requestId ? ` · Request ${requestId}` : ""}</span>
           </div>
         ) : null}
-        {notice ? <p className="mt-3 text-xs leading-5 text-muted-foreground" role="status">{notice}</p> : null}
+        {notice ? <p className="mt-3 wd-note text-wd-secondary" role="status">{notice}</p> : null}
       </div>
 
-      <div className="border-t border-border p-3.5">
+      <div className="flex flex-col gap-2 hairline-t border-wd-hairline px-3 pb-3 pt-2">
         <label className="sr-only" htmlFor={`waldo-message-${projectId}`}>{t("waldo.project.composerLabel")}</label>
-        <textarea id={`waldo-message-${projectId}`} aria-label={t("waldo.project.composerLabel")} className="min-h-20 w-full resize-none rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
-          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-            event.preventDefault();
-            void sendTurn();
-          }
-        }} placeholder={daemonReady ? t("waldo.project.placeholder") : t("waldo.project.placeholderOffline")} value={draft} />
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-micro leading-4 text-muted-foreground">{activeEpisode ? t("waldo.project.episode", { ordinal: activeEpisode.ordinal }) : t("waldo.project.episodeOnSend")} · {t("waldo.project.shortcut")}</p>
-          <button aria-label={t("waldo.project.sendAria")} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-foreground px-3 text-xs font-medium text-background disabled:opacity-40" disabled={!daemonReady || !snapshot || !draft.trim() || busy} onClick={() => void sendTurn()} type="button">
-            <Send aria-hidden="true" className="size-3.5" /> {t("waldo.project.send")}
-          </button>
+        <div className="flex items-end gap-1">
+          <div className="min-h-(--size-field) min-w-0 flex-1 rounded-[calc(var(--size-field)/2)] hairline border-wd-hairline bg-wd-inset px-4 py-3 outline-2 outline-offset-2 outline-transparent transition-[outline-color] duration-fast ease-out focus-within:outline-(--border-focus) motion-reduce:transition-none">
+            <textarea id={`waldo-message-${projectId}`} aria-label={t("waldo.project.composerLabel")} className="block max-h-[6lh] min-h-6 w-full resize-none bg-transparent wd-body text-wd-primary field-sizing-content placeholder:text-wd-tertiary focus-visible:outline-none" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                void sendTurn();
+              }
+            }} placeholder={daemonReady ? t("waldo.project.placeholder") : t("waldo.project.placeholderOffline")} rows={1} value={draft} />
+          </div>
+          <Button aria-label={t("waldo.project.sendAria")} className="mb-0.5 size-11 rounded-full" disabled={!daemonReady || !snapshot || !draft.trim() || busy} onClick={() => void sendTurn()} size="icon" title={t("waldo.project.send")} type="button" variant="primary">
+            <ArrowUp aria-hidden="true" className="size-5" />
+          </Button>
         </div>
-        {!daemonReady && draft ? <p className="mt-2 inline-flex items-center gap-1 text-micro text-muted-foreground"><Link2Off aria-hidden="true" className="size-3" /> {t("waldo.project.draftLocal")}</p> : null}
+        <p className="px-4 wd-caption text-wd-tertiary">{activeEpisode ? t("waldo.project.episode", { ordinal: activeEpisode.ordinal }) : t("waldo.project.episodeOnSend")} · {t("waldo.project.shortcut")}</p>
+        {!daemonReady && draft ? <p className="inline-flex items-center gap-1.5 px-4 wd-caption text-wd-tertiary"><Link2Off aria-hidden="true" className="size-3.5 shrink-0" /> {t("waldo.project.draftLocal")}</p> : null}
       </div>
     </div>
+  );
+}
+
+/** The Needs you badge: the Spot dot plus the words (Waldo StateBadge). */
+export function NeedsYouBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-xs bg-spot-subtle px-1.5 text-xs font-medium text-spot-text">
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-spot" />
+      {children}
+    </span>
   );
 }

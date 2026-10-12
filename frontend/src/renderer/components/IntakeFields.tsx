@@ -103,8 +103,10 @@ export function IntakeFields({
 	const { t } = useTranslation();
 	const needsRule = intakeNeedsRule(form);
 	if (variant === "settings") {
+		// A fragment, not a wrapper: the rows must be direct children of the
+		// enclosing ListGroup so it can draw its inset separators.
 		return (
-			<div className="flex flex-col gap-1.5">
+			<>
 				<SettingsRow label={t("settings.project.enableIssueIntake")}>
 					<Switch
 						aria-label={t("settings.project.enableIssueIntake")}
@@ -121,7 +123,7 @@ export function IntakeFields({
 										href={`https://github.com/${repoPreview.value}`}
 										target="_blank"
 										rel="noopener noreferrer"
-										className="settings-row-value text-settings-accent hover:underline"
+										className="settings-row-value text-wd-primary underline-offset-2 hover:underline"
 									>
 										{repoPreview.value}
 									</a>
@@ -144,21 +146,21 @@ export function IntakeFields({
 						{needsRule && <IntakeAssigneeError />}
 					</>
 				)}
-			</div>
+			</>
 		);
 	}
 	return (
 		<div className="flex flex-col gap-4">
 			{!compact && (
-				<p className="text-xs leading-row text-muted-foreground">
+				<p className="wd-body-s text-wd-secondary">
 						{t("settings.project.intakeDescription")}
 				</p>
 			)}
 			<div className="flex items-center gap-2">
-				<label className="flex items-center gap-2.5 text-control text-foreground">
+				<label className="wd-body flex items-center gap-2.5 text-wd-primary">
 					<input
 						type="checkbox"
-						className="size-icon-base accent-accent"
+						className="size-icon-base accent-(--wd-accent)"
 						checked={form.enabled}
 						onChange={(e) => onChange({ enabled: e.target.checked })}
 					/>
@@ -170,7 +172,7 @@ export function IntakeFields({
 							<TooltipTrigger asChild>
 								<button
 									type="button"
-									className="grid size-icon-base place-items-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none"
+									className="grid size-icon-base place-items-center rounded-full text-wd-tertiary hover:text-wd-primary"
 									aria-label={t("settings.project.intakeHelpAria")}
 								>
 									<Info className="size-3.5" aria-hidden="true" />
@@ -190,12 +192,12 @@ export function IntakeFields({
 									href={`https://github.com/${repoPreview.value}`}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="text-control text-accent hover:underline"
+									className="wd-body-s text-wd-primary underline-offset-2 hover:underline"
 								>
 									{repoPreview.value}
 								</a>
 							) : (
-								<span className="text-control text-muted-foreground">
+								<span className="wd-body-s text-wd-secondary">
 									{t("settings.project.repoNotDetected")}
 								</span>
 							)}
@@ -205,12 +207,13 @@ export function IntakeFields({
 						<input
 							id="intakeAssignee"
 							className={cn(
-								"h-control-form w-full rounded-md border border-input bg-transparent px-2.5 text-control text-foreground placeholder:text-passive focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-weak",
+								"h-11 w-full rounded-md border border-transparent bg-wd-inset px-4 text-sm text-wd-primary placeholder:text-wd-tertiary transition-[border-color,box-shadow] duration-fast focus-visible:border-(--border-focus) focus-visible:shadow-[inset_0_0_0_var(--stroke-1)_var(--border-focus)] focus-visible:outline-none aria-invalid:border-critical",
 								controlClassName,
 							)}
 							value={form.assignee}
 							onChange={(e) => onChange({ assignee: e.target.value })}
 							placeholder={t("settings.project.intakeAssigneePlaceholder")}
+							aria-invalid={(!compact && needsRule) || undefined}
 						/>
 					</IntakeField>
 					{!compact && needsRule && <IntakeAssigneeError />}
@@ -223,8 +226,8 @@ export function IntakeFields({
 function IntakeAssigneeError() {
 	const { t } = useTranslation();
 	return (
-		<p className="flex items-center gap-1.5 px-1 text-xs leading-row text-error">
-			<TriangleAlert className="size-3 shrink-0 text-error" aria-hidden="true" />
+		<p className="wd-body-s flex items-center gap-1.5 px-4 py-2 text-critical">
+			<TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
 			{t("settings.project.intakeAssigneeRequired")}
 		</p>
 	);
@@ -242,8 +245,8 @@ function IntakeField({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex flex-col gap-1.5">
-			<Label htmlFor={htmlFor} className={cn("text-xs text-muted-foreground", labelClassName)}>
+		<div className="flex flex-col gap-2">
+			<Label htmlFor={htmlFor} className={cn("wd-label text-wd-secondary", labelClassName)}>
 				{label}
 			</Label>
 			{children}

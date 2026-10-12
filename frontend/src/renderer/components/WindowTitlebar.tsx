@@ -90,10 +90,15 @@ export function WindowTitlebar({
 	// push theme-matched colours to it whenever the theme changes.
 	useEffect(() => {
 		if (!isWindows) return;
-		// Keep in sync with --color-bg-sidebar (tokens.css) — the titlebar paints
-		// that colour, so the native buttons must match it.
-		const overlay =
+		// The titlebar paints Waldo canvas (--bg-canvas) with text-secondary
+		// glyphs; read the resolved tokens so the native buttons always match.
+		// The literals are only a fallback for environments without computed styles.
+		const fallback =
 			theme === "light" ? { color: "#fcfcfc", symbolColor: "#3f444c" } : { color: "#17181c", symbolColor: "#c7ccd4" };
+		const styles = getComputedStyle(document.documentElement);
+		const color = styles.getPropertyValue("--bg-canvas").trim();
+		const symbolColor = styles.getPropertyValue("--text-secondary").trim();
+		const overlay = color && symbolColor ? { color, symbolColor } : fallback;
 		void window.kennel?.window?.setOverlay(overlay);
 	}, [theme]);
 

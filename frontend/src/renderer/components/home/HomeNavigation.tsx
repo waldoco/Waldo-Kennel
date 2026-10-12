@@ -28,12 +28,15 @@ export function HomeNavigation({
     <Link
       aria-current={item.destination === destination ? "page" : undefined}
       className={cn(
-        "shrink-0 rounded-lg px-3 py-2 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-        supporting ? "text-xs" : "text-sm",
+        // Pills; the selected destination is ink, never orange.
+        "wd-label flex h-9 shrink-0 items-center rounded-full px-4 transition-colors duration-fast motion-reduce:transition-none",
         variant === "sidebar" && "w-full",
         item.destination === destination
-          ? "bg-interactive-active text-foreground"
-          : "text-muted-foreground hover:bg-interactive-hover hover:text-foreground",
+          ? "bg-wd-inverse text-wd-on-inverse"
+          : cn(
+              supporting ? "text-wd-secondary" : "text-wd-primary",
+              "hover:bg-wd-hover hover:text-wd-primary active:bg-wd-pressed",
+            ),
       )}
       key={item.destination}
       to={item.to}
@@ -44,23 +47,23 @@ export function HomeNavigation({
   return (
     <nav
       aria-label={t("home.visual.navigation.label")}
-      className={cn(variant === "sidebar" ? "flex flex-col gap-0.5 px-2" : "-mx-1 flex gap-1 overflow-x-auto px-1 pb-1")}
+      className={cn(variant === "sidebar" ? "flex flex-col gap-1 px-2" : "-mx-1 flex gap-1 overflow-x-auto px-1 pb-1")}
     >
       {variant === "sidebar" ? (
         <>
           <div
             aria-label={t("home.visual.navigation.primary")}
-            className="flex flex-col gap-0.5"
+            className="flex flex-col gap-1"
             role="group"
           >
             {primaryDestinations.map((item) => destinationLink(item))}
           </div>
           <div
             aria-label={t("home.visual.navigation.continuity")}
-            className="sidebar-expanded-chrome mt-5 flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden"
+            className="sidebar-expanded-chrome mt-6 flex flex-col gap-1 group-data-[collapsible=icon]:hidden"
             role="group"
           >
-            <p className="px-3 pb-1.5 text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">
+            <p className="wd-caption px-4 pb-1 text-wd-tertiary">
               {t("home.visual.navigation.continuity")}
             </p>
             {continuityDestinations.map((item) => destinationLink(item, true))}

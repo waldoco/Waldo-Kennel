@@ -253,9 +253,9 @@ describe("NotificationCenter", () => {
 		const badge = trigger.querySelector("span");
 
 		expect(bell?.classList.contains("size-icon-base")).toBe(true);
-		expect(badge?.classList.contains("h-3")).toBe(true);
-		expect(badge?.classList.contains("min-w-3")).toBe(true);
-		expect(badge?.classList.contains("text-[7px]")).toBe(true);
+		expect(badge?.classList.contains("h-3.5")).toBe(true);
+		expect(badge?.classList.contains("min-w-3.5")).toBe(true);
+		expect(badge?.classList.contains("text-2xs")).toBe(true);
 	});
 
 	it("opens once on click without a hover/focus remount and dismisses outside", async () => {

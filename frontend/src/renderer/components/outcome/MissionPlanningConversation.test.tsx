@@ -156,7 +156,7 @@ describe("MissionPlanningConversation", () => {
 			return sessionPending;
 		});
 		renderConversation();
-		await screen.findByText("Loading the current planning session…");
+		await screen.findByText("Reading the current planning session…");
 		expect(screen.queryByTestId("planning-start")).not.toBeInTheDocument();
 		resolveSession({ data: undefined, error: { code: "PLANNING_SESSION_NOT_FOUND", message: "none" } });
 	});

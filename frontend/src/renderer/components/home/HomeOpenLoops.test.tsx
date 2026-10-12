@@ -14,8 +14,8 @@ describe("HomeOpenLoops", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Open Loops" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Needs attention 1" })).toHaveAttribute(
+    expect(screen.getByRole("heading", { name: "Open loops" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs you 1" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -42,17 +42,17 @@ describe("HomeOpenLoops", () => {
     await user.click(screen.getByRole("button", { name: "Deck follow-up" }));
     await user.click(screen.getByRole("button", { name: "Continue in Work" }));
 
-    expect(screen.getByRole("status", { name: "Open Loop preview status" })).toHaveTextContent(
+    expect(screen.getByRole("status", { name: "Open loop preview status" })).toHaveTextContent(
       "No Work Outcome or responsibility link has been created",
     );
 
     await user.click(screen.getByRole("button", { name: "Correct this" }));
-    expect(screen.getByRole("status", { name: "Open Loop preview status" })).toHaveTextContent(
+    expect(screen.getByRole("status", { name: "Open loop preview status" })).toHaveTextContent(
       "Correction controls are local to this preview",
     );
 
     await user.click(screen.getByRole("button", { name: "Add context" }));
-    expect(screen.getByRole("status", { name: "Open Loop preview status" })).toHaveTextContent(
+    expect(screen.getByRole("status", { name: "Open loop preview status" })).toHaveTextContent(
       "Context controls are local to this preview",
     );
   });
@@ -71,7 +71,7 @@ describe("HomeOpenLoops", () => {
 
     const row = screen.getByRole("button", { name: "Vendor response" });
     await user.click(row);
-    await user.click(screen.getByRole("button", { name: "Back to Open Loops" }));
+    await user.click(screen.getByRole("button", { name: "Back to open loops" }));
 
     expect(row).toHaveFocus();
   });

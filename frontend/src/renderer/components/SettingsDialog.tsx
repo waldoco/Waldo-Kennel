@@ -119,9 +119,9 @@ export function SettingsDialog({ waldoPreview, initialGlobalSection = "general" 
 			>
 				{displaySettings && (
 					<div className={cn("flex h-full min-h-0", isWaldoSettings && "max-sm:flex-col")}>
-						<aside className={cn("flex w-48 shrink-0 flex-col border-r border-(--color-border-settings-dialog-header) bg-card", isWaldoSettings && "max-sm:w-full max-sm:border-r-0 max-sm:border-b")}>
-						<p className="px-3 pb-1 pt-3 text-2xs font-semibold tracking-wider text-muted-foreground/60">{t("settings.title")}</p>
-						<nav aria-label={t("settings.navSectionsAria")} className={cn("flex flex-col gap-0.5 p-2 pt-0", isWaldoSettings && "max-sm:flex-row max-sm:overflow-x-auto max-sm:[&_button]:w-auto max-sm:[&_button]:shrink-0")}>
+						<aside className={cn("flex w-52 shrink-0 flex-col border-r-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface", isWaldoSettings && "max-sm:w-full max-sm:border-r-0 max-sm:border-b")}>
+						<p className="wd-label px-5 pb-2 pt-5 text-wd-tertiary">{t("settings.title")}</p>
+						<nav aria-label={t("settings.navSectionsAria")} className={cn("flex flex-col gap-0.5 px-3 pb-3", isWaldoSettings && "max-sm:flex-row max-sm:overflow-x-auto max-sm:[&_button]:w-auto max-sm:[&_button]:shrink-0")}>
 							{isProjectSettings
 								? projectSections.map(({ id, label, icon }) => (
 										<SettingsNavItem
@@ -143,16 +143,12 @@ export function SettingsDialog({ waldoPreview, initialGlobalSection = "general" 
 									))}
 						</nav>
 						{isProjectSettings && (
-							<div className="mt-auto flex flex-col gap-2 border-t border-(--color-border-settings-dialog-header) p-3">
+							<div className="mt-auto flex flex-col gap-2 border-t-[length:var(--stroke-hairline)] border-wd-hairline p-4">
 								<Button
 									type="submit"
 									form="project-settings-form"
-									variant="footer-primary"
-									className={cn(
-										"w-full rounded-md",
-										(projectSaveState.validationError || projectSaveState.mutationError) &&
-											"border-error bg-error/15 text-error hover:bg-error/20",
-									)}
+									variant={projectSaveState.validationError || projectSaveState.mutationError ? "critical" : "primary"}
+									className="w-full"
 									disabled={projectSaveState.isPending}
 									aria-live="polite"
 									title={
@@ -185,21 +181,21 @@ export function SettingsDialog({ waldoPreview, initialGlobalSection = "general" 
 					</aside>
 
 					{/* Main area — same bg as the app page */}
-					<div className={cn("flex min-w-0 flex-1 flex-col bg-card", isWaldoSettings && "min-h-0")}>
-						<DialogHeader className={cn(settingsDialogHeaderClass, "flex h-auto shrink-0 flex-row items-center justify-between border-b-0")}>
-							<DialogTitle className="text-2xl font-bold text-foreground">{activeLabel}</DialogTitle>
+					<div className={cn("flex min-w-0 flex-1 flex-col bg-wd-canvas", isWaldoSettings && "min-h-0")}>
+						<DialogHeader className={cn(settingsDialogHeaderClass, "flex h-auto shrink-0 flex-row items-center justify-between border-b-0 px-8 pb-2 pt-8")}>
+							<DialogTitle className="wd-display-3 font-display font-normal text-wd-primary">{activeLabel}</DialogTitle>
 							<DialogDescription className="sr-only">
 								{isProjectSettings ? t("settings.project.dialogDescription") : t("settings.dialogDescription", { section: activeLabel.toLowerCase() })}
 							</DialogDescription>
 							<DialogClose
 								aria-label={t("settings.close")}
-								className="settings-close-button border border-transparent transition-colors hover:border-(--color-border-settings-input) hover:bg-[var(--color-bg-settings-input)]"
+								className="settings-close-button"
 								disabled={isProjectSettings && projectSaveState.isPending}
 							>
 								<X aria-hidden="true" className="size-4" />
 							</DialogClose>
 						</DialogHeader>
-						<div className={cn(settingsDialogBodyClass, "flex-1")}>
+						<div className={cn(settingsDialogBodyClass, "flex-1 px-8 pb-10 pt-4 [&>*]:mx-auto [&>*]:w-full [&>*]:max-w-[40rem]")}>
 							{displaySettings?.scope === "project" ? (
 								<ProjectSettingsForm
 									projectId={displaySettings.projectId}
@@ -246,11 +242,10 @@ function SettingsNavItem({
 		<button
 			aria-current={active ? "page" : undefined}
 			className={cn(
-				"flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-medium transition-[background-color,color,transform] duration-fast ease-out active:scale-press focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-				Icon === Link2 && "focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]",
+				"wd-label flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-left transition-[background-color,color,transform] duration-fast ease-out active:scale-press focus-visible:outline-offset-[-2px]",
 				active
-					? "bg-interactive-active text-foreground"
-					: "text-muted-foreground hover:bg-interactive-hover hover:text-foreground",
+					? "bg-wd-selected text-wd-primary"
+					: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 			)}
 			onClick={onClick}
 			type="button"

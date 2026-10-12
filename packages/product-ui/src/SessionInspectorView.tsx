@@ -18,6 +18,7 @@ import type {
 } from "./pull-request-models";
 import { cn } from "./utils";
 import { GithubAvatar } from "./GithubAvatar";
+import { StateBadge, StateLabel, type StateTone } from "./StateBadge";
 
 export type InspectorView = "summary" | "reviews" | "browser" | "files";
 
@@ -32,7 +33,7 @@ export type InspectorTab = {
 const inspectorShellClass = "@container/inspector flex h-full min-h-0 flex-col overflow-hidden";
 const inspectorBodyBaseClass = "min-h-0 flex-1";
 const inspectorScrollableBodyClass = "board-scrollbar overflow-x-hidden overflow-y-auto p-3 pb-4 @max-[300px]/inspector:px-2.5";
-export const inspectorEmptyClass = "text-xs text-settings-muted leading-normal";
+export const inspectorEmptyClass = "text-xs leading-normal text-wd-secondary";
 
 export function SessionInspectorShellView({
 	activeView,
@@ -99,9 +100,10 @@ export function SessionInspectorShellView({
 
 	return (
 		<aside className={inspectorShellClass} aria-label={ariaLabel}>
-			<div className="session-inspector__topbar flex h-inspector-tabs shrink-0 items-center border-b border-border pl-2.5">
+			<div className="session-inspector__topbar flex h-inspector-tabs shrink-0 items-center hairline-b border-wd-hairline pl-2.5">
 				{isVisible ? (
 					<div className="session-inspector__tablist flex min-w-0 flex-1 items-center justify-start gap-0" role="tablist">
+						<div className="inline-flex min-w-0 items-center gap-0.5 rounded-full bg-wd-inset p-0.5" role="presentation">
 						{tabs.map((tab, index) => (
 							<button
 								aria-label={tab.label}
@@ -111,8 +113,10 @@ export function SessionInspectorShellView({
 								aria-selected={activeView === tab.id}
 								tabIndex={activeView === tab.id ? 0 : -1}
 								className={cn(
-									"session-inspector__tab-button inline-flex h-control-md shrink-0 items-center justify-center rounded-md px-1 font-semibold text-passive transition-[background,color] duration-fast hover:bg-interactive-hover hover:text-foreground",
-									activeView === tab.id && "bg-interactive-active text-foreground",
+									"session-inspector__tab-button inline-flex h-7 shrink-0 items-center justify-center rounded-full px-2 font-medium transition-[background-color,color] duration-fast ease-standard motion-reduce:transition-none",
+									activeView === tab.id
+										? "bg-wd-inverse text-wd-on-inverse"
+										: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 								)}
 								onClick={() => onViewChange(tab.id)}
 								onKeyDown={(event) => selectAdjacentTab(event, index)}
@@ -126,8 +130,7 @@ export function SessionInspectorShellView({
 											className="absolute right-0 top-0 inline-flex size-dot-sm"
 											data-testid="browser-unseen-indicator"
 										>
-											<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-											<span className="relative inline-flex size-dot-sm rounded-full bg-primary ring-2 ring-background" />
+											<span className="relative inline-flex size-dot-sm rounded-full bg-wd-accent ring-2 ring-wd-inset" />
 										</span>
 									) : null}
 								</span>
@@ -136,6 +139,7 @@ export function SessionInspectorShellView({
 								</span>
 							</button>
 						))}
+						</div>
 					</div>
 				) : null}
 				{isVisible ? headerActions : null}
@@ -178,7 +182,7 @@ export function InspectorSection({
 }) {
 	const heading =
 		title || action ? (
-			<div className="mb-1 flex items-center justify-between gap-2 text-2xs font-bold uppercase tracking-settings-section text-settings-muted">
+			<div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium text-wd-primary">
 				{title ? <span>{title}</span> : <span />}
 				{action ?? null}
 			</div>
@@ -187,7 +191,7 @@ export function InspectorSection({
 		<section className={cn("mb-4 last:mb-0", className)} data-testid="inspector-section">
 			{heading}
 			{surface ? (
-				<div className="overflow-hidden rounded-settings-row bg-settings-row px-3.5 py-1.5">
+				<div className="overflow-hidden rounded-md hairline border-wd-hairline bg-wd-surface px-3 py-2">
 					{children}
 				</div>
 			) : (
@@ -239,11 +243,11 @@ export type InspectorPullRequest = PRSummaryMetadata & {
 	reviewDetailsAction?: ReactNode;
 };
 
-const prStateTone: Record<InspectorPullRequestState, string> = {
-	open: "border-border-strong bg-overlay text-muted-foreground",
-	draft: "border-status-in-review/35 bg-status-in-review/10 text-status-in-review",
-	merged: "border-border-strong bg-overlay text-success",
-	closed: "border-error/40 bg-error/10 text-error",
+const prStateTone: Record<InspectorPullRequestState, StateTone> = {
+	open: "neutral",
+	draft: "neutral",
+	merged: "good",
+	closed: "critical",
 };
 
 export function InspectorPullRequestCardView({
@@ -268,10 +272,10 @@ export function InspectorPullRequestCardView({
 	statusNotice?: ReactNode;
 }) {
 	return (
-		<article className="min-w-0 w-full rounded-lg border border-(--color-border-settings-input) bg-(--color-bg-settings-input) px-3 py-2.5">
+		<article className="min-w-0 w-full rounded-md hairline border-wd-hairline bg-wd-surface px-3 py-2.5">
 			{pr.title ? (
 				<ExternalLink
-					className="inline text-sm font-semibold leading-snug tracking-tight text-settings-label underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+					className="inline text-sm font-medium leading-snug text-wd-primary underline-offset-2 hover:underline focus-visible:rounded-xs"
 					href={pr.href}
 				>
 					{pr.title}
@@ -280,24 +284,14 @@ export function InspectorPullRequestCardView({
 			<div className={cn("flex min-w-0 items-center gap-2", pr.title && "mt-1.5")}>
 				<ExternalLink
 					ariaLabel={openLabel}
-					className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-settings-label decoration-muted-foreground underline-offset-2 hover:text-settings-label hover:underline focus-visible:rounded-sm focus-visible:text-settings-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+					className="inline-flex min-w-0 items-center gap-1 text-xs font-medium tabular-nums text-wd-secondary underline-offset-2 hover:text-wd-primary hover:underline focus-visible:rounded-xs"
 					href={pr.href}
 				>
 					{pullRequestIcon ?? <GitPullRequestIcon className="size-icon-sm shrink-0" />}
 					<span>PR #{pr.number}</span>
 					{externalIcon ?? <ArrowUpRightIcon className="size-icon-2xs shrink-0" />}
 				</ExternalLink>
-				<span
-					className={cn(
-						"inline-flex h-5 shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [&>svg]:pointer-events-none [&>svg]:size-3",
-						"border-border text-foreground hover:bg-muted",
-						"h-5 px-1.5 text-[9px] leading-none font-medium",
-						prStateTone[pr.state],
-					)}
-					data-slot="badge"
-				>
-					{pr.stateLabel}
-				</span>
+				<StateBadge label={pr.stateLabel} tone={prStateTone[pr.state]} />
 			</div>
 			<PRSummaryMeta
 				className="mt-1.5"
@@ -316,7 +310,7 @@ export function InspectorPullRequestCardView({
 					/>
 					{statusNotice}
 					{mergeError ? (
-						<p className="mt-2 text-2xs leading-normal text-error" role="status">
+						<p className="mt-2 text-2xs leading-normal text-critical" role="status">
 							{mergeError}
 						</p>
 					) : null}
@@ -337,10 +331,10 @@ export type InspectorTimelineEvent = {
 };
 
 const timelineNodeTone: Record<InspectorTimelineTone, string> = {
-	neutral: "bg-passive shadow-timeline-dot",
-	now: "bg-working shadow-timeline-dot-now",
-	good: "bg-success shadow-timeline-dot",
-	warn: "bg-warning shadow-timeline-dot",
+	neutral: "bg-wd-strong",
+	now: "bg-wd-accent",
+	good: "bg-good",
+	warn: "bg-caution",
 };
 
 export function InspectorActivityTimelineView({ events }: { events: InspectorTimelineEvent[] }) {
@@ -352,7 +346,7 @@ export function InspectorActivityTimelineView({ events }: { events: InspectorTim
 						<span
 							aria-hidden="true"
 							className={cn(
-								"absolute -bottom-[10.5px] -left-3.5 w-px bg-border",
+								"absolute -bottom-[10.5px] -left-3.5 w-px bg-wd-hairline",
 								event.tone === "now" ? "top-1/2" : "top-[10.5px]",
 							)}
 							data-testid="inspector-timeline-connector"
@@ -365,14 +359,15 @@ export function InspectorActivityTimelineView({ events }: { events: InspectorTim
 								"absolute -left-4.5 size-icon-xs rounded-full",
 								event.tone === "now" ? "top-1/2 -translate-y-1/2" : "top-1.5",
 								timelineNodeTone[event.tone],
-								event.markerBreathe && "animate-status-pulse",
 							)}
+							data-current={event.markerBreathe ? "true" : undefined}
+							data-testid="inspector-timeline-marker"
 							style={event.markerTone ? { background: event.markerTone } : undefined}
 						/>
-						<div className="text-xs leading-normal text-foreground [&_b]:font-semibold">{event.content}</div>
+						<div className="text-xs leading-normal text-wd-primary [&_b]:font-medium">{event.content}</div>
 					</div>
 					{event.timestamp ? (
-						<div className="mt-1 text-2xs text-passive">{event.timestamp}</div>
+						<div className="mt-1 text-2xs tabular-nums text-wd-tertiary">{event.timestamp}</div>
 					) : null}
 				</div>
 			))}
@@ -566,19 +561,20 @@ export function InspectorReviewsView({
 	);
 }
 
-const reviewerVerdictTone: Record<InspectorVerdict["tone"], string> = {
-	neutral: "text-muted-foreground",
-	running: "text-working",
-	success: "text-success",
-	danger: "text-error",
+const reviewerVerdictTone: Record<InspectorVerdict["tone"], StateTone> = {
+	neutral: "neutral",
+	running: "live",
+	success: "good",
+	danger: "critical",
 };
 
 function VerdictBadge({ verdict }: { verdict: InspectorVerdict }) {
 	return (
-		<span className={cn("inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-2xs font-medium", reviewerVerdictTone[verdict.tone])}>
-			<span className="size-1.5 shrink-0 rounded-full bg-current" />
-			{verdict.label}
-		</span>
+		<StateLabel
+			className="shrink-0 whitespace-nowrap text-2xs font-medium"
+			label={verdict.label}
+			tone={reviewerVerdictTone[verdict.tone]}
+		/>
 	);
 }
 
@@ -592,26 +588,15 @@ function ReviewSourceLabel({
 	marker?: string;
 }) {
 	return (
-		<div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-			<span className="flex size-5 shrink-0 items-center justify-center rounded-sm bg-muted/55 [&_svg]:size-icon-xs">
+		<div className="flex min-w-0 items-center gap-1.5 text-wd-secondary">
+			<span className="flex size-5 shrink-0 items-center justify-center rounded-xs bg-wd-inset [&_svg]:size-icon-xs">
 				{icon}
 			</span>
-			<span className="shrink-0 text-2xs font-semibold text-foreground">
+			<span className="shrink-0 text-2xs font-medium text-wd-primary">
 				{children}
 			</span>
-			{marker ? (
-				<span
-					className={cn(
-						"inline-flex h-5 shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [&>svg]:pointer-events-none [&>svg]:size-3",
-						"border-border text-foreground hover:bg-muted",
-						"h-4 px-1.5 text-[9px] leading-none text-passive",
-					)}
-					data-slot="badge"
-				>
-					{marker}
-				</span>
-			) : null}
-			<span aria-hidden="true" className="ml-1 h-px min-w-0 flex-1 bg-border/80" />
+			{marker ? <StateBadge label={marker} tone="neutral" /> : null}
+			<span aria-hidden="true" className="ml-1 h-px min-w-0 flex-1 bg-wd-hairline" />
 		</div>
 	);
 }
@@ -635,20 +620,20 @@ function ReviewDisclosure({
 	if (!collapsible) {
 		return (
 			<article
-				className="overflow-hidden rounded-lg border border-border bg-settings-row"
+				className="overflow-hidden rounded-md hairline border-wd-hairline bg-wd-surface"
 				data-testid="review-pr-row"
 			>
-				<div className="flex min-w-0 flex-col gap-1 border-b border-border/70 px-3 py-2.5">
+				<div className="flex min-w-0 flex-col gap-1 hairline-b border-wd-hairline px-3 py-2.5">
 					<span className="flex min-w-0 items-start justify-between gap-2">
 						<span
-							className="min-w-0 whitespace-normal break-words text-sm-md font-semibold leading-snug text-foreground"
+							className="min-w-0 whitespace-normal break-words text-sm font-medium leading-snug text-wd-primary"
 							title={title}
 						>
 							{title}
 						</span>
 						{verdict ? <VerdictBadge verdict={verdict} /> : null}
 					</span>
-					<span className="whitespace-normal break-words text-micro leading-snug text-passive" title={meta}>
+					<span className="whitespace-normal break-words text-micro leading-snug tabular-nums text-wd-tertiary" title={meta}>
 						{meta}
 					</span>
 				</div>
@@ -657,26 +642,26 @@ function ReviewDisclosure({
 		);
 	}
 	return (
-		<article className="overflow-hidden rounded-lg border border-border bg-settings-row">
+		<article className="overflow-hidden rounded-md hairline border-wd-hairline bg-wd-surface">
 			<button
 				aria-expanded={open}
 				data-testid="review-pr-row"
-				className="flex w-full min-w-0 items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-interactive-hover/30"
+				className="flex w-full min-w-0 items-start gap-2 px-3 py-2.5 text-left transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover"
 				onClick={() => setOpen((current) => !current)}
 				type="button"
 			>
-				<ChevronIcon className="size-icon-sm shrink-0 text-passive" direction={open ? "down" : "right"} />
+				<ChevronIcon className="size-icon-sm shrink-0 text-wd-tertiary" direction={open ? "down" : "right"} />
 				<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-					<span className="whitespace-normal break-words text-sm-md font-semibold leading-snug text-foreground" title={title}>
+					<span className="whitespace-normal break-words text-sm font-medium leading-snug text-wd-primary" title={title}>
 						{title}
 					</span>
-					<span className="whitespace-normal break-words text-micro leading-snug text-passive" title={meta}>
+					<span className="whitespace-normal break-words text-micro leading-snug tabular-nums text-wd-tertiary" title={meta}>
 						{meta}
 					</span>
 				</span>
 				{verdict ? <VerdictBadge verdict={verdict} /> : null}
 			</button>
-			{open ? <div className="flex flex-col gap-3 px-3 py-3">{children}</div> : null}
+			{open ? <div className="flex flex-col gap-3 hairline-t border-wd-hairline px-3 py-3">{children}</div> : null}
 		</article>
 	);
 }
@@ -737,7 +722,7 @@ function ReviewRunHistory({
 	const visible = runs.slice(0, visibleCount);
 	const remaining = Math.max(0, runs.length - visible.length);
 	return (
-		<div className={cn("flex min-w-0 flex-col gap-2", dimmed && "opacity-70")}>
+		<div className="flex min-w-0 flex-col gap-2" data-dimmed={dimmed ? "true" : undefined}>
 			{visible.map((run, index) => (
 				<ReviewSummaryCard
 					actor={run.harness || "reviewer"}
@@ -786,7 +771,7 @@ function ReviewHistoryPager({
 		<div className="flex min-w-0 gap-1.5">
 			{onCollapse ? (
 				<button
-					className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-micro font-medium text-muted-foreground transition-colors hover:border-border-strong hover:bg-interactive-hover/30 hover:text-foreground"
+					className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-micro font-medium text-wd-secondary transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover hover:text-wd-primary"
 					onClick={onCollapse}
 					type="button"
 				>
@@ -796,7 +781,7 @@ function ReviewHistoryPager({
 			) : null}
 			{remaining > 0 && onLoadMore ? (
 				<button
-					className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-micro font-medium text-muted-foreground transition-colors hover:border-border-strong hover:bg-interactive-hover/30 hover:text-foreground"
+					className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-micro font-medium text-wd-secondary transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover hover:text-wd-primary"
 					onClick={onLoadMore}
 					type="button"
 				>
@@ -872,34 +857,34 @@ function ExternalReviewCard({
 	const inlineComments = entry.inlineComments ?? [];
 	const openInlineCount = inlineComments.filter((comment) => comment.body?.trim() || comment.file || comment.url).length;
 	return (
-		<article className="overflow-hidden rounded-md border border-border bg-overlay/45" data-testid="github-review-card">
+		<article className="overflow-hidden rounded-sm bg-wd-inset" data-testid="github-review-card">
 			<button
 				aria-expanded={open}
-				className="flex w-full min-w-0 items-start gap-2 px-2.5 py-2 text-left transition-colors hover:bg-interactive-hover/30"
+				className="flex w-full min-w-0 items-start gap-2 px-2.5 py-2 text-left transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover"
 				onClick={() => setOpen((current) => !current)}
 				type="button"
 			>
-				<ChevronIcon className="mt-0.5 size-icon-2xs shrink-0 text-passive" direction={open ? "down" : "right"} />
+				<ChevronIcon className="mt-0.5 size-icon-2xs shrink-0 text-wd-tertiary" direction={open ? "down" : "right"} />
 				<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 					<span className="flex min-w-0 items-center gap-1.5">
-						<span className="inline-flex min-w-0 items-center gap-1 text-xs font-semibold text-foreground">
+						<span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-wd-primary">
 							<GithubAvatar login={entry.reviewerId} />
 							<span className="truncate">{entry.reviewerId}</span>
 						</span>
-						{entry.isBot ? <span className="shrink-0 text-micro text-passive">{labels.bot}</span> : null}
+						{entry.isBot ? <span className="shrink-0 text-micro text-wd-tertiary">{labels.bot}</span> : null}
 					</span>
-					<span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-micro text-passive">
+					<span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-micro tabular-nums text-wd-tertiary">
 						{entry.submittedAtLabel ? <span>{labels.reviewedAt(entry.submittedAtLabel)}</span> : null}
 						{entry.submittedAtLabel && openInlineCount > 0 ? <span aria-hidden="true">·</span> : null}
 						{openInlineCount > 0 ? (
-							<span className="font-semibold text-error">{labels.unresolvedCount(openInlineCount)}</span>
+							<span className="font-medium text-critical">{labels.unresolvedCount(openInlineCount)}</span>
 						) : null}
 					</span>
 				</span>
 				<VerdictBadge verdict={entry.verdict} />
 			</button>
 			{open ? (
-				<div className="flex min-w-0 flex-col gap-2 border-t border-border/70 px-2.5 py-2.5">
+				<div className="flex min-w-0 flex-col gap-2 hairline-t border-wd-hairline px-2.5 py-2.5">
 					{body ? (
 						<ReviewMarkdownBody body={body} clamped={false} renderMarkdown={renderMarkdown} testId="github-review-summary" />
 					) : null}
@@ -914,13 +899,13 @@ function ExternalReviewCard({
 					{onRequestRereview ? (
 						<div className="flex min-w-0 flex-wrap items-center gap-2">
 							{rereviewRequested ? (
-								<span className="inline-flex h-control-md items-center gap-1.5 rounded-md border border-border-strong bg-overlay/80 px-2.5 text-2xs font-medium text-foreground shadow-sm">
-									<CheckIcon className="shrink-0 text-success" />
+								<span className="inline-flex h-7 items-center gap-1.5 text-2xs font-medium text-wd-secondary [&_svg]:size-icon-xs">
+									<CheckIcon className="shrink-0 text-wd-tertiary" />
 									{labels.rereviewRequested}
 								</span>
 							) : (
 								<button
-									className="inline-flex h-control-md items-center rounded-md border border-border-strong bg-overlay/80 px-2.5 text-2xs font-medium text-foreground shadow-sm"
+									className="inline-flex h-7 items-center gap-1.5 rounded-full hairline border-wd-control px-3 text-2xs font-medium text-wd-primary transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover disabled:pointer-events-none disabled:opacity-40"
 									onClick={async () => {
 										setRereviewError(false);
 										try {
@@ -935,7 +920,7 @@ function ExternalReviewCard({
 									{labels.requestRereviewPR}
 								</button>
 							)}
-							{rereviewError ? <p className="m-0 text-2xs font-medium text-error">{labels.rereviewRequestFailed}</p> : null}
+							{rereviewError ? <p className="m-0 text-2xs font-medium text-critical">{labels.rereviewRequestFailed}</p> : null}
 						</div>
 					) : null}
 					{openInlineCount > 0 ? (
@@ -996,12 +981,12 @@ function GithubInlineComments({
 	);
 	if (comments.length === 0) return null;
 	return (
-		<section className="overflow-hidden rounded-md border border-border/70 bg-background/35" data-testid="github-inline-comments">
-			<div className="flex min-w-0 items-center justify-between gap-2 border-b border-border/70 px-2.5 py-2 text-2xs">
-				<span className="font-semibold text-foreground">{labels.openComments}</span>
-				<span className="shrink-0 font-semibold text-error">{labels.unresolvedCount(comments.length)}</span>
+		<section className="overflow-hidden rounded-xs hairline border-wd-hairline bg-wd-surface" data-testid="github-inline-comments">
+			<div className="flex min-w-0 items-center justify-between gap-2 hairline-b border-wd-hairline px-2.5 py-2 text-2xs">
+				<span className="font-medium text-wd-primary">{labels.openComments}</span>
+				<span className="shrink-0 font-medium tabular-nums text-critical">{labels.unresolvedCount(comments.length)}</span>
 			</div>
-			<div className="divide-y divide-border/60">
+			<div className="divide-y divide-wd-hairline">
 				{comments.map((comment) => (
 					<InlineCommentRow
 						comment={comment}
@@ -1083,37 +1068,37 @@ function InlineCommentRow({
 	return (
 		<div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2 text-2xs">
 			{showReviewer && comment.reviewerId ? (
-				<span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-muted-foreground">
+				<span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-wd-secondary">
 					<GithubAvatar login={comment.reviewerId} />
 					<span className="truncate">{comment.reviewerId}</span>
 				</span>
 			) : null}
-			{body ? <p className="m-0 whitespace-pre-wrap break-words leading-relaxed text-muted-foreground">{body}</p> : null}
+			{body ? <p className="m-0 whitespace-pre-wrap break-words leading-relaxed text-wd-secondary">{body}</p> : null}
 			<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 				{sent ? (
-					<span className="inline-flex h-control-md items-center gap-1.5 rounded-md border border-border-strong bg-overlay/80 px-2.5 font-medium text-foreground shadow-sm [&_svg]:size-icon-xs">
-						<CheckIcon className="shrink-0 text-success" />
+					<span className="inline-flex h-7 items-center gap-1.5 font-medium text-wd-secondary [&_svg]:size-icon-xs">
+						<CheckIcon className="shrink-0 text-wd-tertiary" />
 						{labels.sentToWorkerAgent}
 					</span>
 				) : (
 					<button
-						className="inline-flex h-control-md items-center gap-1.5 rounded-md border border-border-strong bg-overlay/80 px-2.5 font-medium text-foreground shadow-sm transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-60 [&_svg]:size-icon-xs"
+						className="inline-flex h-7 items-center gap-1.5 rounded-full hairline border-wd-control px-3 font-medium text-wd-primary transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-icon-xs"
 						disabled={sending || !onSend}
 						onClick={onSend}
 						type="button"
 					>
-						<BotIcon className="shrink-0 text-muted-foreground" />
+						<BotIcon className="shrink-0 text-wd-secondary" />
 						{labels.sendToWorkerAgent}
 					</button>
 				)}
 				{resolved ? (
-					<span className="inline-flex h-control-md items-center gap-1.5 rounded-md border border-border-strong bg-overlay/80 px-2.5 font-medium text-foreground shadow-sm">
-						<CheckIcon className="shrink-0 text-success" />
+					<span className="inline-flex h-7 items-center gap-1.5 font-medium text-good [&_svg]:size-icon-xs">
+						<CheckIcon className="shrink-0" />
 						{labels.resolvedReview}
 					</span>
 				) : (
 					<button
-						className="inline-flex h-control-md items-center rounded-md border border-border-strong bg-overlay/80 px-2.5 font-medium text-foreground shadow-sm"
+						className="inline-flex h-7 items-center rounded-full hairline border-wd-control px-3 font-medium text-wd-primary transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover disabled:pointer-events-none disabled:opacity-40"
 						disabled={!onResolve || !comment.url}
 						onClick={onResolve}
 						type="button"
@@ -1122,13 +1107,13 @@ function InlineCommentRow({
 					</button>
 				)}
 				{comment.url ? (
-					<ExternalLink className="font-medium text-muted-foreground no-underline transition-colors hover:text-foreground" href={comment.url}>
+					<ExternalLink className="font-medium text-wd-secondary no-underline transition-colors hover:text-wd-primary" href={comment.url}>
 						{labels.viewInFile}
 					</ExternalLink>
 				) : null}
 			</div>
-			{sendError && !sent ? <p className="m-0 text-2xs font-medium text-error">{labels.sendToWorkerAgentError}</p> : null}
-			{resolveError && !resolved ? <p className="m-0 text-2xs font-medium text-error">{labels.resolveReviewFailed}</p> : null}
+			{sendError && !sent ? <p className="m-0 text-2xs font-medium text-critical">{labels.sendToWorkerAgentError}</p> : null}
+			{resolveError && !resolved ? <p className="m-0 text-2xs font-medium text-critical">{labels.resolveReviewFailed}</p> : null}
 		</div>
 	);
 }
@@ -1165,15 +1150,15 @@ function ReviewSummaryCard({
 	const body = trimmed ? trimmed.replace(/\n{3,}/g, "\n\n") : trimmed;
 	const clamped = body ? isClampedSummary(body) : false;
 	return (
-		<article className="flex min-w-0 flex-col gap-1 rounded-md bg-overlay/50 px-2.5 py-2.5">
+		<article className="flex min-w-0 flex-col gap-1 rounded-sm bg-wd-inset px-2.5 py-2.5">
 			<span className="flex min-w-0 items-center gap-1.5">
-				<span className="inline-flex min-w-0 items-center gap-1 text-micro font-medium text-muted-foreground">
+				<span className="inline-flex min-w-0 items-center gap-1 text-micro font-medium text-wd-secondary">
 					{renderAvatar(actor)}
 					<span className="truncate">{actor}</span>
 				</span>
-				{isBot ? <span className="shrink-0 text-micro text-passive">{labels.bot}</span> : null}
+				{isBot ? <span className="shrink-0 text-micro text-wd-tertiary">{labels.bot}</span> : null}
 				<VerdictBadge verdict={verdict} />
-				<span className="ml-auto inline-flex shrink-0 items-center gap-1.5 text-micro text-passive">
+				<span className="ml-auto inline-flex shrink-0 items-center gap-1.5 text-micro tabular-nums text-wd-tertiary">
 					{isEarlier ? <span>{labels.earlierPass}</span> : null}
 					<span>{timestamp}</span>
 				</span>
@@ -1212,14 +1197,14 @@ function ReviewMarkdownBody({
 	return (
 		<div
 			className={cn(
-				"min-w-0 select-text break-words text-2xs leading-relaxed text-muted-foreground",
-				"[&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-2",
-				"[&_code]:rounded [&_code]:bg-muted/55 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-foreground",
+				"min-w-0 select-text break-words text-2xs leading-relaxed text-wd-secondary",
+				"[&_a]:font-medium [&_a]:text-wd-primary [&_a]:underline [&_a]:underline-offset-2",
+				"[&_code]:rounded-xs [&_code]:bg-wd-surface [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-wd-primary",
 				"[&_li]:my-0.5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1.5 [&_pre]:my-2",
-				"[&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:border-border [&_pre]:bg-muted/35 [&_pre]:p-2",
-				"[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:text-foreground [&_table]:my-2 [&_table]:w-full",
-				"[&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
-				"[&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-foreground",
+				"[&_pre]:overflow-x-auto [&_pre]:rounded-xs [&_pre]:bg-wd-surface [&_pre]:p-2",
+				"[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:font-medium [&_strong]:text-wd-primary [&_table]:my-2 [&_table]:w-full",
+				"[&_table]:border-collapse [&_td]:border [&_td]:border-wd-hairline [&_td]:px-2 [&_td]:py-1",
+				"[&_th]:border [&_th]:border-wd-hairline [&_th]:px-2 [&_th]:py-1 [&_th]:font-medium [&_th]:text-wd-primary",
 				"[&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-4 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
 				clamped && "line-clamp-4",
 			)}
@@ -1249,16 +1234,16 @@ function ReviewLinks({
 }) {
 	if (!clamped && !url) return null;
 	return (
-		<span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-micro text-passive">
+		<span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-micro text-wd-tertiary">
 			{clamped ? (
-				<button className="font-medium transition-colors hover:text-foreground" onClick={onExpandedChange} type="button">
+				<button className="font-medium transition-colors hover:text-wd-primary" onClick={onExpandedChange} type="button">
 					{expanded ? labels.showLess : labels.showMore}
 				</button>
 			) : null}
 			{clamped && url ? <span aria-hidden="true">·</span> : null}
 			{url ? (
 				<ExternalLink
-					className="inline-flex items-center gap-0.5 font-medium no-underline transition-colors hover:text-foreground"
+					className="inline-flex items-center gap-0.5 font-medium no-underline transition-colors hover:text-wd-primary"
 					href={url}
 				>
 					{renderViewLabel ?? labels.viewOnPR}

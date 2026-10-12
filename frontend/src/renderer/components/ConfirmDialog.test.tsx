@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-test("uses the same centered settings-dialog layout as nearby app dialogs", () => {
+test("renders a centred Waldo confirm dialog on the raised plane", () => {
 	render(
 		<ConfirmDialog
 			open
@@ -18,6 +18,6 @@ test("uses the same centered settings-dialog layout as nearby app dialogs", () =
 
 	const dialog = screen.getByRole("dialog", { name: "Kill session?" });
 
-	expect(dialog).toHaveClass("left-[50%]", "top-[50%]", "z-overlay", "bg-popover", "p-0");
+	expect(dialog).toHaveClass("left-[50%]", "top-[50%]", "z-overlay", "bg-wd-raised", "rounded-xl", "p-6");
 	expect(screen.getByRole("button", { name: "Confirm kill" }).querySelector("svg")).toBeNull();
 });

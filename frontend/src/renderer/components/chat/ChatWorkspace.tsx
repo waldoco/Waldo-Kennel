@@ -31,7 +31,6 @@ import {
 	ArrowDown,
 	CornerDownRight,
 	GitBranch,
-	Loader2,
 	MessageSquare,
 	TriangleAlert,
 	Undo2,
@@ -682,7 +681,7 @@ export function ChatWorkspace({
 					<div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
 						{discarded > 0 ? <RolledBackNotice count={discarded} /> : null}
 						{snapshot.branchedFromEarlierMessage ? (
-							<p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+							<p className="flex items-center gap-1.5 text-[11px] text-wd-secondary">
 								<GitBranch aria-hidden="true" className="size-3 shrink-0" />
 								Conversation branched; worktree files were left unchanged.
 							</p>
@@ -760,10 +759,10 @@ export function ChatWorkspace({
 				title="Roll back to this point?"
 				description={
 					<>
-						<p className="text-sm font-medium text-foreground">
+						<p className="text-sm font-medium text-wd-primary">
 							The agent will forget this exchange and everything after it.
 						</p>
-						<p className="mt-1 text-xs text-muted-foreground">
+						<p className="mt-1 text-xs text-wd-secondary">
 							Its memory of the conversation is discarded up to this point, so it will not know
 							about anything you or it said later. Files it already changed in the worktree are
 							left exactly as they are; only the conversation is rolled back. This cannot be
@@ -801,7 +800,7 @@ function CompactButton({
 }) {
 	if (!onCompact) return null;
 	if (unavailable === "This agent cannot compact its history") {
-		return <span className="text-[11px] text-muted-foreground">{unavailable}</span>;
+		return <span className="text-[11px] text-wd-secondary">{unavailable}</span>;
 	}
 	const title = turnInFlight
 		? "Finish or stop the current turn before compacting"
@@ -817,10 +816,10 @@ function CompactButton({
 			disabled={compacting || turnInFlight}
 			title={title}
 			aria-label="Compact conversation history"
-			className="h-5 gap-1 px-1.5 text-[11px]"
+			className="h-6 gap-1 px-2 text-[11px]"
 		>
-			{compacting ? <Loader2 aria-hidden="true" className="size-3 animate-spin" /> : <Archive aria-hidden="true" className="size-3" />}
-			{compacting ? "Compacting…" : "Compact"}
+			<Archive aria-hidden="true" className="size-3" />
+			{compacting ? "Compacting history…" : "Compact"}
 		</Button>
 	);
 }
@@ -836,7 +835,7 @@ function CompactButton({
  */
 function RolledBackNotice({ count }: { count: number }) {
 	return (
-		<p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+		<p className="flex items-center gap-1.5 text-[11px] text-wd-secondary">
 			<Undo2 aria-hidden="true" className="size-3 shrink-0" />
 			{count === 1
 				? "1 turn was rolled back. The agent no longer remembers it."
@@ -999,8 +998,8 @@ function ChatHeader({
 							className={cn(
 								"group relative inline-flex min-w-shell-tab-min self-stretch items-center gap-1.5 border-r border-border px-3",
 								timelineActive
-									? "bg-overlay text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground/80"
-									: "text-muted-foreground hover:bg-raised hover:text-foreground",
+									? "bg-wd-selected text-wd-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-wd-primary"
+									: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 							)}
 						>
 							<AgentAvatar className="size-icon-base" decorative provider={snapshot.harness} />
@@ -1010,7 +1009,7 @@ function ChatHeader({
 								aria-selected={timelineActive}
 								className={cn(
 									"inline-flex min-w-flex-min max-w-shell-tab-max items-center gap-1.5 text-control font-medium leading-none transition-colors",
-									timelineActive ? "text-foreground" : "text-muted-foreground",
+									timelineActive ? "text-wd-primary" : "text-wd-secondary",
 								)}
 								onClick={timelineActive ? undefined : onSelectChat}
 								role="tab"
@@ -1026,8 +1025,8 @@ function ChatHeader({
 								className={cn(
 									"group relative inline-flex min-w-shell-tab-min self-stretch items-center gap-1.5 border-r border-border px-3",
 									reviewerActive
-										? "bg-overlay text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground/80"
-										: "text-muted-foreground hover:bg-raised hover:text-foreground",
+										? "bg-wd-selected text-wd-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-wd-primary"
+										: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 								)}
 							>
 								<AgentAvatar className="size-icon-base" decorative provider={reviewerTerminal.harness} />
@@ -1037,7 +1036,7 @@ function ChatHeader({
 									aria-selected={Boolean(reviewerActive)}
 									className={cn(
 										"inline-flex min-w-flex-min max-w-shell-tab-max items-center gap-1.5 text-control font-medium leading-none",
-										reviewerActive ? "text-foreground" : "text-muted-foreground",
+										reviewerActive ? "text-wd-primary" : "text-wd-secondary",
 									)}
 									onClick={() => onOpenReviewerTerminal?.(reviewerTerminal)}
 									role="tab"
@@ -1108,9 +1107,9 @@ function ControllerBanner({
 	if (controller.state === "ready" || controller.state === "busy") return null;
 
 	const copy: Partial<Record<ControllerState, { title: string; tone: string }>> = {
-		connecting: { title: "Connecting to the agent…", tone: "text-muted-foreground" },
-		recovering: { title: "Reconnecting to the agent", tone: "text-warning" },
-		stopped: { title: "The agent controller stopped", tone: "text-destructive" },
+		connecting: { title: "Connecting to the agent…", tone: "text-wd-secondary" },
+		recovering: { title: "Reconnecting to the agent…", tone: "text-caution" },
+		stopped: { title: "The agent controller stopped", tone: "text-critical" },
 	};
 	const shown = copy[controller.state];
 	if (!shown) return null;
@@ -1119,25 +1118,31 @@ function ControllerBanner({
 		<div
 			role={controller.state === "stopped" ? "alert" : "status"}
 			aria-atomic="true"
-			className="flex shrink-0 items-start gap-2.5 border-b border-border bg-surface px-4 py-2.5"
+			className={cn(
+				"flex shrink-0 items-start gap-3 hairline-b border-wd-hairline px-4 py-2.5",
+				controller.state === "stopped"
+					? "bg-critical-bg"
+					: controller.state === "recovering"
+						? "bg-caution-bg"
+						: "bg-wd-inset",
+			)}
 		>
-			{controller.state === "connecting" ? (
-				<Loader2 aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 animate-spin text-muted-foreground" />
-			) : (
+			{/* Connecting is a working state, said in words; only a problem gets an icon. */}
+			{controller.state === "connecting" ? null : (
 				<TriangleAlert aria-hidden="true" className={cn("mt-0.5 size-3.5 shrink-0", shown.tone)} />
 			)}
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<strong className={cn("text-xs font-medium", shown.tone)}>{shown.title}</strong>
+				<strong className="text-xs font-medium text-wd-primary">{shown.title}</strong>
 				{controller.error ? (
-					<span className="text-[11px] leading-snug text-muted-foreground">{controller.error}</span>
+					<span className="text-[11px] leading-snug text-wd-secondary">{controller.error}</span>
 				) : null}
 				{controller.state === "stopped" ? (
 					<>
-						<span className="text-[11px] leading-snug text-muted-foreground">
+						<span className="text-[11px] leading-snug text-wd-secondary">
 							History is kept. Resume the agent or open a shell in the same worktree.
 						</span>
 						{resumeError || shellError ? (
-							<span className="text-[11px] leading-snug text-destructive">
+							<span className="text-[11px] leading-snug text-critical">
 								{resumeError ?? shellError}
 							</span>
 						) : null}
@@ -1473,7 +1478,7 @@ function Timeline({
 				aria-live="polite"
 				aria-label="Conversation"
 			>
-				<div ref={scrollContent} className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-4.5">
+				<div ref={scrollContent} className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-5">
 					{hasOlder ? (
 						<div className="flex justify-center pb-1">
 							<Button
@@ -1482,10 +1487,9 @@ function Timeline({
 								variant="ghost"
 								disabled={loadingOlder}
 								onClick={onLoadOlder}
-								className="gap-1.5 text-muted-foreground"
+								className="gap-1.5 text-wd-secondary"
 							>
-								{loadingOlder ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : null}
-								Load earlier messages
+								{loadingOlder ? "Fetching earlier messages…" : "Load earlier messages"}
 							</Button>
 						</div>
 					) : null}
@@ -1574,7 +1578,7 @@ function Timeline({
 				onBlur={() => setHoveredMarker(null)}
 				onPointerLeave={() => setHoveredMarker(null)}
 				className={cn(
-					"group/scroll absolute inset-y-3 right-1 z-10 w-4 touch-none rounded-full outline-none transition-opacity focus-visible:ring-1 focus-visible:ring-logo-accent/60",
+					"group/scroll absolute inset-y-3 right-1 z-10 w-4 touch-none rounded-full transition-opacity duration-fast",
 					scrollbar.visible ? "cursor-pointer opacity-100" : "pointer-events-none opacity-0",
 				)}
 			>
@@ -1608,16 +1612,16 @@ function Timeline({
 				{hoveredMarker !== null && scrollbar.markers[hoveredMarker] && previews[hoveredMarker] ? (
 					<div
 						role="tooltip"
-						className="chat-scroll-preview pointer-events-none absolute right-full z-20 mr-3 w-80 rounded-xl border border-border-strong bg-raised px-3.5 py-3 shadow-lg"
+						className="chat-scroll-preview pointer-events-none absolute right-full z-20 mr-3 w-80 rounded-md bg-wd-raised px-4 py-3 shadow-md"
 						style={{
 							top: `clamp(4rem, ${scrollbar.markers[hoveredMarker].top}px, calc(100% - 4rem))`,
 						}}
 					>
-						<strong className="line-clamp-1 text-sm font-medium leading-snug text-foreground">
+						<strong className="line-clamp-1 text-sm font-medium leading-snug text-wd-primary">
 							{previews[hoveredMarker].title}
 						</strong>
 						{previews[hoveredMarker].detail ? (
-							<p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+							<p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-wd-secondary">
 								{previews[hoveredMarker].detail}
 							</p>
 						) : null}
@@ -1788,18 +1792,16 @@ function TurnLiveStatus({ startedAt, blocked }: { startedAt?: string; blocked?: 
 					The agent is waiting for your decision.
 				</span>
 			) : null}
-			{blocked ? (
-				<TriangleAlert aria-hidden="true" className="size-3.5 shrink-0 text-warning" />
-			) : (
-				<Loader2
-					aria-hidden="true"
-					className="size-3 shrink-0 animate-spin text-status-working opacity-100"
-				/>
-			)}
+			{/* Waiting on the person is Needs You: the Spot dot beside the words. Working
+			    is the live accent dot beside a specific, static line. Neither moves. */}
+			<span
+				aria-hidden="true"
+				className={cn("size-1.5 shrink-0 rounded-full", blocked ? "bg-spot" : "bg-wd-accent")}
+			/>
 			<span
 				role={blocked ? undefined : "status"}
 				aria-live={blocked ? undefined : "polite"}
-				className={cn("text-xs font-medium", blocked ? "text-warning" : "text-muted-foreground")}
+				className={cn("text-xs", blocked ? "font-medium text-wd-primary" : "text-wd-secondary")}
 			>
 				{blocked ? "Waiting for your decision" : `Working for ${elapsed}`}
 			</span>
@@ -2145,9 +2147,9 @@ function EmptyState({ harness }: { harness: string }) {
 	return (
 		<div className="flex min-h-0 flex-1 items-center justify-center px-6">
 			<div className="flex max-w-sm flex-col items-center gap-2 text-center">
-				<MessageSquare aria-hidden="true" className="size-6 text-muted-foreground" />
-				<strong className="text-sm font-medium text-foreground">Start the conversation</strong>
-				<p className="text-xs leading-relaxed text-muted-foreground">
+				<MessageSquare aria-hidden="true" className="size-6 text-wd-tertiary" />
+				<strong className="text-sm font-medium text-wd-primary">Start the conversation</strong>
+				<p className="text-xs leading-relaxed text-wd-secondary">
 					This session talks to {harness} over a structured connection. Tool calls, file changes,
 					and approvals appear here as they happen. The Terminal tab opens a plain shell in the
 					same worktree — it is not a second copy of the agent.
@@ -2191,7 +2193,7 @@ function QueuedMessageDock({
 
 	return (
 		<div
-			className="-mb-2 max-h-40 overflow-y-auto rounded-t-[10px] border border-b-0 border-border-strong bg-surface"
+			className="-mb-2 max-h-40 overflow-y-auto rounded-t-[calc(var(--size-field)/2)] hairline border-b-0 border-wd-hairline bg-wd-surface"
 			data-testid="queued-message-dock"
 		>
 			{messages.map(({ turnId, message }) => {
@@ -2199,12 +2201,12 @@ function QueuedMessageDock({
 				return (
 					<div
 						key={turnId}
-						className="border-b border-border px-3 py-2 last:border-b-0"
+						className="hairline-b border-wd-hairline px-4 py-2 last:border-b-0"
 						data-testid={`queued-message-${turnId}`}
 					>
 						<div className="flex min-h-7 min-w-0 items-center gap-2">
-							<CornerDownRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-							<span className="min-w-0 flex-1 truncate text-sm text-foreground" title={message.text}>
+							<CornerDownRight aria-hidden="true" className="size-3.5 shrink-0 text-wd-tertiary" />
+							<span className="min-w-0 flex-1 truncate text-sm text-wd-primary" title={message.text}>
 								{message.text}
 							</span>
 							{onSteer ? (
@@ -2221,7 +2223,7 @@ function QueuedMessageDock({
 							) : null}
 						</div>
 						{errors[turnId] ? (
-							<p role="status" className="mt-1 text-[11px] text-warning">
+							<p role="status" className="mt-1 text-[11px] text-caution">
 								{errors[turnId]}
 							</p>
 						) : null}

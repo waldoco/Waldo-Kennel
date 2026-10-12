@@ -1,5 +1,4 @@
 import { OutcomeRunControls } from "./OutcomeRunControls";
-import { ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -22,7 +21,7 @@ import { MissionCanvas } from "./MissionCanvas";
 import { MissionViewSwitch } from "./MissionViewSwitch";
 import { MissionSessionHub } from "./MissionSessionHub";
 import { MissionWorkUnitList } from "./MissionWorkUnitList";
-import { Badge } from "../ui/badge";
+import { StateLabel, StateMark, type StateTone } from "@pin4sf/kennel-product-ui";
 import { Button } from "../ui/button";
 import { newestAttempt } from "./OutcomeRunBoardAdapters";
 
@@ -56,6 +55,19 @@ const STATUS_BADGE_KEYS: Record<string, MessageKey> = {
 function statusBadgeKey(status: string): MessageKey | undefined {
 	return STATUS_BADGE_KEYS[status];
 }
+
+/** Running is the one live state (blue dot); settled states carry their own
+ *  shape cue so colour is never the only signal. */
+const STATUS_TONE: Record<string, StateTone> = {
+	queued: "neutral",
+	running: "live",
+	paused: "neutral",
+	succeeded: "good",
+	failed: "critical",
+	cancelled: "neutral",
+	lost: "critical",
+	reconciled: "neutral",
+};
 
 /**
  * Act & Observe (#31): one truthful run surface over the daemon's attempt
@@ -146,14 +158,14 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 	return (
 		<div className="flex h-full min-h-0 flex-col gap-5" data-testid="outcome-run-surface">
 			<div className="max-w-xl">
-				<h2 className="text-base font-medium">{t("outcome.run.heading")}</h2>
-				<p className="text-muted-foreground text-sm">{t("outcome.run.intro")}</p>
+				<h2 className="text-base font-medium text-wd-primary">{t("outcome.run.heading")}</h2>
+				<p className="text-sm text-wd-secondary">{t("outcome.run.intro")}</p>
 			</div>
 
 			{!planApproved && !planQuery.isLoading && (
-				<div className="max-w-xl rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="outcome-run-needs-plan">
-					<h3 className="text-sm font-medium">{t("outcome.run.needsPlanTitle")}</h3>
-					<p className="mt-1 text-muted-foreground text-sm">{t("outcome.run.needsPlanBody")}</p>
+				<div className="flex max-w-xl flex-col gap-1 rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="outcome-run-needs-plan">
+					<h3 className="text-sm font-medium text-wd-primary">{t("outcome.run.needsPlanTitle")}</h3>
+					<p className="text-sm text-wd-secondary">{t("outcome.run.needsPlanBody")}</p>
 				</div>
 			)}
 
@@ -162,7 +174,7 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 			{/* The daemon-derived execution graph. Every state, blocker and
 			    reason here is a schedule fact; this only renders it. */}
 			{planApproved && schedule && (
-				<section className="max-w-2xl rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="outcome-run-schedule">
+				<section className="max-w-2xl rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="outcome-run-schedule">
 					<MissionPlanView
 						attempts={attempts}
 						changes={proofQuery.proof?.result?.changes}
@@ -181,7 +193,7 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 					{missionZoom === "dag" ? (
 						<Button onClick={() => setMissionZoom("hub")} size="sm" variant="ghost">{t("mission.sessionHub.back")}</Button>
 					) : null}
-					<h3 className="text-sm font-medium text-foreground">{missionZoom === "hub" ? t("mission.sessionHub.heading") : t("mission.list.heading")}</h3>
+					<h3 className="text-sm font-medium text-wd-primary">{missionZoom === "hub" ? t("mission.sessionHub.heading") : t("mission.list.heading")}</h3>
 				</div>
 				{missionZoom === "dag" ? <MissionViewSwitch
 					labels={{ ariaLabel: t("mission.view.switchAria" satisfies MessageKey), graph: t("mission.view.graph" satisfies MessageKey), list: t("mission.view.list" satisfies MessageKey) }}
@@ -207,10 +219,10 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 			/>}
 
 			{current && onReviewProof && (
-				<div className="max-w-xl rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="outcome-run-proof-card">
-					<h3 className="text-sm font-medium">{t("outcome.run.proofTitle")}</h3>
-					<p className="mt-1 text-muted-foreground text-sm">{t("outcome.run.proofBody")}</p>
-					<Button className="mt-3" data-testid="outcome-run-review-proof" onClick={onReviewProof} variant="outline">
+				<div className="flex max-w-xl flex-col gap-1 rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="outcome-run-proof-card">
+					<h3 className="text-sm font-medium text-wd-primary">{t("outcome.run.proofTitle")}</h3>
+					<p className="text-sm text-wd-secondary">{t("outcome.run.proofBody")}</p>
+					<Button className="mt-2 self-start" data-testid="outcome-run-review-proof" onClick={onReviewProof} size="sm" variant="secondary">
 						{t("outcome.run.proofCta")}
 					</Button>
 				</div>
@@ -218,11 +230,14 @@ export function OutcomeRunSurface({ outcomeId, onReviewProof, admissionBlocked =
 
 			{failure && (
 				<div
-					className="max-w-xl rounded-group hairline border-warning/40 bg-warning/5 px-4.5 py-3.5"
+					className="flex max-w-xl flex-col gap-1 rounded-lg hairline border-wd-hairline bg-wd-surface p-4"
 					data-testid="outcome-run-failure"
 				>
-					<h3 className="text-sm font-medium">{t("outcome.run.errorTitle")}</h3>
-					<p className="mt-1 text-muted-foreground text-sm">{failure.message}</p>
+					<h3 className="flex items-center gap-1.5 text-sm font-medium text-wd-primary">
+						<StateMark className="text-critical" tone="critical" />
+						{t("outcome.run.errorTitle")}
+					</h3>
+					<p className="text-sm text-wd-secondary">{failure.message}</p>
 				</div>
 			)}
 		</div>
@@ -251,35 +266,32 @@ function CurrentAttemptCard({
 
 	return (
 		<div
-			className="flex max-w-xl flex-col gap-3 rounded-card hairline border-border bg-card p-4.5"
+			className="flex max-w-xl flex-col gap-3 rounded-lg hairline border-wd-hairline bg-wd-surface p-4"
 			data-testid={`outcome-run-attempt-${attempt.id}`}
 		>
-			<div className="flex items-center gap-2">
+			<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
 				{badgeKey && (
-					<Badge data-testid="outcome-run-status" variant="outline">
-						{t(badgeKey, { number: attempt.number })}
-					</Badge>
+					<span className="text-sm font-medium" data-testid="outcome-run-status">
+						<StateLabel label={t(badgeKey, { number: attempt.number })} tone={STATUS_TONE[attempt.status] ?? "neutral"} />
+					</span>
 				)}
-				{phase === ATTEMPT_PHASES.executing && (
-					<span aria-hidden="true" className="size-dot-sm shrink-0 rounded-full bg-status-working animate-status-pulse" />
-				)}
-				<span aria-live="polite" className="text-muted-foreground text-xs" data-testid="outcome-run-next-action">
+				<span aria-live="polite" className="text-xs text-wd-secondary" data-testid="outcome-run-next-action">
 					{attempt.presentation.nextAction}
 				</span>
 			</div>
 
 			{phase === ATTEMPT_PHASES.needsInput && (
 				<section
-					className="rounded-md hairline border-warning/40 bg-warning/5 p-3"
+					className="flex flex-col gap-1 rounded-md bg-wd-inset p-3"
 					data-testid="outcome-run-needs-input"
 				>
-					<h3 className="flex items-center gap-1.5 text-sm font-medium">
-						<ShieldAlert aria-hidden="true" className="size-3.5" />
+					<h3 className="flex items-center gap-1.5 text-sm font-medium text-wd-primary">
+						<StateMark tone="needsYou" />
 						{attempt.presentation.attention === "blocked"
 							? t("outcome.run.blockedTitle")
 							: t("outcome.run.waitingInputTitle")}
 					</h3>
-					<p className="mt-1 text-muted-foreground text-sm">
+					<p className="text-sm text-wd-secondary">
 						{attempt.presentation.attention === "blocked"
 							? t("outcome.run.blockedBody")
 							: t("outcome.run.waitingInputBody")}
@@ -289,21 +301,21 @@ function CurrentAttemptCard({
 
 			{phase === ATTEMPT_PHASES.unconfirmed && (
 				<section
-					className="rounded-md hairline border-warning/40 bg-warning/5 p-3"
+					className="flex flex-col gap-1 rounded-md bg-wd-inset p-3"
 					data-testid="outcome-run-needs-you"
 				>
-					<h3 className="flex items-center gap-1.5 text-sm font-medium">
-						<ShieldAlert aria-hidden="true" className="size-3.5" />
+					<h3 className="flex items-center gap-1.5 text-sm font-medium text-wd-primary">
+						<StateMark tone="needsYou" />
 						{t("outcome.run.unconfirmedTitle")}
 					</h3>
-					<p className="mt-1 text-muted-foreground text-sm">{t("outcome.run.unconfirmedBody")}</p>
-					<div className="mt-2 flex gap-2">
+					<p className="text-sm text-wd-secondary">{t("outcome.run.unconfirmedBody")}</p>
+					<div className="mt-2 flex flex-wrap gap-2">
 						<Button
 							data-testid="outcome-run-contain"
 							disabled={pending}
 							onClick={() => onRecover("contain", false)}
 							size="sm"
-							variant="outline"
+							variant="secondary"
 						>
 							{t("outcome.run.ctaContain")}
 						</Button>
@@ -321,7 +333,7 @@ function CurrentAttemptCard({
 								disabled={pending}
 								onClick={() => setOwnerStopArmed(true)}
 								size="sm"
-								variant="outline"
+								variant="ghost"
 							>
 								{t("outcome.run.ownerStopCta")}
 							</Button>
@@ -329,28 +341,29 @@ function CurrentAttemptCard({
 					</div>
 					{ownerStopArmed && (
 						<div
-							className="mt-3 rounded-md hairline border-destructive/40 bg-destructive/5 p-3"
+							className="mt-2 flex flex-col gap-1 rounded-sm bg-wd-surface p-3"
 							data-testid="outcome-run-owner-stop-confirm"
 						>
-							<h4 className="text-sm font-medium">{t("outcome.run.ownerStopTitle")}</h4>
-							<p className="mt-1 text-muted-foreground text-sm">{t("outcome.run.ownerStopBody")}</p>
-							<div className="mt-2 flex flex-wrap gap-2">
-								<Button
-									data-testid="outcome-run-owner-stop-assert"
-									disabled={pending}
-									onClick={() => onRecover("reconcile", true)}
-									size="sm"
-								>
-									{t("outcome.run.ownerStopAssertCta")}
-								</Button>
+							<h4 className="text-sm font-medium text-wd-primary">{t("outcome.run.ownerStopTitle")}</h4>
+							<p className="text-sm text-wd-secondary">{t("outcome.run.ownerStopBody")}</p>
+							<div className="mt-2 flex flex-wrap items-center justify-between gap-2">
 								<Button
 									data-testid="outcome-run-owner-stop-back"
 									disabled={pending}
 									onClick={() => setOwnerStopArmed(false)}
 									size="sm"
-									variant="outline"
+									variant="ghost"
 								>
 									{t("outcome.run.ownerStopBackCta")}
+								</Button>
+								<Button
+									data-testid="outcome-run-owner-stop-assert"
+									disabled={pending}
+									onClick={() => onRecover("reconcile", true)}
+									size="sm"
+									variant="critical"
+								>
+									{t("outcome.run.ownerStopAssertCta")}
 								</Button>
 							</div>
 						</div>
@@ -360,14 +373,14 @@ function CurrentAttemptCard({
 
 			{phase === ATTEMPT_PHASES.endedUnclassified && (
 				<section
-					className="rounded-md hairline border-border p-3"
+					className="flex flex-col gap-1 rounded-md bg-wd-inset p-3"
 					data-testid="outcome-run-ended-unclassified"
 				>
-					<h3 className="text-sm font-medium">{t("outcome.run.unclassifiedTitle")}</h3>
-					<p className="mt-1 text-muted-foreground text-sm">{t("outcome.run.unclassifiedBody")}</p>
+					<h3 className="text-sm font-medium text-wd-primary">{t("outcome.run.unclassifiedTitle")}</h3>
+					<p className="text-sm text-wd-secondary">{t("outcome.run.unclassifiedBody")}</p>
 					{attempt.status === "running" && (
 						<Button
-							className="mt-2"
+							className="mt-2 self-start"
 							data-testid="outcome-run-reconcile"
 							disabled={pending}
 							onClick={() => onRecover("reconcile", false)}
@@ -378,7 +391,7 @@ function CurrentAttemptCard({
 					)}
 					{attempt.status !== "running" && (
 						<Button
-							className="mt-2"
+							className="mt-2 self-start"
 							data-testid="outcome-run-replace"
 							disabled={pending}
 							onClick={() => onRecover("replace", false)}
@@ -392,11 +405,14 @@ function CurrentAttemptCard({
 
 			{(phase === ATTEMPT_PHASES.haltedFailed || phase === ATTEMPT_PHASES.suspectLost || phase === ATTEMPT_PHASES.haltedCancelled) && (
 				<section
-					className="rounded-md hairline border-destructive/40 bg-destructive/5 p-3"
+					className="flex flex-col gap-1 rounded-md bg-wd-inset p-3"
 					data-testid="outcome-run-action-required"
 				>
-					<h3 className="text-sm font-medium">{t("outcome.run.actionRequiredTitle")}</h3>
-					<p className="mt-1 text-muted-foreground text-sm">
+					<h3 className="flex items-center gap-1.5 text-sm font-medium text-wd-primary">
+						<StateMark tone="needsYou" />
+						{t("outcome.run.actionRequiredTitle")}
+					</h3>
+					<p className="text-sm text-wd-secondary">
 						{phase === ATTEMPT_PHASES.haltedCancelled
 							? t("outcome.run.cancelledBody")
 							: t("outcome.run.actionRequiredBody")}
@@ -415,7 +431,7 @@ function CurrentAttemptCard({
 							disabled={pending}
 							onClick={() => onRecover("replace", true)}
 							size="sm"
-							variant="outline"
+							variant="secondary"
 						>
 							{t("outcome.run.confirmStoppedCta")}
 						</Button>
@@ -424,27 +440,27 @@ function CurrentAttemptCard({
 			)}
 
 			{phase === ATTEMPT_PHASES.executing && (
-				<p className="text-muted-foreground text-sm" data-testid="outcome-run-waiting">
+				<p className="text-sm text-wd-primary" data-testid="outcome-run-waiting">
 					{t("outcome.run.waitingBody")}
 				</p>
 			)}
 
 			{attempt.status === "running" && phase !== ATTEMPT_PHASES.unconfirmed && (
-				<Button
-					data-testid="outcome-run-cancel"
-					disabled={pending}
-					onClick={() => onAct("cancel")}
-					size="sm"
-					variant="outline"
-				>
-					{t("outcome.run.ctaCancel")}
-				</Button>
+				<div className="flex flex-col items-start gap-1">
+					<Button
+						data-testid="outcome-run-cancel"
+						disabled={pending}
+						onClick={() => onAct("cancel")}
+						size="sm"
+						variant="critical"
+					>
+						{t("outcome.run.ctaCancel")}
+					</Button>
+					<p className="text-xs text-wd-secondary">{t("outcome.run.cancelConsequence")}</p>
+				</div>
 			)}
 
-
-
-
-			<p className="text-muted-foreground text-xs">
+			<p className="text-xs tabular-nums text-wd-tertiary">
 				{t("outcome.run.observationCount", { total: attempt.observations.length })}
 			</p>
 		</div>

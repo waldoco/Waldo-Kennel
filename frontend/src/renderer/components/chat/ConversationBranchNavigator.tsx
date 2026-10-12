@@ -16,7 +16,7 @@ export function ConversationBranchNavigator({
 	const { t } = useTranslation();
 	if (point.total <= 1) return null;
 	return (
-		<div className="flex min-w-0 items-center gap-0.5 text-[10.5px] text-muted-foreground">
+		<div className="flex min-w-0 items-center gap-0.5 text-[11px] text-wd-secondary">
 		{point.previousBranchId ? (
 			<button
 				type="button"
@@ -26,13 +26,13 @@ export function ConversationBranchNavigator({
 				}}
 				aria-label={t("chat.branch.previous")}
 				title={t("chat.branch.previous")}
-				className="rounded p-0.5 transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-logo-accent/40 disabled:opacity-45"
+				className="rounded-full p-0.5 transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary disabled:text-wd-disabled"
 			>
 				<ChevronLeft aria-hidden="true" className="size-3.5" />
 			</button>
 		) : null}
 		<span
-			className="px-0.5 tabular-nums"
+			className="wd-data-s px-0.5"
 			aria-label={t("chat.branch.position", { position: point.position, total: point.total })}
 		>
 			{point.position} / {point.total}
@@ -46,12 +46,12 @@ export function ConversationBranchNavigator({
 				}}
 				aria-label={t("chat.branch.next")}
 				title={t("chat.branch.next")}
-				className="rounded p-0.5 transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-logo-accent/40 disabled:opacity-45"
+				className="rounded-full p-0.5 transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary disabled:text-wd-disabled"
 			>
 				<ChevronRight aria-hidden="true" className="size-3.5" />
 			</button>
 		) : null}
-		{error ? <span role="alert" className="ml-1 truncate text-destructive">{error}</span> : null}
+		{error ? <span role="alert" className="ml-1 truncate text-critical">{error}</span> : null}
 	</div>
 	);
 }

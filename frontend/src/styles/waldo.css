@@ -1,0 +1,445 @@
+/*
+ * Waldo design system — Kennel renderer foundation
+ * ============================================
+ * Values copied exactly from the Waldo design system's tokens.json
+ * (version 0.3.2). Kennel inherits this system: tokens.css maps its legacy
+ * shadcn/Kennel roles onto the semantic tokens below, so a component that
+ * still says `bg-card` or `--color-text-muted` lands on a Waldo value.
+ *
+ * Two tiers, as in the system:
+ *   - primitives (coat-*, orange-*, emerald-*, amber-*, red-*, icon-*) hold values;
+ *   - semantic tokens (bg-*, text-*, border-*, spot, good, caution, critical…)
+ *     say what a value is for. Components use semantic tokens only.
+ *
+ * Themes follow Kennel's switch: dark is the default (:root), light is
+ * :root[data-theme="light"]. Increased contrast layers on with
+ * :root[data-contrast="more"] or the OS preference.
+ */
+
+@font-face {
+	font-family: "Mottle";
+	src: url("../renderer/assets/fonts/mottle-unified.ttf") format("truetype");
+	font-weight: 400 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+:root {
+	/* ── Primitives: the coat ── */
+	--coat-0: #fcfcfa; /* Waldo White */
+	--coat-50: #f5f5f2;
+	--coat-75: #f0f0ed;
+	--coat-100: #ecece9;
+	--coat-200: #e1e1de;
+	--coat-300: #d4d4d1;
+	--coat-400: #a8a8a3;
+	--coat-500: #8c8c87;
+	--coat-600: #6b6b66;
+	--coat-650: #5c5c58;
+	--coat-700: #4a4a47;
+	--coat-800: #30302f;
+	--coat-825: #282827;
+	--coat-850: #222221;
+	--coat-875: #1c1c1b;
+	--coat-900: #151514; /* Waldo Black */
+	--coat-950: #0d0d0c;
+
+	/* ── Primitives: hues ── */
+	--orange-50: #fff7ed;
+	--orange-100: #ffedd5;
+	--orange-200: #fed7aa;
+	--orange-300: #fdba74;
+	--orange-400: #fb923c;
+	--orange-500: #f97316; /* Waldo Spot */
+	--orange-600: #ea580c;
+	--orange-700: #c2410c;
+	--orange-800: #9a3412;
+	--orange-900: #7c2d12;
+	--orange-950: #431407;
+	--emerald-100: #d1fae5;
+	--emerald-300: #6ee7b7;
+	--emerald-400: #34d399;
+	--emerald-600: #059669;
+	--emerald-700: #047857;
+	--emerald-900: #064e3b;
+	--amber-100: #fef3c7;
+	--amber-400: #fbbf24;
+	--amber-600: #d97706;
+	--amber-700: #b45309;
+	--amber-800: #92400e;
+	--amber-900: #78350f;
+	--red-100: #fee2e2;
+	--red-400: #f87171;
+	--red-600: #dc2626;
+	--red-700: #b91c1c;
+	--red-900: #7f1d1d;
+
+	/* ── Functional identity: icon glyphs and their 12% tiles only ── */
+	--icon-red: #ff3b30;
+	--icon-coral: #ff6f5e;
+	--icon-orange: #ff9500;
+	--icon-amber: #ffb800;
+	--icon-yellow: #ffcc00;
+	--icon-lime: #a3d63c;
+	--icon-green: #34c759;
+	--icon-mint: #00c7be;
+	--icon-teal: #30b0c7;
+	--icon-cyan: #32ade6;
+	--icon-blue: #0a84ff;
+	--icon-cobalt: #3e63dd;
+	--icon-indigo: #5e5ce6;
+	--icon-purple: #af52de;
+	--icon-violet: #bf5af2;
+	--icon-pink: #ff375f;
+	--icon-magenta: #ff2d9a;
+
+	/* ── Type families ── */
+	--font-display: "Mottle", "SF Pro Rounded", ui-rounded, system-ui, sans-serif;
+	--font-text:
+		"SF Pro Rounded", ui-rounded, -apple-system, system-ui, "Geist Variable", "Geist", sans-serif;
+	--font-cli:
+		"DM Mono", "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+	/* ── Space (4px grid) ── */
+	--wd-space-0: 0px;
+	--wd-space-1: 4px;
+	--wd-space-2: 8px;
+	--wd-space-3: 12px;
+	--wd-space-4: 16px;
+	--wd-space-5: 20px;
+	--wd-space-6: 24px;
+	--wd-space-8: 32px;
+	--wd-space-10: 40px;
+	--wd-space-12: 48px;
+
+	/* ── Shape ── */
+	--wd-radius-xs: 6px;
+	--wd-radius-sm: 10px;
+	--wd-radius-md: 14px;
+	--wd-radius-lg: 20px;
+	--wd-radius-xl: 28px;
+	--wd-radius-full: 999px;
+	--stroke-hairline: 0.6px;
+	--stroke-1: 1px;
+	--stroke-2: 2px;
+
+	/* ── Opacity ── */
+	--opacity-inactive: 0.4;
+	--opacity-tile: 0.12;
+	--opacity-pressed: 0.72;
+	--opacity-segment: 0.28;
+
+	/* ── Motion ── */
+	--duration-stagger: 30ms;
+	--duration-instant: 100ms;
+	--duration-base: 240ms;
+	--duration-deliberate: 600ms;
+	--duration-loop: 1200ms;
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ease-enter: cubic-bezier(0, 0, 0.2, 1);
+	--ease-exit: cubic-bezier(0.4, 0, 1, 1);
+	--ease-flip: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+	/* ── Size and layout ── */
+	--size-touch: 44px;
+	--size-field: 48px;
+	--size-tile-sm: 28px;
+	--size-tile-md: 36px;
+	--layout-measure: 65ch;
+	--layout-column: 640px;
+	--layout-page: 1200px;
+	--layout-rail: 220px;
+	--layout-inspector: 240px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Semantic colour — dark (Kennel default)
+   ═══════════════════════════════════════════════════════════════ */
+:root,
+:root.dark,
+.dark {
+	--bg-canvas: var(--coat-950);
+	--bg-surface: var(--coat-900);
+	--bg-raised: var(--coat-850);
+	--bg-inset: var(--coat-875);
+	--bg-hover: var(--coat-825);
+	--bg-selected: var(--bg-inset);
+	--bg-pressed: var(--coat-800);
+	--bg-inverse: var(--coat-0);
+	--bg-scrim: rgba(0, 0, 0, 0.6);
+
+	--text-primary: var(--coat-0);
+	--text-secondary: var(--coat-400);
+	--text-tertiary: #91918c;
+	--text-disabled: var(--coat-650);
+	--text-inverse: var(--coat-900);
+	--text-link: var(--text-primary);
+	--text-link-hover: var(--text-secondary);
+
+	--border-hairline: rgba(250, 250, 248, 0.1);
+	--border-strong: rgba(250, 250, 248, 0.18);
+	--border-control: #7a7a75;
+	--border-focus: var(--coat-0);
+
+	--wd-accent: #0a84ff;
+	--wd-on-accent: var(--coat-0);
+	--wd-accent-subtle: #13273a;
+
+	--spot: var(--orange-500);
+	--spot-pressed: var(--orange-400);
+	--on-spot: var(--coat-900);
+	--spot-text: var(--orange-400);
+	--spot-subtle: #392414;
+
+	--good: var(--emerald-400);
+	--good-bg: #122a22;
+	--caution: var(--amber-400);
+	--caution-bg: #342512;
+	--critical: var(--red-400);
+	--critical-bg: #351817;
+
+	--viz-ink: var(--text-primary);
+	--viz-muted: var(--coat-600);
+	--viz-band: #242423;
+	--viz-baseline: var(--coat-500);
+	--viz-grid: var(--coat-800);
+
+	--shadow-raised: none;
+	--shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Semantic colour — light
+   ═══════════════════════════════════════════════════════════════ */
+:root[data-theme="light"] {
+	--bg-canvas: var(--coat-50);
+	--bg-surface: var(--coat-0);
+	--bg-raised: var(--coat-0);
+	--bg-inset: var(--coat-100);
+	--bg-hover: var(--coat-75);
+	--bg-selected: var(--bg-inset);
+	--bg-pressed: var(--coat-200);
+	--bg-inverse: var(--coat-900);
+	--bg-scrim: rgba(18, 18, 18, 0.4);
+
+	--text-primary: var(--coat-900);
+	--text-secondary: var(--coat-650);
+	--text-tertiary: var(--coat-600);
+	--text-disabled: var(--coat-400);
+	--text-inverse: var(--coat-0);
+
+	--border-hairline: rgba(26, 26, 26, 0.1);
+	--border-strong: rgba(26, 26, 26, 0.18);
+	--border-control: #85857f;
+	--border-focus: var(--coat-900);
+
+	--wd-accent: #007aff;
+	--wd-on-accent: var(--coat-0);
+	--wd-accent-subtle: #e4f0fa;
+
+	--spot: var(--orange-500);
+	--spot-pressed: var(--orange-600);
+	--on-spot: var(--coat-900);
+	--spot-text: var(--orange-800);
+	--spot-subtle: #fceee3;
+
+	--good: var(--emerald-700);
+	--good-bg: #e3f2ec;
+	--caution: var(--amber-800);
+	--caution-bg: #f8efe2;
+	--critical: var(--red-700);
+	--critical-bg: #f9e7e5;
+
+	--viz-muted: var(--coat-500);
+	--viz-band: #ebebe7;
+	--viz-grid: var(--coat-200);
+
+	--shadow-overlay: 0 12px 32px rgba(26, 26, 26, 0.1);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Increased contrast — text to 7:1, hairlines become visible borders.
+   Light values; the dark theme keeps its own and only firms its borders.
+   ═══════════════════════════════════════════════════════════════ */
+:root[data-theme="light"][data-contrast="more"] {
+	--text-secondary: var(--coat-800);
+	--text-tertiary: var(--coat-700);
+	--text-disabled: var(--coat-600);
+	--border-hairline: var(--coat-500);
+	--border-strong: var(--coat-600);
+	--border-control: var(--coat-700);
+	--wd-accent: #0040dd;
+	--spot: var(--orange-400);
+	--spot-pressed: var(--orange-300);
+	--spot-text: var(--orange-900);
+	--good: var(--emerald-900);
+	--caution: var(--amber-900);
+	--critical: var(--red-900);
+	--stroke-hairline: 1px;
+}
+:root[data-contrast="more"]:not([data-theme="light"]) {
+	--border-hairline: rgba(250, 250, 248, 0.32);
+	--border-strong: rgba(250, 250, 248, 0.45);
+	--stroke-hairline: 1px;
+}
+@media (prefers-contrast: more) {
+	:root[data-theme="light"] {
+		--text-secondary: var(--coat-800);
+		--text-tertiary: var(--coat-700);
+		--border-hairline: var(--coat-500);
+		--border-strong: var(--coat-600);
+		--stroke-hairline: 1px;
+	}
+	:root:not([data-theme="light"]) {
+		--border-hairline: rgba(250, 250, 248, 0.32);
+		--border-strong: rgba(250, 250, 248, 0.45);
+		--stroke-hairline: 1px;
+	}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Type styles — one class per style in the scale.
+   Mottle sets words only and never below 22px; numbers use tabular
+   figures in the text face; mono is for command lines only.
+   ═══════════════════════════════════════════════════════════════ */
+.wd-display-2,
+.wd-display-3,
+.wd-display-4 {
+	font-family: var(--font-display);
+	font-weight: 400;
+	text-wrap: balance;
+}
+.wd-display-2 {
+	font-size: 34px;
+	line-height: 40px;
+	letter-spacing: -0.01em;
+}
+.wd-display-3 {
+	font-size: 28px;
+	line-height: 34px;
+	letter-spacing: -0.01em;
+}
+.wd-display-4 {
+	font-size: 22px;
+	line-height: 28px;
+	letter-spacing: 0;
+}
+.wd-title,
+.wd-headline,
+.wd-body-l,
+.wd-body,
+.wd-body-s,
+.wd-label-l,
+.wd-label,
+.wd-caption,
+.wd-micro,
+.wd-note,
+.wd-data-l,
+.wd-data,
+.wd-data-s {
+	font-family: var(--font-text);
+	letter-spacing: 0;
+}
+.wd-title {
+	font-size: 20px;
+	line-height: 26px;
+	font-weight: 500;
+	letter-spacing: -0.005em;
+}
+.wd-headline {
+	font-size: 17px;
+	line-height: 24px;
+	font-weight: 500;
+}
+.wd-body-l {
+	font-size: 17px;
+	line-height: 26px;
+	font-weight: 400;
+	max-width: var(--layout-measure);
+}
+.wd-body {
+	font-size: 16px;
+	line-height: 24px;
+	font-weight: 400;
+}
+.wd-body-s {
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 400;
+}
+.wd-label-l {
+	font-size: 16px;
+	line-height: 20px;
+	font-weight: 500;
+}
+.wd-label {
+	font-size: 14px;
+	line-height: 18px;
+	font-weight: 500;
+}
+.wd-caption,
+.wd-note {
+	font-size: 13px;
+	line-height: 18px;
+	font-weight: 400;
+}
+.wd-micro {
+	font-size: 11px;
+	line-height: 14px;
+	font-weight: 500;
+	letter-spacing: 0.01em;
+}
+.wd-data-l,
+.wd-data,
+.wd-data-s {
+	font-variant-numeric: tabular-nums;
+}
+.wd-data-l {
+	font-size: 20px;
+	line-height: 24px;
+	font-weight: 500;
+}
+.wd-data {
+	font-size: 13px;
+	line-height: 18px;
+	font-weight: 400;
+}
+.wd-data-s {
+	font-size: 11px;
+	line-height: 14px;
+	font-weight: 400;
+}
+.wd-cli {
+	font-family: var(--font-cli);
+	font-size: 13px;
+	line-height: 20px;
+	font-weight: 400;
+	letter-spacing: 0;
+}
+.wd-t-primary {
+	color: var(--text-primary);
+}
+.wd-t-secondary {
+	color: var(--text-secondary);
+}
+.wd-t-tertiary {
+	color: var(--text-tertiary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Focus — one style everywhere: 2px border-focus, offset 2px.
+   ═══════════════════════════════════════════════════════════════ */
+:where(a, button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], input, select, textarea, summary, [tabindex]):focus-visible {
+	outline: var(--stroke-2) solid var(--border-focus);
+	outline-offset: 2px;
+}
+
+/* Reduce Motion: every movement becomes a short cross-fade; nothing loops. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+	}
+}

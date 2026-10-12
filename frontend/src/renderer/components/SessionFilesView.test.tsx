@@ -421,8 +421,8 @@ describe("SessionFilesView", () => {
 		await screen.findByText(diffLine("const value = 1;"));
 
 		// Only the differing token is highlighted on each side, not the whole line.
-		expect(container.querySelector('[class*="bg-success/35"]')?.textContent).toBe("1");
-		expect(container.querySelector('[class*="bg-error/35"]')?.textContent).toBe("0");
+		expect(container.querySelector('[class*="bg-good/25"]')?.textContent).toBe("1");
+		expect(container.querySelector('[class*="bg-critical/25"]')?.textContent).toBe("0");
 	});
 
 	it("switches between unified and side-by-side split diff", async () => {
@@ -481,7 +481,7 @@ describe("SessionFilesView", () => {
 		await screen.findByText(diffLine("const value = 1;"));
 
 		const feedbackButton = screen.getByRole("button", { name: "Add feedback on new line 1 in src/App.tsx" });
-		expect(feedbackButton).toHaveClass("bg-primary", "active:translate-y-0", "active:scale-100");
+		expect(feedbackButton).toHaveClass("bg-wd-inverse", "rounded-full", "active:translate-y-0", "active:scale-100");
 		expect(feedbackButton).not.toHaveClass("-translate-y-1/2");
 		await userEvent.click(feedbackButton);
 		const feedback = screen.getByRole("textbox", { name: "Feedback for src/App.tsx · new line 1" });

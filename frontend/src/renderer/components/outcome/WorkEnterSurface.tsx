@@ -104,57 +104,59 @@ export function WorkEnterSurface() {
 		<OutcomeLifecycleShell stage="enter">
 			<div className="mx-auto flex w-full max-w-3xl flex-col gap-8 py-8 sm:py-12">
 				{!daemonReady && (
-					<div data-testid="enter-blocked-daemon" className="rounded-md border border-border p-4">
-						<h3 className="text-sm font-medium">{t("work.enter.daemonOffline.title")}</h3>
-						<p className="text-muted-foreground text-sm">{t("work.enter.daemonOffline.body")}</p>
+					<div data-testid="enter-blocked-daemon" className="flex flex-col gap-1 rounded-lg hairline border-wd-hairline bg-wd-surface p-4">
+						<h3 className="text-sm font-medium text-wd-primary">{t("work.enter.daemonOffline.title")}</h3>
+						<p className="text-sm leading-body text-wd-secondary">{t("work.enter.daemonOffline.body")}</p>
 					</div>
 				)}
 
 				{destination === "undecided" && (
-					<div className="flex flex-col gap-3">
-						<h2 className="text-base font-medium">{t("work.enter.chooseTitle")}</h2>
+					<div className="flex flex-col gap-4">
+						<h2 className="wd-display-3 text-wd-primary">{t("work.enter.chooseTitle")}</h2>
 						<div className="flex flex-wrap gap-3">
-							<Button data-recommended="true" onClick={() => setDestination("work")}>
+							{/* Choosing where to start is this screen's one purpose, so the
+							    recommended path carries Spot; Home is the equal quiet path. */}
+							<Button data-recommended="true" onClick={() => setDestination("work")} size="lg" variant="spot">
 								{t("work.enter.startWithWork")}
 							</Button>
 							{/* Equal alternative: enabled, never gated behind Work, and it
 							    creates nothing until the user explicitly captures something. */}
-							<Button variant="outline" onClick={() => void navigate({ to: "/home" })}>
+							<Button size="lg" variant="secondary" onClick={() => void navigate({ to: "/home" })}>
 								{t("work.enter.setUpHome")}
 							</Button>
 						</div>
-						<p className="text-muted-foreground text-xs">{t("work.enter.recommendationNote")}</p>
+						<p className="max-w-prose text-sm leading-body text-wd-secondary">{t("work.enter.recommendationNote")}</p>
 					</div>
 				)}
 
 				{destination === "work" && (
 					<div className="flex flex-col gap-5">
-						<h2 className="text-balance text-center text-2xl font-medium leading-tight tracking-wide-sm sm:text-[28px]">{t(usesWorkLaunchMode ? "work.enter.outcomeProject" : "work.enter.selectProject")}</h2>
+						<h2 className="wd-display-3 text-center text-wd-primary">{t(usesWorkLaunchMode ? "work.enter.outcomeProject" : "work.enter.selectProject")}</h2>
 
 						{!usesWorkLaunchMode && !providerReady && (
-							<div data-testid="enter-blocked-provider" className="rounded-md border border-border p-4">
-								<h4 className="text-sm font-medium">{t("work.enter.providerActionRequired.title")}</h4>
-								<p className="text-muted-foreground text-sm">{t("work.enter.providerActionRequired.body")}</p>
+							<div data-testid="enter-blocked-provider" className="flex flex-col gap-1 rounded-md bg-wd-inset p-3">
+								<h4 className="text-sm font-medium text-wd-primary">{t("work.enter.providerActionRequired.title")}</h4>
+								<p className="text-sm leading-body text-wd-secondary">{t("work.enter.providerActionRequired.body")}</p>
 							</div>
 						)}
 
-						<ul className="grid gap-2 rounded-lg border border-border bg-card p-2 shadow-sm">
+						<ul className="flex flex-col overflow-hidden rounded-lg hairline border-wd-hairline bg-wd-surface empty:hidden">
 							{(projectsQuery.data ?? []).map((project) => (
-								<li key={project.id}>
+								<li className="hairline-b border-wd-hairline last:border-b-0" key={project.id}>
 									{/* Selecting a project advances Enter -> Understand on the
 									    same /work route; the daemon owns everything else. */}
 									<button
-										className="flex min-h-control-form w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none"
 										onClick={() => void navigate({ to: "/work", search: { project: project.id } })}
 										type="button"
 									>
-										<span className="text-sm">{project.name}</span>
-										<span className="ml-auto min-w-0 truncate text-muted-foreground text-xs">{project.path}</span>
+										<span className="text-sm font-medium text-wd-primary">{project.name}</span>
+										<span className="ml-auto min-w-0 truncate text-xs text-wd-tertiary">{project.path}</span>
 									</button>
 								</li>
 							))}
 						</ul>
-						<p className="text-muted-foreground text-xs">{t("work.enter.pickProjectHint")}</p>
+						<p className="text-center text-sm text-wd-secondary">{t("work.enter.pickProjectHint")}</p>
 
 						{!usesPreviewWorkspaceData ? (
 							<CreateProjectFlow
@@ -165,11 +167,11 @@ export function WorkEnterSurface() {
 							>
 								{({ choosePath, disabled, error, label }) => (
 									<div className="flex flex-col gap-2">
-										<Button variant="outline" disabled={disabled} onClick={choosePath}>
+										<Button className="self-center" variant="secondary" disabled={disabled} onClick={choosePath}>
 											{label}
 										</Button>
 										{error && (
-											<p data-testid="enter-error-folder" className="text-destructive text-sm">
+											<p data-testid="enter-error-folder" className="text-center text-sm text-critical" role="alert">
 												{error}
 											</p>
 										)}

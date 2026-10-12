@@ -2,7 +2,9 @@ import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { apiClient, apiErrorMessage } from "../../lib/api-client";
+import { StateMark } from "@pin4sf/kennel-product-ui";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import {
   Dialog,
   DialogContent,
@@ -105,26 +107,35 @@ function DeletionDialog({
           {p?.erasing ? t("deletion.finish") : t("deletion.title")}
         </DialogTitle>
         <DialogDescription>{t("deletion.description")}</DialogDescription>
-        {query.isLoading && <p>{t("deletion.checking")}</p>}
-        {query.error && <p role="alert">{query.error.message}</p>}
+        {query.isLoading && (
+          <p className="text-sm text-wd-secondary" role="status">
+            {t("deletion.checking")}
+          </p>
+        )}
+        {query.error && (
+          <p className="flex items-start gap-1.5 text-sm text-wd-primary" role="alert">
+            <StateMark className="mt-1 text-critical" tone="critical" />
+            {query.error.message}
+          </p>
+        )}
         {p && (
           <>
-            <div className="rounded-lg border border-border bg-muted/40 px-4 py-3">
-              <p className="text-xs text-muted-foreground">
+            <div className="flex flex-col gap-1 rounded-md bg-wd-inset p-3">
+              <p className="text-xs text-wd-secondary">
                 {t("deletion.outcomeLabel")}
               </p>
-              <p className="mt-1 text-base font-medium break-words">
+              <p className="text-base font-medium break-words text-wd-primary">
                 {p.title}
               </p>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-wd-secondary">
               {t("deletion.preserved")}
             </p>
-            <details className="text-sm text-muted-foreground">
-              <summary className="cursor-pointer">
+            <details className="text-sm text-wd-secondary">
+              <summary className="cursor-pointer rounded-sm text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)">
                 {t("deletion.details")}
               </summary>
-              <p className="mt-2">
+              <p className="mt-2 tabular-nums">
                 {t("deletion.counts", {
                   outcomes: p.outcomeCount,
                   records: p.recordCount,
@@ -133,7 +144,7 @@ function DeletionDialog({
               </p>
               <p className="mt-2">{t("deletion.retainedDetails")}</p>
               {!!p.workspacePaths?.length && (
-                <ul className="mt-2 text-xs break-all">
+                <ul className="mt-2 font-mono text-xs break-all text-wd-tertiary">
                   {p.workspacePaths.map((path) => (
                     <li key={path}>{path}</li>
                   ))}
@@ -143,20 +154,28 @@ function DeletionDialog({
             {blocked && (
               <div
                 role="alert"
-                className="rounded-md border border-border p-3 text-sm"
+                className="flex flex-col gap-1 rounded-md bg-wd-inset p-3 text-sm"
               >
-                <p className="font-medium">{t("deletion.blockers")}</p>
-                <ul>
+                <p className="flex items-center gap-1.5 font-medium text-wd-primary">
+                  <StateMark className="text-caution" tone="caution" />
+                  {t("deletion.blockers")}
+                </p>
+                <ul className="list-disc pl-5 text-wd-secondary">
                   {p.blockers.map((reason, index) => (
                     <li key={index}>{reason}</li>
                   ))}
                 </ul>
               </div>
             )}
-            {p.erasing && <p role="status">{t("deletion.pending")}</p>}
+            {p.erasing && (
+              <p className="text-sm text-wd-primary" role="status">
+                {t("deletion.pending")}
+              </p>
+            )}
             {!p.erasing && (
               <div className="flex gap-2">
                 <Button
+                  variant={p.trashed ? "primary" : "secondary"}
                   disabled={mutation.isPending || (!p.trashed && blocked)}
                   onClick={() =>
                     mutation.mutate(p.trashed ? "restore" : "trash")
@@ -166,21 +185,20 @@ function DeletionDialog({
                 </Button>
               </div>
             )}
-            <div className="space-y-2 border-t border-border pt-4">
-              <p className="text-sm">{t("deletion.warning")}</p>
-              <label className="block text-sm">
+            <div className="flex flex-col gap-3 hairline-t border-wd-hairline pt-4">
+              <p className="text-sm text-wd-primary">{t("deletion.warning")}</p>
+              <label className="flex flex-col gap-1 text-xs text-wd-secondary">
                 {t("deletion.typeTitle")}
-                <input
+                <Input
                   aria-label={t("deletion.confirmTitle")}
-                  className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2"
                   value={confirmation}
                   onChange={(event) => setConfirmation(event.target.value)}
                   disabled={mutation.isPending}
                 />
               </label>
               <Button
-                variant="primary"
-                className="bg-destructive text-white"
+                variant="critical"
+                className="self-start"
                 disabled={
                   mutation.isPending ||
                   blocked ||
@@ -198,7 +216,8 @@ function DeletionDialog({
           </>
         )}
         {mutation.error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="flex items-start gap-1.5 text-sm text-wd-primary">
+            <StateMark className="mt-1 text-critical" tone="critical" />
             {mutation.error.message}
           </p>
         )}
@@ -237,20 +256,33 @@ export function OutcomeTrash({ projectId }: { projectId: string }) {
           <DialogDescription>
             {t("deletion.trashDescription")}
           </DialogDescription>
-          {query.isLoading && <p>{t("deletion.loadingTrash")}</p>}
-          {query.error && <p role="alert">{query.error.message}</p>}
-          {query.data?.length === 0 && <p>{t("deletion.emptyTrash")}</p>}
+          {query.isLoading && (
+            <p className="text-sm text-wd-secondary" role="status">
+              {t("deletion.loadingTrash")}
+            </p>
+          )}
+          {query.error && (
+            <p className="flex items-start gap-1.5 text-sm text-wd-primary" role="alert">
+              <StateMark className="mt-1 text-critical" tone="critical" />
+              {query.error.message}
+            </p>
+          )}
+          {query.data?.length === 0 && (
+            <p className="text-sm text-wd-secondary">{t("deletion.emptyTrash")}</p>
+          )}
           {query.data?.map((item) => (
             <div
               key={item.outcomeId}
-              className="flex items-center justify-between gap-3 border-b border-border py-3"
+              className="flex items-center justify-between gap-3 hairline-b border-wd-hairline py-3 last:border-b-0"
             >
-              <span className="min-w-0 break-words">
+              <span className="min-w-0 break-words text-sm text-wd-primary">
                 {item.title}
-                {item.erasing ? t("deletion.cleanupPending") : ""}
+                {item.erasing ? (
+                  <span className="text-wd-tertiary">{t("deletion.cleanupPending")}</span>
+                ) : ""}
               </span>
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={() => setSelected(item.outcomeId)}
               >

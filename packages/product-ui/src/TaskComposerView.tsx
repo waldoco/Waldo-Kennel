@@ -8,8 +8,7 @@ import {
 	useState,
 } from "react";
 import {
-	FileTextIcon as FileText,
-	LoaderCircleIcon as Loader2,
+		FileTextIcon as FileText,
 	PaperclipIcon as Paperclip,
 	XIcon as X,
 } from "./icons";
@@ -164,7 +163,7 @@ export function TaskComposerView({
 	return (
 		<form
 			onSubmit={submit}
-			className="composer-prompt-surface flex flex-col transition-[background-color,box-shadow]"
+			className="composer-prompt-surface flex flex-col gap-3 transition-[background-color] duration-fast motion-reduce:transition-none"
 			data-dragging={isDragging || undefined}
 			onDrop={handleDrop}
 			onDragOver={handleDragOver}
@@ -179,7 +178,7 @@ export function TaskComposerView({
 			<textarea
 				id={promptId}
 				autoFocus={autoFocusPrompt}
-				className="min-h-(--size-composer-prompt-min) w-full resize-none bg-transparent px-4 pb-3 pt-4 text-md leading-relaxed text-foreground outline-none placeholder:text-passive"
+				className="mx-3 mt-3 min-h-(--size-composer-prompt-min) resize-none rounded-md hairline border-wd-hairline bg-wd-inset px-4 py-3 text-md leading-relaxed text-wd-primary placeholder:text-wd-tertiary"
 				placeholder={labels.taskPlaceholder}
 				value={prompt}
 				onChange={(event) => onPromptChange(event.target.value)}
@@ -193,24 +192,24 @@ export function TaskComposerView({
 			/>
 
 			{attachments.items.length > 0 && (
-				<ul className="scrollbar-none flex max-h-24 flex-wrap gap-2 overflow-y-auto px-3 pb-2">
+				<ul className="scrollbar-none flex max-h-24 flex-wrap gap-2 overflow-y-auto px-3">
 					{attachments.items.map((attachment) => (
 						<li
 							key={attachment.id}
-							className="flex min-w-0 max-w-48 items-center gap-2 rounded-md bg-surface px-1.5 py-1 text-xs text-foreground"
+							className="flex min-w-0 max-w-48 items-center gap-2 rounded-sm bg-wd-inset px-1.5 py-1 text-xs text-wd-primary"
 						>
 							{attachment.previewUrl ? (
-								<img src={attachment.previewUrl} alt="" className="size-7 shrink-0 rounded object-cover" />
+								<img src={attachment.previewUrl} alt="" className="size-7 shrink-0 rounded-xs object-cover" />
 							) : (
 								<FileText
-									className="size-7 shrink-0 rounded bg-input/60 p-1.5 text-muted-foreground"
+									className="size-7 shrink-0 rounded-xs bg-wd-surface p-1.5 text-wd-secondary"
 									aria-hidden="true"
 								/>
 							)}
 							<span className="min-w-0 flex-1 truncate font-medium">{attachment.name}</span>
 							<button
 								type="button"
-								className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
+								className="grid size-5 shrink-0 place-items-center rounded-full text-wd-secondary transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover hover:text-wd-primary"
 								aria-label={labels.removeFile(attachment.name)}
 								onClick={() => attachments.onRemove(attachment.id)}
 							>
@@ -231,14 +230,14 @@ export function TaskComposerView({
 				}}
 			/>
 			{attachments.error && (
-				<p className="px-4 pb-2 text-caption text-destructive" role="alert">{attachments.error}</p>
+				<p className="px-4 text-caption text-critical" role="alert">{attachments.error}</p>
 			)}
 
 			{(submission.error || submission.modelWarning) && (
-				<div className="px-3 pb-2">
+				<div className="px-3">
 					{submission.error && (
 						<div
-							className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+							className="flex items-center justify-between gap-3 rounded-sm bg-critical-bg px-3 py-2 text-xs text-critical"
 							role="alert"
 						>
 							<span>{submission.error}</span>
@@ -247,7 +246,7 @@ export function TaskComposerView({
 									type="button"
 									disabled={submission.isSubmitting}
 									onClick={submission.onSubmitAsTui}
-									className="inline-flex h-control-md shrink-0 items-center justify-center rounded-md border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+									className="inline-flex h-control-md shrink-0 items-center justify-center rounded-full bg-wd-inverse px-3 text-xs font-medium text-wd-on-inverse transition-opacity duration-fast motion-reduce:transition-none hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
 								>
 									{labels.createAsTui}
 								</button>
@@ -255,7 +254,7 @@ export function TaskComposerView({
 						</div>
 					)}
 					{!submission.error && submission.modelWarning && (
-						<p className="text-caption text-warning" role="status">{submission.modelWarning}</p>
+						<p className="text-caption text-caution" role="status">{submission.modelWarning}</p>
 					)}
 				</div>
 			)}
@@ -272,7 +271,7 @@ export function TaskComposerView({
 				</div>
 				<button
 					type="button"
-					className="grid size-(--size-settings-action-height) place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					className="grid size-(--size-settings-action-height) place-items-center rounded-full text-wd-secondary transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover hover:text-wd-primary"
 					aria-label={labels.addFile}
 					onClick={() => fileInputRef.current?.click()}
 				>
@@ -281,9 +280,8 @@ export function TaskComposerView({
 				<button
 					type="submit"
 					disabled={submission.isSubmitting || !canSubmit}
-					className="inline-flex h-(--size-settings-action-height) min-w-(--size-composer-start-button) shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs text-primary-foreground transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50"
+					className="inline-flex h-(--size-settings-action-height) min-w-(--size-composer-start-button) shrink-0 items-center justify-center gap-1.5 rounded-full bg-wd-inverse px-3.5 text-xs font-medium text-wd-on-inverse transition-opacity duration-fast motion-reduce:transition-none hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
 				>
-					{submission.isSubmitting ? <Loader2 className="size-icon-base animate-spin" aria-hidden="true" /> : null}
 					{submission.isSubmitting ? labels.starting : labels.start}
 					{!submission.isSubmitting && (
 						<kbd className="composer-keycap" aria-hidden="true">
@@ -293,7 +291,7 @@ export function TaskComposerView({
 				</button>
 			</div>
 			{profileHint && (
-				<p className="px-3 pb-2 text-caption text-warning" role="status">{profileHint}</p>
+				<p className="px-3 pb-3 text-caption text-caution" role="status">{profileHint}</p>
 			)}
 		</form>
 	);

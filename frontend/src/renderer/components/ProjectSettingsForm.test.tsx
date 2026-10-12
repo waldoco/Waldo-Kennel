@@ -1301,7 +1301,7 @@ describe("ProjectSettingsForm", () => {
 		});
 		renderSettings("proj-1", undefined, "agents");
 
-		expect(await screen.findByText("Resolved Mission role proposal")).toBeInTheDocument();
+		expect(await screen.findByText("Mission role preferences")).toBeInTheDocument();
 		expect(await screen.findByText("profile waldo-profile is not ready")).toBeInTheDocument();
 		expect(screen.getAllByText(/no preference/i).length).toBeGreaterThanOrEqual(1);
 
@@ -1320,7 +1320,7 @@ describe("ProjectSettingsForm", () => {
 	it("keeps Mission role preferences and provider roles empty when nothing was recorded", async () => {
 		mockProject({ id: "proj-1", name: "Project One", kind: "single_repo", config: {} });
 		renderSettings("proj-1", undefined, "agents");
-		await screen.findByText("Resolved Mission role proposal");
+		await screen.findByText("Mission role preferences");
 
 		submitSettings();
 		await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));

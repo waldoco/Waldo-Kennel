@@ -365,7 +365,7 @@ describe("Sidebar", () => {
 		renderSidebar();
 
 		expect(screen.getByRole("button", { name: "Kennel home" })).toHaveClass(
-			"group-data-[collapsible=icon]:bg-interactive-active",
+			"group-data-[collapsible=icon]:bg-wd-selected",
 		);
 	});
 
@@ -483,11 +483,11 @@ describe("Sidebar", () => {
 
 		const navigation = screen.getByRole("navigation", { name: "Home destinations" });
 		expect(within(navigation).getByRole("link", { name: "Today" })).toBeInTheDocument();
-		expect(within(navigation).getByRole("link", { name: "Open Loops" })).toBeInTheDocument();
+		expect(within(navigation).getByRole("link", { name: "Open loops" })).toBeInTheDocument();
 		expect(within(navigation).queryByRole("link", { name: "Memory" })).not.toBeInTheDocument();
 		const continuity = within(navigation).getByRole("group", { name: "Review and continuity" });
-		expect(within(continuity).getByRole("link", { name: "Daily Close" })).toBeInTheDocument();
-		expect(within(continuity).getByRole("link", { name: "Memory Review" })).toBeInTheDocument();
+		expect(within(continuity).getByRole("link", { name: "Daily close" })).toBeInTheDocument();
+		expect(within(continuity).getByRole("link", { name: "Memory review" })).toBeInTheDocument();
 		expect(within(continuity).getByRole("link", { name: "Insights" })).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
 		expect(screen.queryByText("Projects")).not.toBeInTheDocument();
@@ -505,7 +505,7 @@ describe("Sidebar", () => {
 		renderSidebar();
 
 		const footer = document.querySelector('[data-sidebar="footer"]');
-		expect(footer).toHaveClass("border-t", "border-border-strong", "!py-2");
+		expect(footer).toHaveClass("border-t", "border-wd-hairline", "!py-2");
 		expect(screen.getAllByRole("button", { name: "Settings" })[0]).toHaveClass("h-[42px]");
 		// Windowed: lift the hairline by the framed panel inset + 1px surface
 		// border. macOS also collapses that inset in native fullscreen.
@@ -575,11 +575,11 @@ describe("Sidebar", () => {
 		await user.click(await screen.findByRole("menuitem", { name: "Remove project" }));
 
 		// The ConfirmDialog renders via Radix Portal — find it by role
-		const dialog = await screen.findByRole("dialog", { name: "Remove project" });
+		const dialog = await screen.findByRole("dialog", { name: "Remove Project One?" });
 		expect(dialog).toBeInTheDocument();
 		expect(dialog).toHaveTextContent("Project One");
 
-		await user.click(screen.getByRole("button", { name: "Remove" }));
+		await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove project" }));
 		await waitFor(() => expect(onRemoveProject).toHaveBeenCalledTimes(1));
 		expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
 	});
@@ -597,9 +597,9 @@ describe("Sidebar", () => {
 
 		await user.click(screen.getByLabelText("Project actions for Project One"));
 		await user.click(await screen.findByRole("menuitem", { name: "Remove project" }));
-		await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove" }));
+		await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove project" }));
 
-		expect(screen.queryByRole("dialog", { name: "Remove project" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("dialog", { name: "Remove Project One?" })).not.toBeInTheDocument();
 		expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
 		expect(screen.getByRole("status")).toHaveTextContent("Removing Project One");
 
@@ -614,11 +614,11 @@ describe("Sidebar", () => {
 		await user.click(screen.getByLabelText("Project actions for Project One"));
 		await user.click(await screen.findByRole("menuitem", { name: "Remove project" }));
 
-		await screen.findByRole("dialog", { name: "Remove project" });
-		await user.click(screen.getByRole("button", { name: "Cancel" }));
+		await screen.findByRole("dialog", { name: "Remove Project One?" });
+		await user.click(screen.getByRole("button", { name: "Keep project" }));
 
 		// Dialog should close and the handler must not have fired
-		await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove project" })).not.toBeInTheDocument());
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove Project One?" })).not.toBeInTheDocument());
 		expect(onRemoveProject).not.toHaveBeenCalled();
 	});
 
@@ -631,11 +631,11 @@ describe("Sidebar", () => {
 
 		await user.click(screen.getByLabelText("Project actions for Project One"));
 		await user.click(await screen.findByRole("menuitem", { name: "Remove project" }));
-		await screen.findByRole("dialog", { name: "Remove project" });
-		await user.click(screen.getByRole("button", { name: "Remove" }));
+		await screen.findByRole("dialog", { name: "Remove Project One?" });
+		await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove project" }));
 
 		expect(await screen.findByText("Failed to remove project")).toBeInTheDocument();
-		expect(screen.queryByRole("dialog", { name: "Remove project" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("dialog", { name: "Remove Project One?" })).not.toBeInTheDocument();
 		expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
 	});
 
@@ -1497,7 +1497,7 @@ describe("Sidebar", () => {
 		await user.click(screen.getByLabelText("Project actions for Project One"));
 		await user.click(await screen.findByRole("menuitem", { name: "Remove project" }));
 
-		const dialog = await screen.findByRole("dialog", { name: "Remove project" });
+		const dialog = await screen.findByRole("dialog", { name: "Remove Project One?" });
 		expect(dialog).toHaveTextContent("Project One");
 		expect(dialog).toHaveTextContent("live sessions");
 		expect(dialog).toHaveTextContent("repository folder");
@@ -1628,7 +1628,7 @@ describe("Sidebar", () => {
 		}
 	});
 
-	it("renders active activity as pulsing blue regardless of PR context", () => {
+	it("renders active activity as a still working dot regardless of PR context", () => {
 		renderSidebar({
 			workspaces: [
 				{
@@ -1696,15 +1696,15 @@ describe("Sidebar", () => {
 
 		const workingDot = sessionDot("working task");
 		expect(workingDot).toHaveClass("bg-status-working");
-		expect(workingDot).toHaveClass("animate-status-pulse");
+		expect(workingDot).not.toHaveClass("animate-status-pulse");
 
 		const ciFailedDot = sessionDot("ci failed task");
 		expect(ciFailedDot).toHaveClass("bg-status-working");
-		expect(ciFailedDot).toHaveClass("animate-status-pulse");
+		expect(ciFailedDot).not.toHaveClass("animate-status-pulse");
 
-		expect(sessionDot("review task")).toHaveClass("bg-status-working", "animate-status-pulse");
-		expect(sessionDot("ready task")).toHaveClass("bg-status-working", "animate-status-pulse");
-		expect(sessionDot("merged task")).toHaveClass("bg-status-working", "animate-status-pulse");
+		expect(sessionDot("review task")).toHaveClass("bg-status-working");
+		expect(sessionDot("ready task")).toHaveClass("bg-status-working");
+		expect(sessionDot("merged task")).toHaveClass("bg-status-working");
 	});
 
 	it("renders a static gray dot for idle activity across session statuses", async () => {
@@ -1840,7 +1840,7 @@ describe("Sidebar", () => {
 		expect(screen.queryByLabelText(/Restart to install update/)).not.toBeInTheDocument();
 	});
 
-	it("renders the restart-to-update row with the working-orange treatment when escalated", async () => {
+	it("renders the restart-to-update row with the caution treatment when escalated", async () => {
 		updateStatusMock.mockResolvedValue({
 			state: "downloaded",
 			version: "9.9.9",
@@ -1853,7 +1853,7 @@ describe("Sidebar", () => {
 		const buttons = await screen.findAllByLabelText("Restart to install update v9.9.9");
 		expect(buttons.length).toBeGreaterThan(0);
 		for (const button of buttons) {
-			expect(button).toHaveClass("text-working", "bg-working/12");
+			expect(button).toHaveClass("bg-caution-bg");
 		}
 		expect(screen.getByText("v9.9.9 ready")).toBeInTheDocument();
 	});

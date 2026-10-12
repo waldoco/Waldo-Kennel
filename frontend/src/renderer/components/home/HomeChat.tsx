@@ -1,6 +1,9 @@
 import {
+  Activity,
   ArrowLeft,
+  ArrowUp,
   Check,
+  CircleDashed,
   CirclePause,
   FileText,
   Link2,
@@ -11,22 +14,33 @@ import {
   RotateCcw,
   Search,
   ShieldCheck,
-  Sparkles,
   Square,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import waldoMark from "../../../../assets/waldo-mark.svg";
 import { cn } from "../../lib/utils";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import {
   useWaldoRail,
   type WaldoPreviewEpisode,
   type WaldoPreviewMode,
 } from "../waldo/WaldoRailContext";
+import { HomeCard, HomeCardActions, HomeEyebrow, HomeInset, NeedsYouBadge } from "./HomeCards";
 
 type RunState = "waiting" | "approved" | "paused" | "stopped";
 type ApprovalAction = "accept" | "edit" | "reject" | "respond";
+
+// Chat on the Waldo Message, ThreadRow and Composer contracts: the person
+// speaks in a right-aligned inset bubble, Waldo answers on the page in body-l
+// at the measure under an attribution line, threads are hairline-separated
+// rows, and the composer is a pill field with an ink round send. The three
+// panes are divided by hairlines with no coloured panes or shadows.
+const eyebrowClass = "wd-caption text-wd-tertiary";
+const hairlineTop = "border-t-[length:var(--stroke-hairline)] border-wd-hairline";
+const hairlineBottom = "border-b-[length:var(--stroke-hairline)] border-wd-hairline";
 
 export function HomeChat({
   contextLabel,
@@ -87,23 +101,23 @@ export function HomeChat({
 
   if (!previewEnabled) {
     return (
-      <section aria-label={t("waldo.rail.aria")} className="home-chat-workspace rounded-2xl border border-border bg-background">
+      <section aria-label={t("waldo.rail.aria")} className="home-chat-workspace rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface">
         <WaldoHeader mode={mode} previewEnabled={false} setMode={setMode} />
         <div className="flex min-h-0 flex-1 flex-col justify-between gap-10 overflow-y-auto p-8">
-          <div className="max-w-xl">
-            <div className="grid size-10 place-items-center rounded-xl bg-muted text-muted-foreground">
+          <div className="flex max-w-(--layout-measure) flex-col gap-2">
+            <div className="mb-2 grid size-10 place-items-center rounded-sm bg-wd-inset text-wd-secondary">
               <MessageCircle aria-hidden="true" className="size-4" />
             </div>
-            <h2 className="mt-5 text-xl font-semibold tracking-tight text-foreground">
+            <h2 className="wd-title text-wd-primary">
               {t("waldo.rail.unconfigured.title")}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            <p className="wd-body-s text-wd-secondary">
               {t("waldo.rail.unconfigured.description")}
             </p>
           </div>
-          <div className="max-w-xl border-t border-border pt-4">
-            <p className="text-xs font-medium text-foreground">{t("waldo.rail.unconfigured.localTitle")}</p>
-            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+          <div className={cn("flex max-w-(--layout-measure) flex-col gap-1 pt-4", hairlineTop)}>
+            <p className="wd-label text-wd-primary">{t("waldo.rail.unconfigured.localTitle")}</p>
+            <p className="wd-caption text-wd-secondary">
               {t("waldo.rail.unconfigured.localDescription")}
             </p>
           </div>
@@ -113,138 +127,135 @@ export function HomeChat({
   }
 
   return (
-    <section aria-label={t("waldo.rail.aria")} className="home-chat-workspace rounded-2xl border border-border bg-background shadow-xs" ref={workspaceRef}>
+    <section aria-label={t("waldo.rail.aria")} className="home-chat-workspace rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface" ref={workspaceRef}>
       <WaldoHeader mode={mode} previewEnabled setMode={setMode} />
       {mode === "conversation" ? (
         <div className="home-chat-grid min-h-0 flex-1">
           <ConversationRail episode={episode} onSelect={selectEpisode} />
           <main aria-label={t("home.chat.conversationAria")} className="home-chat-primary" role="region">
-            <header className="shrink-0 border-b border-border px-6 py-4">
+            <header className={cn("shrink-0 px-6 py-4", hairlineBottom)}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className={eyebrowClass}>
                     {t("home.chat.relationship")}
                   </p>
-                  <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
+                  <h2 className="wd-title text-wd-primary">
                     {episode === "fresh" ? t("waldo.rail.episode.fresh") : episode === "returning" ? t("waldo.rail.episode.returning") : t("waldo.rail.episode.contextual")}
                   </h2>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("home.chat.purpose")}</p>
+                  <p className="wd-caption text-wd-secondary">{t("home.chat.purpose")}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full border border-border px-2.5 py-1 text-micro font-medium text-muted-foreground">
-                    {t("home.chat.localEpisode")}
-                  </span>
-                  <button
-                    className="home-chat-compact-trigger rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground"
+                  <Badge>{t("home.chat.localEpisode")}</Badge>
+                  <Button
+                    className="home-chat-compact-trigger"
                     onClick={(event) => {
                       detailsTriggerRef.current = event.currentTarget;
                       setDetailsLayer("context");
                     }}
+                    size="sm"
                     type="button"
+                    variant="secondary"
                   >
                     {t("home.chat.openContext")}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </header>
 
             <div className="home-chat-transcript" aria-live="polite" ref={transcriptRef}>
               {episode === "fresh" ? (
-                <div className="mx-auto flex min-h-full max-w-xl flex-col items-center justify-center px-6 py-12 text-center">
-                  <span className="grid size-11 place-items-center rounded-2xl border border-border bg-raised">
+                <div className="mx-auto flex min-h-full max-w-(--layout-measure) flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+                  <span className="mb-2 grid size-11 place-items-center rounded-sm bg-wd-inset">
                     <img alt="" aria-hidden="true" className="size-5" src={waldoMark} />
                   </span>
-                  <h3 className="mt-5 text-base font-semibold text-foreground">{t("waldo.rail.fresh.title")}</h3>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("waldo.rail.fresh.opening")}</p>
+                  <h3 className="wd-headline text-wd-primary">{t("waldo.rail.fresh.title")}</h3>
+                  <p className="wd-body-s text-wd-secondary">{t("waldo.rail.fresh.opening")}</p>
                 </div>
               ) : (
-                <div className="mx-auto w-full max-w-2xl space-y-5 px-6 py-7">
-                  <article className="flex gap-3">
-                    <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl border border-border bg-raised">
-                      <img alt="" aria-hidden="true" className="size-3.5" src={waldoMark} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-foreground">{t("waldo.rail.identity")}</p>
-                      <p className="mt-1.5 text-sm leading-6 text-foreground">{t("home.chat.opening")}</p>
-                    </div>
-                  </article>
+                <div className="mx-auto flex w-full max-w-(--layout-column) flex-col gap-6 px-6 py-7">
+                  <WaldoTurn>
+                    <p className="wd-body-l text-wd-primary">{t("home.chat.opening")}</p>
+                  </WaldoTurn>
 
                   {submittedQuestion ? (
                     <>
-                      <article className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-foreground px-4 py-3 text-sm leading-6 text-background">
-                        {submittedQuestion}
+                      <article className="flex flex-col items-end">
+                        <p className="wd-body max-w-[80%] rounded-lg rounded-br-xs bg-wd-inset px-4 py-3 text-wd-primary">
+                          {submittedQuestion}
+                        </p>
                       </article>
-                      <article className="flex gap-3">
-                        <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl border border-border bg-raised">
-                          <img alt="" aria-hidden="true" className="size-3.5" src={waldoMark} />
-                        </span>
-                        <div className="min-w-0 flex-1 space-y-3">
-                          <p className="text-xs font-semibold text-foreground">{t("waldo.rail.identity")}</p>
-                          <p className="text-sm leading-6 text-foreground">{t("home.chat.previewAnswer")}</p>
-                          <div className="flex flex-wrap gap-2">
-                            <a className="home-chat-source" href="#/home/history?record=pricing-decision-note">
-                              <FileText aria-hidden="true" className="size-3.5" />
-                              {t("home.chat.sourceDecision")}
-                            </a>
-                            <a className="home-chat-source" href="#/home/history?record=pricing-workshop-calendar">
-                              <Link2 aria-hidden="true" className="size-3.5" />
-                              {t("home.chat.sourceCalendar")}
-                            </a>
-                          </div>
-                          <section className="rounded-xl border border-border bg-raised p-3.5">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-xs font-semibold text-foreground">{t("home.chat.boundedStep")}</p>
-                              <span className="rounded-full bg-warning-subtle px-2 py-1 text-micro font-semibold text-warning-foreground">
-                                {t("waldo.rail.approvalRequired")}
-                              </span>
-                            </div>
-                            <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("home.chat.boundedStepDetail")}</p>
-                            <button className="mt-3 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground" onClick={() => setMode("activity")} type="button">
-                              {t("home.chat.reviewInActivity")}
-                            </button>
-                          </section>
+                      <WaldoTurn>
+                        <p className="wd-body-l text-wd-primary">{t("home.chat.previewAnswer")}</p>
+                        <div className="flex flex-wrap gap-2">
+                          <a className="home-chat-source" href="#/home/history?record=pricing-decision-note">
+                            <FileText aria-hidden="true" className="size-3.5" />
+                            {t("home.chat.sourceDecision")}
+                          </a>
+                          <a className="home-chat-source" href="#/home/history?record=pricing-workshop-calendar">
+                            <Link2 aria-hidden="true" className="size-3.5" />
+                            {t("home.chat.sourceCalendar")}
+                          </a>
                         </div>
-                      </article>
+                        <HomeCard className="mt-1">
+                          <HomeEyebrow>
+                            <NeedsYouBadge />
+                          </HomeEyebrow>
+                          <p className="wd-headline text-wd-primary">{t("home.chat.boundedStep")}</p>
+                          <p className="wd-body-s text-wd-secondary">{t("home.chat.boundedStepDetail")}</p>
+                          <HomeCardActions
+                            trail={
+                              <Button onClick={() => setMode("activity")} size="sm" type="button" variant="primary">
+                                {t("home.chat.reviewInActivity")}
+                              </Button>
+                            }
+                          />
+                        </HomeCard>
+                      </WaldoTurn>
                     </>
                   ) : null}
                 </div>
               )}
             </div>
 
-            <footer className="shrink-0 border-t border-border bg-background px-5 py-4">
-              <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-raised p-2 shadow-xs focus-within:ring-2 focus-within:ring-ring/50">
+            <footer className={cn("shrink-0 bg-wd-surface px-4 py-3", hairlineTop)}>
+              <div className="mx-auto flex max-w-(--layout-column) flex-col gap-2">
                 {!contextDetached && episode !== "fresh" ? (
-                  <div className="mb-1.5 flex min-w-0 items-center gap-2 px-2 pt-1 text-xs text-muted-foreground">
+                  <div className="wd-caption flex min-w-0 items-center gap-1.5 pl-12 text-wd-secondary">
                     <Paperclip aria-hidden="true" className="size-3.5 shrink-0" />
                     <span className="truncate">{contextLabel}</span>
                   </div>
                 ) : null}
-                <textarea
-                  aria-label={t("waldo.rail.composerLabel")}
-                  className="min-h-14 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder={t("waldo.rail.composerPlaceholder")}
-                  value={draft}
-                />
-                <div className="flex items-center justify-between gap-3 px-1 pb-0.5">
-                  <div className="flex items-center gap-1">
-                    <IconButton label={t("home.chat.attach")}><Paperclip aria-hidden="true" className="size-4" /></IconButton>
-                    <IconButton label={t("home.chat.voice")}><Mic aria-hidden="true" className="size-4" /></IconButton>
+                <div className="flex items-end gap-1">
+                  <QuietIconButton label={t("home.chat.attach")}><Plus aria-hidden="true" className="size-4" /></QuietIconButton>
+                  <div className="min-w-0 flex-1 rounded-[24px] border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-inset px-4 py-[11px] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-(--border-focus)">
+                    <textarea
+                      aria-label={t("waldo.rail.composerLabel")}
+                      className="wd-body block max-h-36 min-h-6 w-full resize-none bg-transparent text-wd-primary outline-none [field-sizing:content] placeholder:text-wd-tertiary"
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder={t("waldo.rail.composerPlaceholder")}
+                      rows={1}
+                      value={draft}
+                    />
                   </div>
-                  <button
-                    className="rounded-lg bg-foreground px-3 py-2 text-xs font-medium text-background disabled:cursor-not-allowed disabled:opacity-35"
+                  <QuietIconButton label={t("home.chat.voice")}><Mic aria-hidden="true" className="size-4" /></QuietIconButton>
+                  <Button
+                    aria-label={t("home.chat.sendPreview")}
+                    className="mb-0.5 size-11"
                     disabled={!draft.trim()}
                     onClick={() => {
                       setSubmittedQuestion(draft.trim());
                       setDraft("");
                     }}
+                    size="icon"
+                    title={t("home.chat.sendPreview")}
                     type="button"
+                    variant="primary"
                   >
-                    {t("home.chat.sendPreview")}
-                  </button>
+                    <ArrowUp aria-hidden="true" className="size-4" />
+                  </Button>
                 </div>
+                <p className="wd-caption text-center text-wd-tertiary">{t("home.chat.previewBoundary")}</p>
               </div>
-              <p className="mt-2 text-center text-micro text-muted-foreground">{t("home.chat.previewBoundary")}</p>
             </footer>
           </main>
 
@@ -304,15 +315,17 @@ export function HomeChat({
                 ? t("home.chat.contextLayerAria")
                 : t("home.chat.runLayerAria")}
             </DialogTitle>
-            <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
-              <button
-                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-foreground hover:bg-interactive-hover"
+            <header className={cn("flex shrink-0 items-center gap-3 px-4 py-2", hairlineBottom)}>
+              <Button
+                className="-ml-1"
                 onClick={() => setDetailsLayer(null)}
+                size="sm"
                 type="button"
+                variant="ghost"
               >
                 <ArrowLeft aria-hidden="true" className="size-3.5" />
                 {t("home.chat.backToConversation")}
-              </button>
+              </Button>
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {detailsLayer === "context" ? (
@@ -342,6 +355,20 @@ export function HomeChat({
   );
 }
 
+/** Waldo answers on the page: the attribution line, then the prose. */
+function WaldoTurn({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
+  return (
+    <article className="flex flex-col gap-2">
+      <p className="flex items-center gap-2">
+        <img alt="" aria-hidden="true" className="size-4" src={waldoMark} />
+        <span className="wd-label text-wd-primary">{t("waldo.rail.identity")}</span>
+      </p>
+      <div className="flex max-w-(--layout-measure) flex-col gap-3">{children}</div>
+    </article>
+  );
+}
+
 function WaldoHeader({
   mode,
   previewEnabled,
@@ -353,27 +380,30 @@ function WaldoHeader({
 }) {
   const { t } = useTranslation();
   return (
-    <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-3.5">
+    <header className={cn("flex shrink-0 flex-wrap items-center justify-between gap-4 px-5 py-3", hairlineBottom)}>
       <div className="flex min-w-0 items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-border bg-raised shadow-xs">
+        <span className="grid size-9 shrink-0 place-items-center rounded-sm bg-wd-inset">
           <img alt="" aria-hidden="true" className="size-4.5" src={waldoMark} />
         </span>
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold text-foreground">{t("waldo.rail.identity")}</h1>
-            <span className="rounded-full border border-border px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
+            <h1 className="wd-label text-wd-primary">{t("waldo.rail.identity")}</h1>
+            <Badge>
               {previewEnabled ? t("waldo.rail.previewBadge") : t("waldo.rail.localBadge")}
-            </span>
+            </Badge>
           </div>
-          <p className="truncate text-xs text-muted-foreground">{t("home.chat.relationship")}</p>
+          <p className="wd-caption truncate text-wd-tertiary">{t("home.chat.relationship")}</p>
         </div>
       </div>
       {previewEnabled ? (
-        <div aria-label={t("waldo.rail.modeLabel")} className="grid grid-cols-2 rounded-xl bg-muted p-1" role="tablist">
+        <div aria-label={t("waldo.rail.modeLabel")} className="grid grid-cols-2 gap-1 rounded-full bg-wd-inset p-1" role="tablist">
           {(["conversation", "activity"] as const).map((item) => (
             <button
               aria-selected={mode === item}
-              className={cn("inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium text-muted-foreground", mode === item && "bg-background text-foreground shadow-xs")}
+              className={cn(
+                "wd-label inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-wd-secondary transition-colors duration-fast hover:text-wd-primary",
+                mode === item && "bg-wd-inverse text-wd-on-inverse hover:text-wd-on-inverse",
+              )}
               key={item}
               data-home-chat-mode={item}
               onKeyDown={(event) => {
@@ -390,7 +420,7 @@ function WaldoHeader({
               tabIndex={mode === item ? 0 : -1}
               type="button"
             >
-              {item === "conversation" ? <MessageCircle aria-hidden="true" className="size-3.5" /> : <Sparkles aria-hidden="true" className="size-3.5" />}
+              {item === "conversation" ? <MessageCircle aria-hidden="true" className="size-3.5" /> : <Activity aria-hidden="true" className="size-3.5" />}
               {t(`waldo.rail.mode.${item}`)}
             </button>
           ))}
@@ -409,25 +439,32 @@ function ConversationRail({ episode, onSelect }: { episode: WaldoPreviewEpisode;
   ] as const;
   return (
     <nav aria-label={t("home.chat.conversationsAria")} className="home-chat-side-rail">
-      <div className="flex gap-2 p-3">
-        <button className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-foreground px-3 text-xs font-medium text-background" onClick={() => onSelect("fresh")} type="button">
+      <div className="flex gap-1 p-3">
+        <Button className="flex-1" onClick={() => onSelect("fresh")} size="sm" type="button" variant="secondary">
           <Plus aria-hidden="true" className="size-3.5" />
           {t("home.chat.newConversation")}
-        </button>
-        <IconButton label={t("home.chat.search")}><Search aria-hidden="true" className="size-4" /></IconButton>
+        </Button>
+        <QuietIconButton label={t("home.chat.search")}><Search aria-hidden="true" className="size-4" /></QuietIconButton>
       </div>
-      <p className="px-4 pb-2 pt-1 text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("home.chat.recent")}</p>
-      <div className="space-y-1 px-2">
+      <p className={cn(eyebrowClass, "px-4 pb-1 pt-2")}>{t("home.chat.recent")}</p>
+      <div className="flex flex-col px-1 pb-2">
         {episodes.map(([id, title, meta]) => (
           <button
             aria-current={episode === id ? "page" : undefined}
-            className={cn("w-full rounded-xl px-3 py-2.5 text-left hover:bg-interactive-hover", episode === id && "bg-interactive-active")}
+            className={cn(
+              "relative flex min-h-11 w-full items-start gap-3 rounded-md py-2.5 pl-3 pr-2 text-left transition-colors duration-fast hover:bg-wd-hover active:bg-wd-pressed",
+              "[&+&]:before:absolute [&+&]:before:top-0 [&+&]:before:right-0 [&+&]:before:left-[calc(0.75rem+8px+0.75rem)] [&+&]:before:border-t-[length:var(--stroke-hairline)] [&+&]:before:border-wd-hairline [&+&]:before:content-['']",
+              episode === id && "bg-wd-selected",
+            )}
             key={id}
             onClick={() => onSelect(id)}
             type="button"
           >
-            <span className="block truncate text-xs font-medium text-foreground">{title}</span>
-            <span className="mt-1 block truncate text-micro text-muted-foreground">{meta}</span>
+            <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full" />
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="wd-label block truncate text-wd-primary">{title}</span>
+              <span className="wd-caption block truncate text-wd-secondary">{meta}</span>
+            </span>
           </button>
         ))}
       </div>
@@ -438,41 +475,46 @@ function ConversationRail({ episode, onSelect }: { episode: WaldoPreviewEpisode;
 function ContextInspector({ contextDetached, contextLabel, correctionApplied, onCorrect, onDetach, onReattach }: { contextDetached: boolean; contextLabel: string; correctionApplied: boolean; onCorrect: () => void; onDetach: () => void; onReattach: () => void }) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-5 p-4">
-      <div>
-        <p className="text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("home.chat.context")}</p>
-        <h3 className="mt-1 text-sm font-semibold text-foreground">{contextDetached ? t("waldo.rail.noContext") : contextLabel}</h3>
+    <div className="flex flex-col gap-5 p-4">
+      <div className="flex flex-col gap-1">
+        <p className={eyebrowClass}>{t("home.chat.context")}</p>
+        <h3 className="wd-label text-wd-primary">{contextDetached ? t("waldo.rail.noContext") : contextLabel}</h3>
       </div>
       {contextDetached ? (
-        <button className="w-full rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground" onClick={onReattach} type="button">
+        <Button className="w-full" onClick={onReattach} size="sm" type="button" variant="secondary">
           {t("home.chat.reattach")}
-        </button>
+        </Button>
       ) : (
         <>
-          <dl className="grid gap-3 text-xs">
+          <dl className="flex flex-col gap-3">
             <InspectorRow label={t("home.chat.coverage")} value={t("home.chat.coverageValue")} />
             <InspectorRow label={t("home.chat.freshness")} value={t("home.chat.freshnessValue")} />
             <InspectorRow label={t("home.chat.gaps")} value={t("home.chat.gapsValue")} />
           </dl>
-          <div className="rounded-xl border border-border bg-raised p-3">
-            <p className="text-xs font-semibold text-foreground">{t("home.chat.attachedSources")}</p>
-            <ul className="mt-2 space-y-2 text-xs leading-5 text-muted-foreground">
+          <HomeInset>
+            <p className="wd-label text-wd-primary">{t("home.chat.attachedSources")}</p>
+            <ul className="wd-body-s flex flex-col gap-1 text-wd-secondary">
               <li>{t("home.chat.sourceDecision")}</li>
               <li>{t("home.chat.sourceCalendar")}</li>
             </ul>
-          </div>
-          <div className="grid gap-2">
-            <button className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground" onClick={onCorrect} type="button">
+          </HomeInset>
+          <div className="flex flex-col gap-1">
+            <Button onClick={onCorrect} size="sm" type="button" variant="secondary">
               {t("home.chat.correct")}
-            </button>
-            <button aria-label={t("waldo.rail.detachContext")} className="rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-interactive-hover" onClick={onDetach} type="button">
+            </Button>
+            <Button aria-label={t("waldo.rail.detachContext")} onClick={onDetach} size="sm" type="button" variant="ghost">
               {t("waldo.rail.detachContext")}
-            </button>
+            </Button>
           </div>
         </>
       )}
-      {correctionApplied ? <p role="status" className="rounded-lg bg-success-subtle px-3 py-2 text-xs text-success-foreground">{t("home.chat.correctionApplied")}</p> : null}
-      <p className="border-t border-border pt-4 text-micro leading-4 text-muted-foreground">{t("home.chat.contextBoundary")}</p>
+      {correctionApplied ? (
+        <p role="status" className="wd-body-s flex items-start gap-1.5 rounded-md bg-wd-inset p-3 text-wd-primary">
+          <Check aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-wd-secondary" />
+          {t("home.chat.correctionApplied")}
+        </p>
+      ) : null}
+      <p className={cn("wd-caption pt-4 text-wd-tertiary", hairlineTop)}>{t("home.chat.contextBoundary")}</p>
     </div>
   );
 }
@@ -498,93 +540,111 @@ function ActivityWorkspace({
   return (
     <div className="home-chat-grid min-h-0 flex-1">
       <nav aria-label={t("home.chat.specialistsAria")} className="home-chat-side-rail">
-        <div className="border-b border-border p-3">
-          <button
+        <div className={cn("p-3", hairlineBottom)}>
+          <Button
             aria-describedby="home-chat-specialist-create-boundary"
-            className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+            className="w-full"
             disabled
+            size="sm"
             type="button"
+            variant="secondary"
           >
             <Plus aria-hidden="true" className="size-3.5" />
             {t("waldo.rail.specialist.create")}
-          </button>
+          </Button>
           <p className="sr-only" id="home-chat-specialist-create-boundary">{t("home.chat.runBoundary")}</p>
         </div>
-        <p className="px-4 pb-2 pt-4 text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("home.chat.coordinator")}</p>
-        <div className="mx-2 rounded-xl bg-interactive-active px-3 py-2.5">
+        <p className={cn(eyebrowClass, "px-4 pb-2 pt-4")}>{t("home.chat.coordinator")}</p>
+        <div className="mx-2 flex flex-col gap-1 rounded-md bg-wd-inset px-3 py-2.5">
           <div className="flex items-center gap-2">
             <img alt="" aria-hidden="true" className="size-4" src={waldoMark} />
-            <span className="text-xs font-semibold text-foreground">{t("waldo.rail.identity")}</span>
+            <span className="wd-label text-wd-primary">{t("waldo.rail.identity")}</span>
           </div>
-          <p className="mt-1 text-micro leading-4 text-muted-foreground">{t("home.chat.coordinatorMeta")}</p>
+          <p className="wd-caption text-wd-secondary">{t("home.chat.coordinatorMeta")}</p>
         </div>
-        <p className="px-4 pb-2 pt-5 text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("home.chat.specialists")}</p>
-        <button aria-current="page" className="mx-2 w-[calc(100%-1rem)] rounded-xl border border-border bg-raised px-3 py-2.5 text-left shadow-xs" type="button">
-          <span className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-foreground">{t("home.chat.researchSpecialist")}</span>
-            <span className="size-2 rounded-full bg-status-warning" />
+        <p className={cn(eyebrowClass, "px-4 pb-2 pt-5")}>{t("home.chat.specialists")}</p>
+        <button aria-current="page" className="mx-2 flex min-h-11 w-[calc(100%-1rem)] flex-col gap-1 rounded-md bg-wd-selected px-3 py-2.5 text-left" type="button">
+          <span className="flex w-full items-center justify-between gap-2">
+            <span className="wd-label text-wd-primary">{t("home.chat.researchSpecialist")}</span>
+            <span aria-hidden="true" className="size-2 rounded-full bg-spot" />
           </span>
-          <span className="mt-1 block text-micro leading-4 text-muted-foreground">{t("home.chat.specialistMeta")}</span>
+          <span className="wd-caption block text-wd-secondary">{t("home.chat.specialistMeta")}</span>
         </button>
       </nav>
 
       <main aria-label={t("home.chat.runAria")} className="home-chat-primary" role="region">
-        <header className="shrink-0 border-b border-border px-6 py-4">
+        <header className={cn("shrink-0 px-6 py-4", hairlineBottom)}>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("home.chat.coordinatorStatement")}</p>
-              <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground">{t("home.chat.runTitle")}</h2>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("home.chat.runPurpose")}</p>
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className={eyebrowClass}>{t("home.chat.coordinatorStatement")}</p>
+              <h2 className="wd-title text-wd-primary">{t("home.chat.runTitle")}</h2>
+              <p className="wd-caption text-wd-secondary">{t("home.chat.runPurpose")}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="rounded-full bg-warning-subtle px-2.5 py-1 text-micro font-semibold text-warning-foreground">{t(`home.chat.runState.${runState}`)}</span>
-              <button className="home-chat-compact-trigger rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground" onClick={(event) => onOpenInspector(event.currentTarget)} type="button">
+              <Badge>{t(`home.chat.runState.${runState}`)}</Badge>
+              <Button className="home-chat-compact-trigger" onClick={(event) => onOpenInspector(event.currentTarget)} size="sm" type="button" variant="secondary">
                 {t("home.chat.openRunInspector")}
-              </button>
+              </Button>
             </div>
           </div>
         </header>
         <div className="home-chat-transcript">
-          <div className="mx-auto w-full max-w-2xl space-y-4 px-6 py-7">
-            <TimelineItem complete title={t("home.chat.timelineContext")} detail={t("home.chat.timelineContextDetail")} />
-            <TimelineItem complete title={t("home.chat.timelineSources")} detail={t("home.chat.timelineSourcesDetail")} />
-            <TimelineItem title={t("home.chat.timelineDraft")} detail={t("home.chat.timelineDraftDetail")} />
-            <section className="rounded-2xl border border-border bg-card p-4 shadow-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-foreground">{t("home.chat.approvalTitle")}</p>
-                <span className="rounded-full bg-warning-subtle px-2 py-1 text-micro font-semibold text-warning-foreground">
-                  {runState === "waiting" ? t("waldo.rail.approvalRequired") : t(`home.chat.runState.${runState}`)}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-foreground">{t("home.chat.approvalDetail")}</p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("home.chat.approvalConsequence")}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {(["accept", "edit", "reject", "respond"] as const).map((action) => (
-                  <button className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-interactive-hover" key={action} onClick={() => onApproval(action)} type="button">
-                    {t(`home.chat.approval.${action}`)}
-                  </button>
-                ))}
-              </div>
-              {approvalResponse ? <p role="status" className="mt-3 text-xs text-muted-foreground">{t("home.chat.approvalPreview", { action: t(`home.chat.approval.${approvalResponse}`) })}</p> : null}
-            </section>
+          <div className="mx-auto flex w-full max-w-(--layout-column) flex-col gap-6 px-6 py-7">
+            <div className="flex flex-col [&>div+div]:border-t-[length:var(--stroke-hairline)] [&>div+div]:border-wd-hairline">
+              <TimelineItem complete title={t("home.chat.timelineContext")} detail={t("home.chat.timelineContextDetail")} />
+              <TimelineItem complete title={t("home.chat.timelineSources")} detail={t("home.chat.timelineSourcesDetail")} />
+              <TimelineItem title={t("home.chat.timelineDraft")} detail={t("home.chat.timelineDraftDetail")} />
+            </div>
+            <HomeCard>
+              <HomeEyebrow>
+                {runState === "waiting" ? <NeedsYouBadge /> : <Badge>{t(`home.chat.runState.${runState}`)}</Badge>}
+              </HomeEyebrow>
+              <p className="wd-headline text-wd-primary">{t("home.chat.approvalTitle")}</p>
+              <p className="wd-body text-wd-primary">{t("home.chat.approvalDetail")}</p>
+              <p className="wd-caption text-wd-secondary">{t("home.chat.approvalConsequence")}</p>
+              <HomeCardActions
+                hint={approvalResponse ? <span role="status">{t("home.chat.approvalPreview", { action: t(`home.chat.approval.${approvalResponse}`) })}</span> : undefined}
+                lead={
+                  <>
+                    <Button data-quiet onClick={() => onApproval("reject")} size="sm" type="button" variant="ghost">
+                      {t("home.chat.approval.reject")}
+                    </Button>
+                    <Button data-quiet onClick={() => onApproval("respond")} size="sm" type="button" variant="ghost">
+                      {t("home.chat.approval.respond")}
+                    </Button>
+                  </>
+                }
+                trail={
+                  <>
+                    <Button onClick={() => onApproval("edit")} size="sm" type="button" variant="secondary">
+                      {t("home.chat.approval.edit")}
+                    </Button>
+                    <Button onClick={() => onApproval("accept")} size="sm" type="button" variant="primary">
+                      {t("home.chat.approval.accept")}
+                    </Button>
+                  </>
+                }
+              />
+            </HomeCard>
           </div>
         </div>
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3.5">
-          <p className="text-micro text-muted-foreground">{t("home.chat.runBoundary")}</p>
+        <footer className={cn("flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-3", hairlineTop)}>
+          <p className="wd-caption text-wd-tertiary">{t("home.chat.runBoundary")}</p>
           <div className="flex flex-wrap gap-2">
-            <button
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+            <Button
               disabled={runState !== "approved" && runState !== "paused"}
               onClick={() => onRunState(runState === "paused" ? "approved" : "paused")}
+              size="sm"
               type="button"
+              variant="secondary"
             >
               <CirclePause aria-hidden="true" className="size-3.5" />
               {runState === "paused" ? t("waldo.rail.specialist.resume") : t("waldo.rail.specialist.pause")}
-            </button>
-            <button className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-destructive disabled:cursor-not-allowed disabled:opacity-45" disabled={runState === "stopped"} onClick={() => onRunState("stopped")} type="button">
+            </Button>
+            <Button disabled={runState === "stopped"} onClick={() => onRunState("stopped")} size="sm" type="button" variant="critical">
               <Square aria-hidden="true" className="size-3.5" />
               {t("home.chat.stop")}
-            </button>
+            </Button>
           </div>
         </footer>
       </main>
@@ -599,12 +659,12 @@ function ActivityWorkspace({
 function RunInspectorContent({ contextLabel, onReturn, onRunState }: { contextLabel: string; onReturn: () => void; onRunState: (state: RunState) => void }) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-5 p-4">
-      <div>
-        <p className="text-micro font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("home.chat.authorityEvidence")}</p>
-        <h3 className="mt-1 text-sm font-semibold text-foreground">{t("home.chat.researchSpecialist")}</h3>
+    <div className="flex flex-col gap-5 p-4">
+      <div className="flex flex-col gap-1">
+        <p className={eyebrowClass}>{t("home.chat.authorityEvidence")}</p>
+        <h3 className="wd-label text-wd-primary">{t("home.chat.researchSpecialist")}</h3>
       </div>
-      <dl className="grid gap-3 text-xs">
+      <dl className="flex flex-col gap-3">
         <InspectorRow label={t("waldo.rail.specialist.scope")} value={t("home.chat.scopeValue")} />
         <InspectorRow label={t("waldo.rail.specialist.sources")} value={t("home.chat.sourcesValue")} />
         <InspectorRow label={t("waldo.rail.specialist.authority")} value={t("home.chat.authorityValue")} />
@@ -612,32 +672,46 @@ function RunInspectorContent({ contextLabel, onReturn, onRunState }: { contextLa
         <InspectorRow label={t("waldo.rail.specialist.completion")} value={t("home.chat.completionValue")} />
         <InspectorRow label={t("waldo.rail.specialist.returnDestination")} value={contextLabel} />
       </dl>
-      <section className="rounded-xl border border-border bg-raised p-3">
-        <p className="flex items-center gap-2 text-xs font-semibold text-foreground"><ShieldCheck aria-hidden="true" className="size-3.5" />{t("home.chat.evidenceTitle")}</p>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("home.chat.evidenceDetail")}</p>
-      </section>
-      <div className="grid gap-2">
-        <button className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground" onClick={() => onRunState("waiting")} type="button"><RotateCcw aria-hidden="true" className="size-3.5" />{t("home.chat.retry")}</button>
-        <button className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground" onClick={onReturn} type="button"><ArrowLeft aria-hidden="true" className="size-3.5" />{t("home.chat.return")}</button>
+      <HomeInset>
+        <p className="wd-label flex items-center gap-2 text-wd-primary"><ShieldCheck aria-hidden="true" className="size-3.5" />{t("home.chat.evidenceTitle")}</p>
+        <p className="wd-caption text-wd-secondary">{t("home.chat.evidenceDetail")}</p>
+      </HomeInset>
+      <div className="flex flex-col gap-1">
+        <Button onClick={() => onRunState("waiting")} size="sm" type="button" variant="secondary"><RotateCcw aria-hidden="true" className="size-3.5" />{t("home.chat.retry")}</Button>
+        <Button onClick={onReturn} size="sm" type="button" variant="ghost"><ArrowLeft aria-hidden="true" className="size-3.5" />{t("home.chat.return")}</Button>
       </div>
-      <p className="border-t border-border pt-4 text-micro leading-4 text-muted-foreground">{t("home.chat.runInspectorBoundary")}</p>
+      <p className={cn("wd-caption pt-4 text-wd-tertiary", hairlineTop)}>{t("home.chat.runInspectorBoundary")}</p>
     </div>
   );
 }
 
 function TimelineItem({ complete = false, detail, title }: { complete?: boolean; detail: string; title: string }) {
   return (
-    <div className="flex gap-3 rounded-xl border border-border bg-raised p-3.5">
-      <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground", complete && "bg-success-subtle text-success-foreground")}>{complete ? <Check aria-hidden="true" className="size-3" /> : <Sparkles aria-hidden="true" className="size-3" />}</span>
-      <div><p className="text-xs font-semibold text-foreground">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p></div>
+    <div className="flex gap-3 py-3 first:pt-0 last:pb-0">
+      <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-wd-inset text-wd-secondary">
+        {complete ? <Check aria-hidden="true" className="size-3" /> : <CircleDashed aria-hidden="true" className="size-3" />}
+      </span>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="wd-label text-wd-primary">{title}</p>
+        <p className="wd-body-s text-wd-secondary">{detail}</p>
+      </div>
     </div>
   );
 }
 
 function InspectorRow({ label, value }: { label: string; value: string }) {
-  return <div><dt className="font-medium text-muted-foreground">{label}</dt><dd className="mt-1 leading-5 text-foreground">{value}</dd></div>;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="wd-caption text-wd-secondary">{label}</dt>
+      <dd className="wd-body-s text-wd-primary">{value}</dd>
+    </div>
+  );
 }
 
-function IconButton({ children, label }: { children: ReactNode; label: string }) {
-  return <button aria-label={label} className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-interactive-hover hover:text-foreground" type="button">{children}</button>;
+function QuietIconButton({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <Button aria-label={label} className="size-11 shrink-0 text-wd-secondary hover:text-wd-primary" size="icon" type="button" variant="ghost">
+      {children}
+    </Button>
+  );
 }

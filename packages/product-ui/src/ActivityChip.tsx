@@ -18,7 +18,7 @@ export function ActivityChip({ label, icon, className }: ActivityChipProps) {
 	return (
 		<span
 			className={cn(
-				"inline-flex max-w-full items-center gap-1 text-2xs text-passive",
+				"inline-flex max-w-full items-center gap-1 text-xs text-wd-tertiary",
 				className,
 			)}
 			data-testid="activity-chip"

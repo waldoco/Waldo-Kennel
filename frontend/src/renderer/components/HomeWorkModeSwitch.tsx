@@ -53,7 +53,7 @@ export function HomeWorkModeSwitch({ className }: { className?: string }) {
     <nav
       aria-label={copy.modeLabel}
       className={cn(
-        "pointer-events-auto flex h-8 w-full items-center rounded-lg border border-border bg-raised/92 p-0.5 shadow-sm backdrop-blur-md",
+        "pointer-events-auto flex h-8 w-full items-center rounded-full bg-wd-inset p-0.5",
         className,
       )}
       data-slot="home-work-mode-switch"
@@ -66,10 +66,11 @@ export function HomeWorkModeSwitch({ className }: { className?: string }) {
           <button
             aria-pressed={selected}
             className={cn(
-              "h-7 flex-1 rounded-md px-4 text-xs font-medium transition-[background-color,color,box-shadow] duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 motion-reduce:transition-none",
+              // Segmented control: inset track, ink thumb for the selected mode.
+              "h-7 flex-1 rounded-full px-4 text-xs font-medium transition-[background-color,color] duration-fast motion-reduce:transition-none",
               selected
-                ? "bg-card text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-wd-inverse text-wd-on-inverse"
+                : "text-wd-secondary hover:text-wd-primary",
             )}
             key={item}
             onClick={() => selectMode(item)}

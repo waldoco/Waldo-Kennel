@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { apiClient } from "../../lib/api-client";
 import { classifyOutcomeFailure, outcomeQueryKey, planQueryKey } from "../../hooks/useOutcome";
+import { StateMark } from "@pin4sf/kennel-product-ui";
 import { Button } from "../ui/button";
 
 export function MissionReplanForm({ outcomeId, revision }: { outcomeId: string; revision: number }) {
@@ -28,32 +29,36 @@ export function MissionReplanForm({ outcomeId, revision }: { outcomeId: string; 
 	});
 	return (
 		<form
-			className="mt-4 border-t border-border pt-3"
+			className="mt-4 flex flex-col gap-2 hairline-t border-wd-hairline pt-4"
 			onSubmit={(event) => {
 				event.preventDefault();
 				if (feedback.trim() && !mutation.isPending && !mutation.error) mutation.mutate();
 			}}
 		>
-			<label className="block text-sm font-medium">
+			<label className="flex flex-col gap-2 text-sm font-medium text-wd-primary">
 				{t("mission.replanFeedback")}
 				<textarea
-					className="mt-2 block min-h-20 w-full rounded-md border border-border bg-card p-2 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+					className="block min-h-20 w-full rounded-md bg-wd-inset p-3 text-sm font-normal text-wd-primary outline-none placeholder:text-wd-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) disabled:text-wd-disabled"
 					value={feedback}
 					disabled={mutation.isPending}
 					onChange={(event) => setFeedback(event.target.value)}
 				/>
 			</label>
-			<p className="my-2 text-xs text-muted-foreground">{t("mission.replanNote", { revision })}</p>
-			<Button size="sm" disabled={!feedback.trim() || mutation.isPending || Boolean(mutation.error)} type="submit">
+			<p className="text-xs tabular-nums text-wd-secondary">{t("mission.replanNote", { revision })}</p>
+			<Button className="self-start" size="sm" disabled={!feedback.trim() || mutation.isPending || Boolean(mutation.error)} type="submit">
 				{t(mutation.isPending ? "mission.replanning" : "mission.replan")}
 			</Button>
 			{mutation.error && (
-				<div role="alert" className="mt-2 text-xs text-destructive">
-					<p>{classifyOutcomeFailure(mutation.error).message}</p>
-					<p>{t("mission.replanReconcile")}</p>
+				<div role="alert" className="flex flex-col gap-1 rounded-md bg-wd-inset p-3 text-xs">
+					<p className="flex items-start gap-1.5 text-wd-primary">
+						<StateMark className="mt-0.5 text-critical" tone="critical" />
+						{classifyOutcomeFailure(mutation.error).message}
+					</p>
+					<p className="text-wd-secondary">{t("mission.replanReconcile")}</p>
 					<Button
+						className="mt-1 self-start"
 						size="sm"
-						variant="outline"
+						variant="secondary"
 						onClick={() => {
 							void cache.invalidateQueries({ queryKey: planQueryKey(outcomeId) });
 							void cache.invalidateQueries({ queryKey: outcomeQueryKey(outcomeId) });

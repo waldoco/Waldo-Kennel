@@ -1,3 +1,4 @@
+import { ChevronRight, Clock } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
@@ -5,8 +6,24 @@ import type {
   HomeOpenLoopFixture,
   HomeOpenLoopState,
 } from "../../lib/home-fixture";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { HomeCardActions, HomeStateBadge, NeedsYouBadge } from "./HomeCards";
 
 type OpenLoopPreviewStatus = "initial" | "correct" | "context" | "work";
+
+// Open loops on the Waldo OpenLoopRow contract: each loop is one button row
+// (title, then the owner and the next check in caption, a state word, a
+// chevron), hairlines between rows, at least 44px tall. The desk keeps its
+// master/detail panes, divided by a hairline with no coloured panes.
+function LoopStateBadge({ state }: { state: HomeOpenLoopState }) {
+  const { t } = useTranslation();
+  if (state === "attention") return <NeedsYouBadge />;
+  if (state === "ready_to_close") {
+    return <HomeStateBadge tone="good">{t("home.visual.openLoops.state.readyToClose")}</HomeStateBadge>;
+  }
+  return <HomeStateBadge>{t("home.visual.openLoops.state.waiting")}</HomeStateBadge>;
+}
 
 function ResponsibilityDetail({
   loop,
@@ -18,93 +35,83 @@ function ResponsibilityDetail({
   onPreview: (status: OpenLoopPreviewStatus) => void;
 }) {
   const { t } = useTranslation();
-  const stateLabels: Record<HomeOpenLoopState, string> = {
-    attention: t("home.visual.openLoops.state.attention"),
-    waiting: t("home.visual.openLoops.state.waiting"),
-    ready_to_close: t("home.visual.openLoops.state.readyToClose"),
-  };
   return (
-    <article className="home-open-loops-detail min-w-0" aria-labelledby={`${loop.id}-detail-heading`}>
-      <button
-        className="home-open-loops-back mb-6 text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
+    <article className="home-open-loops-detail flex min-w-0 flex-col gap-5" aria-labelledby={`${loop.id}-detail-heading`}>
+      <Button
+        className="home-open-loops-back -ml-3 self-start"
         onClick={onBack}
+        size="sm"
         type="button"
+        variant="ghost"
       >
         {t("home.visual.openLoops.back")}
-      </button>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+      </Button>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="wd-caption text-wd-tertiary">
             {t("home.visual.openLoops.confirmedResponsibility")}
           </p>
-          <h3 className="mt-2 text-xl font-semibold tracking-tight text-foreground" id={`${loop.id}-detail-heading`}>
-            {loop.label}
-          </h3>
+          <LoopStateBadge state={loop.state} />
         </div>
-        <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
-          {stateLabels[loop.state]}
-        </span>
+        <h3 className="wd-title text-wd-primary" id={`${loop.id}-detail-heading`}>
+          {loop.label}
+        </h3>
       </div>
 
-      <p className="mt-6 max-w-2xl text-base leading-relaxed text-foreground">
+      <p className="wd-body-l text-wd-primary">
         {loop.meaning}
       </p>
 
-      <dl className="mt-7 grid gap-x-8 gap-y-5 border-y border-border py-5 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-xs uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.openLoops.owner")}</dt>
-          <dd className="mt-1.5 text-foreground">{t("home.visual.openLoops.ownerValue", { owner: loop.owner })}</dd>
+      <dl className="grid gap-x-8 gap-y-4 border-y-[length:var(--stroke-hairline)] border-wd-hairline py-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-0.5">
+          <dt className="wd-caption text-wd-secondary">{t("home.visual.openLoops.owner")}</dt>
+          <dd className="wd-body-s text-wd-primary">{t("home.visual.openLoops.ownerValue", { owner: loop.owner })}</dd>
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.openLoops.sourceStrength")}</dt>
-          <dd className="mt-1.5 text-foreground">{loop.sourceStrength}</dd>
+        <div className="flex flex-col gap-0.5">
+          <dt className="wd-caption text-wd-secondary">{t("home.visual.openLoops.sourceStrength")}</dt>
+          <dd className="wd-body-s text-wd-primary">{loop.sourceStrength}</dd>
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.openLoops.returnTrigger")}</dt>
-          <dd className="mt-1.5 leading-relaxed text-foreground">{loop.trigger}</dd>
+        <div className="flex flex-col gap-0.5">
+          <dt className="wd-caption text-wd-secondary">{t("home.visual.openLoops.returnTrigger")}</dt>
+          <dd className="wd-body-s text-wd-primary">{loop.trigger}</dd>
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-[0.1em] text-muted-foreground">{t("home.visual.openLoops.recheck")}</dt>
-          <dd className="mt-1.5 text-foreground">{loop.recheck}</dd>
+        <div className="flex flex-col gap-0.5">
+          <dt className="wd-caption text-wd-secondary">{t("home.visual.openLoops.recheck")}</dt>
+          <dd className="wd-body-s text-wd-primary">{loop.recheck}</dd>
         </div>
       </dl>
 
-      <section className="mt-6" aria-labelledby={`${loop.id}-provenance-heading`}>
-        <h4 className="text-xs uppercase tracking-[0.1em] text-muted-foreground" id={`${loop.id}-provenance-heading`}>
+      <section className="flex flex-col gap-1" aria-labelledby={`${loop.id}-provenance-heading`}>
+        <h4 className="wd-label text-wd-secondary" id={`${loop.id}-provenance-heading`}>
           {t("home.visual.openLoops.provenance")}
         </h4>
-        <p className="mt-2 text-sm leading-relaxed text-foreground">{loop.sourceSummary}</p>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{loop.lastConfirmedAt}</p>
+        <p className="wd-body-s text-wd-primary">{loop.sourceSummary}</p>
+        <p className="wd-caption text-wd-tertiary">{loop.lastConfirmedAt}</p>
         {loop.sourceGap ? (
-          <p className="mt-3 border-l border-warning/50 pl-3 text-xs leading-relaxed text-muted-foreground">
+          <p className="wd-body-s mt-2 flex items-start gap-1.5 rounded-md bg-wd-inset p-3 text-caution">
+            <Clock aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
             {t("home.visual.openLoops.knownGap", { gap: loop.sourceGap })}
           </p>
         ) : null}
       </section>
 
-      <div className="mt-7 flex flex-wrap gap-2">
-        <button
-          className="rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-interactive-hover"
-          onClick={() => onPreview("correct")}
-          type="button"
-        >
-          {t("home.visual.openLoops.correct")}
-        </button>
-        <button
-          className="rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-interactive-hover"
-          onClick={() => onPreview("context")}
-          type="button"
-        >
-          {t("home.visual.openLoops.addContext")}
-        </button>
-        <button
-          className="rounded-md border border-border-strong bg-interactive-active px-3 py-2 text-xs font-medium text-foreground hover:bg-interactive-hover"
-          onClick={() => onPreview("work")}
-          type="button"
-        >
-          {t("home.visual.continueInWork")}
-        </button>
-      </div>
+      <HomeCardActions
+        lead={
+          <>
+            <Button data-quiet onClick={() => onPreview("correct")} size="sm" type="button" variant="ghost">
+              {t("home.visual.openLoops.correct")}
+            </Button>
+            <Button data-quiet onClick={() => onPreview("context")} size="sm" type="button" variant="ghost">
+              {t("home.visual.openLoops.addContext")}
+            </Button>
+          </>
+        }
+        trail={
+          <Button onClick={() => onPreview("work")} size="sm" type="button" variant="primary">
+            {t("home.visual.continueInWork")}
+          </Button>
+        }
+      />
     </article>
   );
 }
@@ -147,46 +154,51 @@ export function HomeOpenLoops({ fixture }: { fixture: HomeFixtureState }) {
   }, [mobileView]);
 
   return (
-    <section aria-labelledby="open-loops-heading">
-      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-        {t("home.visual.openLoops.confirmedResponsibility")}
-      </p>
-      <h2 className="mt-2 text-xl font-semibold tracking-tight text-foreground" id="open-loops-heading">
-        {t("home.visual.openLoops.title")}
-      </h2>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-        {t("home.visual.openLoops.description")}
-      </p>
+    <section aria-labelledby="open-loops-heading" className="flex flex-col gap-6">
+      <header className="flex max-w-(--layout-measure) flex-col gap-2">
+        <p className="wd-caption text-wd-tertiary">
+          {t("home.visual.openLoops.confirmedResponsibility")}
+        </p>
+        <h2 className="wd-display-3 text-wd-primary" id="open-loops-heading">
+          {t("home.visual.openLoops.title")}
+        </h2>
+        <p className="wd-body text-wd-secondary">
+          {t("home.visual.openLoops.description")}
+        </p>
+      </header>
 
-      <div aria-label={t("home.visual.openLoops.states")} className="mt-7 flex gap-1 border-b border-border" role="tablist">
+      <div aria-label={t("home.visual.openLoops.states")} className="flex w-fit max-w-full flex-wrap gap-1 rounded-full bg-wd-inset p-1" role="tablist">
         {stateTabs.map((tab) => {
           const count = fixture.openLoops.filter((loop) => loop.state === tab.state).length;
           return (
             <button
               aria-selected={activeState === tab.state}
-              className="border-b-2 border-transparent px-3 pb-3 pt-1 text-xs text-muted-foreground transition-colors hover:text-foreground aria-selected:border-foreground aria-selected:text-foreground"
+              className="wd-label inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-wd-secondary transition-colors duration-fast hover:text-wd-primary aria-selected:bg-wd-inverse aria-selected:text-wd-on-inverse"
               key={tab.state}
               onClick={() => chooseState(tab.state)}
               role="tab"
               type="button"
             >
-              {tab.label} {count}
+              {tab.label} <span className="wd-data">{count}</span>
             </button>
           );
         })}
       </div>
 
       <div className="home-open-loops-desk" data-mobile-view={mobileView}>
-        <div className="home-open-loops-index border-b border-border sm:border-b-0">
-          <p className="px-1 pb-3 text-xs leading-relaxed text-muted-foreground">
+        <div className="home-open-loops-index flex min-w-0 flex-col gap-3">
+          <p className="wd-caption text-wd-tertiary">
             {t("home.visual.openLoops.returnStateBoundary")}
           </p>
-          <div className="divide-y divide-border border-y border-border">
+          <div className="flex flex-col">
             {visibleLoops.map((loop) => (
               <button
                 aria-label={loop.label}
                 aria-current={selectedLoop?.id === loop.id ? "true" : undefined}
-                className="flex w-full items-start justify-between gap-4 px-1 py-4 text-left hover:bg-interactive-hover aria-current:bg-interactive-active"
+                className={cn(
+                  "-mx-3 flex min-h-11 w-[calc(100%+1.5rem)] items-center gap-3 rounded-md p-3 text-left transition-colors duration-fast hover:bg-wd-hover active:bg-wd-pressed aria-current:bg-wd-selected",
+                  "[&+&]:rounded-t-none [&+&]:border-t-[length:var(--stroke-hairline)] [&+&]:border-wd-hairline",
+                )}
                 key={loop.id}
                 onClick={(event) => {
                   selectedRowRef.current = event.currentTarget;
@@ -195,11 +207,14 @@ export function HomeOpenLoops({ fixture }: { fixture: HomeFixtureState }) {
                 }}
                 type="button"
               >
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-foreground">{loop.label}</span>
-                  <span className="mt-1.5 block text-xs leading-relaxed text-muted-foreground">{loop.lastConfirmedAt}</span>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="wd-body text-wd-primary">{loop.label}</span>
+                  <span className="wd-caption text-wd-secondary">
+                    {t("home.visual.openLoops.ownerValue", { owner: loop.owner })} · {loop.recheck}
+                  </span>
                 </span>
-                <span aria-hidden="true" className="pt-0.5 text-muted-foreground">→</span>
+                <LoopStateBadge state={loop.state} />
+                <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-wd-tertiary" />
               </button>
             ))}
           </div>
@@ -214,7 +229,7 @@ export function HomeOpenLoops({ fixture }: { fixture: HomeFixtureState }) {
         ) : null}
       </div>
 
-      <p aria-label={t("home.visual.openLoops.statusLabel")} className="mt-6 text-xs leading-relaxed text-muted-foreground" role="status">
+      <p aria-label={t("home.visual.openLoops.statusLabel")} className="wd-caption max-w-(--layout-measure) text-wd-tertiary" role="status">
         {t(`home.visual.openLoops.status.${previewStatus}`)}
       </p>
     </section>

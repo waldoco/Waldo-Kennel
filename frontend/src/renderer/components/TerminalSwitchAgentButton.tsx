@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { LoaderCircle, Repeat2, TriangleAlert } from "lucide-react";
+import { Repeat2, TriangleAlert } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { clearSwitchAgentState } from "../hooks/useSwitchAgent";
@@ -66,7 +66,7 @@ export function TerminalSwitchAgentButton({
 						aria-busy={switching && controlPresentation?.animate ? true : undefined}
 						aria-label={label}
 						className={cn(
-							warning && "text-warning hover:bg-warning/10 hover:text-warning",
+							warning && "text-caution hover:bg-caution-bg hover:text-caution",
 						)}
 						disabled={blocksNewSwitch}
 						onClick={() => {
@@ -83,7 +83,16 @@ export function TerminalSwitchAgentButton({
 						{warning ? (
 							<TriangleAlert aria-hidden="true" className="size-icon-sm" />
 						) : switching ? (
-							<LoaderCircle aria-hidden="true" className="agent-switch-toolbar-spinner size-icon-sm animate-spin" />
+							// Live work is a static accent dot on the control, never a spinner;
+							// the tooltip and accessible name carry the specific line.
+							<span className="relative inline-flex">
+								<Repeat2 aria-hidden="true" className="size-4 stroke-[1.8]" />
+								<span
+									aria-hidden="true"
+									className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-wd-accent"
+									data-testid="agent-switch-live-dot"
+								/>
+							</span>
 						) : (
 							<Repeat2 aria-hidden="true" className="size-4 stroke-[1.8]" />
 						)}

@@ -16,14 +16,14 @@ describe("HomeNavigation", () => {
     const primary = screen.getByRole("group", { name: "Primary Home destinations" });
     expect(within(primary).getByRole("link", { name: "Today" })).toBeInTheDocument();
     expect(within(primary).getByRole("link", { name: "Chat" })).toHaveAttribute("href", "#/home/chat");
-    expect(within(primary).getByRole("link", { name: "Open Loops" })).toBeInTheDocument();
+    expect(within(primary).getByRole("link", { name: "Open loops" })).toBeInTheDocument();
 
     const continuity = screen.getByRole("group", { name: "Review and continuity" });
-    expect(within(continuity).getByRole("link", { name: "Daily Close" })).toHaveAttribute(
+    expect(within(continuity).getByRole("link", { name: "Daily close" })).toHaveAttribute(
       "href",
       "#/home/daily-close",
     );
-    expect(within(continuity).getByRole("link", { name: "Memory Review" })).toHaveAttribute(
+    expect(within(continuity).getByRole("link", { name: "Memory review" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -38,10 +38,10 @@ describe("HomeNavigation", () => {
 
     expect(screen.getByRole("link", { name: "Today" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open Loops" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open loops" })).toBeInTheDocument();
     expect(
       screen.queryByRole("group", { name: "Review and continuity" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Memory Review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Memory review" })).not.toBeInTheDocument();
   });
 });

@@ -61,9 +61,9 @@ describe("Home entry route", () => {
 		expect(
 			screen.getByRole("heading", { name: "Good morning, Shivansh." }),
 		).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "Catch Up" })).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "Catch up" })).toBeInTheDocument();
     expect(
-      screen.getByRole("textbox", { name: "Quick Capture" }),
+      screen.getByRole("textbox", { name: "Quick capture" }),
     ).toBeInTheDocument();
   });
 

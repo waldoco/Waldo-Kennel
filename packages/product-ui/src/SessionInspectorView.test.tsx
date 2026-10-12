@@ -130,7 +130,7 @@ describe("SessionInspectorShellView", () => {
       />,
     );
     expect(screen.getByText("Loading session…")).toHaveClass(
-      "text-settings-muted",
+      "text-wd-secondary",
     );
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
@@ -175,7 +175,7 @@ describe("portable inspector presentations", () => {
     expect(
       screen.getByRole("link", { name: "Open PR #12" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Ready to merge")).toHaveClass("text-success");
+    expect(screen.getByText("Ready to merge")).toHaveClass("text-good");
     expect(screen.getByRole("button", { name: "Merge" })).toBeInTheDocument();
   });
 
@@ -200,10 +200,18 @@ describe("portable inspector presentations", () => {
     );
     const events = screen.getAllByTestId("inspector-timeline-event");
     expect(events).toHaveLength(2);
-    expect(events[0].querySelector(".animate-status-pulse")).toHaveStyle({
-      background: "#60a5fa",
-    });
-    expect(screen.getByText("2h ago")).toHaveClass("text-2xs", "text-passive");
+    const currentMarker = events[0].querySelector(
+      "[data-testid='inspector-timeline-marker']",
+    );
+    expect(currentMarker).toHaveAttribute("data-current", "true");
+    expect(currentMarker).toHaveStyle({ background: "#60a5fa" });
+    // Waldo: no pulsing markers; the current state is shown, not animated.
+    expect(events[0].querySelector(".animate-status-pulse")).toBeNull();
+    expect(screen.getByText("2h ago")).toHaveClass(
+      "text-2xs",
+      "tabular-nums",
+      "text-wd-tertiary",
+    );
   });
 
   it("owns grouped review disclosure while the host supplies markdown and assets", () => {
@@ -443,7 +451,7 @@ describe("portable inspector presentations", () => {
       ),
     );
     expect(screen.getByText("Unable to request re-review")).toHaveClass(
-      "text-error",
+      "text-critical",
     );
     expect(
       screen.getByRole("button", { name: "Request to re-review PR" }),
@@ -552,12 +560,9 @@ describe("portable inspector presentations", () => {
     await waitFor(() => {
       const sentLabels = screen.getAllByText("Sent to worker agent");
       expect(sentLabels).toHaveLength(2);
-      expect(sentLabels[0]?.closest("span")).toHaveClass(
-        "bg-overlay/80",
-        "border-border-strong",
-      );
+      expect(sentLabels[0]?.closest("span")).toHaveClass("text-wd-secondary");
       expect(sentLabels[0]?.closest("span")?.querySelector("svg")).toHaveClass(
-        "text-success",
+        "text-wd-tertiary",
       );
     });
     expect(screen.getAllByRole("link", { name: "View in file" })).toHaveLength(
@@ -626,7 +631,7 @@ describe("portable inspector presentations", () => {
 
     await waitFor(() =>
       expect(screen.getByText("Unable to send. Retry.")).toHaveClass(
-        "text-error",
+        "text-critical",
       ),
     );
     expect(

@@ -3,31 +3,63 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 
-function SettingsRowLabel({ icon: Icon, label }: { icon?: LucideIcon; label: string }) {
+function SettingsRowLabel({
+	icon: Icon,
+	label,
+	detail,
+	destructive,
+	disabled,
+}: {
+	icon?: LucideIcon;
+	label: string;
+	detail?: ReactNode;
+	destructive?: boolean;
+	disabled?: boolean;
+}) {
 	return (
-		<div className="flex shrink-0 items-center gap-(--size-settings-row-icon-gap)">
-			{Icon ? <Icon className="size-icon-lg shrink-0 text-settings-muted" aria-hidden="true" /> : null}
-			<span className="whitespace-nowrap text-sm leading-5 text-settings-label">{label}</span>
+		<div className="flex min-w-0 shrink items-center gap-3">
+			{Icon && !destructive ? (
+				<span
+					className={cn(
+						"settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary",
+						disabled && "opacity-(--opacity-inactive)",
+					)}
+					aria-hidden="true"
+				>
+					<Icon className="size-4" />
+				</span>
+			) : null}
+			<span className="flex min-w-0 flex-col gap-0.5">
+				<span className={cn("wd-body truncate", destructive ? "text-critical" : "text-wd-primary")}>{label}</span>
+				{detail ? <span className="wd-body-s truncate text-wd-secondary">{detail}</span> : null}
+			</span>
 		</div>
 	);
 }
 
-/** Settings row bar: tokenized height, radius, padding, and icon gap. */
+/**
+ * Waldo ListRow: optional icon tile, title, one-line detail, trailing control.
+ * A disabled row shows its reason in place of the detail.
+ */
 export function SettingsRow({
 	icon,
 	label,
+	detail,
+	disabledReason,
 	children,
 	className,
 }: {
 	icon?: LucideIcon;
 	label: string;
+	detail?: ReactNode;
+	disabledReason?: ReactNode;
 	children: ReactNode;
 	className?: string;
 }) {
 	return (
 		<div className={cn("settings-row-bar", className)}>
-			<SettingsRowLabel icon={icon} label={label} />
-			<div className="flex min-w-0 flex-1 items-center justify-end">{children}</div>
+			<SettingsRowLabel icon={icon} label={label} detail={disabledReason ?? detail} disabled={Boolean(disabledReason)} />
+			<div className="flex min-w-0 flex-1 items-center justify-end gap-2">{children}</div>
 		</div>
 	);
 }
@@ -131,23 +163,50 @@ export function SettingsInputRow({
 export function SettingsLinkRow({
 	icon,
 	label,
+	detail,
+	value,
 	onClick,
 	disabled = false,
+	disabledReason,
+	destructive = false,
 }: {
 	icon?: LucideIcon;
 	label: string;
+	detail?: ReactNode;
+	/** Current value, shown before the chevron. */
+	value?: ReactNode;
 	onClick: () => void;
 	disabled?: boolean;
+	/** Replaces the detail when the row is disabled. */
+	disabledReason?: ReactNode;
+	/** Sign out, revoke, delete: no icon, critical title, no chevron. */
+	destructive?: boolean;
 }) {
+	const isDisabled = disabled || Boolean(disabledReason);
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			disabled={disabled}
-			className="settings-row-bar settings-link-row w-full text-left transition-colors hover:bg-settings-menu-selected focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+			disabled={isDisabled}
+			className="settings-row-bar settings-link-row w-full text-left transition-colors duration-fast disabled:cursor-not-allowed"
 		>
-			<SettingsRowLabel icon={icon} label={label} />
-			<ChevronRight className="size-icon-base shrink-0 text-settings-muted" aria-hidden="true" />
+			<SettingsRowLabel
+				icon={icon}
+				label={label}
+				detail={(isDisabled ? disabledReason : undefined) ?? detail}
+				destructive={destructive}
+				disabled={isDisabled}
+			/>
+			{destructive ? null : (
+				<span className="flex min-w-0 shrink-0 items-center gap-1.5">
+					{value ? <span className="settings-row-value">{value}</span> : null}
+					<ChevronRight className="size-4 shrink-0 text-wd-tertiary" aria-hidden="true" />
+				</span>
+			)}
 		</button>
 	);
 }
+
+/** Trailing text input inside a ListRow: compact TextField on bg-inset. */
+export const settingsRowInputClass =
+	"h-control-form w-56 max-w-[55%] shrink rounded-sm border border-transparent bg-wd-inset px-3 text-right text-sm text-wd-primary placeholder:text-wd-tertiary focus-visible:border-(--border-focus) focus-visible:ring-0 focus-visible:shadow-[inset_0_0_0_var(--stroke-1)_var(--border-focus)] disabled:opacity-100 disabled:text-wd-secondary aria-invalid:border-critical aria-invalid:ring-0";

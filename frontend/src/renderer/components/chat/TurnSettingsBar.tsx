@@ -120,7 +120,7 @@ export function TurnSettingsBar({
 							// less legible than one readable name plus a flag that says it is not
 							// the one that was asked for; the tooltip and the menu spell out which.
 							<Shuffle
-								className="size-3 shrink-0 text-warning"
+								className="size-3 shrink-0 text-caution"
 								aria-label={`Substituted for ${reroute.fromModel ?? chosenLabel}`}
 							/>
 						) : null
@@ -128,7 +128,7 @@ export function TurnSettingsBar({
 				>
 					<DropdownMenuLabel className="flex items-baseline justify-between gap-2">
 						<span>Model</span>
-						<span className="text-[11px] font-normal text-muted-foreground">
+						<span className="text-[11px] font-normal text-wd-secondary">
 							Applies to the next turn
 						</span>
 					</DropdownMenuLabel>
@@ -136,7 +136,7 @@ export function TurnSettingsBar({
 					    goes to change the model, and it is where the fact that their last
 					    choice was overridden matters most. */}
 					{reroute ? (
-						<p className="px-2 pb-1.5 text-[11px] leading-snug text-warning">
+						<p className="px-2 pb-1.5 text-[11px] leading-snug text-caution">
 							The provider answered with {rerouted} instead of{" "}
 							{reroute.fromModel ?? chosenLabel}
 							{reroute.reason ? ` — ${reroute.reason}` : "."}
@@ -156,22 +156,22 @@ export function TurnSettingsBar({
 								<span
 									className={cn(
 										"text-xs",
-										model.id === settings.model ? "text-foreground" : "text-muted-foreground",
+										model.id === settings.model ? "text-wd-primary" : "text-wd-secondary",
 									)}
 								>
 									{model.displayName}
 								</span>
 								{model.default ? (
-									<span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+									<span className="text-[11px] text-wd-tertiary">
 										default
 									</span>
 								) : null}
 								{model.id === settings.model ? (
-									<span className="ml-auto text-[10px] text-accent">selected</span>
+									<span className="ml-auto text-[11px] text-wd-secondary">selected</span>
 								) : null}
 							</span>
 							{model.description ? (
-								<span className="text-[11px] leading-snug text-muted-foreground">
+								<span className="text-[11px] leading-snug text-wd-secondary">
 									{model.description}
 								</span>
 							) : null}
@@ -197,14 +197,14 @@ export function TurnSettingsBar({
 								<span
 									className={cn(
 										effort === settings.reasoningEffort
-											? "text-foreground"
-											: "text-muted-foreground",
+											? "text-wd-primary"
+											: "text-wd-secondary",
 									)}
 								>
 									{capitalize(effort)}
 								</span>
 								{effort === settings.reasoningEffort ? (
-									<span className="ml-auto text-[10px] text-accent">selected</span>
+									<span className="ml-auto text-[11px] text-wd-secondary">selected</span>
 								) : null}
 							</DropdownMenuItem>
 						))}
@@ -220,7 +220,7 @@ export function TurnSettingsBar({
 					>
 						<DropdownMenuLabel className="flex items-baseline justify-between gap-2">
 							<span>Approvals</span>
-							<span className="text-[11px] font-normal text-muted-foreground">
+							<span className="text-[11px] font-normal text-wd-secondary">
 								Applies to the next turn
 							</span>
 						</DropdownMenuLabel>
@@ -234,13 +234,13 @@ export function TurnSettingsBar({
 									className={cn(
 										"text-xs",
 										mode === (settings.approvalMode ?? "default")
-											? "text-foreground"
-											: "text-muted-foreground",
+											? "text-wd-primary"
+											: "text-wd-secondary",
 									)}
 								>
 									{APPROVAL_COPY[mode].label}
 								</span>
-								<span className="text-[11px] leading-snug text-muted-foreground">
+								<span className="text-[11px] leading-snug text-wd-secondary">
 									{APPROVAL_COPY[mode].hint}
 								</span>
 							</DropdownMenuItem>
@@ -266,7 +266,7 @@ export function TurnSettingsBar({
 					: null}
 			</div>
 			{error ? (
-				<p role="alert" className="px-1 text-[11px] leading-snug text-destructive">
+				<p role="alert" className="px-1 text-[11px] leading-snug text-critical">
 					{error}
 				</p>
 			) : null}
@@ -301,7 +301,7 @@ function ConfigOptionPicker({
 			<DropdownMenuLabel className="flex flex-col gap-0.5">
 				<span>{option.name}</span>
 				{option.description ? (
-					<span className="text-[11px] font-normal leading-snug text-muted-foreground">
+					<span className="text-[11px] font-normal leading-snug text-wd-secondary">
 						{option.description}
 					</span>
 				) : null}
@@ -316,14 +316,14 @@ function ConfigOptionPicker({
 						<span
 							className={cn(
 								enabled === option.currentBoolean
-									? "text-foreground"
-									: "text-muted-foreground",
+									? "text-wd-primary"
+									: "text-wd-secondary",
 							)}
 						>
 							{enabled ? "On" : "Off"}
 						</span>
 						{enabled === option.currentBoolean ? (
-							<span className="ml-auto text-[10px] text-accent">selected</span>
+							<span className="ml-auto text-[11px] text-wd-secondary">selected</span>
 						) : null}
 					</DropdownMenuItem>
 				))
@@ -333,7 +333,7 @@ function ConfigOptionPicker({
 					return (
 						<Fragment key={choice.value}>
 							{choice.group && choice.group !== previousGroup ? (
-								<DropdownMenuLabel className="pb-1 pt-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+								<DropdownMenuLabel className="pb-1 pt-2 text-[11px] font-normal text-wd-tertiary">
 									{choice.groupName || choice.group}
 								</DropdownMenuLabel>
 							) : null}
@@ -346,18 +346,18 @@ function ConfigOptionPicker({
 										className={cn(
 											"text-xs",
 											choice.value === option.currentValue
-												? "text-foreground"
-												: "text-muted-foreground",
+												? "text-wd-primary"
+												: "text-wd-secondary",
 										)}
 									>
 										{choice.name}
 									</span>
 									{choice.value === option.currentValue ? (
-										<span className="ml-auto text-[10px] text-accent">selected</span>
+										<span className="ml-auto text-[11px] text-wd-secondary">selected</span>
 									) : null}
 								</span>
 								{choice.description ? (
-									<span className="text-[11px] leading-snug text-muted-foreground">
+									<span className="text-[11px] leading-snug text-wd-secondary">
 										{choice.description}
 									</span>
 								) : null}
@@ -400,7 +400,7 @@ function Picker({
 				>
 					<span className="max-w-[13ch] truncate text-[11px]">{label}</span>
 					{badge}
-					<ChevronUp aria-hidden="true" className="size-3 text-muted-foreground" />
+					<ChevronUp aria-hidden="true" className="size-3 text-wd-secondary" />
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" side="top" className={cn("max-h-80 overflow-y-auto", width)}>

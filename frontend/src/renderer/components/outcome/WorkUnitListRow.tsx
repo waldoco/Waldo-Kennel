@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import type { MessageKey } from "../../i18n/messages";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { WorkUnitFace } from "./WorkUnitFace";
 import type { MissionNodeView } from "./mission-presentation";
 
@@ -35,8 +36,10 @@ export function WorkUnitListRow({ node, selected, onSelect, onStart, actionDisab
 		<div
 			aria-selected={selected}
 			className={cn(
-				"flex cursor-pointer items-center gap-3 rounded-md hairline border-border bg-card px-3 py-2.5 outline-none",
-				selected && "ring-1 ring-ring",
+				// One row of a hairline-separated list: selection is the quiet
+				// selected fill, never a coloured ring.
+				"flex cursor-pointer items-center gap-3 hairline-b border-wd-hairline px-3 py-2.5 transition-colors duration-fast last:border-b-0 hover:bg-wd-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none",
+				selected && "bg-wd-selected hover:bg-wd-selected",
 			)}
 			data-selected={selected || undefined}
 			data-testid={`mission-list-row-${node.workUnitId}`}
@@ -54,22 +57,21 @@ export function WorkUnitListRow({ node, selected, onSelect, onStart, actionDisab
 		>
 			<WorkUnitFace layout="row" view={node} />
 			{node.action && (
-				<button
+				<Button
 					aria-disabled={actionDisabled || undefined}
-					className={cn(
-						"inline-flex h-[26px] shrink-0 items-center justify-center rounded-md border border-border-strong bg-popover px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-white/10",
-						actionDisabled && "cursor-not-allowed opacity-50 hover:bg-popover",
-					)}
+					className="shrink-0"
 					data-testid="mission-row-action"
 					disabled={actionDisabled}
 					onClick={(event) => {
 						event.stopPropagation();
 						if (!actionDisabled) onStart?.();
 					}}
+					size="sm"
 					type="button"
+					variant="primary"
 				>
 					{node.action.label}
-				</button>
+				</Button>
 			)}
 			<span className="sr-only">{dependencySummary}</span>
 		</div>

@@ -22,13 +22,13 @@ export function AccordionTrigger({
 	return (
 		<AccordionPrimitive.Header
 			className={cn(
-				"group/row flex items-center rounded-lg transition-colors hover:bg-interactive-hover data-[state=open]:bg-interactive-active",
+				"group/row flex items-center rounded-md transition-colors duration-fast hover:bg-wd-hover data-[state=open]:bg-wd-selected",
 				headerClassName,
 			)}
 		>
 			<AccordionPrimitive.Trigger
 				className={cn(
-					"flex min-w-0 flex-1 items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+					"flex min-w-0 flex-1 items-center text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
 					className,
 				)}
 				{...props}

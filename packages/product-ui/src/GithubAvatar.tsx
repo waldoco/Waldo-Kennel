@@ -29,7 +29,7 @@ export function GithubAvatar({ login, className }: GithubAvatarProps) {
 			<img
 				alt=""
 				aria-hidden="true"
-				className={cn("size-icon-sm shrink-0 rounded-full object-cover", className)}
+				className={cn("size-icon-sm shrink-0 rounded-full bg-wd-inset object-cover", className)}
 				draggable={false}
 				loading="lazy"
 				onError={() => setFailed(true)}
@@ -42,7 +42,7 @@ export function GithubAvatar({ login, className }: GithubAvatarProps) {
 	return (
 		<span
 			aria-hidden="true"
-			className={cn("inline-flex size-icon-sm shrink-0 items-center justify-center rounded-full bg-muted text-micro font-semibold text-muted-foreground", className)}
+			className={cn("inline-flex size-icon-sm shrink-0 items-center justify-center rounded-full bg-wd-inset text-micro font-medium leading-none text-wd-secondary", className)}
 		>
 			{initials(normalizedLogin)}
 		</span>

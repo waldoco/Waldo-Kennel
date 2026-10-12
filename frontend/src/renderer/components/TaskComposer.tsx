@@ -7,7 +7,7 @@ import {
 } from "@pin4sf/kennel-product-ui";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2 } from "lucide-react";
+import { Button } from "./ui/button";
 import { RequiredAgentField } from "./CreateProjectAgentSheet";
 import type { components } from "../../api/schema";
 import { apiClient, apiErrorCode, apiErrorMessage } from "../lib/api-client";
@@ -332,15 +332,15 @@ export function TaskComposer({
 
 	return (
 		<div>
-			<div className="px-4 pb-1 text-xs text-muted-foreground">
+			<div className="wd-body-s px-6 pb-2 pt-1 text-wd-secondary">
 				<p role="status">{t("newTask.description")}</p>
 			</div>
 			{canInstallTmux ? (
-				<div className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2 text-xs">
-					<span role="status">{isInstallingTmux ? "Installing tmux via Homebrew. This may take a few minutes." : "tmux is required to coordinate this outcome."}</span>
-					<button type="button" className="rounded-md bg-primary px-3 py-1.5 text-primary-foreground disabled:opacity-60" disabled={isInstallingTmux} onClick={() => void installTmuxAndRetry()}>
-						{isInstallingTmux ? "Installing tmux…" : "Install tmux via Homebrew"}
-					</button>
+				<div className="wd-body-s mx-6 mb-3 flex items-center justify-between gap-3 rounded-md bg-wd-inset px-4 py-3 text-wd-primary">
+					<span role="status">{isInstallingTmux ? t("newTask.tmux.installingStatus") : t("newTask.tmux.required")}</span>
+					<Button type="button" size="sm" variant="primary" disabled={isInstallingTmux} onClick={() => void installTmuxAndRetry()}>
+						{isInstallingTmux ? t("newTask.tmux.installing") : t("newTask.tmux.install")}
+					</Button>
 				</div>
 			) : null}
 			<TaskComposerView
@@ -453,13 +453,12 @@ function TaskModelPicker({
 	if (loading) {
 		return (
 			<span
-				className="composer-chip composer-toolbar-option w-full cursor-not-allowed justify-start opacity-50"
+				className="composer-chip composer-toolbar-option w-full cursor-not-allowed justify-start"
 				role="status"
 				aria-label={t("settings.models.loading")}
 				aria-busy="true"
 			>
-				<Loader2 className="size-icon-sm shrink-0 animate-spin text-settings-muted" aria-hidden="true" />
-				<span className="truncate text-settings-muted">{t("settings.models.loading")}</span>
+				<span className="truncate text-wd-secondary">{t("settings.models.loading")}</span>
 			</span>
 		);
 	}
@@ -478,7 +477,7 @@ function TaskModelPicker({
 				triggerClassName="composer-chip composer-toolbar-option w-full justify-between"
 				menuAlign="start"
 				renderTrigger={() => (
-					<span className="min-w-0 truncate text-control text-foreground" title={visibleModeLabel}>
+					<span className="min-w-0 truncate text-sm text-wd-primary" title={visibleModeLabel}>
 						{visibleModeLabel}
 					</span>
 				)}
@@ -520,7 +519,7 @@ function TaskModelPicker({
 				renderTrigger={(label) => {
 					const visibleLabel = value ? label : noOverrideLabel;
 					return (
-						<span className="min-w-0 truncate text-control text-foreground" title={visibleLabel}>
+						<span className="min-w-0 truncate text-sm text-wd-primary" title={visibleLabel}>
 							{visibleLabel}
 						</span>
 					);
@@ -536,7 +535,7 @@ function TaskModelPicker({
 				id={id}
 				aria-label={t("newTask.model")}
 				className={cn(
-					"composer-chip composer-toolbar-option min-w-0 flex-1 text-control placeholder:text-passive disabled:cursor-not-allowed disabled:opacity-50",
+					"composer-chip composer-toolbar-option min-w-0 flex-1 text-sm placeholder:text-wd-tertiary disabled:cursor-not-allowed disabled:text-wd-disabled",
 					!hasCatalog && "rounded-r-md!",
 				)}
 				value={value}

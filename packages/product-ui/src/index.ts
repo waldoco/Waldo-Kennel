@@ -26,3 +26,5 @@ export * from "./SessionInspectorView";
 export * from "./SessionsBoardView";
 export * from "./SessionsListView";
 export * from "./TaskComposerView";
+export * from "./StateBadge";
+export * from "./EvidenceRow";

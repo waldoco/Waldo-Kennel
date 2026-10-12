@@ -18,6 +18,7 @@ import { useBrowserView, type BrowserViewModel } from "../hooks/useBrowserView";
 import { formatBrowserAnnotationMessage, type BrowserAnnotationSubmitPayload } from "../../shared/browser-annotations";
 import { MAX_BROWSER_TABS } from "../../shared/browser-tabs";
 import type { WorkspaceSession } from "../types/workspace";
+import { StateBadge } from "@pin4sf/kennel-product-ui";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { BrowserTabsRail, type BrowserTabsRailHandle } from "./BrowserTabsRail";
@@ -356,7 +357,7 @@ export function BrowserPanelView({
 	return (
 		<div
 			className={cn(
-				"browser-panel flex h-full min-h-browser-min flex-col overflow-hidden rounded-lg border border-border bg-background",
+				"browser-panel flex h-full min-h-browser-min flex-col overflow-hidden rounded-lg hairline border-wd-hairline bg-wd-canvas",
 				poppedOut && "browser-panel--popped-out",
 				agentStatusLabel && "browser-panel--agent-active",
 			)}
@@ -365,7 +366,7 @@ export function BrowserPanelView({
 			role="tabpanel"
 		>
 			<form
-				className="browser-panel__toolbar flex shrink-0 min-w-0 items-center gap-1 border-b border-border bg-surface"
+				className="browser-panel__toolbar flex shrink-0 min-w-0 items-center gap-1 hairline-b border-wd-hairline bg-wd-canvas"
 				data-testid="browser-toolbar"
 				onSubmit={submit}
 			>
@@ -444,7 +445,7 @@ export function BrowserPanelView({
 						/>
 					<Input
 						aria-label={t("browser.url")}
-						className="browser-panel__url-input h-browser-url pl-browser-url font-mono text-xs"
+						className="browser-panel__url-input h-browser-url pl-browser-url text-xs"
 						onChange={(event) => setUrlInput(event.target.value)}
 						placeholder={t("browser.urlPlaceholder")}
 						ref={urlInputRef}
@@ -452,7 +453,7 @@ export function BrowserPanelView({
 					/>
 				</div>
 				{tabNotice ? (
-					<span className="max-w-24 truncate text-caption text-accent" role="status">
+					<span className="max-w-24 truncate text-caption text-wd-secondary" role="status">
 						{tabNotice}
 					</span>
 				) : null}
@@ -461,7 +462,7 @@ export function BrowserPanelView({
 					aria-pressed={devtoolsState.open}
 					className={cn(
 						devtoolsState.open &&
-							"bg-accent-strong text-accent-foreground hover:bg-accent-strong dark:hover:bg-accent-strong",
+							"bg-wd-selected text-wd-primary hover:bg-wd-selected",
 					)}
 					disabled={!canUseDevTools}
 					onClick={() => void (devtoolsState.open ? closeDevTools() : openDevTools())}
@@ -493,7 +494,7 @@ export function BrowserPanelView({
 				    DOM subtrees (toolbar row vs. body row) — see BrowserTabsRail.tsx's
 				    BrowserTabsRailHandle for why the close side stays debounced here. */}
 				{showTabsTrigger ? (
-					<div className="flex w-8 shrink-0 items-center justify-center self-stretch border-l border-border">
+					<div className="flex w-8 shrink-0 items-center justify-center self-stretch border-l-[length:var(--stroke-hairline)] border-wd-hairline">
 						<Button
 							aria-label={t("browser.tabsTitle", { count: tabs.length })}
 							className="relative"
@@ -509,7 +510,7 @@ export function BrowserPanelView({
 							<Layers3 aria-hidden="true" className="size-icon-base" />
 							<span
 								aria-hidden="true"
-								className="pointer-events-none absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-foreground px-1 font-mono text-[9px] font-semibold leading-4 text-background shadow-sm"
+								className="pointer-events-none absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-wd-inverse px-1 text-[9px] font-medium leading-4 tabular-nums text-wd-on-inverse"
 							>
 								{tabs.length}
 							</span>
@@ -521,7 +522,7 @@ export function BrowserPanelView({
 				    with the docked rail directly below it. Popped-out has no icon rail
 				    to align with, and gets its own "+" row inside BrowserTabsRail. */}
 				{!poppedOut ? (
-					<div className="flex w-8 shrink-0 items-center justify-center self-stretch border-l border-border">
+					<div className="flex w-8 shrink-0 items-center justify-center self-stretch border-l-[length:var(--stroke-hairline)] border-wd-hairline">
 						<Button
 							aria-label={t("browser.openNewTab")}
 							disabled={!canOpenTab}
@@ -554,21 +555,21 @@ export function BrowserPanelView({
 					/>
 				) : null}
 				<div
-					className="browser-panel__viewport relative min-h-0 flex-1 overflow-hidden bg-background"
+					className="browser-panel__viewport relative min-h-0 flex-1 overflow-hidden bg-wd-surface"
 					data-testid="browser-viewport"
 				>
 					<div className="browser-panel__slot absolute inset-0 min-h-px min-w-px" ref={slotRef} />
 					{showStaticPreview ? <StaticPreview url={navState.url} /> : null}
 					{navState.url === "" ? (
-						<div className="pointer-events-none absolute inset-0 grid place-items-center p-5 text-center font-mono text-xs text-passive">
+						<div className="wd-body-s pointer-events-none absolute inset-0 grid place-items-center p-5 text-center text-wd-secondary">
 							<p>{t("browser.emptyUrl")}</p>
 						</div>
 					) : null}
 					{navState.error ? (
 						<p
 							className={cn(
-								"absolute inset-x-2.5 bottom-2.5 m-0 border border-error/35 bg-error/8 px-2.5 py-2",
-								"rounded-md text-xs text-destructive",
+								"absolute inset-x-2.5 bottom-2.5 m-0 rounded-md bg-critical-bg px-3 py-2",
+								"wd-caption text-critical",
 							)}
 							data-testid="browser-preview-error"
 						>
@@ -643,39 +644,35 @@ function browserActionVerb(action: string): string {
 
 function StaticPreview({ url }: { url: string }) {
 	return (
-		<div className="absolute inset-0 overflow-auto bg-background text-foreground">
-			<div className="border-b border-border bg-surface px-4 py-3">
-				<div className="text-caption font-semibold uppercase tracking-wide-md text-muted-foreground">Kennel Preview</div>
-				<div className="mt-1 truncate font-mono text-xs text-accent">{url}</div>
+		<div className="absolute inset-0 overflow-auto bg-wd-canvas text-wd-primary">
+			<div className="flex flex-col gap-0.5 hairline-b border-wd-hairline px-4 py-3">
+				<div className="wd-label text-wd-primary">Kennel Preview</div>
+				<div className="wd-caption truncate text-wd-secondary">{url}</div>
 			</div>
 			<div className="mx-auto max-w-preview-max px-5 py-6">
-				<div className="rounded-lg border border-border bg-card p-5 shadow-sm">
+				<div className="flex flex-col gap-5 rounded-lg hairline border-wd-hairline bg-wd-surface p-5">
 					<div className="flex items-center justify-between gap-3">
-						<div>
-							<h1 className="text-heading-lg font-semibold leading-tight tracking-normal text-foreground">
-								Demo app preview
-							</h1>
-							<p className="mt-1 text-control leading-row text-muted-foreground">
-								The worker exposed a local Vite app with <span className="font-mono">kennel preview</span>.
+						<div className="flex flex-col gap-1">
+							<h1 className="wd-title text-wd-primary">Demo app preview</h1>
+							<p className="wd-body-s text-wd-secondary">
+								The worker exposed a local Vite app with <span className="wd-cli">kennel preview</span>.
 							</p>
 						</div>
-						<span className="rounded-md bg-success/15 px-2.5 py-1 text-caption font-semibold text-success">
-							Loaded
-						</span>
+						<StateBadge label="Loaded" tone="good" />
 					</div>
-					<div className="mt-5 grid grid-cols-3 gap-3">
+					<div className="grid grid-cols-3 gap-3">
 						{[
 							["Routes", "12 passing"],
 							["Build", "ready"],
 							["Latency", "42 ms"],
 						].map(([label, value]) => (
-							<div key={label} className="rounded-md border border-border bg-raised p-3">
-								<div className="text-caption font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-								<div className="mt-1 text-subtitle font-semibold text-foreground">{value}</div>
+							<div key={label} className="flex flex-col gap-1 rounded-md bg-wd-inset p-3">
+								<div className="wd-caption text-wd-secondary">{label}</div>
+								<div className="wd-data-l text-wd-primary">{value}</div>
 							</div>
 						))}
 					</div>
-					<div className="mt-5 rounded-md border border-border bg-terminal p-3 font-mono text-xs leading-row text-terminal-dim">
+					<div className="wd-cli rounded-md bg-terminal p-3 text-terminal-dim">
 						<div>$ npm run dev -- --host 127.0.0.1</div>
 						<div className="text-success-bright">ready in 418 ms</div>
 						<div>Local: http://localhost:5173/</div>
