@@ -10,12 +10,33 @@ import {
 	agentBrowserSocketPath,
 	nativeArgumentsForAction,
 	parseAgentBrowserJSON,
+	resolveAgentBrowserDataDir,
 	scavengeBrowserRuntime,
 	scavengeBrowserSocketAliases,
 	validateAgentBrowserArguments,
 } from "./agent-browser-runtime";
 
 const shortTempDir = process.platform === "win32" ? os.tmpdir() : "/tmp";
+
+describe("agent-browser runtime data directory", () => {
+	const home = path.join(path.sep, "Users", "me");
+	it("defaults under the Kennel state directory, isolated for dev runs", () => {
+		expect(resolveAgentBrowserDataDir({}, true, home, ".kennel")).toBe(path.join(home, ".kennel", "br"));
+		expect(resolveAgentBrowserDataDir({}, false, home, ".kennel")).toBe(path.join(home, ".kennel", "dev", "br"));
+		expect(resolveAgentBrowserDataDir({ KENNEL_BROWSER_RUNTIME_DIR: "" }, false, home, ".kennel")).toBe(path.join(home, ".kennel", "dev", "br"));
+	});
+	it("honours an absolute KENNEL_BROWSER_RUNTIME_DIR in packaged and dev runs", () => {
+		const isolated = path.join(path.sep, "tmp", "kennel-isolated", "br");
+		for (const packaged of [true, false])
+			expect(resolveAgentBrowserDataDir({ KENNEL_BROWSER_RUNTIME_DIR: isolated }, packaged, home, ".kennel")).toBe(isolated);
+		// Normalised so alias scavenging compares one stable root across runs.
+		expect(resolveAgentBrowserDataDir({ KENNEL_BROWSER_RUNTIME_DIR: `${isolated}${path.sep}..${path.sep}br${path.sep}` }, true, home, ".kennel")).toBe(isolated);
+	});
+	it("rejects a relative override so state cannot land in an accidental working directory", () => {
+		for (const relative of ["br", `.${path.sep}br`, `..${path.sep}br`])
+			expect(() => resolveAgentBrowserDataDir({ KENNEL_BROWSER_RUNTIME_DIR: relative }, false, home, ".kennel")).toThrow("KENNEL_BROWSER_RUNTIME_DIR must be an absolute path");
+	});
+});
 
 describe("agent-browser command policy", () => {
 	it("allows the focused semantic workflow", () => {

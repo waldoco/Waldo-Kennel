@@ -94,7 +94,7 @@ import { buildTelemetryBootstrap } from "./shared/telemetry";
 import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view-host";
 import { createWindowComposition, type WindowComposition } from "./main/window-composition";
 import { promotePrimaryMacOSApp } from "./main/macos-app-activation";
-import { AgentBrowserRuntime } from "./main/agent-browser-runtime";
+import { AgentBrowserRuntime, resolveAgentBrowserDataDir } from "./main/agent-browser-runtime";
 import { sameBrowserRuntimeIdentity, type BrowserRuntimeIdentity } from "./main/browser-runtime-identity";
 import { connectSupervisor, type SupervisorLinkHandle } from "./main/supervisor-link";
 import { connectBrowserRuntime, type BrowserRuntimeLinkHandle } from "./main/browser-runtime-link";
@@ -160,6 +160,9 @@ app.setPath(
 		? path.join(os.homedir(), STATE_DIRECTORY_NAME, "electron")
 		: path.join(os.homedir(), STATE_DIRECTORY_NAME, "dev", "electron")),
 );
+// Agent Browser runtime roots honour the same explicit isolation; resolved at
+// startup so a relative override fails at launch, not at the first browser run.
+const agentBrowserDataDir = resolveAgentBrowserDataDir(process.env, app.isPackaged, os.homedir(), STATE_DIRECTORY_NAME);
 
 let mainWindow: BaseWindow | null = null;
 let islandController: IslandController | null = null;
@@ -450,10 +453,10 @@ async function createWindowInternal(): Promise<void> {
 	await disposeAllBrowserViewHosts();
 	const agentBrowserRuntime = new AgentBrowserRuntime({
 		binaryPath: resolveAgentBrowserBinaryPath(),
-		// Agent Browser creates Unix sockets below each run root. Keep this base
-		// deliberately short so the namespace/session suffix stays below macOS's
-		// 103-byte sockaddr_un limit; all AO state remains under ~/.kennel.
-		dataDir: path.join(os.homedir(), STATE_DIRECTORY_NAME, ...(app.isPackaged ? ["br"] : ["dev", "br"])),
+		// Run roots live under this directory; on Unix the native process gets a
+		// short /tmp alias for its socket directory, so this path's length does not
+		// bound the 103-byte sockaddr_un limit there.
+		dataDir: agentBrowserDataDir,
 		log: (message) => console.log(`Kennel: ${message}`),
 	});
 	await agentBrowserRuntime.prepare();

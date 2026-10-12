@@ -19,6 +19,28 @@ const SOCKET_ALIAS_PATTERN = /^ao-br-(\d+)-[0-9a-f]{12}$/;
 const STREAM_ALREADY_DISABLED_MESSAGE = "Streaming is not enabled for this session";
 /** Agent Browser's Unix preflight uses the macOS-sized 103-byte limit on all Unix builds. */
 export const AGENT_BROWSER_UNIX_SOCKET_PATH_MAX_BYTES = 103;
+export const AGENT_BROWSER_DATA_DIR_ENV = "KENNEL_BROWSER_RUNTIME_DIR";
+
+/**
+ * Runtime roots follow the same isolation rule as Electron userData: an explicit
+ * absolute override wins, otherwise packaged and dev runs keep separate roots under
+ * the Kennel state directory. Unix sockets use the short /tmp alias, so the root's
+ * length does not bound socket paths there.
+ */
+export function resolveAgentBrowserDataDir(
+	env: Readonly<Record<string, string | undefined>>,
+	isPackaged: boolean,
+	homeDir: string,
+	stateDirectoryName: string,
+): string {
+	const override = env[AGENT_BROWSER_DATA_DIR_ENV];
+	if (override) {
+		if (!path.isAbsolute(override)) throw new Error(`${AGENT_BROWSER_DATA_DIR_ENV} must be an absolute path`);
+		// One normalised root keeps alias scavenging stable across runs.
+		return path.resolve(override);
+	}
+	return path.join(homeDir, stateDirectoryName, ...(isPackaged ? ["br"] : ["dev", "br"]));
+}
 
 const NATIVE_ENV_ALLOWLIST = new Set([
 	"path",
