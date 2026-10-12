@@ -44,8 +44,12 @@ func (b *bridgeWiring) close() {
 		if b.stop != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			if b.stop(ctx) != nil && b.log != nil {
-				b.log.Warn("local Waldo bridge revocation persistence or stop failed")
+			if e := b.stop(ctx); e != nil && b.log != nil {
+				msg := "local Waldo bridge revocation persistence or stop failed"
+				if errors.Is(e, bridgeactivation.ErrKeyRetirement) {
+					msg = "local Waldo bridge revocation persistence, stop or private key retirement failed"
+				}
+				b.log.Warn(msg)
 			}
 		}
 		for _, db := range b.dbs {
@@ -139,7 +143,10 @@ func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority
 		return fail()
 	}
 	b.dbs = append(b.dbs, sessionDB)
-	pairer, e := devicebridge.NewPairingCoordinator(bridgepersist.New(sessionDB), secretstore.NewDeviceKeyStore(dataDir), nil, log, cfg.Origin+devicebridge.RedeemPath)
+	// macOS keeps new device keys in the login Keychain; other platforms and
+	// existing file references stay with restrictive file custody.
+	custody := secretstore.NewDeviceKeyCustody(dataDir)
+	pairer, e := devicebridge.NewPairingCoordinator(bridgepersist.New(sessionDB), custody, nil, log, cfg.Origin+devicebridge.RedeemPath)
 	if e != nil {
 		return fail()
 	}
@@ -155,7 +162,7 @@ func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority
 	// One relay per daemon: notify_local text reaches the desktop shell only through
 	// the authenticated loopback display endpoints below.
 	display := bridgeruntime.NewDisplayRelay()
-	factory := makeFactory(bridgeruntime.Dependencies{Fence: activationrepo.New(repoDB), Keys: secretstore.NewDeviceKeyStore(dataDir), SessionStore: bridgepersist.New(runtimeDB), Logger: log, KeyDirectory: keyDir, Display: display, ReadyProbe: func(ctx context.Context) error {
+	factory := makeFactory(bridgeruntime.Dependencies{Fence: activationrepo.New(repoDB), Keys: custody, SessionStore: bridgepersist.New(runtimeDB), Logger: log, KeyDirectory: keyDir, Display: display, ReadyProbe: func(ctx context.Context) error {
 		var n int
 		return repoDB.QueryRowContext(ctx, "SELECT count(*) FROM device_bridge_activations").Scan(&n)
 	}})

@@ -502,3 +502,70 @@ func TestStatusReadyReflectsFactory(t *testing.T) {
 		}
 	}
 }
+
+// retiringFactory revokes through its session and records key retirement calls,
+// including whether the revocation was already durable at that moment.
+type retiringFactory struct {
+	revokeSessionFactory
+	repo        *memoryRepo
+	retired     []string
+	durableSeen []bool
+	fail        error
+}
+
+func (f *retiringFactory) RetireKey(_ context.Context, d domain.DeviceBridgeDevice) error {
+	f.repo.mu.Lock()
+	f.durableSeen = append(f.durableSeen, f.repo.r.Device.State == domain.DeviceBridgeStateRevoked)
+	f.repo.mu.Unlock()
+	f.retired = append(f.retired, d.KeyCustodyRef)
+	return f.fail
+}
+
+func TestDurableRevocationRetiresPrivateKeyAfterPersisting(t *testing.T) {
+	m := &memoryRepo{r: Record{OwnerID: "owner-1", Device: device()}}
+	f := &retiringFactory{revokeSessionFactory: revokeSessionFactory{done: make(chan struct{})}, repo: m}
+	c := newController(t, m, pairFunc(goodPair), f)
+	if e := c.Start(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	<-f.done
+	if e := c.Stop(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	if len(f.retired) != 1 || f.retired[0] != "opaque-ref" || !f.durableSeen[0] {
+		t.Fatalf("key retirement must happen exactly once, after durable revoke: %v %v", f.retired, f.durableSeen)
+	}
+}
+
+func TestFailedRevocationKeepsPrivateKey(t *testing.T) {
+	m := &memoryRepo{r: Record{OwnerID: "owner-1", Device: device()}, failRevoke: true}
+	f := &retiringFactory{revokeSessionFactory: revokeSessionFactory{done: make(chan struct{})}, repo: m}
+	c := newController(t, m, pairFunc(goodPair), f)
+	if e := c.Start(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	<-f.done
+	if e := c.Stop(context.Background()); e == nil {
+		t.Fatal("persistence failure hidden")
+	}
+	if len(f.retired) != 0 {
+		t.Fatal("private key destroyed although revocation was not durable")
+	}
+}
+
+func TestKeyRetirementFailureIsReportedWithoutUndoingRevocation(t *testing.T) {
+	m := &memoryRepo{r: Record{OwnerID: "owner-1", Device: device()}}
+	f := &retiringFactory{revokeSessionFactory: revokeSessionFactory{done: make(chan struct{})}, repo: m, fail: errors.New("custody unavailable")}
+	c := newController(t, m, pairFunc(goodPair), f)
+	if e := c.Start(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	<-f.done
+	e := c.Stop(context.Background())
+	if !errors.Is(e, ErrKeyRetirement) {
+		t.Fatalf("retirement failure not reported: %v", e)
+	}
+	if s, _ := c.Status(context.Background()); s.Phase != Unpaired || m.r.Device.State != domain.DeviceBridgeStateRevoked {
+		t.Fatal("revocation must stand even when key retirement fails")
+	}
+}
