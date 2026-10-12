@@ -2,7 +2,8 @@
 // no UI, so it hands display-only text to this main-process loop over the
 // authenticated loopback bridge API. The daemon reports "delivered" to Waldo only when
 // this loop acknowledges shown=true, which happens only on the OS notification's
-// "show" event; refusal, failure, timeout or a malformed request never claims it.
+// "show" event, and never on macOS, where "show" is not display evidence; refusal,
+// failure, timeout or a malformed request never claims it.
 
 export type WaldoBridgeDisplayRequest = { requestId: string; title: string; body: string; severity: "info" | "warning" | "error" };
 
@@ -40,8 +41,14 @@ export function parseDisplayRequest(raw: unknown): WaldoBridgeDisplayRequest | n
 	return { requestId, title, body, severity };
 }
 
-/** Resolves true only when the OS reports the notification shown. */
-export function createNotificationShower(factory: NotificationFactory, timeoutMs = SHOW_TIMEOUT_MS) {
+/**
+ * Resolves true only when the OS reports the notification shown and that report is
+ * evidence of display. On macOS it is not: Electron emits "show" even when the app's
+ * notifications are disabled or Focus suppresses them (live check 2026-10-12, Electron
+ * 33.4.11), so the banner is still shown but never claimed until a reliable signal exists.
+ */
+export function createNotificationShower(factory: NotificationFactory, timeoutMs = SHOW_TIMEOUT_MS, platform: NodeJS.Platform = process.platform) {
+	const showIsDisplayEvidence = platform !== "darwin";
 	// Hold references so a pending notification is not collected before it reports.
 	const retained = new Set<NotificationLike>();
 	return (title: string, body: string): Promise<boolean> => {
@@ -58,7 +65,7 @@ export function createNotificationShower(factory: NotificationFactory, timeoutMs
 				resolve(shown);
 			};
 			const timer = setTimeout(() => settle(false), timeoutMs);
-			notification.once("show", () => settle(true));
+			notification.once("show", () => settle(showIsDisplayEvidence));
 			notification.once("failed", () => settle(false));
 			notification.once("close", () => {
 				clearTimeout(release);

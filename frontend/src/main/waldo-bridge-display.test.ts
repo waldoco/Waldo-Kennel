@@ -41,8 +41,16 @@ const factory = (outcome: "show" | "failed" | "silent" | "throw", supported = tr
 describe("createNotificationShower", () => {
 	it("reports shown only on the OS show event, with the exact text", async () => {
 		const f = factory("show");
-		await expect(createNotificationShower(f.factory)("Waldo status", "Your Mac is connected.")).resolves.toBe(true);
+		await expect(createNotificationShower(f.factory, undefined, "linux")("Waldo status", "Your Mac is connected.")).resolves.toBe(true);
 		expect(f.created[0].options).toEqual({ title: "Waldo status", body: "Your Mac is connected." });
+	});
+	it("never treats the macOS show event as display evidence, but still shows the banner", async () => {
+		// Live check 2026-10-12 (Electron 33.4.11): "show" fired with notifications allowed,
+		// disabled for the app, and under Do Not Disturb; only the first displayed anything.
+		const f = factory("show");
+		await expect(createNotificationShower(f.factory, undefined, "darwin")("Waldo status", "Your Mac is connected.")).resolves.toBe(false);
+		expect(f.created).toHaveLength(1);
+		expect(f.created[0].shown).toBe(1);
 	});
 	it("never claims display on failure, timeout, exception or missing OS support", async () => {
 		await expect(createNotificationShower(factory("failed").factory)("t", "b")).resolves.toBe(false);
