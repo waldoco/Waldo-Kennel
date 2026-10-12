@@ -79,9 +79,13 @@ describe("OutcomeProveCloseSurface", () => {
 	it("renders exact criterion proof and sends only explicit user acceptance", async () => {
 		const user = userEvent.setup();
 		renderSurface();
-		expect(await screen.findByText("One block survives restart.")).toBeDefined();
+		expect(await screen.findByTestId("proof-criterion-crit-1")).toHaveTextContent("One block survives restart.");
 		expect(screen.getByTestId("proof-evidence-ev-1").textContent).toContain("restart-walkthrough");
 		expect(screen.getByTestId("proof-verification-ver-1").textContent).toMatch(/owner walkthrough/i);
+		// Evidence rows carry the shared verdict vocabulary; the close says what became true.
+		expect(screen.getByTestId("proof-verification-ver-1")).toHaveAttribute("data-evidence-verdict", "verified");
+		expect(screen.getByTestId("proof-close-became-true")).toHaveTextContent("One block survives restart.");
+		expect(screen.getByTestId("proof-accept")).toHaveTextContent("Accept and close");
 		expect(screen.getByTestId("outcome-result-artifacts").textContent).toContain("README.md");
 		expect(screen.getByTestId("outcome-result-checks").textContent).toContain("grep -Fx review README.md");
 
@@ -116,7 +120,7 @@ describe("OutcomeProveCloseSurface", () => {
 	it("binds new Evidence and Verification to stable criterion identity", async () => {
 		const user = userEvent.setup();
 		renderSurface();
-		await screen.findByText("One block survives restart.");
+		await screen.findByTestId("proof-criterion-crit-1");
 
 		await user.type(screen.getByTestId("proof-evidence-summary-crit-1"), "A second restart retained it.");
 		await user.type(screen.getByTestId("proof-evidence-source-crit-1"), "restart-walkthrough-2");
@@ -141,7 +145,7 @@ describe("OutcomeProveCloseSurface", () => {
 	it("records declared evidence provenance and separate-session verification identities", async () => {
 		const user = userEvent.setup();
 		renderSurface();
-		await screen.findByText("One block survives restart.");
+		await screen.findByTestId("proof-criterion-crit-1");
 
 		await user.type(screen.getByTestId("proof-evidence-summary-crit-1"), "The provider emitted an artifact.");
 		await user.type(screen.getByTestId("proof-evidence-source-crit-1"), "artifact://run-42");

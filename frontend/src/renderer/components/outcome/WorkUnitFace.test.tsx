@@ -8,12 +8,13 @@ function nodeView(overrides: Partial<MissionNodeView> = {}): MissionNodeView {
 	return {
 		workUnitId: "wu-1",
 		title: "Bind resume to the same worktree lease",
-		status: { status: "executing", label: "Running", className: "text-status-working", indicatorClassName: "bg-status-working" },
+		status: { status: "executing", label: "Running", tone: "live", className: "text-status-working", indicatorClassName: "bg-status-working" },
 		attention: {
 			kind: "needs_choice",
 			visualCategory: "owner_decision",
 			label: "Decision needed",
 			summary: "Owner decision needed: keep the retry budget at 2?",
+			tone: "needsYou",
 			className: "text-status-needs-you",
 			indicatorClassName: "bg-status-needs-you",
 			markerKey: "wu-1:g:needs_choice",
@@ -30,10 +31,13 @@ function nodeView(overrides: Partial<MissionNodeView> = {}): MissionNodeView {
 }
 
 describe("WorkUnitFace", () => {
-	it("node layout renders the bounded card: rail, clamped title, status chip, readiness, one attention marker", () => {
+	it("node layout renders the bounded card: clamped title, typed state, readiness, one attention marker", () => {
 		render(<WorkUnitFace layout="node" view={nodeView()} />);
 		const face = screen.getByTestId("mission-node-face-wu-1");
-		expect(face.querySelector("[aria-hidden='true']")).toHaveClass("bg-status-working");
+		// Running is the live (blue) dot written beside its word - never a
+		// coloured rail, never a spinner.
+		expect(face.querySelector("[data-state-mark='live']")).not.toBeNull();
+		expect(face.querySelector(".animate-spin")).toBeNull();
 		expect(screen.getByText("Bind resume to the same worktree lease")).toHaveClass("line-clamp-2");
 		expect(screen.getByText("Running")).toBeInTheDocument();
 		expect(screen.getByText("Attempt 2")).toBeInTheDocument();
@@ -81,17 +85,17 @@ describe("WorkUnitFace", () => {
 	it("row layout emits the exact prior List atom classes - no node-only nowrap/shrink hardening leaks into the shipped row", () => {
 		const { container } = render(<WorkUnitFace layout="row" view={nodeView({ dependencyUnavailable: true })} />);
 		expect(container.querySelector(".whitespace-nowrap")).toBeNull();
-		// The chip root carries exactly the view's tone class - the node-only
-		// shrink/nowrap hardening must not land on it (the dot's own internal
-		// shrink-0 inside MissionStatusChip predates this slice and stays).
-		const chipRoot = screen.getByText("Running").closest("[class*='text-status-working']");
-		expect(chipRoot).toHaveClass("text-status-working");
-		expect(chipRoot).not.toHaveClass("shrink-0");
-		expect(chipRoot).not.toHaveClass("whitespace-nowrap");
-		expect(screen.getByTestId("mission-row-attention")).toHaveClass("inline-flex items-center gap-1 text-xs font-medium text-status-needs-you", { exact: true });
-		expect(screen.getByTestId("mission-row-dependency-unavailable")).toHaveClass("text-xs font-medium text-status-unknown", { exact: true });
-		expect(screen.getByText("1/3 criteria ready")).toHaveClass("text-muted-foreground text-xs", { exact: true });
-		expect(screen.getByText("Bind resume to the same worktree lease")).toHaveClass("min-w-0 flex-1 truncate text-sm font-medium", { exact: true });
+		// The state atom carries the live tone - the node-only shrink/nowrap
+		// hardening must not land on it.
+		const stateAtom = screen.getByTestId("mission-status");
+		expect(stateAtom.querySelector("[data-state-tone='live']")).not.toBeNull();
+		expect(stateAtom).not.toHaveClass("shrink-0");
+		expect(stateAtom).not.toHaveClass("whitespace-nowrap");
+		expect(screen.getByTestId("mission-row-attention")).toHaveClass("inline-flex items-center text-xs font-medium", { exact: true });
+		expect(screen.getByTestId("mission-row-attention").querySelector("[data-state-tone='needsYou']")).not.toBeNull();
+		expect(screen.getByTestId("mission-row-dependency-unavailable")).toHaveClass("text-xs text-wd-secondary", { exact: true });
+		expect(screen.getByText("1/3 criteria ready")).toHaveClass("text-xs tabular-nums text-wd-tertiary", { exact: true });
+		expect(screen.getByText("Bind resume to the same worktree lease")).toHaveClass("min-w-0 flex-1 truncate text-sm font-medium text-wd-primary", { exact: true });
 	});
 
 	it("node layout applies the nowrap/shrink hardening only to its own card", () => {
@@ -100,8 +104,8 @@ describe("WorkUnitFace", () => {
 	});
 
 	it("renders the explicit unavailable status face for an unrecognized daemon state", () => {
-		render(<WorkUnitFace layout="node" view={nodeView({ status: { status: "unavailable", label: "State unavailable", className: "text-status-unknown", indicatorClassName: "bg-status-unknown" } })} />);
+		render(<WorkUnitFace layout="node" view={nodeView({ status: { status: "unavailable", label: "State unavailable", tone: "neutral", className: "text-status-unknown", indicatorClassName: "bg-status-unknown" } })} />);
 		expect(screen.getByText("State unavailable")).toBeInTheDocument();
-		expect(screen.getByTestId("mission-node-face-wu-1").querySelector("[aria-hidden='true']")).toHaveClass("bg-status-unknown");
+		expect(screen.getByTestId("mission-status").querySelector("[data-state-tone='neutral']")).not.toBeNull();
 	});
 });

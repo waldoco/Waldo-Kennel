@@ -1,10 +1,10 @@
 import { useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { HomeFixtureState } from "../../lib/home-fixture";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { HomeFacts, HomeInset } from "./HomeCards";
 import { HomeContextFrame } from "./HomeContextFrame";
-
-const actionClass =
-  "rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 motion-reduce:transition-none";
 
 export function HomePlansChanged({
   fixture,
@@ -25,48 +25,42 @@ export function HomePlansChanged({
       headingRef={headingRef}
       title={t("home.visual.plansChanged.title")}
     >
-      <article className="border-y border-border py-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            {t("home.visual.plansChanged.earlierAssumption")}
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-foreground/78">
-            {change.previousAssumption}
-          </p>
+      <HomeInset className="-mx-3">
+        <div className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] items-baseline gap-3 text-wd-secondary">
+          <span className="wd-caption">{t("home.visual.plansChanged.earlierAssumption")}</span>
+          <p className="wd-body-s line-through decoration-(--text-tertiary)">{change.previousAssumption}</p>
         </div>
-        <div className="mt-5 border-t border-border pt-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            {t("home.visual.plansChanged.whatChanged")}
-          </p>
-          <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">
-            {change.newFact}
-          </p>
+        <div className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] items-baseline gap-3 text-wd-primary">
+          <span className="wd-caption text-wd-secondary">{t("home.visual.plansChanged.whatChanged")}</span>
+          <p className="wd-body-s">{change.newFact}</p>
         </div>
-        <div className="mt-5 border-t border-border pt-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            {t("home.visual.waldoProposal")}
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-foreground/82">{change.proposal}</p>
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            {t("home.visual.plansChanged.proposalBoundary")}
-          </p>
-        </div>
-        <p className="mt-5 border-t border-border pt-5 text-xs text-muted-foreground">
-          {change.sourceSummary}
-        </p>
-        <div className="mt-5 flex flex-wrap gap-2">
-          {choices.map((label) => (
-            <button className={actionClass} key={label} onClick={() => setChoice(label)} type="button">
-              {label}
-            </button>
-          ))}
-        </div>
-        {choice ? (
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground" role="status">
+      </HomeInset>
+
+      <HomeFacts facts={[{ label: t("home.visual.waldoProposal"), value: change.proposal }]} />
+      <p className="wd-caption text-wd-tertiary">
+        {t("home.visual.plansChanged.proposalBoundary")} {change.sourceSummary}
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        {choices.map((label) => (
+          <Button
+            aria-pressed={choice === label}
+            className={cn(choice === label && "bg-wd-inverse text-wd-on-inverse hover:bg-wd-inverse")}
+            key={label}
+            onClick={() => setChoice(label)}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      {choice ? (
+        <p className="wd-caption text-wd-secondary" role="status">
           {t("home.visual.plansChanged.selectionBoundary", { choice })}
-          </p>
-        ) : null}
-      </article>
+        </p>
+      ) : null}
     </HomeContextFrame>
   );
 }

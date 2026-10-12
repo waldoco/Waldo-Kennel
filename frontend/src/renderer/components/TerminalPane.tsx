@@ -32,7 +32,6 @@ import {
 	type TerminalMux,
 	type TerminalMuxPool,
 } from "../lib/terminal-mux";
-import { cn } from "../lib/utils";
 import { useWorkspaceQuery, workspaceQueryKey } from "../hooks/useWorkspaceQuery";
 import { useRestoreSession } from "../hooks/useRestoreSession";
 import { useShellTerminals } from "../hooks/useShellTerminals";
@@ -670,7 +669,7 @@ export function TerminalPane({
 
 	if (!window.kennel) {
 		if (usesLiveDaemonPreview) {
-			return <p className="p-4 text-sm text-muted-foreground" data-testid="live-terminal-unavailable">{t("terminal.liveDesktopRequired")}</p>;
+			return <p className="wd-body-s p-4 text-wd-secondary" data-testid="live-terminal-unavailable">{t("terminal.liveDesktopRequired")}</p>;
 		}
 		// A standalone shell has no agent and no branch, so it previews as a plain
 		// prompt rather than borrowing the session's agent transcript.
@@ -698,7 +697,7 @@ export function TerminalPane({
 				style={{ fontSize }}
 			>
 				<span className="text-terminal-dim">~/{session?.workspaceName ?? "kennel"}</span>{" "}
-				{session?.branch ? <span className="text-accent">{session.branch}</span> : null}
+				{session?.branch ? <span className="text-wd-secondary">{session.branch}</span> : null}
 				{session?.branch ? " " : ""}$ {provider}
 				{"\n"}
 				{lines.map((line, index) => (
@@ -1020,7 +1019,7 @@ function AttachedTerminal({
 
 	if (initFailed) {
 		return (
-			<div className="terminal-surface grid h-full place-items-center p-4 font-mono text-xs text-muted-foreground">
+			<div className="terminal-surface wd-body-s grid h-full place-items-center p-4 text-wd-secondary">
 				{t("terminal.initFailed")}
 			</div>
 		);
@@ -1084,16 +1083,16 @@ function AttachedTerminal({
 					theme={theme}
 				/>
 				{showEmptyState && (
-					<div className="terminal-surface absolute inset-0 grid place-items-center font-mono text-control">
-						<div className="text-center">
-							<div className="text-terminal">{emptyStateTitle}</div>
-							<div className="mt-2 text-terminal-dim">{emptyStateMessage}</div>
+					<div className="terminal-surface absolute inset-0 grid place-items-center">
+						<div className="flex flex-col items-center gap-1 text-center">
+							<div className="wd-label text-wd-primary">{emptyStateTitle}</div>
+							<div className="wd-body-s text-wd-secondary">{emptyStateMessage}</div>
 						</div>
 					</div>
 				)}
 				{showReplayCover && <ReplayCover />}
 				{banner && (
-					<div className="absolute inset-x-3 top-2 rounded-md border border-border bg-surface/95 px-3 py-1.5 font-mono text-caption text-muted-foreground">
+					<div className="wd-caption absolute inset-x-3 top-2 rounded-md bg-wd-raised px-3 py-1.5 text-wd-secondary shadow-(--shadow-overlay)">
 						{banner}
 					</div>
 				)}
@@ -1133,7 +1132,7 @@ function ReplayCover() {
 			className="terminal-surface pointer-events-none absolute inset-0 grid place-items-center"
 			data-testid="terminal-replay-cover"
 		>
-			{showLabel && <div className="font-mono text-caption text-terminal-dim">{t("terminal.loadingOutput")}</div>}
+			{showLabel && <div className="wd-caption text-wd-tertiary">{t("terminal.loadingOutput")}</div>}
 		</div>
 	);
 }
@@ -1157,25 +1156,25 @@ function TerminalEndedStrip({ canRestore, error, isRestoring, onRestore, variant
 				: t("terminal.sessionEndedNotTerminated");
 
 	return (
-		<div className="shrink-0 border-b border-border bg-surface/80 px-4 py-2">
+		<div className="shrink-0 hairline-b border-wd-hairline bg-wd-surface px-4 py-2">
 			<div className="flex min-h-control-board items-center gap-3">
-				<div className="min-w-0 flex-1">
-					<div className="font-mono text-caption font-medium uppercase tracking-wide-md text-muted-foreground">
-						{t("terminal.ended")}
-					</div>
-					<div className="mt-0.5 truncate text-xs text-muted-foreground">{message}</div>
+				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+					<div className="wd-label text-wd-primary">{t("terminal.ended")}</div>
+					<div className="wd-caption truncate text-wd-secondary">{message}</div>
 				</div>
-				{error && <div className="max-w-content-max truncate text-xs text-destructive">{error}</div>}
+				{error && <div className="wd-caption max-w-content-max truncate text-critical">{error}</div>}
 				{canRestore && (
 					<button
 						type="button"
+						aria-busy={isRestoring || undefined}
 						aria-label={t("terminal.restoreSession")}
 						title={t("terminal.restoreSession")}
-						className="inline-flex size-control-form shrink-0 items-center justify-center rounded-md border border-border bg-raised text-foreground transition hover:bg-interactive-hover disabled:cursor-not-allowed disabled:opacity-50"
+						className="inline-flex h-control-md shrink-0 items-center justify-center gap-1.5 rounded-full bg-wd-inset px-3 text-xs font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-pressed disabled:cursor-not-allowed disabled:text-wd-disabled"
 						disabled={isRestoring}
 						onClick={onRestore}
 					>
-						<RotateCcw className={cn("size-icon-base", isRestoring && "animate-spin")} aria-hidden="true" />
+						<RotateCcw className="size-icon-sm" aria-hidden="true" />
+						{isRestoring ? t("shell.restoringSession") : t("terminal.restoreSession")}
 					</button>
 				)}
 			</div>

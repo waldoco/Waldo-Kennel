@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Smartphone, X } from "lucide-react";
+import { Smartphone, X } from "lucide-react";
 import { apiClient, apiErrorCode, apiErrorMessage } from "../../lib/api-client";
-import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 
 export const mobileDevicesQueryKey = ["mobile-devices"] as const;
@@ -139,86 +139,97 @@ export function MobileDevicesSection() {
 		null;
 
 	return (
-		<section className="mt-6">
-			<h3 className="text-sm font-medium">{t("mobile.devices.title")}</h3>
-			<p className="mt-1 text-caption text-settings-muted">{t("mobile.devices.description")}</p>
+		<section className="flex flex-col gap-2">
+			<h3 className="wd-label px-4 text-wd-secondary">{t("mobile.devices.title")}</h3>
 
 			{query.isLoading ? (
-				<div className="mt-3 flex items-center gap-2 text-caption text-settings-muted">
-					<Loader2 className="size-3 animate-spin" /> {t("mobile.devices.loading")}
-				</div>
+				<p className="wd-body-s rounded-lg bg-wd-surface px-4 py-3 text-wd-secondary">{t("mobile.devices.loading")}</p>
 			) : registryUnavailable ? (
-				<p className="mt-3 text-caption text-error">{t("mobile.devices.registryUnavailable")}</p>
+				<p className="wd-body-s rounded-lg bg-critical-bg px-4 py-3 text-critical">{t("mobile.devices.registryUnavailable")}</p>
 			) : queryError && !hasData ? (
-				<p className="mt-3 text-caption text-error">{queryError.message}</p>
+				<p className="wd-body-s rounded-lg bg-critical-bg px-4 py-3 text-critical">{queryError.message}</p>
 			) : devices.length === 0 ? (
-				<p className="mt-3 text-caption text-settings-muted">{t("mobile.devices.empty")}</p>
+				<p className="wd-body-s rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface px-4 py-3 text-wd-secondary">
+					{t("mobile.devices.empty")}
+				</p>
 			) : (
 				<>
-					{queryError && <p className="mt-3 text-caption text-error">{queryError.message}</p>}
-					<ul className="mt-3 space-y-2">
+					{queryError && <p className="wd-body-s px-4 text-critical">{queryError.message}</p>}
+					<ul className="settings-grouped-rows">
 						{sortedDevices.map((device) => {
 							const name = device.deviceName || t("mobile.devices.unnamed");
+							const confirming = confirmingRemoval === device.installId;
 							return (
-								<li
-									key={device.installId}
-									className="flex items-center gap-3 rounded-(--radius-settings-dialog-lg) border border-[var(--color-border-settings-input)] bg-[var(--color-bg-settings-input)] p-3"
-								>
-									<Smartphone className="size-4 shrink-0 text-settings-muted" />
-									<div className="min-w-0 flex-1">
-										<div className="truncate text-sm">{name}</div>
-										<div className="flex items-center gap-1.5 text-caption text-settings-muted">
-											{device.live ? (
-												<>
-													<span className={cn("size-1.5 rounded-full bg-success")} aria-hidden />
-													<span>{t("mobile.devices.live")}</span>
-												</>
-											) : (
-												<span>{lastSeenLabel(device.lastSeenAt, i18n.language)}</span>
+								<li key={device.installId} className="flex flex-col">
+									<div className="settings-row-bar">
+										<div className="flex min-w-0 items-center gap-3">
+											<span
+												className="settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary"
+												aria-hidden="true"
+											>
+												<Smartphone className="size-4" />
+											</span>
+											<div className="flex min-w-0 flex-col gap-0.5">
+												<div className="wd-body truncate text-wd-primary">{name}</div>
+												<div className="wd-body-s flex items-center gap-1.5 text-wd-secondary">
+													{device.live ? (
+														<>
+															<span className="size-1.5 shrink-0 rounded-full bg-wd-accent" aria-hidden />
+															<span>{t("mobile.devices.live")}</span>
+														</>
+													) : (
+														<span className="wd-data">{lastSeenLabel(device.lastSeenAt, i18n.language)}</span>
+													)}
+												</div>
+												{!device.notificationsEnabled && (
+													<div className="wd-body-s text-wd-secondary">
+														{t("mobile.devices.notificationsNotEnabled")}
+													</div>
+												)}
+											</div>
+										</div>
+
+										<div className="flex shrink-0 items-center gap-2">
+											<Switch
+												checked={device.notificationsEnabled && !device.muted}
+												disabled={mute.isPending || !device.notificationsEnabled}
+												aria-label={t("mobile.devices.notificationsFor", { name })}
+												onCheckedChange={(next) =>
+													mute.mutate({ installId: device.installId, muted: !next })
+												}
+											/>
+											{confirming ? null : (
+												<button
+													type="button"
+													aria-label={t("mobile.devices.removeAria", { name })}
+													className="grid size-8 place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
+													onClick={() => setConfirmingRemoval(device.installId)}
+												>
+													<X className="size-4" />
+												</button>
 											)}
 										</div>
-										{!device.notificationsEnabled && (
-											<div className="text-caption text-settings-muted">
-												{t("mobile.devices.notificationsNotEnabled")}
-											</div>
-										)}
 									</div>
-
-									<Switch
-										checked={device.notificationsEnabled && !device.muted}
-										disabled={mute.isPending || !device.notificationsEnabled}
-										aria-label={t("mobile.devices.notificationsFor", { name })}
-										onCheckedChange={(next) =>
-											mute.mutate({ installId: device.installId, muted: !next })
-										}
-										className={cn(
-											"h-(--size-settings-mobile-switch-h) w-(--size-settings-mobile-switch-w) transition-colors duration-fast ease-out",
-											"data-[state=checked]:bg-settings-switch-on data-[state=unchecked]:bg-[var(--color-border-settings-input)]",
-											"focus-visible:ring-0 focus-visible:ring-offset-0",
-											"**:data-[slot=switch-thumb]:size-5 **:data-[slot=switch-thumb]:bg-white **:data-[slot=switch-thumb]:transition-transform **:data-[slot=switch-thumb]:duration-fast **:data-[slot=switch-thumb]:ease-out",
-											"data-[state=checked]:**:data-[slot=switch-thumb]:translate-x-(--size-settings-mobile-switch-travel)",
-											"data-[state=unchecked]:**:data-[slot=switch-thumb]:translate-x-0.5",
-										)}
-									/>
-
-									{confirmingRemoval === device.installId ? (
-										<button
-											type="button"
-											className="text-caption text-error"
-											disabled={remove.isPending}
-											onClick={() => remove.mutate(device.installId)}
-										>
-											{t("mobile.devices.confirmRemove")}
-										</button>
-									) : (
-										<button
-											type="button"
-											aria-label={t("mobile.devices.removeAria", { name })}
-											className="text-settings-muted hover:text-settings-label"
-											onClick={() => setConfirmingRemoval(device.installId)}
-										>
-											<X className="size-4" />
-										</button>
+									{confirming && (
+										<div className="flex flex-col gap-3 px-4 pb-4">
+											<p className="wd-body-s text-wd-secondary">
+												{t("mobile.devices.removeConsequence", { name })}
+											</p>
+											<div className="flex items-center justify-end gap-2">
+												<Button type="button" variant="ghost" size="sm" onClick={() => setConfirmingRemoval(null)}>
+													{t("mobile.devices.keep")}
+												</Button>
+												<Button
+													type="button"
+													variant="critical"
+													size="sm"
+													disabled={remove.isPending}
+													onClick={() => remove.mutate(device.installId)}
+												>
+													{t("mobile.devices.confirmRemove")}
+												</Button>
+											</div>
+										</div>
 									)}
 								</li>
 							);
@@ -227,7 +238,8 @@ export function MobileDevicesSection() {
 				</>
 			)}
 
-			{mutationError && <p className="mt-2 text-caption text-error">{mutationError}</p>}
+			{mutationError && <p className="wd-body-s px-4 text-critical">{mutationError}</p>}
+			<p className="wd-caption px-4 text-wd-tertiary">{t("mobile.devices.description")}</p>
 		</section>
 	);
 }

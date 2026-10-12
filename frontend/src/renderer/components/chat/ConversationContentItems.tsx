@@ -36,7 +36,7 @@ export function ConversationContentItems({
 				if (previewableImage) {
 					imagePosition += 1;
 					return (
-						<li key={key} className="max-w-full overflow-hidden rounded-md border border-border bg-background">
+						<li key={key} className="max-w-full overflow-hidden rounded-sm bg-wd-surface">
 							<img
 								src={`data:${item.mimeType};base64,${item.data}`}
 								alt={imageAlt?.(imagePosition) ?? `${imageLabel} ${imagePosition}`}
@@ -52,7 +52,7 @@ export function ConversationContentItems({
 					<li
 						key={key}
 						title={item.uri || label}
-						className="flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground"
+						className="flex min-w-0 max-w-full items-center gap-1 rounded-full bg-wd-surface px-2.5 py-1 text-[11px] text-wd-secondary"
 					>
 						<Icon aria-hidden="true" className="size-3 shrink-0" />
 						<span className="truncate">{label}</span>

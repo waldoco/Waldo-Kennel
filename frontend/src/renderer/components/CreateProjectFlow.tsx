@@ -190,7 +190,7 @@ export function CreateProjectFlow({
 				<div className="flex w-full flex-col items-center gap-3">
 					<ImportModePicker disabled={isBusy} onSelect={openFolderStep} />
 					{error && !folderPickerOpen && selectedPath === null && (
-						<p className="text-caption leading-body text-error" data-testid="create-project-error" role="status">
+						<p className="wd-body-s text-critical" data-testid="create-project-error" role="status">
 							{error}
 						</p>
 					)}
@@ -339,7 +339,11 @@ function CreateProjectModeDialog({
 	);
 }
 
-/** Shared project intent chooser, using the existing modal design tokens. */
+// Waldo ChoiceList row: surface, hairline, radius-lg; the row is the target.
+const choiceRowClass =
+	"flex w-full items-center gap-3 rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4 text-left transition-colors duration-fast hover:bg-wd-hover active:bg-wd-pressed disabled:pointer-events-none disabled:text-wd-disabled";
+
+/** Shared project intent chooser. */
 function ImportModePicker({
 	dialog = false,
 	disabled,
@@ -360,25 +364,48 @@ function ImportModePicker({
 					<Dialog.Description className="sr-only">{t("createProject.addDescription")}</Dialog.Description>
 				</>
 			)}
-			<div className="relative w-full rounded-welcome-panel border border-border bg-card p-6 shadow-lg">
-				<h2 className="text-lg font-semibold">{t("createProject.addTitle")}</h2>
-				<p className="mt-1 text-sm text-muted-foreground">{t("createProject.addDescription")}</p>
-				{onClose && <Button className="absolute right-3 top-3" variant="ghost" size="icon" aria-label={t("createProject.closeDialog")} onClick={onClose}><X className="size-4" /></Button>}
-				<div className="mt-5 grid gap-3 sm:grid-cols-2">
-					<button data-testid="create-project-new" type="button" disabled={disabled} onClick={() => onSelect("single_repo", true)} className="rounded-lg border border-border p-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
-						<FolderPlus className="mb-3 size-5" aria-hidden="true" />
-						<span className="block font-medium">{t("createProject.startNew")}</span>
-						<span className="mt-1 block text-sm text-muted-foreground">{t("createProject.startNewDescription")}</span>
+			<div
+				className={cn(
+					"relative flex w-full flex-col gap-6 rounded-xl p-6",
+					dialog
+						? "border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-raised shadow-[var(--shadow-overlay)]"
+						: "bg-transparent",
+				)}
+			>
+				<div className="flex flex-col gap-1 pr-10">
+					<h2 className="wd-title text-wd-primary">{t("createProject.addTitle")}</h2>
+					<p className="wd-body-s text-wd-secondary">{t("createProject.addDescription")}</p>
+				</div>
+				{onClose && <button type="button" className="settings-dialog-close-button settings-close-button" aria-label={t("createProject.closeDialog")} onClick={onClose}><X className="size-4" aria-hidden="true" /></button>}
+				{/* Mode choice as a ChoiceList: each row is the whole target. */}
+				<div className="flex flex-col gap-2">
+					<button data-testid="create-project-new" type="button" disabled={disabled} onClick={() => onSelect("single_repo", true)} className={choiceRowClass}>
+						<span className="grid size-9 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary" aria-hidden="true">
+							<FolderPlus className="size-5" />
+						</span>
+						<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+							<span className="wd-body font-medium text-wd-primary">{t("createProject.startNew")}</span>
+							<span className="wd-body-s text-wd-secondary">{t("createProject.startNewDescription")}</span>
+						</span>
+						<ChevronRight className="size-4 shrink-0 text-wd-tertiary" aria-hidden="true" />
 					</button>
-					<button data-testid="create-project-import-existing" type="button" disabled={disabled} onClick={() => onSelect("single_repo")} className="rounded-lg border border-border p-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
-						<Folder className="mb-3 size-5" aria-hidden="true" />
-						<span className="block font-medium">{t("createProject.importExisting")}</span>
-						<span className="mt-1 block text-sm text-muted-foreground">{t("createProject.importExistingDescription")}</span>
+					<button data-testid="create-project-import-existing" type="button" disabled={disabled} onClick={() => onSelect("single_repo")} className={choiceRowClass}>
+						<span className="grid size-9 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary" aria-hidden="true">
+							<Folder className="size-5" />
+						</span>
+						<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+							<span className="wd-body font-medium text-wd-primary">{t("createProject.importExisting")}</span>
+							<span className="wd-body-s text-wd-secondary">{t("createProject.importExistingDescription")}</span>
+						</span>
+						<ChevronRight className="size-4 shrink-0 text-wd-tertiary" aria-hidden="true" />
 					</button>
 				</div>
-				<details className="mt-4 text-sm text-muted-foreground">
-					<summary className="cursor-pointer">{t("createProject.multipleRepositories")}</summary>
-					<Button data-testid="create-project-import-workspace" variant="outline" className="mt-3" disabled={disabled} onClick={() => onSelect("workspace")}>{t("createProject.importWorkspace")}</Button>
+				<details className="group wd-body-s text-wd-secondary">
+					<summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full px-1 hover:text-wd-primary [&::-webkit-details-marker]:hidden">
+						<ChevronRight className="size-3.5 transition-transform duration-fast group-open:rotate-90" aria-hidden="true" />
+						{t("createProject.multipleRepositories")}
+					</summary>
+					<Button data-testid="create-project-import-workspace" variant="secondary" className="mt-3" disabled={disabled} onClick={() => onSelect("workspace")}>{t("createProject.importWorkspace")}</Button>
 				</details>
 			</div>
 		</>
@@ -418,11 +445,11 @@ function CreateProjectFolderDialog({
 		<Dialog.Root open={open} onOpenChange={onOpenChange}>
 			<Dialog.Portal>
 				<Dialog.Overlay className="dialog-overlay data-[state=open]:animate-overlay-in" />
-				<Dialog.Content className="fixed left-1/2 top-1/2 z-overlay flex max-h-[min(var(--size-import-folder-dialog),calc(100svh-24px))] w-[min(var(--size-import-folder-dialog),calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-welcome-panel border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-modal)] p-0 text-[var(--color-text-import-title)] shadow-[var(--shadow-import-modal)] data-[state=open]:animate-modal-in">
-					<div className="flex shrink-0 items-start gap-3 border-b border-[var(--color-border-import-modal)] p-(--size-import-dialog-padding) sm:gap-4">
+				<Dialog.Content className="fixed left-1/2 top-1/2 z-overlay flex max-h-[min(var(--size-import-folder-dialog),calc(100svh-24px))] w-[min(var(--size-import-folder-dialog),calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-raised p-0 text-wd-primary shadow-[var(--shadow-overlay)] data-[state=open]:animate-modal-in">
+					<div className="flex shrink-0 items-start gap-3 p-6 pb-4 sm:gap-4">
 						<Button
 							type="button"
-							variant="outline"
+							variant="ghost"
 							size="icon"
 							aria-label={t("createProject.backToType")}
 							disabled={disabled}
@@ -431,10 +458,10 @@ function CreateProjectFolderDialog({
 							<ChevronRight className="size-4 rotate-180" aria-hidden="true" />
 						</Button>
 						<div className="min-w-0 flex-1">
-							<Dialog.Title className="text-[18px] font-semibold text-[var(--color-text-import-title)]">
+							<Dialog.Title className="wd-title text-wd-primary">
 								{isWorkspace ? t("createProject.importWorkspace") : t("createProject.importProject")}
 							</Dialog.Title>
-							<Dialog.Description className="mt-1 max-w-[520px] text-[13px] font-medium leading-5 text-[var(--color-text-import-muted)]">
+							<Dialog.Description className="wd-body-s mt-1 max-w-[520px] text-wd-secondary">
 								{isWorkspace ? t("createProject.importWorkspaceDesc") : t("createProject.importProjectDesc")}
 							</Dialog.Description>
 						</div>
@@ -449,33 +476,35 @@ function CreateProjectFolderDialog({
 							</button>
 						</Dialog.Close>
 					</div>
-					<div className="min-h-0 overflow-y-auto p-(--size-import-dialog-padding)">
+					<div className="min-h-0 overflow-y-auto px-6 py-2">
 						{hasScan ? (
-							<div className="space-y-4">
-								<div className="flex items-center gap-3 rounded-lg border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-card)] p-4">
-									<Folder className="size-5 shrink-0 text-[var(--color-text-import-muted)]" aria-hidden="true" />
+							<div className="flex flex-col gap-4">
+								<div className="flex items-center gap-3 rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4">
+									<span className="grid size-9 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary" aria-hidden="true">
+										<Folder className="size-5" />
+									</span>
 									<div className="min-w-0 flex-1">
-										<div className="truncate font-mono text-[14px] font-semibold text-[var(--color-text-import-title)]">
+										<div className="wd-body truncate font-medium text-wd-primary">
 											{displayImportPath(scan.path)}
 										</div>
-										<div className="mt-0.5 text-[12px] text-[var(--color-text-import-muted)]">
+										<div className="wd-body-s mt-0.5 text-wd-secondary">
 											{isWorkspace ? t("createProject.workspaceRoot") : t("createProject.projectFolder")}
 										</div>
 									</div>
-									<Button data-testid="create-project-choose-folder" type="button" variant="footer" disabled={disabled} onClick={onChooseFolder}>
+									<Button data-testid="create-project-choose-folder" type="button" variant="secondary" disabled={disabled} onClick={onChooseFolder}>
 										{t("createProject.change")}
 									</Button>
 								</div>
 
 								{error && (
-									<div className="rounded-lg border border-destructive/40 bg-destructive/10">
-										<div className="border-b border-destructive/30 px-4 py-3 font-mono text-[12px] font-semibold uppercase tracking-[0.12em] text-destructive">
-											<span className="mr-2 inline-block size-2 rounded-full bg-destructive" aria-hidden="true" />
+									<div className="overflow-hidden rounded-lg bg-critical-bg">
+										<div className="wd-label flex items-center gap-2 px-4 pt-3 text-critical">
+											<XCircle className="size-4 shrink-0" aria-hidden="true" />
 											{isWorkspace ? t("createProject.importFailedWorkspace") : t("createProject.importFailedProject")}
 										</div>
-										<div className="px-4 py-3 text-[12px] leading-5 text-destructive">{error}</div>
+										<div className="wd-body-s px-4 pb-3 pt-1 text-wd-primary">{error}</div>
 										{failedRepos.length > 0 && (
-											<div className="border-t border-destructive/30">
+											<div className="border-t-[length:var(--stroke-hairline)] border-wd-hairline">
 												{failedRepos.map((repo) => (
 													<ImportRepoRow key={repo.path} repo={repo} failed />
 												))}
@@ -489,14 +518,14 @@ function CreateProjectFolderDialog({
 								.map((repo) => (
 										<div
 											key={repo.path}
-											className="rounded-lg border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-card)]"
+											className="rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface"
 										>
 											<ImportRepoRow repo={repo} />
 										</div>
 									))}
 
 								{scan.repos.length === 0 && (
-									<div className="rounded-lg border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-card)] p-4 text-[12px] text-[var(--color-text-import-muted)]">
+									<div className="wd-body-s rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4 text-wd-secondary">
 										{t("createProject.noRepos")}
 									</div>
 								)}
@@ -505,17 +534,17 @@ function CreateProjectFolderDialog({
 							<button
 								data-testid="create-project-choose-folder"
 								type="button"
-								className="flex min-h-[132px] w-full flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-card)] p-6 text-center transition-colors hover:bg-[var(--color-bg-import-card-hover)] disabled:pointer-events-none disabled:opacity-50 sm:min-h-[160px]"
+								className="flex min-h-[132px] w-full flex-col items-center justify-center rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-6 text-center transition-colors duration-fast hover:bg-wd-hover disabled:pointer-events-none disabled:text-wd-disabled sm:min-h-[160px]"
 								disabled={disabled}
 								onClick={onChooseFolder}
 							>
-								<span className="mb-4 grid size-11 place-items-center rounded-xl bg-[var(--color-bg-import-chip)] text-[var(--color-text-import-muted)]">
+								<span className="mb-4 grid size-11 place-items-center rounded-sm bg-wd-inset text-wd-secondary">
 									<FolderPlus className="size-5" aria-hidden="true" />
 								</span>
-								<span className="text-[15px] font-semibold text-[var(--color-text-import-title)]">
+								<span className="wd-body font-medium text-wd-primary">
 									{isWorkspace ? t("createProject.chooseFolder") : t("createProject.chooseProjectFolder")}
 								</span>
-								<span className="mt-2 max-w-full text-pretty text-[12px] text-[var(--color-text-import-muted)] sm:text-[13px]">
+								<span className="wd-body-s mt-1 max-w-full text-pretty text-wd-secondary">
 									{isWorkspace ? t("createProject.pickerWorkspaceHint") : t("createProject.pickerProjectHint")}
 								</span>
 							</button>
@@ -523,17 +552,17 @@ function CreateProjectFolderDialog({
 						{error && !hasScan && (
 							<div
 								className={cn(
-									"mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-3 text-[12px] leading-5 text-destructive",
+									"wd-body-s mt-4 rounded-md bg-critical-bg px-4 py-3 text-critical",
 								)}
 							>
 								{error}
 							</div>
 						)}
 					</div>
-					<div className="flex shrink-0 flex-col gap-3 border-t border-[var(--color-border-import-modal)] p-(--size-import-dialog-padding) sm:flex-row sm:items-center sm:justify-between">
-						<p className="text-[12px] font-medium text-[var(--color-text-import-muted)]">{footerMessage}</p>
+					<div className="flex shrink-0 flex-col gap-3 p-6 pt-4 sm:flex-row sm:items-center sm:justify-between">
+						<p className="wd-body-s text-wd-secondary">{footerMessage}</p>
 						<div className="flex flex-wrap items-center justify-end gap-3">
-							<Button type="button" variant="footer" disabled={disabled} onClick={() => onOpenChange(false)}>
+							<Button type="button" variant="ghost" disabled={disabled} onClick={() => onOpenChange(false)}>
 								{t("createProject.cancel")}
 							</Button>
 						</div>
@@ -549,19 +578,19 @@ function ImportRepoRow({ failed = false, repo }: { failed?: boolean; repo: Impor
 	return (
 		<div className="flex items-center gap-3 p-4">
 			{failed ? (
-				<XCircle className="size-5 shrink-0 text-destructive" aria-hidden="true" />
+				<XCircle className="size-5 shrink-0 text-critical" aria-hidden="true" />
 			) : (
-				<CheckCircle2 className="size-5 shrink-0 text-success" aria-hidden="true" />
+				<CheckCircle2 className="size-5 shrink-0 text-good" aria-hidden="true" />
 			)}
 			<div className="min-w-0 flex-1">
-				<div className="truncate text-[14px] font-semibold text-[var(--color-text-import-title)]">{repo.name}</div>
-				<div className="mt-0.5 truncate font-mono text-[12px] text-[var(--color-text-import-muted)]">
+				<div className="wd-body truncate font-medium text-wd-primary">{repo.name}</div>
+				<div className="wd-body-s mt-0.5 truncate text-wd-secondary">
 					{displayImportPath(repo.path)}
 				</div>
 			</div>
-			<div className="hidden max-w-[260px] shrink-0 truncate text-right font-mono text-[12px] text-[var(--color-text-import-muted)] sm:block">
+			<div className="wd-body-s hidden max-w-[260px] shrink-0 truncate text-right text-wd-secondary sm:block">
 				{repo.needsGitInit
-					? "Needs git init"
+					? t("createProject.needsGitInit")
 					: failed
 						? (repo.reason ?? t("createProject.repoCannotImport"))
 						: `${repo.branch} ${remoteDisplay(repo.remote)}`}

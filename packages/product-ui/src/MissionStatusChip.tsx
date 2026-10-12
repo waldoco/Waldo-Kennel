@@ -20,12 +20,12 @@ export type MissionStatusChipProps = {
 export function MissionStatusChip({ label, className, indicatorClassName, icon, detail }: MissionStatusChipProps) {
 	return (
 		<span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", className)}>
-			<span aria-hidden="true" className={cn("size-dot-sm shrink-0 rounded-full", indicatorClassName)} />
+			<span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", indicatorClassName)} />
 			<span aria-hidden="true" className="inline-flex size-3.5 shrink-0 items-center [&>svg]:size-3.5">
 				{icon}
 			</span>
 			<span>{label}</span>
-			{detail && <span className="text-muted-foreground font-normal">{detail}</span>}
+			{detail && <span className="font-normal text-wd-tertiary">{detail}</span>}
 		</span>
 	);
 }

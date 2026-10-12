@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-// The board subhead (mc-board .dashboard-main__subhead): a 21px bold title with
-// a muted one-line subtitle, optionally a trailing count.
+// The board subhead: the screen title in Mottle (words only - the count sits
+// outside the display run in tabular figures), a quiet one-line subtitle.
 export function DashboardSubhead({
 	title,
 	subtitle,
@@ -16,9 +16,9 @@ export function DashboardSubhead({
 	return (
 		<div className="flex items-center gap-3 px-4.5 pt-5.5">
 			<div className="flex min-w-0 items-baseline gap-3">
-				<h1 className="text-heading font-bold tracking-tight-xl text-foreground">{title}</h1>
-				{typeof count === "number" && <span className="text-control text-passive">{count}</span>}
-				<span className="text-md-sm text-passive">{subtitle}</span>
+				<h1 className="wd-display-4 text-wd-primary">{title}</h1>
+				{typeof count === "number" && <span className="wd-data text-wd-tertiary">{count}</span>}
+				<span className="text-sm text-wd-secondary">{subtitle}</span>
 			</div>
 			{actions ? <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div> : null}
 		</div>

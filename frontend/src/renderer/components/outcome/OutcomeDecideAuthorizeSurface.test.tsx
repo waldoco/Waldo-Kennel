@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -285,7 +285,7 @@ describe("OutcomeDecideAuthorizeSurface", () => {
 
 		const details = await screen.findByTestId("outcome-plan-details");
 		expect(details).toBeInTheDocument();
-		const headings = ["Summary", "Desired state", "Evidence", "Verification through", "Pause Trigger", "Agent Permissions", "Run Brief Digest"];
+		const headings = ["Summary", "Desired state", "Evidence", "Verification through", "Pause trigger", "Agent permissions", "Run brief digest"];
 		const rendered = headings.map((label) => screen.getByRole("button", { name: new RegExp(label) }));
 		for (let i = 0; i < rendered.length - 1; i += 1) {
 			expect(rendered[i].compareDocumentPosition(rendered[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -351,5 +351,24 @@ describe("OutcomeDecideAuthorizeSurface", () => {
 		expect(screen.queryByTestId("outcome-approve-plan")).not.toBeInTheDocument();
 		await userEvent.click(screen.getByTestId("outcome-review-work"));
 		expect(onReviewWork).toHaveBeenCalledOnce();
+	});
+
+	it("asks for authorization as one Needs You decision with the exact grants and facts", async () => {
+		getMock.mockImplementation(async (url: string) => {
+			if (url === "/api/v1/outcomes/{outcomeId}") return { data: outcomeEnvelope(1), error: undefined };
+			if (url === "/api/v1/outcomes/{outcomeId}/plan") return { data: planEnvelope(), error: undefined };
+			return { data: undefined, error: undefined };
+		});
+		renderSurface();
+
+		const card = await screen.findByTestId("outcome-authorize-card");
+		expect(card).toHaveTextContent("Needs you");
+		expect(card).toHaveTextContent("Plan 1 · Contract revision 1");
+		expect(within(card).getByRole("heading", { name: "Let the agent run plan 1 with these permissions" })).toBeInTheDocument();
+		expect(within(card).getByText("worktree.exec")).toBeInTheDocument();
+		for (const label of ["Why now:", "If you approve:", "If you don't:", "Based on:"]) {
+			expect(within(card).getByText(label)).toBeInTheDocument();
+		}
+		expect(within(card).getByTestId("outcome-approve-plan")).toHaveTextContent("Authorize this plan");
 	});
 });

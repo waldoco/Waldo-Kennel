@@ -193,7 +193,7 @@ describe("GlobalSettingsForm", () => {
 		const keyboardShortcuts = screen.getByRole("button", { name: "Keyboard shortcuts" });
 
 		expect(keyboardShortcuts).toHaveClass("settings-row-bar", "settings-link-row");
-		expect(screen.queryByRole("button", { name: "Connect Mobile" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Connect mobile" })).not.toBeInTheDocument();
 	});
 
 	it("updates Island visibility immediately and opens its detailed settings", async () => {
@@ -223,13 +223,13 @@ describe("GlobalSettingsForm", () => {
 	it("persists Developer Mode and reveals Feature Releases", async () => {
 		const user = userEvent.setup();
 		renderForm();
-		const toggle = await screen.findByRole("switch", { name: "Developer Mode" });
+		const toggle = await screen.findByRole("switch", { name: "Developer mode" });
 		expect(toggle).toHaveAttribute("aria-checked", "false");
 
 		await user.click(toggle);
 		expect(window.localStorage.getItem("kennel.developerMode")).toBe("true");
 		await user.click(screen.getByLabelText("Updates channel"));
-		expect(await screen.findByRole("menuitem", { name: "Feature Releases" })).toBeInTheDocument();
+		expect(await screen.findByRole("menuitem", { name: "Feature releases" })).toBeInTheDocument();
 	});
 
 	it("shows the available feature builds after choosing Feature Releases", async () => {
@@ -239,7 +239,7 @@ describe("GlobalSettingsForm", () => {
 		renderForm();
 
 		await user.click(await screen.findByLabelText("Updates channel"));
-		await user.click(await screen.findByRole("menuitem", { name: "Feature Releases" }));
+		await user.click(await screen.findByRole("menuitem", { name: "Feature releases" }));
 		expect(await screen.findByText("No live feature releases.")).toBeInTheDocument();
 		expect(featListBuilds).toHaveBeenCalled();
 	});
@@ -308,7 +308,7 @@ describe("GlobalSettingsForm", () => {
 		renderForm();
 		await screen.findByLabelText("Updates channel");
 		await userEvent.click(screen.getByLabelText("Updates channel"));
-		await userEvent.click(await screen.findByRole("menuitem", { name: "Nightly (Pre-release)" }));
+		await userEvent.click(await screen.findByRole("menuitem", { name: "Nightly (pre-release)" }));
 		await waitFor(() =>
 			expect(setUpdate).toHaveBeenCalledWith(
 				expect.objectContaining({ channel: "nightly", enabled: true, nightlyAck: true, feature: null }),
@@ -319,8 +319,8 @@ describe("GlobalSettingsForm", () => {
 
 	it("auto-saves when automatic updates are toggled", async () => {
 		renderForm();
-		await screen.findByLabelText("Automatic Updates");
-		await userEvent.click(screen.getByLabelText("Automatic Updates"));
+		await screen.findByLabelText("Automatic updates");
+		await userEvent.click(screen.getByLabelText("Automatic updates"));
 		await userEvent.click(await screen.findByRole("menuitem", { name: "Disabled" }));
 		await waitFor(() =>
 			expect(setUpdate).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, channel: "latest" })),
@@ -345,12 +345,12 @@ describe("GlobalSettingsForm", () => {
 
 	it("shows the current app version", async () => {
 		renderForm();
-		expect(await screen.findByText(/Current version - v1\.4\.0/)).toBeInTheDocument();
+		expect(await screen.findByText("v1.4.0")).toBeInTheDocument();
 	});
 
 	it("Check for updates icon triggers a manual check", async () => {
 		renderForm();
-		expect(await screen.findByText(/Current version - v1\.4\.0/)).toBeInTheDocument();
+		expect(await screen.findByText("v1.4.0")).toBeInTheDocument();
 		await userEvent.click(screen.getByRole("button", { name: "Check for updates" }));
 		expect(updCheck).toHaveBeenCalled();
 	});
@@ -378,7 +378,7 @@ describe("GlobalSettingsForm", () => {
 		renderForm();
 		await screen.findByRole("button", { name: "Check for updates" });
 		act(() => emit({ state: "downloaded", version: "1.2.3" }));
-		const installBtn = await screen.findByRole("button", { name: /Restart & install/ });
+		const installBtn = await screen.findByRole("button", { name: /Restart and install/ });
 		await userEvent.click(installBtn);
 		expect(updInstall).toHaveBeenCalled();
 	});
@@ -516,7 +516,7 @@ describe("GlobalSettingsForm", () => {
 
 		await user.click(await screen.findByRole("button", { name: "Report a problem" }));
 		expect(await screen.findByRole("dialog", { name: "Report a problem" })).toBeInTheDocument();
-		expect(screen.getByLabelText("Title")).toHaveAttribute("placeholder", "Brief Title");
+		expect(screen.getByLabelText("Title")).toHaveAttribute("placeholder", "Brief title");
 		expect(screen.getByLabelText("What happened?")).toHaveAttribute(
 			"placeholder",
 			"Share what happened, what you expected, and how to reproduce it.",
@@ -544,7 +544,7 @@ describe("GlobalSettingsForm", () => {
 		await userEvent.click(screen.getByLabelText("Updates channel"));
 		await userEvent.keyboard("{Escape}");
 		// Return delegates to the single updater-serialized returnHome operation.
-		await userEvent.click(screen.getByRole("button", { name: "Return to Stable" }));
+		await userEvent.click(screen.getByRole("button", { name: "Return to stable" }));
 		await waitFor(() => expect(updReturnHome).toHaveBeenCalledWith(expect.any(String)));
 		expect(updCheck).not.toHaveBeenCalled();
 	});
@@ -559,7 +559,7 @@ describe("GlobalSettingsForm", () => {
 		});
 		renderForm();
 
-		const returnBtn = await screen.findByRole("button", { name: "Return to Stable" });
+		const returnBtn = await screen.findByRole("button", { name: "Return to stable" });
 		await userEvent.click(returnBtn);
 
 		await waitFor(() => expect(updReturnHome).toHaveBeenCalledWith(expect.any(String)));

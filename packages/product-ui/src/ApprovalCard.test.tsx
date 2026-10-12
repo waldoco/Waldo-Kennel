@@ -121,4 +121,37 @@ describe("ApprovalCard", () => {
 		fireEvent.keyDown(radios[0], { key: "ArrowDown" });
 		expect(onSelectOption).toHaveBeenCalledWith("b");
 	});
+
+	it("reads as a Needs You card: eyebrow, the action as heading, facts, and the reason a disabled effect waits", () => {
+		render(
+			<ApprovalCard
+				caption="v3"
+				denyLabel="Skip"
+				disabledReason="Choose one first."
+				facts={[{ label: "If you don't", value: "Nothing changes." }]}
+				needsYouLabel="Needs you"
+				onDeny={vi.fn()}
+				onPrimary={vi.fn()}
+				options={[{ id: "merge", label: "Merge" }]}
+				primaryLabel="Merge the Result"
+				reason="All checks passed."
+				reasonLabel="Why now"
+				requestedAction="Merge the verified Result"
+				scopeLabel="WorkUnit wu-42 only"
+			/>,
+		);
+		expect(screen.getByRole("region", { name: "Merge the verified Result" })).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "Merge the verified Result" })).toBeInTheDocument();
+		expect(screen.getByText("Needs you")).toBeInTheDocument();
+		expect(screen.getByText("v3")).toBeInTheDocument();
+		expect(screen.getByText("Why now:")).toBeInTheDocument();
+		expect(screen.getByText("All checks passed.")).toBeInTheDocument();
+		expect(screen.getByText("Nothing changes.")).toBeInTheDocument();
+		expect(screen.getByTestId("approval-card-disabled-reason")).toHaveTextContent("Choose one first.");
+		// Skip leads, the effect trails.
+		const deny = screen.getByTestId("approval-card-deny");
+		const primary = screen.getByTestId("approval-card-primary");
+		expect(deny.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(primary.className).toContain("bg-wd-inverse");
+	});
 });

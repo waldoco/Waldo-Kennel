@@ -11,10 +11,11 @@ import {
 
 describe("session presentation", () => {
 	it.each([
-		["active", "Working", true, "bg-status-working animate-status-pulse"],
+		// Live work is a still dot and its word: Waldo states never pulse.
+		["active", "Working", true, "bg-status-working"],
 		["idle", "Idle", false, "bg-status-idle"],
-		["waiting_input", "Input Needed", false, "bg-status-needs-you"],
-		["blocked", "Awaiting Decision", false, "bg-status-needs-you"],
+		["waiting_input", "Input needed", false, "bg-status-needs-you"],
+		["blocked", "Awaiting decision", false, "bg-status-needs-you"],
 		["exited", "Exited", false, "bg-status-exited"],
 		["unknown", "Unknown", false, "bg-status-unknown"],
 	] as const)("maps %s activity without app state", (state, label, breathe, indicatorClassName) => {
@@ -53,7 +54,7 @@ describe("session presentation", () => {
 
 	it("centralizes timeline status treatment", () => {
 		expect(getSessionTimelinePillView("ci_failed")).toEqual({
-			label: "CI Failed",
+			label: "CI failed",
 			tone: "var(--color-status-exited)",
 			breathe: false,
 		});

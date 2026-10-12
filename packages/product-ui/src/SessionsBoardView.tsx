@@ -12,6 +12,7 @@ import {
 import { motion, useReducedMotion } from "motion/react";
 import type { ExternalLinkComponent } from "./external-link";
 import { ChevronIcon, GitBranchIcon } from "./icons";
+import { StateMark, type StateTone } from "./StateBadge";
 import {
 	attentionZone,
 	getAgentActivityView,
@@ -150,8 +151,8 @@ function BoardColumnView<TSession extends BoardSessionPresentation>({
 			<BoardLaneHeader
 				count={sessions.length}
 				countLabel={labels.countSessions(sessions.length, column.label)}
-				dot={column.dot}
 				label={column.label}
+				tone={column.stateTone}
 			/>
 			<div className="board-scrollbar min-h-0 flex-1 overflow-y-auto">
 				<div className="flex min-h-full flex-col gap-2">
@@ -165,75 +166,50 @@ function BoardColumnView<TSession extends BoardSessionPresentation>({
 }
 
 /**
- * The plate a lane's cards sit on. Solid at the header and gone by the foot, so
- * a lane holding one card does not draw a box around the empty space below it.
+ * The plate a lane's cards sit on: the shell tone, radius-lg, flat. No glow
+ * gradient and no coloured top - the lane's state lives in its heading mark.
  */
-const boardLaneShellClassName =
-	"flex min-w-0 flex-col gap-2 overflow-hidden rounded-group column-shell px-0.75 py-1.25";
+const boardLaneShellClassName = "flex min-w-0 flex-col gap-2 overflow-hidden rounded-lg bg-shell p-1.5";
 
 /**
- * Lane heading: state dot, name, and a count that is a control-sized chip rather
- * than loose text — it is the lane's one piece of quantitative UI, and the chip
- * keeps it from being read as part of the name.
+ * Lane heading: the state's shape cue (Needs you / Running dot, Ready check,
+ * In review clock), the lane word in sentence case, and a quiet tabular count.
  */
 function BoardLaneHeader({
 	count,
 	countLabel,
-	dot,
 	label,
+	tone,
 	menu,
 }: {
 	count: number;
 	countLabel?: string;
-	dot: string;
 	label: string;
+	tone: StateTone;
 	menu?: ReactNode;
 }) {
 	return (
-		<div className="flex shrink-0 items-center justify-between py-0.75 pl-2.5 pr-1">
-			<div className="flex min-w-0 items-center gap-1.75">
-				<div className="flex min-w-0 items-center gap-2.25">
-					<BoardLaneDot dot={dot} />
-					<span className="truncate text-sm font-medium text-foreground">{label}</span>
-				</div>
-				<BoardLaneCount count={count} label={countLabel} />
+		<div className="flex shrink-0 items-center justify-between gap-2 px-2.5 py-1.5">
+			<div className="flex min-w-0 items-center gap-2">
+				<StateMark className={laneMarkClassName(tone)} tone={tone} />
+				<span className="truncate text-sm font-medium text-wd-primary">{label}</span>
 			</div>
-			{menu ?? <BoardLaneMenuGlyph />}
+			<div className="flex shrink-0 items-center gap-1">
+				<span aria-label={countLabel} className="text-[13px] leading-[18px] tabular-nums text-wd-tertiary">
+					{count}
+				</span>
+				{menu}
+			</div>
 		</div>
 	);
 }
 
-function BoardLaneDot({ dot }: { dot: string }) {
-	return (
-		<span
-			aria-hidden="true"
-			className="size-3 shrink-0 rounded-full hairline border-border"
-			style={{ background: dot }}
-		/>
-	);
-}
-
-function BoardLaneCount({ count, label }: { count: number; label?: string }) {
-	return (
-		<span
-			aria-label={label}
-			className="inline-flex size-control-chip shrink-0 items-center justify-center rounded-md border border-border-strong bg-shell text-sm font-semibold leading-none text-foreground"
-		>
-			{count}
-		</span>
-	);
-}
-
-function BoardLaneMenuGlyph() {
-	return (
-		<span aria-hidden="true" className="inline-flex size-control-chip shrink-0 items-center justify-center">
-			<span className="flex w-2.5 flex-col gap-0.5">
-				<span className="h-px w-full bg-passive" />
-				<span className="h-px w-full bg-passive" />
-				<span className="h-px w-full bg-passive" />
-			</span>
-		</span>
-	);
+/** Glyph marks take their state colour; dots carry their own fill. */
+export function laneMarkClassName(tone: StateTone): string | undefined {
+	if (tone === "good") return "text-good";
+	if (tone === "caution") return "text-caution";
+	if (tone === "critical") return "text-critical";
+	return undefined;
 }
 
 export type SessionCardViewProps = {
@@ -298,10 +274,10 @@ export function SessionCardView({
 			onClick={interactive ? onOpen : undefined}
 			role={interactive ? undefined : "listitem"}
 			className={cn(
-				"group relative flex w-full flex-col gap-5 rounded-card hairline p-4.5 text-left transition-[border-color,box-shadow]",
-				badge.cardClassName ?? "border-border bg-card",
+				"group relative flex w-full flex-col gap-4 rounded-lg hairline p-4 text-left transition-[background-color,border-color] duration-fast ease-out motion-reduce:transition-none",
+				badge.cardClassName ?? "border-wd-hairline bg-wd-surface",
 				interactive &&
-					"cursor-pointer hover:border-border-strong hover:shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-ring/60",
+					"cursor-pointer hover:bg-wd-hover active:bg-wd-pressed focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-(--border-focus)",
 			)}
 			data-testid="board-session-card"
 			data-session-id={session.id}
@@ -309,7 +285,7 @@ export function SessionCardView({
 			{interactive && onOpen ? (
 				<button
 					aria-label={session.title}
-					className="pointer-events-none absolute inset-0 rounded-card outline-none"
+					className="pointer-events-none absolute inset-0 rounded-lg outline-none"
 					type="button"
 				/>
 			) : null}
@@ -318,12 +294,12 @@ export function SessionCardView({
 
 			{/* Provenance first: which agent, which branch, how long ago. The card
 			    answers "whose work is this" before it answers "what is it". */}
-			<div className="flex flex-col gap-3.75">
+			<div className="flex flex-col gap-3">
 				<div className="flex min-w-0 items-center gap-2">
 					{renderAvatar(session.provider)}
 					{showBranch ? (
 						<span
-							className="inline-flex min-w-0 max-w-branch-chip items-center gap-1.25 rounded-md hairline border-border-strong bg-popover px-2 py-0.5 text-xs text-foreground"
+							className="inline-flex min-w-0 max-w-branch-chip items-center gap-1.25 rounded-xs bg-wd-inset px-2 py-0.5 text-xs text-wd-secondary"
 							title={branch}
 						>
 							{branchIcon ?? <GitBranchIcon aria-hidden="true" className="size-icon-2xs shrink-0" />}
@@ -331,46 +307,42 @@ export function SessionCardView({
 							{branchAction}
 						</span>
 					) : null}
-					<span className="shrink-0 whitespace-nowrap text-2xs text-passive" title={labels.updatedAt(session.updatedAt)}>
+					<span className="ml-auto shrink-0 whitespace-nowrap text-xs tabular-nums text-wd-tertiary" title={labels.updatedAt(session.updatedAt)}>
 						{labels.formatTime(session.updatedAt)}
 					</span>
 					{interactive ? (
 						<ChevronIcon
 							aria-hidden="true"
-							className="size-icon-sm shrink-0 text-passive"
+							className="size-icon-sm shrink-0 text-wd-tertiary"
 							direction="right"
 						/>
 					) : null}
 				</div>
 
-				<div className="flex flex-col gap-2.5">
-					{/* The state line is a coloured sentence, not a pill: on a lane that
-					    already carries the state, the card spends its colour on what the
-					    agent is doing right now. */}
+				<div className="flex flex-col gap-2">
+					{/* The state line is a word with its shape cue, not a pill: on a lane
+					    that already carries the state, the card names what the agent is
+					    doing right now. Live work is a still blue dot - nothing pulses. */}
 					<span
 						className={cn(
-							"flex min-w-0 items-center gap-1.5 text-2xs",
+							"flex min-w-0 items-center gap-1.5 text-xs font-medium",
 							statusPresentation?.className ?? badge.className,
 						)}
 						style={!statusPresentation && showLiveActivity ? { color: activity.tone } : undefined}
 					>
-						{/* A dot only where it carries motion: live agent activity and
-						    in-flight agent switches pulse. Settled states are plain text,
-						    because the lane already says what the state is. */}
-						{statusPresentation?.indicatorClassName || showLiveActivity ? (
+						{statusPresentation?.indicatorClassName ? (
 							<span
 								aria-hidden="true"
-								className={cn(
-									"size-dot-sm shrink-0 rounded-full",
-									statusPresentation?.indicatorClassName ?? activity.indicatorClassName,
-								)}
+								className={cn("size-1.5 shrink-0 rounded-full", statusPresentation.indicatorClassName)}
 							/>
-						) : null}
+						) : (
+							<StateMark tone={showLiveActivity ? "live" : badge.stateTone} />
+						)}
 						<span className="min-w-0 truncate">{statusPresentation?.label ?? badge.label}</span>
 					</span>
 					<div
 						className={cn(
-							"line-clamp-3 overflow-hidden text-brand font-medium leading-snug text-foreground",
+							"line-clamp-3 overflow-hidden text-base font-medium leading-snug text-wd-primary",
 							(overlay || action) && "pr-6",
 						)}
 						title={session.title}
@@ -378,7 +350,7 @@ export function SessionCardView({
 						{session.title}
 					</div>
 					{session.summary ? (
-						<p className="line-clamp-3 overflow-hidden text-xs leading-body text-foreground opacity-60">
+						<p className="line-clamp-3 overflow-hidden text-sm leading-5 text-wd-secondary">
 							{session.summary}
 						</p>
 					) : null}
@@ -388,7 +360,7 @@ export function SessionCardView({
 			{prs.length > 0 || session.trackerIssueId || artifact || usage ? (
 				<div className="flex flex-col gap-2.5">
 					{prs.length > 0 && (
-						<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-passive">
+						<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-wd-tertiary">
 							{groupBoardPullRequests(prs).map((group) => (
 								<BoardPullRequestGroup
 									externalLink={externalLink}
@@ -401,7 +373,7 @@ export function SessionCardView({
 					)}
 					{session.trackerIssueId && (
 						<span
-							className="inline-flex max-w-branch-chip items-center self-start truncate rounded-md hairline border-border-strong bg-popover px-2 py-0.5 text-xs text-foreground"
+							className="inline-flex max-w-branch-chip items-center self-start truncate rounded-xs bg-wd-inset px-2 py-0.5 text-xs text-wd-secondary"
 							title={labels.intakeIssue(session.trackerIssueId)}
 						>
 							{session.trackerIssueId}
@@ -423,7 +395,7 @@ export function SessionCardView({
 			{actions ? <div className="flex flex-wrap items-start gap-1.25">{actions}</div> : null}
 
 			{error ? (
-				<div className="text-2xs text-destructive" role="alert">
+				<div className="text-xs text-critical" role="alert">
 					{error}
 				</div>
 			) : null}
@@ -440,7 +412,7 @@ export const SessionUsageMetricView = forwardRef<
 		{...props}
 		aria-label={usage.accessibleLabel}
 		className={cn(
-			"inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-2xs text-muted-foreground",
+			"inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs tabular-nums text-wd-tertiary",
 			className,
 		)}
 		ref={ref}
@@ -474,7 +446,7 @@ function BoardPullRequestGroup({
 			{group.prs.map((pr, index) => (
 				<span className="inline-flex items-center" key={pr.url || pr.number}>
 					<ExternalLink
-						className="text-passive underline-offset-2 transition-colors hover:text-foreground hover:underline"
+						className="text-wd-tertiary underline-offset-2 transition-colors hover:text-wd-primary hover:underline"
 						href={pr.url}
 						stopPropagation
 					>
@@ -503,13 +475,13 @@ export function groupBoardPullRequests(
 function lifecycleClassName(state: BoardPullRequestState): string {
 	switch (state) {
 		case "draft":
-			return "text-passive";
+			return "text-wd-tertiary";
 		case "merged":
 			return "text-status-merged";
 		case "closed":
-			return "text-error";
+			return "text-critical";
 		case "open":
-			return "text-success";
+			return "text-wd-primary";
 	}
 }
 
@@ -573,7 +545,7 @@ export const SessionsArchiveView = memo(function SessionsArchiveView<
 	if (sessions.length === 0) return null;
 
 	return (
-		<div className="absolute inset-x-0 bottom-0 z-20 border-t border-border-strong bg-background px-3">
+		<div className="absolute inset-x-0 bottom-0 z-20 hairline-t border-wd-hairline bg-background px-3">
 			{/* Full-row hit target: the control stretches edge-to-edge so empty
 			    space beside the label toggles archive too. Height must match
 			    archiveToggleOffsetClassName on the board. */}
@@ -581,7 +553,7 @@ export const SessionsArchiveView = memo(function SessionsArchiveView<
 				aria-expanded={expanded}
 				aria-label={labels.archiveAria}
 				className={cn(
-					"group flex w-full min-w-0 items-center gap-2 py-0 text-muted-foreground transition-colors hover:text-foreground",
+					"group flex w-full min-w-0 items-center gap-2 py-0 text-wd-secondary transition-colors hover:text-wd-primary",
 					archiveToggleHeightClassName,
 					expanded ? "min-h-11" : "min-h-row-md",
 				)}
@@ -596,8 +568,8 @@ export const SessionsArchiveView = memo(function SessionsArchiveView<
 					)}
 					direction="right"
 				/>
-				<span className="text-2xs font-medium tracking-wide-sm">{labels.archive}</span>
-				<span className="ml-1.5 text-micro text-passive">{sessions.length}</span>
+				<span className="text-2xs font-medium">{labels.archive}</span>
+				<span className="ml-1.5 text-xs tabular-nums text-wd-tertiary">{sessions.length}</span>
 			</button>
 			{/* Keep the sheet mounted after first open; height tracks `expanded`. */}
 			{cardsReady ? (

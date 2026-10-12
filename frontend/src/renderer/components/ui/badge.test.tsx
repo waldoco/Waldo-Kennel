@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Badge } from "./badge";
 
 describe("Badge", () => {
-	it("sizes text badges as content-width pills instead of fixed icon squares", () => {
+	it("sizes text badges to their content (radius-xs) instead of fixed icon squares", () => {
 		render(
 			<Badge variant="success" className="h-5 px-1.5 text-micro font-medium">
 				open
@@ -15,7 +15,7 @@ describe("Badge", () => {
 		expect(badge).not.toHaveClass("size-icon-xl");
 		expect(badge).not.toHaveClass("h-icon-xl");
 		expect(badge.className).not.toMatch(/\b(?:w|min-w)-/);
-		expect(badge).toHaveClass("inline-flex", "whitespace-nowrap", "rounded-full", "h-5", "px-1.5");
+		expect(badge).toHaveClass("inline-flex", "whitespace-nowrap", "rounded-xs", "h-5", "px-1.5");
 	});
 
 	it("lets compact call sites override badge height without reintroducing fixed width", () => {

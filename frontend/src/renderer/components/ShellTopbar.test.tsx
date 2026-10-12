@@ -237,7 +237,7 @@ describe("ShellTopbar status pill", () => {
 	it.each([
 		["active", "Working"],
 		["idle", "Idle"],
-		["waiting_input", "Input Needed"],
+		["waiting_input", "Input needed"],
 		["exited", "Exited"],
 	] as const)("renders %s activity as %s", (state: SessionActivityState, label) => {
 		renderTopbar(sessionWith({ activity: { state, lastActivityAt: "2026-06-10T00:00:00Z" } }));
@@ -249,7 +249,7 @@ describe("ShellTopbar status pill", () => {
 		["ci_failed", "idle", "Idle", "CI failed"],
 		["mergeable", "active", "Working", "Ready"],
 		["merged", "exited", "Exited", "Done"],
-		["changes_requested", "waiting_input", "Input Needed", "Needs input"],
+		["changes_requested", "waiting_input", "Input needed", "Needs input"],
 	] as const)("ignores derived %s topbar status in favor of activity", (status, state, label, hidden) => {
 		renderTopbar(
 			sessionWith({
@@ -290,7 +290,7 @@ describe("ShellTopbar status pill", () => {
 
 		const pill = screen.getByText("Switching to Codex").closest("span") as HTMLElement;
 		expect(pill).toHaveStyle({ color: "var(--color-status-working)" });
-		expect(pill.querySelector("span")).toHaveClass("animate-status-pulse");
+		expect(pill.querySelector("span")).toHaveClass("status-dot--live");
 		expect(screen.queryByText("Exited")).not.toBeInTheDocument();
 	});
 });
@@ -338,7 +338,7 @@ describe("ShellTopbar orchestrator actions", () => {
 		const kanbanButton = screen.getByRole("button", { name: "Open Kanban" });
 		expect(kanbanButton).toHaveTextContent("Open Kanban");
 		expect(kanbanButton).toHaveClass("topbar-control--feature");
-		expect(screen.getByRole("button", { name: "Define outcome" })).toHaveClass("bg-accent-strong");
+		expect(screen.getByRole("button", { name: "Define outcome" })).toHaveClass("bg-wd-inverse");
 		await userEvent.click(kanbanButton);
 		expect(navigateMock).toHaveBeenCalledWith({
 			to: "/projects/$projectId",
@@ -450,10 +450,12 @@ describe("TopbarKillButton", () => {
 		expect(postMock).not.toHaveBeenCalled();
 		expect(killButton).toHaveAttribute("aria-expanded", "true");
 		const confirmation = screen.getByRole("dialog", { name: "Terminate do the thing?" });
-		expect(confirmation).toHaveClass("w-64", "bg-popover", "p-3");
+		expect(confirmation).toHaveClass("w-72", "bg-wd-raised", "p-4");
 		expect(confirmation).toHaveAttribute("data-side", "bottom");
-		expect(within(confirmation).getByRole("button", { name: "No" })).toBeInTheDocument();
-		expect(within(confirmation).getByRole("button", { name: "Yes, terminate session" })).toHaveTextContent("Yes");
+		expect(within(confirmation).getByRole("button", { name: "Keep it running" })).toBeInTheDocument();
+		expect(within(confirmation).getByRole("button", { name: "Yes, terminate session" })).toHaveTextContent(
+			"Terminate session",
+		);
 
 		await clickKillDialogConfirm();
 
@@ -468,7 +470,7 @@ describe("TopbarKillButton", () => {
 		renderKill();
 
 		await userEvent.click(screen.getByRole("button", { name: "Kill session" }));
-		await userEvent.click(screen.getByRole("button", { name: "No" }));
+		await userEvent.click(screen.getByRole("button", { name: "Keep it running" }));
 
 		expect(screen.getByRole("button", { name: "Kill session" })).toBeInTheDocument();
 		expect(postMock).not.toHaveBeenCalled();

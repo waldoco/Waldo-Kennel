@@ -41,7 +41,7 @@ function mount(revision: number, state: string, attemptPhase?: string, options?:
 it("keeps the glance truthful while run state is loading", async () => {
 	const { releaseRun } = mount(1, "connected", undefined, { runPending: true });
 	const glance = within(await screen.findByTestId("mission-glance"));
-	expect(glance.getAllByText("Loading outcomes…")).toHaveLength(2);
+	expect(glance.getByText("Reading run status…")).toBeInTheDocument();
 	expect(glance.queryByText("Live updates connected")).not.toBeInTheDocument();
 	releaseRun();
 });

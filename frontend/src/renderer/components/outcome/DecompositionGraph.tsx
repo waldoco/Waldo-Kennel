@@ -1,3 +1,4 @@
+import { StateLabel, type StateTone } from "@pin4sf/kennel-product-ui";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -66,13 +67,25 @@ export function graphNodes(decomposition: Decomposition, contributors: Contribut
 	});
 }
 
-const ATTENTION_TONE: Record<string, string> = {
-	needs_you: "border-l-status-needs-you",
-	action_required: "border-l-status-needs-you",
-	ready_for_acceptance: "border-l-status-ready",
-	waiting: "border-l-border-strong",
-	running: "border-l-status-working",
-	accepted: "border-l-status-ready",
+// Attention as Waldo's typed state, written beside the title with its mark -
+// never a coloured rail. Only the owner's next move takes Spot; only running
+// takes the live accent.
+const ATTENTION_TONE: Record<string, StateTone> = {
+	needs_you: "needsYou",
+	action_required: "needsYou",
+	ready_for_acceptance: "good",
+	waiting: "neutral",
+	running: "live",
+	accepted: "good",
+};
+
+const ATTENTION_LABEL_KEYS: Record<string, string> = {
+	needs_you: "outcome.attention.needsYou",
+	action_required: "outcome.attention.actionRequired",
+	ready_for_acceptance: "outcome.attention.readyForAcceptance",
+	waiting: "outcome.attention.waiting",
+	running: "outcome.attention.running",
+	accepted: "outcome.attention.accepted",
 };
 
 /**
@@ -105,13 +118,13 @@ export function DecompositionGraph({
 	return (
 		<section className="flex flex-col gap-2" data-testid="decomposition-graph">
 			<div>
-				<h3 className="text-sm font-medium text-foreground">{t("outcome.graph.heading")}</h3>
-				<p className="text-2xs leading-body text-passive">{t("outcome.graph.serialNote")}</p>
+				<h3 className="text-sm font-medium text-wd-primary">{t("outcome.graph.heading")}</h3>
+				<p className="text-xs leading-body text-wd-secondary">{t("outcome.graph.serialNote")}</p>
 			</div>
 			<ol className="flex flex-col gap-1.5">
 				{levels.map((level, index) => (
 					<li className="flex flex-col gap-1.5" key={index}>
-						<p className="text-2xs uppercase tracking-wide text-passive">
+						<p className="text-xs text-wd-secondary">
 							{index === 0 ? t("outcome.graph.startsFirst") : t("outcome.graph.step", { n: index + 1 })}
 						</p>
 						<div className="flex flex-wrap gap-1.5">
@@ -121,27 +134,33 @@ export function DecompositionGraph({
 									: undefined;
 								const body = (
 									<>
-										<span className="min-w-0 truncate text-xs text-foreground">{node.title}</span>
+										<span className="min-w-0 truncate text-sm font-medium text-wd-primary">{node.title}</span>
+										{node.attention && ATTENTION_LABEL_KEYS[node.attention] ? (
+											<StateLabel
+												className="text-xs"
+												label={t(ATTENTION_LABEL_KEYS[node.attention] as never)}
+												tone={ATTENTION_TONE[node.attention] ?? "neutral"}
+											/>
+										) : null}
 										{node.upstream.length > 0 ? (
-											<span className="text-2xs text-passive">
+											<span className="text-xs text-wd-tertiary">
 												{t("outcome.graph.after", { refs: node.upstream.join(", ") })}
 											</span>
 										) : null}
 										{node.blocked ? (
-											<span className="text-2xs text-warning">{t("outcome.graph.blocked")}</span>
+											<StateLabel className="text-xs" label={t("outcome.graph.blocked")} tone="caution" />
 										) : null}
 									</>
 								);
 								const className = cn(
-									"flex min-w-0 max-w-64 flex-col gap-0.5 rounded-md hairline border-border bg-card px-3 py-2 border-l-2 text-left",
-									ATTENTION_TONE[node.attention ?? ""] ?? "border-l-border",
+									"flex min-w-0 max-w-64 flex-col gap-1 rounded-md hairline border-wd-hairline bg-wd-surface px-3 py-2 text-left",
 								);
 								// Only an authorized contribution has an Outcome to open;
 								// a proposed one is still a draft and has nothing behind it.
 								return node.outcomeId && onInspect ? (
 									<button
 										aria-label={label}
-										className={cn(className, "transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70")}
+										className={cn(className, "transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none")}
 										key={node.ref}
 										onClick={() => onInspect(node.outcomeId as string)}
 										type="button"

@@ -165,8 +165,8 @@ test("renderer: board renders all status columns @T0 @BRD @legacy-board", async 
 	await expect(columns).toHaveCount(4);
 	// Left→right flow in the landed Figma board vocabulary.
 	await expect(page.locator('[data-testid="board-column"][data-column="working"]')).toContainText("Running");
-	await expect(page.locator('[data-testid="board-column"][data-column="action"]')).toContainText("Needs Choice");
-	await expect(page.locator('[data-testid="board-column"][data-column="pending"]')).toContainText("Needs Input");
+	await expect(page.locator('[data-testid="board-column"][data-column="action"]')).toContainText("Needs choice");
+	await expect(page.locator('[data-testid="board-column"][data-column="pending"]')).toContainText("Needs input");
 	await expect(page.locator('[data-testid="board-column"][data-column="merge"]')).toContainText("Ready");
 });
 

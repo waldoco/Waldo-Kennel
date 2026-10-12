@@ -233,7 +233,7 @@ export function CreateProjectAgentSheet({
 		<Dialog.Root open={open} onOpenChange={(next) => !isBusy && onOpenChange(next)}>
 			<Dialog.Portal>
 				<Dialog.Overlay className="dialog-overlay data-[state=open]:animate-overlay-in" />
-				<Dialog.Content className="fixed left-1/2 top-1/2 z-overlay w-[min(480px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-agents-sheet border border-[var(--color-border-agents-sheet)] bg-[var(--color-bg-agents-sheet)] p-0 text-[var(--color-text-agents-sheet-title)] shadow-[var(--shadow-import-modal)] data-[state=open]:animate-modal-in">
+				<Dialog.Content className="fixed left-1/2 top-1/2 z-overlay w-[min(480px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-xl border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-raised p-0 text-wd-primary shadow-[var(--shadow-overlay)] data-[state=open]:animate-modal-in">
 					<ProjectSetupHeaderView
 						CloseButton={ProjectSheetCloseButton}
 						Description={Dialog.Description}
@@ -285,13 +285,13 @@ export function CreateProjectAgentSheet({
 								</div>
 							),
 							orchestrator: (
-								<Accordion type="single" collapsible className="rounded-lg border border-border">
+								<Accordion type="single" collapsible className="rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface">
 									<AccordionItem value="advanced" className="border-none">
-										<AccordionTrigger className="px-3 text-xs font-medium">
+										<AccordionTrigger className="wd-label px-4 text-wd-primary">
 											{t("createProject.advancedSettings")}
 										</AccordionTrigger>
-										<AccordionContent className="flex flex-col gap-3 px-3 pb-3">
-											<p className="text-xs leading-snug text-muted-foreground">
+										<AccordionContent className="flex flex-col gap-4 px-4 pb-4">
+											<p className="wd-body-s text-wd-secondary">
 												{t("createProject.orchestratorAutoNotice")}
 											</p>
 											<RequiredAgentField
@@ -355,8 +355,8 @@ export function CreateProjectAgentSheet({
 											<TriangleAlert
 												className={
 													effectiveAlert.tone === "warning"
-														? "mt-0.5 size-icon-sm shrink-0 text-warning"
-														: "mt-0.5 size-icon-sm shrink-0 text-destructive"
+														? "mt-0.5 size-icon-sm shrink-0 text-caution"
+														: "mt-0.5 size-icon-sm shrink-0 text-critical"
 												}
 												aria-hidden="true"
 											/>
@@ -433,9 +433,9 @@ function ModelPreferenceField({
 	warning?: string;
 }) {
 	return (
-		<div className="flex flex-col gap-1.5">
+		<div className="flex flex-col gap-2">
 			<div className="flex min-w-0 items-baseline gap-1.5">
-				<Label className="agents-sheet-label text-xs font-medium text-muted-foreground">{label}</Label>
+				<Label className="agents-sheet-label">{label}</Label>
 				<FieldDefaultHint text={hint} />
 			</div>
 			<AgentModelPicker
@@ -449,7 +449,7 @@ function ModelPreferenceField({
 				onModeChange={onModeChange}
 				onWarningChange={onWarningChange}
 			/>
-			{warning ? <p className="text-xs leading-snug text-warning">{warning}</p> : null}
+			{warning ? <p className="wd-body-s text-caution">{warning}</p> : null}
 		</div>
 	);
 }
@@ -544,7 +544,7 @@ export const RequiredAgentField = memo(function RequiredAgentField({
 					options={menuOptions}
 					disabled={disabled}
 					onChange={onChange}
-					triggerClassName={invalid ? "text-error" : undefined}
+					triggerClassName={invalid ? "text-critical" : undefined}
 					menuClassName="settings-agent-menu-surface"
 					menuItemClassName="settings-agent-menu-item"
 					renderTrigger={(selected, triggerPlaceholder) => (
@@ -602,7 +602,7 @@ export const RequiredAgentField = memo(function RequiredAgentField({
 							<AgentAvatar provider={selectedOption.id} className="size-icon-base" decorative />
 						) : null}
 						<span
-							className="min-w-0 truncate text-control text-foreground"
+							className="min-w-0 truncate text-sm text-wd-primary"
 							title={selectedOption?.label ?? placeholder}
 						>
 							{selectedOption?.label ?? placeholder}
@@ -628,9 +628,9 @@ export const RequiredAgentField = memo(function RequiredAgentField({
 	}
 
 	return (
-		<div className="flex flex-col gap-1.5">
+		<div className="flex flex-col gap-2">
 			<div className="flex min-w-0 items-baseline gap-1.5">
-				<Label htmlFor={id} className={cn("text-xs font-medium text-muted-foreground", labelClassName)}>
+				<Label htmlFor={id} className={cn("wd-label text-wd-secondary", labelClassName)}>
 					{label}
 				</Label>
 				{hint && <FieldDefaultHint text={hint} />}
@@ -639,7 +639,7 @@ export const RequiredAgentField = memo(function RequiredAgentField({
 				<SelectTrigger
 					id={id}
 					size="sm"
-					className={cn("w-full text-control", triggerClassName)}
+					className={cn("w-full text-sm aria-invalid:border-critical", triggerClassName)}
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 				>

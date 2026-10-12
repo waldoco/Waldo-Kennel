@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { StateMark } from "@pin4sf/kennel-product-ui";
+import { Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { components } from "../../../api/schema";
@@ -173,15 +174,15 @@ export function DecompositionEditor({
 	return (
 		<div className="flex flex-col gap-4" data-testid="decomposition-editor">
 			<div className="max-w-xl">
-				<h3 className="text-sm font-medium">{t("outcome.editor.heading")}</h3>
-				<p className="text-muted-foreground text-sm">{t("outcome.editor.intro")}</p>
+				<h3 className="text-sm font-medium text-wd-primary">{t("outcome.editor.heading")}</h3>
+				<p className="text-sm text-wd-secondary">{t("outcome.editor.intro")}</p>
 			</div>
 
 			<div className="flex flex-col gap-3">
 				{contributions.map((entry, index) => (
-					<div className="rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid={`editor-contribution-${entry.ref}`} key={entry.ref}>
+					<div className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid={`editor-contribution-${entry.ref}`} key={entry.ref}>
 						<div className="flex items-start justify-between gap-3">
-							<span className="text-muted-foreground text-xs">{entry.ref}</span>
+							<span className="text-xs text-wd-tertiary">{entry.ref}</span>
 							<Button
 								aria-label={t("outcome.editor.removeContribution")}
 								disabled={contributions.length === 1}
@@ -204,17 +205,17 @@ export function DecompositionEditor({
 						<EditorField label={t("outcome.editor.review")} onChange={(v) => update(index, { review: v })} value={entry.review} />
 
 						<fieldset className="mt-3">
-							<legend className="text-muted-foreground text-xs">{t("outcome.editor.claims")}</legend>
-							<div className="mt-1 flex flex-col gap-1">
+							<legend className="text-xs text-wd-secondary">{t("outcome.editor.claims")}</legend>
+							<div className="mt-1.5 flex flex-col gap-1.5">
 								{criteria.map((criterion) => (
-									<label className="flex items-start gap-2 text-xs" key={criterion.criterionId}>
+									<label className="flex items-start gap-2 text-sm text-wd-primary" key={criterion.criterionId}>
 										<input
 											checked={entry.claimedCriteria.includes(criterion.criterionId)}
 											disabled={retained.includes(criterion.criterionId)}
 											onChange={() => toggleClaim(index, criterion.criterionId)}
 											type="checkbox"
 										/>
-										<span className={cn(retained.includes(criterion.criterionId) && "text-muted-foreground line-through")}>
+										<span className={cn(retained.includes(criterion.criterionId) && "text-wd-tertiary line-through")}>
 											{criterion.text}
 										</span>
 									</label>
@@ -230,7 +231,7 @@ export function DecompositionEditor({
 				onClick={() => setContributions((c) => [...c, blankContribution(c.length)])}
 				size="sm"
 				type="button"
-				variant="outline"
+				variant="secondary"
 			>
 				<Plus aria-hidden="true" className="size-3.5" />
 				{t("outcome.editor.addContribution")}
@@ -239,37 +240,45 @@ export function DecompositionEditor({
 			<RetainedCriteria criteria={criteria} claimed={claimed} onChange={setRetained} retained={retained} />
 			<DependencyEditor contributions={contributions} dependencies={dependencies} onChange={setDependencies} />
 
-			<div className="rounded-group hairline border-border bg-card px-4.5 py-3.5">
+			<div className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4">
 				<EditorField
 					label={t("outcome.editor.rationale")}
 					multiline
 					onChange={setRationale}
 					value={rationale}
 				/>
-				<p className="text-muted-foreground mt-1 text-xs">{t("outcome.editor.rationaleNote")}</p>
+				<p className="mt-1.5 text-xs text-wd-secondary">{t("outcome.editor.rationaleNote")}</p>
 			</div>
 
 			{unclassified.length > 0 ? (
-				<p className="text-[var(--color-status-needs-you)] text-xs" data-testid="editor-unclassified">
-					{t("outcome.editor.unclassified", { n: unclassified.length })}
+				<p className="flex items-start gap-1.5 text-xs text-wd-primary" data-testid="editor-unclassified">
+					<StateMark className="mt-0.5 text-caution" tone="caution" />
+					<span>{t("outcome.editor.unclassified", { n: unclassified.length })}</span>
 				</p>
 			) : null}
 			{failureMessage ? (
-				<p className="text-destructive text-xs" data-testid="editor-failure">{failureMessage}</p>
+				<p className="text-sm text-critical" data-testid="editor-failure" role="alert">{failureMessage}</p>
 			) : null}
 
 			<div className="flex items-center gap-2">
-				<Button data-testid="editor-propose" disabled={pending} onClick={submit} type="button">
-					{pending && <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />}
-					{t("outcome.editor.propose")}
-				</Button>
+				{/* Discard leads as the quiet choice; the effect-named ink action
+				    trails. While proposing, the button stays disabled and busy -
+				    no spinner. */}
 				<Button onClick={onCancel} type="button" variant="ghost">
 					{t("outcome.editor.cancel")}
+				</Button>
+				<Button aria-busy={pending || undefined} data-testid="editor-propose" disabled={pending} onClick={submit} type="button">
+					{t("outcome.editor.propose")}
 				</Button>
 			</div>
 		</div>
 	);
 }
+
+/** TextField contract: inset fill, radius-md, no heavy border, the system
+ *  focus ring. */
+const FIELD_CLASS =
+	"rounded-md border border-transparent bg-wd-inset px-3 py-2 text-sm text-wd-primary outline-none placeholder:text-wd-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)";
 
 function EditorField({
 	label,
@@ -283,18 +292,18 @@ function EditorField({
 	multiline?: boolean;
 }) {
 	return (
-		<label className="mt-3 flex flex-col gap-1">
-			<span className="text-muted-foreground text-xs">{label}</span>
+		<label className="mt-3 flex flex-col gap-1.5">
+			<span className="text-xs text-wd-secondary">{label}</span>
 			{multiline ? (
 				<textarea
-					className="bg-popover hairline rounded-sm px-2 py-1 text-xs"
+					className={FIELD_CLASS}
 					onChange={(event) => onChange(event.target.value)}
 					rows={3}
 					value={value}
 				/>
 			) : (
 				<input
-					className="bg-popover hairline rounded-sm px-2 py-1 text-xs"
+					className={FIELD_CLASS}
 					onChange={(event) => onChange(event.target.value)}
 					value={value}
 				/>
@@ -317,12 +326,13 @@ function RetainedCriteria({
 }) {
 	const { t } = useTranslation();
 	return (
-		<fieldset className="rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="editor-retained">
-			<legend className="text-sm font-medium">{t("outcome.editor.retainedHeading")}</legend>
-			<p className="text-muted-foreground text-xs">{t("outcome.editor.retainedNote")}</p>
-			<div className="mt-2 flex flex-col gap-1">
+		<fieldset className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="editor-retained">
+			<legend className="sr-only">{t("outcome.editor.retainedHeading")}</legend>
+			<p aria-hidden="true" className="text-sm font-medium text-wd-primary">{t("outcome.editor.retainedHeading")}</p>
+			<p className="mt-0.5 text-xs text-wd-secondary">{t("outcome.editor.retainedNote")}</p>
+			<div className="mt-3 flex flex-col gap-1.5">
 				{criteria.map((criterion) => (
-					<label className="flex items-start gap-2 text-xs" key={criterion.criterionId}>
+					<label className="flex items-start gap-2 text-sm text-wd-primary" key={criterion.criterionId}>
 						<input
 							checked={retained.includes(criterion.criterionId)}
 							// A criterion cannot be both delegated and owner-proved.
@@ -336,7 +346,7 @@ function RetainedCriteria({
 							}
 							type="checkbox"
 						/>
-						<span className={cn(claimed.has(criterion.criterionId) && "text-muted-foreground")}>{criterion.text}</span>
+						<span className={cn(claimed.has(criterion.criterionId) && "text-wd-tertiary")}>{criterion.text}</span>
 					</label>
 				))}
 			</div>
@@ -360,12 +370,13 @@ function DependencyEditor({
 	const refs = contributions.map((c) => c.ref);
 
 	return (
-		<fieldset className="rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="editor-dependencies">
-			<legend className="text-sm font-medium">{t("outcome.editor.dependenciesHeading")}</legend>
-			<p className="text-muted-foreground text-xs">{t("outcome.editor.dependenciesNote")}</p>
+		<fieldset className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="editor-dependencies">
+			<legend className="sr-only">{t("outcome.editor.dependenciesHeading")}</legend>
+			<p aria-hidden="true" className="text-sm font-medium text-wd-primary">{t("outcome.editor.dependenciesHeading")}</p>
+			<p className="mt-0.5 text-xs text-wd-secondary">{t("outcome.editor.dependenciesNote")}</p>
 			<ul className="mt-2 flex flex-col gap-1">
 				{dependencies.map((dependency) => (
-					<li className="flex items-center gap-2 text-xs" key={`${dependency.fromRef}->${dependency.toRef}`}>
+					<li className="flex items-center gap-2 text-sm text-wd-primary" key={`${dependency.fromRef}->${dependency.toRef}`}>
 						<span>{t("outcome.editor.dependencyLine", { from: dependency.fromRef, to: dependency.toRef })}</span>
 						<Button
 							aria-label={t("outcome.editor.removeDependency")}
@@ -379,17 +390,17 @@ function DependencyEditor({
 					</li>
 				))}
 			</ul>
-			<div className="mt-2 flex flex-wrap items-end gap-2">
-				<label className="flex flex-col gap-1">
-					<span className="text-muted-foreground text-xs">{t("outcome.editor.dependencyFrom")}</span>
-					<select className="bg-popover hairline rounded-sm px-2 py-1 text-xs" onChange={(e) => setFromRef(e.target.value)} value={fromRef}>
+			<div className="mt-3 flex flex-wrap items-end gap-2">
+				<label className="flex flex-col gap-1.5">
+					<span className="text-xs text-wd-secondary">{t("outcome.editor.dependencyFrom")}</span>
+					<select className={FIELD_CLASS} onChange={(e) => setFromRef(e.target.value)} value={fromRef}>
 						<option value="">—</option>
 						{refs.map((ref) => <option key={ref} value={ref}>{ref}</option>)}
 					</select>
 				</label>
-				<label className="flex flex-col gap-1">
-					<span className="text-muted-foreground text-xs">{t("outcome.editor.dependencyTo")}</span>
-					<select className="bg-popover hairline rounded-sm px-2 py-1 text-xs" onChange={(e) => setToRef(e.target.value)} value={toRef}>
+				<label className="flex flex-col gap-1.5">
+					<span className="text-xs text-wd-secondary">{t("outcome.editor.dependencyTo")}</span>
+					<select className={FIELD_CLASS} onChange={(e) => setToRef(e.target.value)} value={toRef}>
 						<option value="">—</option>
 						{refs.map((ref) => <option key={ref} value={ref}>{ref}</option>)}
 					</select>
@@ -403,7 +414,7 @@ function DependencyEditor({
 					}}
 					size="sm"
 					type="button"
-					variant="outline"
+					variant="secondary"
 				>
 					{t("outcome.editor.addDependency")}
 				</Button>

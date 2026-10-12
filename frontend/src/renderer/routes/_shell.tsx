@@ -678,7 +678,7 @@ function ShellLayout() {
 				<TerminalCacheProvider daemonReady={daemonStatus.state === "ready"} theme={resolvedTheme}>
 					<div
 						className={cn(
-							"flex h-screen min-h-0 flex-col bg-sidebar text-foreground",
+							"flex h-screen min-h-0 flex-col bg-wd-canvas text-wd-primary",
 							usesWorkProjectShell && "figma-board-shell",
 							isWindows && "platform-windows",
 							isLinux && "platform-linux",

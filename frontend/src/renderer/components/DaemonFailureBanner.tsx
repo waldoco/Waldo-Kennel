@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import type { DaemonStatus } from "../../shared/daemon-status";
 import { daemonFailureHint, daemonFailureMessage, daemonFailureTitle } from "../lib/daemon-failure";
 import { aoBridge } from "../lib/bridge";
+import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
 
 export function DaemonFailureBanner({ status }: { status: DaemonStatus }) {
 	if (!status.code || status.state === "ready") return null;
@@ -61,58 +63,71 @@ function DaemonFailureContent({ status }: { status: DaemonStatus }) {
 			setRestarting(false);
 		}
 	};
+	// Waldo Banner: caution while the daemon may still come up on its own,
+	// critical once it has failed. Title says what happened; the body says what
+	// Kennel is doing and what still works; one action, named for the fix.
+	const tone = status.code === "not_ready" || status.code === "port_unconfirmed" ? "caution" : "critical";
+	const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)";
 	return (
 		<section
 			aria-live="assertive"
-			className="pointer-events-auto fixed top-3 right-3 z-overlay flex w-daemon-failure-toast flex-col rounded-welcome-panel border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-modal)] px-3.5 py-3 text-xs shadow-[var(--shadow-import-modal)]"
+			className={cn(
+				"pointer-events-auto fixed top-3 right-3 z-overlay flex w-daemon-failure-toast flex-col gap-1 rounded-md p-4 text-sm text-wd-primary shadow-md",
+				tone === "critical" ? "bg-critical-bg" : "bg-caution-bg",
+			)}
+			data-tone={tone}
 			role="alert"
 		>
-			<div className="flex items-start gap-3">
-				<AlertTriangle className="mt-0.5 size-icon-base shrink-0 text-error" aria-hidden="true" />
-				<div className="min-w-0 flex-1">
-					<p className="font-medium text-(--color-text-import-title)">{title}</p>
-					<p className="mt-0.5 wrap-break-word text-[var(--color-text-import-muted)]">
-						{daemonFailureMessage(status, t)}
-					</p>
-					{hint ? <p className="mt-1 text-[var(--color-text-import-muted)]">{hint}</p> : null}
-					{canRestart ? (
-						<button
-							type="button"
-							className="mt-2 inline-flex h-control-md items-center rounded-md bg-accent-strong px-3 font-semibold text-accent-foreground transition-[filter,opacity] hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
-							disabled={restarting}
-							onClick={() => void restartDaemon()}
-						>
-							{restarting ? t("daemon.restarting") : t("daemon.restart")}
-						</button>
-					) : null}
-					{restartError ? <p className="mt-2 text-error">{restartError}</p> : null}
-					{details ? (
-						<div className="mt-2 flex items-center gap-3">
-							<button
-								type="button"
-								className="text-xs text-[var(--color-text-import-title)] underline-offset-2 hover:underline"
-								onClick={() => setDetailsOpen((open) => !open)}
-							>
-								{detailsOpen ? t("daemon.hideDetails") : t("daemon.showDetails")}
-							</button>
-							<button
-								type="button"
-								className="text-xs text-[var(--color-text-import-title)] underline-offset-2 hover:underline"
-								onClick={() => void copyDetails()}
-							>
-								{copied ? t("daemon.copied") : t("daemon.copyDetails")}
-							</button>
-						</div>
-					) : null}
-				</div>
+			<div className="flex items-start gap-2">
+				<AlertTriangle
+					className={cn("mt-0.5 size-icon-base shrink-0", tone === "critical" ? "text-critical" : "text-caution")}
+					aria-hidden="true"
+				/>
+				<p className="min-w-0 flex-1 font-medium text-wd-primary">{title}</p>
 				{status.code ? (
-					<code className="shrink-0 rounded-md bg-(--color-bg-import-chip) px-1.5 py-0.5 font-mono text-micro text-[var(--color-text-import-muted)]">
+					<code className="shrink-0 rounded-xs bg-wd-inset px-1.5 py-0.5 font-mono text-xs text-wd-secondary">
 						{status.code}
 					</code>
 				) : null}
 			</div>
+			<p className="wrap-break-word text-wd-secondary">{daemonFailureMessage(status, t)}</p>
+			{hint ? <p className="text-wd-secondary">{hint}</p> : null}
+			<p className="text-wd-secondary">{t("daemon.stillWorks")}</p>
+			{restartError ? <p className="text-critical">{restartError}</p> : null}
+			<div className="mt-2 flex flex-wrap items-center gap-2">
+				{details ? (
+					<>
+						<button
+							type="button"
+							className={cn("rounded-full px-2.5 py-1 text-xs text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary", FOCUS)}
+							onClick={() => setDetailsOpen((open) => !open)}
+						>
+							{detailsOpen ? t("daemon.hideDetails") : t("daemon.showDetails")}
+						</button>
+						<button
+							type="button"
+							className={cn("rounded-full px-2.5 py-1 text-xs text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary", FOCUS)}
+							onClick={() => void copyDetails()}
+						>
+							{copied ? t("daemon.copied") : t("daemon.copyDetails")}
+						</button>
+					</>
+				) : null}
+				{canRestart ? (
+					<Button
+						type="button"
+						size="sm"
+						variant="primary"
+						className="ml-auto disabled:cursor-wait"
+						disabled={restarting}
+						onClick={() => void restartDaemon()}
+					>
+						{restarting ? t("daemon.restarting") : t("daemon.restart")}
+					</Button>
+				) : null}
+			</div>
 			{details && detailsOpen ? (
-				<pre className="mt-2 max-h-daemon-failure-details-max w-full overflow-auto rounded-md border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-card)] px-1.5 py-1 font-mono text-caption leading-relaxed text-[var(--color-text-import-muted)]">
+				<pre className="mt-2 max-h-daemon-failure-details-max w-full overflow-auto rounded-sm bg-wd-inset px-2 py-1.5 font-mono text-caption leading-relaxed text-wd-secondary">
 					{details}
 				</pre>
 			) : null}

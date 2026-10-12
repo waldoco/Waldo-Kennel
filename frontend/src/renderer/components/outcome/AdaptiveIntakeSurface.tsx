@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUp, Check, ChevronDown, Loader2, Mic, Plus } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Mic, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -255,7 +255,7 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 			{/* A heading, not a <label>: the project name inside it is an
 			    interactive switcher, and a control nested in a label would steal
 			    the label's click-to-focus. The textarea keeps its own name below. */}
-			<h1 className="max-w-2xl text-balance text-center text-2xl font-medium leading-tight tracking-wide-sm text-foreground sm:text-[28px]">
+			<h1 className="wd-display-3 max-w-2xl text-center text-wd-primary">
 				{projectName ? (
 					<Trans
 						components={{
@@ -268,13 +268,16 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 					t("outcome.intake.prompt")
 				)}
 			</h1>
-			<div className="flex min-h-44 w-full flex-col rounded-lg hairline border-border bg-card p-4 shadow-sm sm:min-h-48 sm:p-5">
+			{/* Composer contract: the field is an inset fill with a hairline,
+				    the system focus ring around the whole field, attach on the
+				    left and the ink send on the right. */}
+			<div className="flex min-h-44 w-full flex-col rounded-lg hairline border-wd-hairline bg-wd-inset p-4 transition-[outline-color] duration-fast focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-(--border-focus) sm:min-h-48 sm:p-5">
 				<textarea
 					id="outcome-statement"
 					data-testid="intake-statement-input"
 					aria-label={projectName ? t("outcome.intake.promptForProjectPlain", { project: projectName }) : t("outcome.intake.prompt")}
 					autoFocus
-					className="min-h-24 w-full flex-1 resize-none bg-transparent text-base leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 sm:min-h-28"
+					className="min-h-24 w-full flex-1 resize-none bg-transparent text-base leading-relaxed text-wd-primary outline-none placeholder:text-wd-tertiary sm:min-h-28"
 					onChange={(event) => setStatement(event.target.value)}
 					onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
 						if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -288,14 +291,14 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 				<div className="mt-3 flex items-end justify-between gap-3">
 					{/* Who will do this, decided beside what is being asked for.
 					    Writes the project's durable worker/orchestrator agents. */}
-					<details className="group relative text-xs text-muted-foreground">
+					<details className="group relative text-xs text-wd-secondary">
 						<summary
 							aria-label={t("outcome.intake.agentPreferences")}
-							className="flex size-control-md cursor-pointer list-none items-center justify-center rounded-full border border-border bg-background transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+							className="flex size-control-md cursor-pointer list-none items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none [&::-webkit-details-marker]:hidden"
 						>
-							<Plus aria-hidden="true" className="size-4 transition-transform group-open:rotate-45" />
+							<Plus aria-hidden="true" className="size-4 transition-transform duration-fast group-open:rotate-45 motion-reduce:transition-none" />
 						</summary>
-						<div className="absolute bottom-full left-0 z-10 mb-2 flex gap-2 rounded-md border border-border bg-card p-3 shadow-sm"><OutcomeIntakeAgentRoles projectId={projectId} /></div>
+						<div className="absolute bottom-full left-0 z-10 mb-2 flex gap-2 rounded-md bg-wd-raised p-3 shadow-md"><OutcomeIntakeAgentRoles projectId={projectId} /></div>
 					</details>
 					<div className="flex shrink-0 items-center gap-2">
 						<Button
@@ -309,6 +312,7 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 							<Mic aria-hidden="true" className="size-4" />
 						</Button>
 						<Button
+							aria-busy={pending || undefined}
 							aria-label={pending ? t("outcome.intake.saving") : t("outcome.intake.continue")}
 							className="rounded-full"
 							data-testid="intake-capture-submit"
@@ -316,14 +320,14 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 							size="icon-sm"
 							type="submit"
 						>
-							{pending ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : <ArrowUp aria-hidden="true" className="size-4" />}
+							<ArrowUp aria-hidden="true" className="size-4" />
 						</Button>
 					</div>
 				</div>
 				<p className="sr-only">{t("outcome.intake.hint")}</p>
 			</div>
 			{error ? (
-				<p className="text-sm text-destructive" role="alert">
+				<p className="text-sm text-critical" role="alert">
 					{error} {t("outcome.intake.unsaved")}
 				</p>
 			) : null}
@@ -359,31 +363,51 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 		);
 	}
 	if (pending && (snapshot.session.status === "captured" || snapshot.session.status === "analysis_failed")) return <TruthMessage title={t("outcome.intake.analyzingTitle")} body={t("outcome.intake.analyzingBody")} />;
-	if (snapshot.session.status === "needs_user" && snapshot.clarification) return <form className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8 sm:px-8" onSubmit={answerQuestion}><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("outcome.intake.question")}</p><h2 className="text-xl font-medium">{snapshot.clarification.question}</h2><p className="text-sm text-muted-foreground">{snapshot.clarification.reason}</p><label className="text-sm font-medium" htmlFor="clarification-answer">{t("outcome.intake.answer")}</label><input id="clarification-answer" autoFocus className="rounded-lg border border-border bg-background px-3 py-2" onChange={(event) => setAnswer(event.target.value)} value={answer} /><p className="text-xs text-muted-foreground">{t("outcome.intake.recommended", { recommendation: snapshot.clarification.recommendation })}</p><Button disabled={pending || !answer.trim()} type="submit">{t("outcome.intake.continue")}</Button><label className="text-sm font-medium" htmlFor="intake-cancellation-reason">{t("outcome.intake.cancelReason")}</label><input id="intake-cancellation-reason" className="rounded-lg border border-border bg-background px-3 py-2" onChange={(event) => setCancellationReason(event.target.value)} value={cancellationReason} /><Button disabled={pending || !cancellationReason.trim()} type="button" variant="outline" onClick={() => void cancel()}>{t("outcome.intake.cancel")}</Button>{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}</form>;
+	if (snapshot.session.status === "needs_user" && snapshot.clarification) return (
+		<form className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8 sm:px-8" onSubmit={answerQuestion}>
+			<div className="flex flex-col gap-2">
+				<p className="text-xs text-wd-secondary">{t("outcome.intake.question")}</p>
+				<h2 className="wd-display-4 text-wd-primary">{snapshot.clarification.question}</h2>
+				<p className="text-sm leading-body text-wd-secondary">{snapshot.clarification.reason}</p>
+			</div>
+			<div className="flex flex-col gap-1.5">
+				<label className="text-sm text-wd-secondary" htmlFor="clarification-answer">{t("outcome.intake.answer")}</label>
+				<input id="clarification-answer" autoFocus className={INTAKE_FIELD_CLASS} onChange={(event) => setAnswer(event.target.value)} value={answer} />
+				<p className="text-xs text-wd-tertiary">{t("outcome.intake.recommended", { recommendation: snapshot.clarification.recommendation })}</p>
+			</div>
+			<Button className="self-end" disabled={pending || !answer.trim()} type="submit">{t("outcome.intake.continue")}</Button>
+			<div className="flex flex-col gap-1.5 hairline-t border-wd-hairline pt-4">
+				<label className="text-sm text-wd-secondary" htmlFor="intake-cancellation-reason">{t("outcome.intake.cancelReason")}</label>
+				<input id="intake-cancellation-reason" className={INTAKE_FIELD_CLASS} onChange={(event) => setCancellationReason(event.target.value)} value={cancellationReason} />
+				<Button className="self-start" disabled={pending || !cancellationReason.trim()} size="sm" type="button" variant="critical" onClick={() => void cancel()}>{t("outcome.intake.cancel")}</Button>
+			</div>
+			{error ? <p role="alert" className="text-sm text-critical">{error}</p> : null}
+		</form>
+	);
 	if (snapshot.session.status === "ready" && draft) {
 		const problems = proposalProblems(draft);
 		return (
 			<section className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
 				<div className="flex min-w-0 flex-col gap-3">
 					<div>
-						<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("outcome.intake.reviewTitle")}</p>
-						<p className="mt-1 text-sm text-muted-foreground">{t("outcome.intake.reviewBody")}</p>
+						<h1 className="wd-display-3 text-wd-primary">{t("outcome.intake.reviewTitle")}</h1>
+						<p className="mt-2 text-sm text-wd-secondary">{t("outcome.intake.reviewBody")}</p>
 						{/* Whether anything analyzed this. An offline proposal and an
 						    agent-authored one look identical otherwise, while being
 						    worth very different amounts of trust. */}
-						<div className="mt-1.5">
+						<div className="mt-2">
 							<ProposalProvenanceNote {...proposalProvenance(analysisRequest.request)} />
 						</div>
 					</div>
-					<Button className="self-start" variant="outline" disabled={pending} onClick={() => setEditing(value => !value)}>
+					<Button className="self-start" size="sm" variant="secondary" disabled={pending} onClick={() => setEditing(value => !value)}>
 						{t(editing ? "outcome.intake.readDraft" : "outcome.intake.editDraft")}
 					</Button>
 					{editing ? <IntakeContractReview draft={draft} onChange={setDraft} /> : <IntakeProposalSummary draft={draft} />}
 				</div>
-				<aside className="flex flex-col gap-3 rounded-group hairline border-border bg-card px-4.5 py-3.5 lg:sticky lg:top-4 lg:self-start">
+				<aside className="flex flex-col gap-3 rounded-lg hairline border-wd-hairline bg-wd-surface p-4 lg:sticky lg:top-4 lg:self-start">
 					<div>
-						<p className="text-xs font-medium text-foreground">{t("outcome.intake.authorityTitle")}</p>
-						<p className="mt-0.5 text-2xs leading-body text-passive">{t("outcome.intake.authorityBody")}</p>
+						<p className="text-sm font-medium text-wd-primary">{t("outcome.intake.authorityTitle")}</p>
+						<p className="mt-0.5 text-xs leading-body text-wd-secondary">{t("outcome.intake.authorityBody")}</p>
 					</div>
 					{/* The proposal's real ceiling, editable. This was static prose
 					    that merely happened to match what the rule-based analyzer
@@ -395,24 +419,26 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 						value={draft.authorityCeiling}
 					/>
 					{problems.length > 0 ? (
-						<ul className="flex list-disc flex-col gap-1 pl-4 text-2xs leading-body text-warning" data-testid="intake-problems">
+						<ul className="flex list-disc flex-col gap-1 pl-4 text-xs leading-body text-wd-primary marker:text-caution" data-testid="intake-problems">
 							{problems.map((problem) => (
 								<li key={problem}>{t(problem as never)}</li>
 							))}
 						</ul>
 					) : null}
-					<Button data-testid="intake-confirm" disabled={pending || problems.length > 0} onClick={() => void confirm()}>
+					{/* Confirming is this screen's one decision, so it carries Spot.
+					    Its disabled reason is the problem list just above. */}
+					<Button data-testid="intake-confirm" disabled={pending || problems.length > 0} onClick={() => void confirm()} variant="spot">
 						{pending ? t("outcome.intake.confirming") : t("outcome.intake.confirm")}
 					</Button>
-					<details className="border-t border-border pt-3">
-						<summary className="cursor-pointer text-xs text-muted-foreground">{t("outcome.intake.cancel")}</summary>
+					<details className="hairline-t border-wd-hairline pt-3">
+						<summary className="cursor-pointer rounded-sm text-xs text-wd-secondary hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)">{t("outcome.intake.cancel")}</summary>
 						<div className="mt-3 flex flex-col gap-2">
-					<label className="text-xs font-medium text-muted-foreground" htmlFor="intake-cancellation-reason">{t("outcome.intake.cancelReason")}</label>
-					<input id="intake-cancellation-reason" className="rounded-md hairline border-border bg-background px-2.5 py-1.5 text-xs" onChange={(event) => setCancellationReason(event.target.value)} value={cancellationReason} />
-					<Button disabled={pending || !cancellationReason.trim()} variant="outline" onClick={() => void cancel()}>{t("outcome.intake.cancel")}</Button>
+					<label className="text-xs text-wd-secondary" htmlFor="intake-cancellation-reason">{t("outcome.intake.cancelReason")}</label>
+					<input id="intake-cancellation-reason" className={INTAKE_FIELD_CLASS} onChange={(event) => setCancellationReason(event.target.value)} value={cancellationReason} />
+					<Button disabled={pending || !cancellationReason.trim()} size="sm" variant="critical" onClick={() => void cancel()}>{t("outcome.intake.cancel")}</Button>
 						</div>
 					</details>
-					{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+					{error ? <p role="alert" className="text-sm text-critical">{error}</p> : null}
 				</aside>
 			</section>
 		);
@@ -421,8 +447,8 @@ export function AdaptiveIntakeSurface({ projectId, intakeId }: { projectId: stri
 		const outcomeId = snapshot.confirmedOutcome.id;
 		return (
 			<section className="mx-auto flex max-w-2xl flex-col gap-4 p-8">
-				<h2 className="text-xl font-medium">{t("outcome.intake.confirmedTitle")}</h2>
-				<p className="text-sm text-muted-foreground">{t("outcome.intake.confirmedBody")}</p>
+				<h2 className="wd-display-3 text-wd-primary">{t("outcome.intake.confirmedTitle")}</h2>
+				<p className="text-sm text-wd-secondary">{t("outcome.intake.confirmedBody")}</p>
 				<Button className="self-start" onClick={() => void openOutcome(outcomeId)}>
 					{t("outcome.intake.openOutcome")}
 				</Button>
@@ -454,12 +480,12 @@ function IntakeProjectSwitcher({
 			<DropdownMenuTrigger asChild>
 				<button
 					aria-label={t("outcome.intake.switchProject")}
-					className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+					className="inline-flex items-center gap-1.5 rounded-full bg-wd-inset px-3.5 py-0.5 text-wd-primary transition-colors duration-fast hover:bg-wd-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none"
 					data-testid="intake-project-switcher"
 					type="button"
 				>
 					{children}
-					<ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+					<ChevronDown aria-hidden="true" className="size-5 shrink-0 text-wd-secondary" />
 				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start">
@@ -480,6 +506,11 @@ function IntakeProjectSwitcher({
 	);
 }
 
-function TruthMessage({ title, body }: { title: string; body: string }) { return <div className="mx-auto flex h-full max-w-xl flex-col justify-center gap-2 px-4 sm:px-8"><h2 className="text-lg font-medium">{title}</h2><p className="text-sm text-muted-foreground">{body}</p></div>; }
+function TruthMessage({ title, body }: { title: string; body: string }) { return <div className="mx-auto flex h-full max-w-xl flex-col justify-center gap-2 px-4 sm:px-8"><h2 className="wd-display-4 text-wd-primary">{title}</h2><p className="text-sm leading-body text-wd-secondary">{body}</p></div>; }
+
+/** TextField contract: inset fill, radius-md, 48px, no heavy border, the
+ *  system focus ring. */
+const INTAKE_FIELD_CLASS =
+	"min-h-12 rounded-md border border-transparent bg-wd-inset px-3 py-2 text-sm text-wd-primary outline-none placeholder:text-wd-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)";
 function proposalInput(snapshot: IntakeSnapshot): ProposalInput { const proposal = snapshot.proposal as NonNullable<IntakeSnapshot["proposal"]>; return { title: proposal.title, desiredState: proposal.desiredState, criteria: proposal.criteria.map((criterion) => ({ id: criterion.id, text: criterion.text, evidenceExpected: criterion.evidenceExpected })), reviewMethod: proposal.reviewMethod, constraints: proposal.constraints, nonGoals: proposal.nonGoals, authorityCeiling: proposal.authorityCeiling, stopConditions: proposal.stopConditions, clarificationNotes: proposal.clarificationNotes, temporalCondition: proposal.temporalCondition, facets: proposal.facets }; }
 function requestKey(prefix: string) { return `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`; }

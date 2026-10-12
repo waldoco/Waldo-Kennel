@@ -59,33 +59,33 @@ export function OrchestratorReplacementDialog({
 							<X className="size-5" aria-hidden="true" />
 						</button>
 					</Dialog.Close>
-					<div className={settingsDialogHeaderClass}>
+					<div className={`${settingsDialogHeaderClass} border-b-0 pb-2 pr-14`}>
 						<div className="flex items-start gap-3">
-							<div className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-muted text-warning">
+							<div className="grid size-8 shrink-0 place-items-center rounded-sm bg-caution-bg text-caution">
 								<AlertTriangle className="size-icon-base" aria-hidden="true" />
 							</div>
 							<div className="min-w-0 flex-1">
 								<Dialog.Title className="settings-dialog-title">{t("orchestratorReplacement.title")}</Dialog.Title>
-								<Dialog.Description className="mt-1 text-control leading-5 text-settings-muted">
+								<Dialog.Description className="wd-body-s mt-1 text-wd-secondary">
 									{error?.message ?? t("orchestratorReplacement.fallback")}
 								</Dialog.Description>
 							</div>
 						</div>
 					</div>
-					<div className={settingsDialogFooterClass}>
+					<div className={`${settingsDialogFooterClass} border-t-0 pt-4`}>
 						{error && isChatPreflightCode(error.code) ? (
-							<Button type="button" variant="footer" onClick={() => projectId && onRetryAsTui(projectId)}>
+							<Button type="button" variant="ghost" onClick={() => projectId && onRetryAsTui(projectId)}>
 								{t("newTask.createAsTui")}
 							</Button>
 						) : null}
 						{orchestrator ? (
-							<Button type="button" variant="footer" onClick={openCurrent}>
+							<Button type="button" variant="ghost" onClick={openCurrent}>
 								{t("orchestratorReplacement.openCurrent")}
 							</Button>
 						) : null}
 						<Button
 							type="button"
-							variant="footer-primary"
+							variant="primary"
 							onClick={() => projectId && onRetry(projectId)}
 						>
 							<RotateCw className="size-3.5" aria-hidden="true" />

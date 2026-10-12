@@ -234,8 +234,8 @@ describe("BrowserPanel", () => {
 		try {
 			render(<BrowserPanel active onTogglePopOut={() => undefined} poppedOut={false} session={session} />);
 
-			const preview = screen.getByText("Demo app preview").closest(".bg-preview, .bg-background");
-			expect(preview).toHaveClass("bg-background", "text-foreground");
+			const preview = screen.getByText("Demo app preview").closest(".bg-preview, .bg-wd-canvas");
+			expect(preview).toHaveClass("bg-wd-canvas", "text-wd-primary");
 		} finally {
 			Object.defineProperty(window, "kennel", { configurable: true, value: kennel });
 		}
@@ -324,12 +324,7 @@ describe("BrowserPanel", () => {
 		expect(screen.getAllByRole("button")).toHaveLength(toolbarButtonCount);
 		const closeButton = screen.getByRole("button", { name: "Close DevTools" });
 		expect(closeButton).toHaveAttribute("aria-pressed", "true");
-		expect(closeButton).toHaveClass(
-			"bg-accent-strong",
-			"text-accent-foreground",
-			"hover:bg-accent-strong",
-			"dark:hover:bg-accent-strong",
-		);
+		expect(closeButton).toHaveClass("bg-wd-selected", "text-wd-primary", "hover:bg-wd-selected");
 		await userEvent.click(closeButton);
 		expect(hookState.closeDevTools).toHaveBeenCalledOnce();
 	});

@@ -51,10 +51,10 @@ export function KeyboardShortcutsDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-h-[min(680px,calc(100svh-32px))] max-w-xl gap-0 overflow-hidden border-[var(--color-border-settings-dialog)] bg-popover p-0 text-popover-foreground shadow-[var(--shadow-settings-dialog)] sm:rounded-(--radius-settings-dialog-lg)">
-				<DialogHeader className="border-b border-[var(--color-border-settings-dialog-header)] p-(--size-modal-padding)">
-					<DialogTitle className="settings-dialog-title">{t("shortcut.dialogTitle")}</DialogTitle>
-					<DialogDescription className="text-xs text-settings-muted">
+			<DialogContent className="max-h-[min(680px,calc(100svh-32px))] max-w-xl gap-0 overflow-hidden p-0">
+				<DialogHeader className="px-(--size-modal-padding) pt-(--size-modal-padding) pb-2 pr-14">
+					<DialogTitle>{t("shortcut.dialogTitle")}</DialogTitle>
+					<DialogDescription>
 						{t("shortcut.dialogDescription")}
 					</DialogDescription>
 				</DialogHeader>
@@ -64,14 +64,14 @@ export function KeyboardShortcutsDialog({
 						const shortcuts = availableShortcuts.filter((shortcut) => shortcut.category === category);
 						if (shortcuts.length === 0) return null;
 						return (
-							<section className="border-b border-border py-4 last:border-b-0" key={shortcutCategoryLabel(category, t)}>
-								<h2 className="mb-2 font-mono text-micro font-semibold uppercase tracking-wide-lg text-passive">
+							<section className="border-b border-wd-hairline [border-bottom-width:var(--stroke-hairline)] py-4 last:border-b-0" key={shortcutCategoryLabel(category, t)}>
+								<h2 className="wd-label mb-2 text-wd-tertiary">
 									{shortcutCategoryLabel(category, t)}
 								</h2>
 								<div className="flex flex-col">
 									{shortcuts.map((shortcut) => (
 										<div className="flex min-h-11 items-center justify-between gap-5 py-1.5" key={shortcut.id}>
-											<p className="min-w-0 text-control font-medium text-foreground">{shortcutLabel(shortcut.id, t)}</p>
+											<p className="min-w-0 text-sm text-wd-primary">{shortcutLabel(shortcut.id, t)}</p>
 											<div className="flex shrink-0 flex-col items-end gap-1">
 												{effectiveShortcutBindings(shortcut.id, isMac, overrides).map((binding, bindingIndex) => {
 													const keys = shortcutBindingKeys(binding, isMac);
@@ -83,7 +83,7 @@ export function KeyboardShortcutsDialog({
 														>
 															{keys.map((key) => (
 																<kbd
-																	className="inline-flex min-w-7 items-center justify-center rounded-sm border border-border-strong bg-surface px-1.5 py-1 font-mono text-caption font-medium text-muted-foreground shadow-sm"
+																	className="inline-flex min-w-7 items-center justify-center rounded-xs bg-wd-inset px-1.5 py-1 text-xs font-medium tabular-nums text-wd-secondary"
 																	key={key}
 																>
 																	{key}
@@ -101,8 +101,8 @@ export function KeyboardShortcutsDialog({
 					})}
 				</div>
 				{onCustomize ? (
-					<div className="flex justify-end border-t border-[var(--color-border-settings-dialog-header)] p-(--size-modal-padding)">
-						<Button type="button" variant="footer-primary" onClick={onCustomize}>
+					<div className="flex justify-end p-(--size-modal-padding) pt-4">
+						<Button type="button" variant="secondary" onClick={onCustomize}>
 							{t("shortcut.customize")}
 						</Button>
 					</div>

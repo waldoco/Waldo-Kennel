@@ -44,7 +44,7 @@ export function AgentAvatar({
 		<span
 			{...fallbackAccessibility}
 			className={cn(
-				"inline-flex size-icon-xl shrink-0 items-center justify-center text-caption font-bold uppercase leading-none text-muted-foreground",
+				"inline-flex size-icon-xl shrink-0 items-center justify-center rounded-full bg-wd-inset text-micro font-medium leading-none text-wd-secondary",
 				className,
 			)}
 		>

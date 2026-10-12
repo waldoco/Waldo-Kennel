@@ -71,7 +71,7 @@ describe("MobileDevicesSection", () => {
 		fireEvent.click(await screen.findByRole("button", { name: /remove iPhone/i }));
 		expect(del).not.toHaveBeenCalled();
 
-		fireEvent.click(screen.getByRole("button", { name: /confirm remove/i }));
+		fireEvent.click(screen.getByRole("button", { name: /remove phone/i }));
 		await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
 	});
 
@@ -149,7 +149,7 @@ describe("MobileDevicesSection", () => {
 		renderSection();
 
 		fireEvent.click(await screen.findByRole("button", { name: /remove iPhone/i }));
-		fireEvent.click(screen.getByRole("button", { name: /confirm remove/i }));
+		fireEvent.click(screen.getByRole("button", { name: /remove phone/i }));
 
 		expect(await screen.findByText(/Device not found/i)).toBeInTheDocument();
 	});
@@ -198,7 +198,7 @@ describe("MobileDevicesSection", () => {
 
 		// Still removable.
 		fireEvent.click(screen.getByRole("button", { name: /remove Pixel Announce/i }));
-		fireEvent.click(screen.getByRole("button", { name: /confirm remove/i }));
+		fireEvent.click(screen.getByRole("button", { name: /remove phone/i }));
 		await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
 	});
 

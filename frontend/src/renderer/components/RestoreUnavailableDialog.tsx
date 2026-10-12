@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { Loader2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
@@ -68,30 +68,31 @@ export function RestoreUnavailableDialog({ open, session, onOpenChange, onRecrea
 					>
 						<X className="size-5" aria-hidden="true" />
 					</button>
-					<div className={settingsDialogHeaderClass}>
+					<div className={`${settingsDialogHeaderClass} border-b-0 pb-2 pr-14`}>
 						<Dialog.Title className="settings-dialog-title">{t("restoreUnavailable.title")}</Dialog.Title>
-						<Dialog.Description className="text-control text-settings-muted">
+						<Dialog.Description className="wd-body-s text-wd-secondary">
 							{orchestrator ? t("restoreUnavailable.orchestratorBody") : t("restoreUnavailable.sessionBody")}
 						</Dialog.Description>
 					</div>
 					{error ? (
-						<div className={settingsDialogBodyClass}>
-							<p className="text-xs text-destructive">{error}</p>
+						<div className={`${settingsDialogBodyClass} py-2`}>
+							<p role="alert" className="wd-body-s text-critical">{error}</p>
 						</div>
 					) : null}
-					<div className={settingsDialogFooterClass}>
-						<Button type="button" variant="footer" onClick={() => onOpenChange(false)} disabled={busy}>
+					<div className={`${settingsDialogFooterClass} border-t-0 pt-4`}>
+						<Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
 							{orchestrator ? t("confirm.cancel") : t("restoreUnavailable.close")}
 						</Button>
 						{orchestrator ? (
 							<Button
 								type="button"
-								variant="footer-primary"
+								variant="primary"
 								onClick={recreate}
 								disabled={busy || checkingProject}
 							>
-								{busy ? <Loader2 className="size-icon-base animate-spin" aria-hidden="true" /> : null}
-								{checkingProject
+																{busy
+									? t("restoreUnavailable.creating")
+									: checkingProject
 									? t("restoreUnavailable.checkingProject")
 									: hasOrchestratorAgent
 										? t("restoreUnavailable.createOrchestrator")

@@ -4,9 +4,9 @@ import { cn } from "../../lib/utils";
 import { AgentAvatar } from "../AgentAvatar";
 
 const STATUS_TONE_CLASS: Record<AgentStatusTone, string> = {
-	success: "text-success",
-	warning: "text-warning",
-	muted: "text-settings-muted",
+	success: "text-good",
+	warning: "text-caution",
+	muted: "text-wd-secondary",
 };
 
 export function AgentSelectMenuItem({
@@ -25,7 +25,7 @@ export function AgentSelectMenuItem({
 	disabled?: boolean;
 }) {
 	return (
-		<span className={cn("flex min-w-0 w-full items-center gap-3", disabled && "opacity-45")}>
+		<span className={cn("flex min-w-0 w-full items-center gap-3", disabled && "text-wd-disabled")}>
 			{agentId ? (
 				<AgentAvatar provider={agentId} className="size-icon-lg" decorative />
 			) : (
@@ -35,7 +35,7 @@ export function AgentSelectMenuItem({
 			{status ? (
 				<span className={cn("shrink-0 text-caption", STATUS_TONE_CLASS[statusTone ?? "muted"])}>{status}</span>
 			) : null}
-			{selected ? <Check className="size-3 shrink-0 text-settings-label" aria-hidden="true" /> : null}
+			{selected ? <Check className="size-3 shrink-0 text-wd-primary" aria-hidden="true" /> : null}
 		</span>
 	);
 }

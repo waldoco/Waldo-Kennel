@@ -217,7 +217,7 @@ export function ShellTopbar({
 					<div className="flex min-w-0 items-center gap-2.5" data-testid="session-topbar-identity">
 						{isOrchestrator ? (
 							<span className={cn(topbarProjectLabelClass, "inline-flex min-w-0 items-center gap-1.5")}>
-								<Folder aria-hidden="true" className="size-icon-md shrink-0 text-muted-foreground" />
+								<Folder aria-hidden="true" className="size-icon-md shrink-0 text-wd-secondary" />
 								<span className="max-w-content-max truncate">{projectLabel}</span>
 							</span>
 						) : (
@@ -259,7 +259,7 @@ export function ShellTopbar({
 							</TopbarButton>
 						) : null}
 						{tmuxInstallMessage ? (
-							<span className="max-w-content-max truncate text-xs text-muted-foreground" role="status">
+							<span className="max-w-content-max truncate text-xs text-wd-secondary" role="status">
 								{tmuxInstallMessage}
 							</span>
 						) : null}
@@ -482,7 +482,7 @@ function ProjectTerminationFeedback({ projectId }: { projectId: string | undefin
 					</TopbarKillError>
 				) : (
 					<span
-						className="max-w-40 truncate text-caption text-muted-foreground"
+						className="max-w-40 truncate text-caption text-wd-secondary"
 						key={state.session.id}
 						role="status"
 						title={t("shell.killingNamed", { title: state.session.title })}
@@ -505,12 +505,12 @@ function SessionStatusPill({ session }: { session: WorkspaceSession }) {
 				tone={visual.tone}
 				breathe={visual.breathe}
 				leading="none"
-				className="px-2 py-1 text-micro"
+				className="px-2 py-1"
 			/>
 		);
 	}
 	const { label, tone, breathe } = getAgentActivityView(session.activity, t);
 	return (
-		<StatusPill label={label} tone={tone} breathe={breathe} leading="none" className="px-2 py-1 text-micro" />
+		<StatusPill label={label} tone={tone} breathe={breathe} leading="none" className="px-2 py-1" />
 	);
 }

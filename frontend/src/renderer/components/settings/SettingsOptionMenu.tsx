@@ -84,7 +84,7 @@ export function SettingsOptionMenu<T extends string>({
 				<button
 					type="button"
 					className={cn(
-						"group/settings-option-trigger settings-option-trigger max-w-full min-w-0 bg-[var(--color-bg-settings-trigger)] text-[var(--color-text-settings-trigger)] transition-colors hover:bg-[var(--color-bg-settings-trigger-hover)] hover:text-[var(--color-text-settings-trigger)] data-[state=open]:bg-[var(--color-bg-settings-trigger-hover)] focus:outline-none focus-visible:outline-none focus-visible:ring-0 data-[state=open]:outline-none data-[state=open]:ring-0 disabled:cursor-not-allowed disabled:opacity-50",
+						"group/settings-option-trigger settings-option-trigger max-w-full min-w-0 disabled:cursor-not-allowed disabled:text-wd-disabled",
 						triggerClassName,
 					)}
 					aria-label={ariaLabel}
@@ -98,7 +98,7 @@ export function SettingsOptionMenu<T extends string>({
 						</>
 					)}
 				<ChevronDown
-					className="size-icon-sm shrink-0 transition-transform duration-normal ease-out group-data-[state=open]/settings-option-trigger:rotate-180"
+					className="size-icon-sm shrink-0 text-wd-tertiary transition-transform duration-fast ease-out group-data-[state=open]/settings-option-trigger:rotate-180"
 					aria-hidden="true"
 				/>
 				</button>
@@ -111,7 +111,7 @@ export function SettingsOptionMenu<T extends string>({
 				alignOffset={0}
 				onCloseAutoFocus={onCloseAutoFocus}
 				className={cn(
-					"settings-menu-surface min-w-[length:var(--size-settings-menu-min-width)] overflow-hidden! rounded-(--radius-settings-panel) border-settings-menu bg-settings-menu",
+					"settings-menu-surface min-w-[length:var(--size-settings-menu-min-width)] overflow-hidden! rounded-md border-wd-hairline bg-wd-raised",
 					menuClassName,
 				)}
 			>
@@ -123,7 +123,7 @@ export function SettingsOptionMenu<T extends string>({
 							value={search}
 							onChange={(event) => setSearch(event.target.value)}
 							placeholder={searchPlaceholder ?? t("settings.options.searchPlaceholder")}
-							className="settings-inline-input w-full"
+							className="menu-search-input"
 						/>
 					</div>
 				)}
@@ -140,9 +140,9 @@ export function SettingsOptionMenu<T extends string>({
 								onSelect={() => onChange(option.value)}
 								className={cn(
 									"settings-menu-item min-w-0 cursor-default outline-none",
-									"focus:bg-settings-menu-selected focus:text-settings-title",
-									"data-highlighted:bg-settings-menu-selected data-highlighted:text-settings-title",
-									option.value === value && "border-settings-menu bg-settings-menu-selected text-settings-title",
+									"focus:bg-wd-hover focus:text-wd-primary",
+									"data-highlighted:bg-wd-hover data-highlighted:text-wd-primary",
+									option.value === value && "bg-wd-selected text-wd-primary",
 									menuItemClassName,
 								)}
 							>
@@ -157,7 +157,7 @@ export function SettingsOptionMenu<T extends string>({
 							</DropdownMenuItem>
 						))}
 						{visibleOptions.length === 0 && (
-							<p className="px-2 py-1.5 text-xs text-settings-muted">{t("settings.options.noMatches")}</p>
+							<p className="wd-body-s px-3 py-2 text-wd-secondary">{t("settings.options.noMatches")}</p>
 						)}
 					</div>
 					<div

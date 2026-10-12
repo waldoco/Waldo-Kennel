@@ -56,20 +56,21 @@ function quotaSeverity(percent: number): Severity {
 }
 
 /**
- * Normal usage is informational rather than session activity, so it uses Kennel's
- * logo blue. Warning and critical retain the established status colours: amber
- * means "a human should look", and red means the next turn is at risk.
+ * Normal usage is informational rather than a state, so it stays on the neutral
+ * coat. Warning and critical take Waldo's state colours, and always travel with
+ * the percentage: caution means "a human should look", critical means the next
+ * turn is at risk.
  */
 const FILL: Record<Severity, string> = {
-	normal: "bg-logo-accent",
-	warn: "bg-status-needs-you",
-	critical: "bg-status-exited",
+	normal: "bg-wd-secondary",
+	warn: "bg-caution",
+	critical: "bg-critical",
 };
 
 const TEXT: Record<Severity, string> = {
-	normal: "text-muted-foreground",
-	warn: "text-status-needs-you",
-	critical: "text-status-exited",
+	normal: "text-wd-secondary",
+	warn: "text-caution",
+	critical: "text-critical",
 };
 
 /** Compact token counts. 18055 reads as 18.1k; the exact figure is in the tooltip. */
@@ -167,7 +168,7 @@ function ContextReadout({ usage }: { usage: ConversationUsage }) {
 		return (
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<span className="tabular-nums text-[11px] text-muted-foreground">
+					<span className="wd-data-s text-wd-secondary">
 						{formatTokens(contextUsed || usage.totalTokens)} tokens
 					</span>
 				</TooltipTrigger>
@@ -200,7 +201,7 @@ function ContextReadout({ usage }: { usage: ConversationUsage }) {
 					aria-valuenow={percent}
 					aria-label="Context window used"
 				>
-					<div className="h-1.5 w-16 overflow-hidden rounded-full bg-border">
+					<div className="h-1.5 w-16 overflow-hidden rounded-full bg-wd-inset">
 						{/*
 						 * The fill is a full-width bar scaled down, not a bar whose width
 						 * is animated: scaleX composites, width relayouts the row on every
@@ -214,7 +215,7 @@ function ContextReadout({ usage }: { usage: ConversationUsage }) {
 							style={{ transform: `scaleX(${Math.max(fraction, 0.02)})` }}
 						/>
 					</div>
-					<span className={cn("tabular-nums text-[11px]", TEXT[severity])}>{percent}%</span>
+					<span className={cn("wd-data-s", TEXT[severity])}>{percent}%</span>
 				</div>
 			</TooltipTrigger>
 			<TooltipContent>
@@ -230,12 +231,12 @@ function ContextReadout({ usage }: { usage: ConversationUsage }) {
 					</p>
 				) : null}
 				{usage.totalTokens > 0 ? (
-					<p className="mt-1 tabular-nums text-muted-foreground">
+					<p className="mt-1 wd-data-s text-wd-secondary">
 						{usage.totalTokens.toLocaleString()} tokens spent in total
 					</p>
 				) : null}
 				{usage.cost != null ? (
-					<p className="mt-1 tabular-nums text-muted-foreground">
+					<p className="mt-1 wd-data-s text-wd-secondary">
 						Provider-reported cost: {formatCost(usage.cost, usage.currency)}
 					</p>
 				) : null}
@@ -260,10 +261,10 @@ function QuotaWarning({
 			<TooltipTrigger asChild>
 				<span
 					className={cn(
-						"flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] tabular-nums",
+						"wd-data-s flex items-center gap-1 rounded-xs px-1.5 py-0.5",
 						severity === "critical"
-							? "border-status-exited/40 text-status-exited"
-							: "border-status-needs-you/40 text-status-needs-you",
+							? "bg-critical-bg text-critical"
+							: "bg-caution-bg text-caution",
 					)}
 				>
 					<AlertTriangle aria-hidden="true" className="size-3" />

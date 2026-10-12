@@ -6,7 +6,7 @@ import { useUiStore } from "../../stores/ui-store";
 import { SettingsOptionMenu, type SettingsOption } from "./SettingsOptionMenu";
 import { SettingsRow } from "./SettingsRow";
 import { SettingsSection } from "./SettingsSection";
-import { cn } from "../../lib/utils";
+import { Code, Languages, Palette, SquareTerminal, SunMoon } from "lucide-react";
 import { Switch } from "../ui/switch";
 import { useSettings, useUpdateSessionInterface } from "../../hooks/useSettings";
 import type { SessionMode } from "../../types/workspace";
@@ -39,11 +39,24 @@ function SessionInterfaceRow() {
 		? t("settings.sessionInterface.unavailable")
 		: t("settings.sessionInterface.available", { harnesses: settings?.chatHarnesses.join(", ") });
 
-	const note = saveError ?? error ?? help;
+	const failure = saveError ?? error;
 
+	// Stated rather than implied: this changes what NEW sessions get. An
+	// existing session's interface is fixed when it is created, so nothing
+	// here can move a session that already exists.
 	return (
-		<div className="flex w-full flex-col">
-			<SettingsRow className="rounded-none" label={t("settings.sessionInterface.label")}>
+		<SettingsSection
+			title={t("settings.sessionInterface.group")}
+			grouped
+			footer={
+				failure ? (
+					<span className="text-critical">{failure}</span>
+				) : (
+					help
+				)
+			}
+		>
+			<SettingsRow icon={SquareTerminal} label={t("settings.sessionInterface.label")}>
 				<SettingsOptionMenu
 					aria-label={t("settings.sessionInterface.label")}
 					value={settings?.defaultSessionMode ?? "tui"}
@@ -52,18 +65,7 @@ function SessionInterfaceRow() {
 					disabled={isLoading || saving || !chatAvailable}
 				/>
 			</SettingsRow>
-			{/* Stated rather than implied: this changes what NEW sessions get. An
-			    existing session's interface is fixed when it is created, so nothing
-			    here can move a session that already exists. */}
-			<p
-				className={cn(
-					"px-3 pt-0 pb-4 text-xs leading-relaxed",
-					saveError || error ? "text-destructive" : "text-muted-foreground",
-				)}
-			>
-				{note}
-			</p>
-		</div>
+		</SettingsSection>
 	);
 }
 
@@ -117,47 +119,56 @@ export function GeneralSettingsSection({
 	] satisfies SettingsOption<AppLocale>[];
 
 	return (
-		<SettingsSection title={t("settings.general")} titleHidden={titleHidden} grouped>
-			<SettingsRow label={t("settings.colorTheme")}>
-				<SettingsOptionMenu
-					aria-label={t("settings.colorTheme")}
-					value={themeStyle}
-					options={COLOR_THEME_OPTIONS}
-					onChange={setThemeStyle}
-				/>
-			</SettingsRow>
-			<SettingsRow label={t("settings.theme")}>
-				<SettingsOptionMenu
-					aria-label={t("settings.theme")}
-					value={themePreference}
-					options={themeOptions}
-					onChange={setThemePreference}
-				/>
-			</SettingsRow>
-			<SettingsRow label={t("settings.language")}>
-				<SettingsOptionMenu
-					aria-label={t("settings.language")}
-					disabled={localeSaving}
-					value={locale}
-					options={languageOptions}
-					onChange={(next) => {
-						void setLocale(next);
-					}}
-				/>
-			</SettingsRow>
-			{localeSaveError ? (
-				<p role="alert" className="px-3 text-caption leading-4 text-error">
-					{t("settings.language.saveFailed")}
-				</p>
-			) : null}
+		<div className="flex w-full flex-col gap-(--size-settings-section-gap)">
+			<SettingsSection title={t("settings.general")} titleHidden={titleHidden} grouped>
+				<SettingsRow icon={Palette} label={t("settings.colorTheme")}>
+					<SettingsOptionMenu
+						aria-label={t("settings.colorTheme")}
+						value={themeStyle}
+						options={COLOR_THEME_OPTIONS}
+						onChange={setThemeStyle}
+					/>
+				</SettingsRow>
+				<SettingsRow icon={SunMoon} label={t("settings.theme")}>
+					<SettingsOptionMenu
+						aria-label={t("settings.theme")}
+						value={themePreference}
+						options={themeOptions}
+						onChange={setThemePreference}
+					/>
+				</SettingsRow>
+				<SettingsRow
+					icon={Languages}
+					label={t("settings.language")}
+					detail={
+						localeSaveError ? (
+							<span role="alert" className="text-critical">
+								{t("settings.language.saveFailed")}
+							</span>
+						) : undefined
+					}
+				>
+					<SettingsOptionMenu
+						aria-label={t("settings.language")}
+						disabled={localeSaving}
+						value={locale}
+						options={languageOptions}
+						onChange={(next) => {
+							void setLocale(next);
+						}}
+					/>
+				</SettingsRow>
+			</SettingsSection>
 			<SessionInterfaceRow />
-			<SettingsRow label={t("settings.developerMode")}>
-				<Switch
-					aria-label={t("settings.developerMode")}
-					checked={developerMode}
-					onCheckedChange={setDeveloperMode}
-				/>
-			</SettingsRow>
-		</SettingsSection>
+			<SettingsSection title={t("settings.developer")} grouped footer={t("settings.developerMode.footer")}>
+				<SettingsRow icon={Code} label={t("settings.developerMode")}>
+					<Switch
+						aria-label={t("settings.developerMode")}
+						checked={developerMode}
+						onCheckedChange={setDeveloperMode}
+					/>
+				</SettingsRow>
+			</SettingsSection>
+		</div>
 	);
 }

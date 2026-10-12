@@ -82,15 +82,15 @@ export function ShellTerminalsView() {
 	}, [active]);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col text-foreground">
-			<div className="flex h-inspector-tabs shrink-0 items-center gap-3 border-b border-border px-5">
-				<span className="shrink-0 font-mono text-caption font-semibold uppercase tracking-wide-lg text-muted-foreground">
+		<div className="flex h-full min-h-0 flex-col text-wd-primary">
+			<div className="flex h-inspector-tabs shrink-0 items-center gap-3 hairline-b border-wd-hairline px-5">
+				<span className="wd-label shrink-0 text-wd-primary">
 					{t("workbench.terminals")}
 				</span>
 				<button
 					aria-label={t("terminal.scrollTabsLeft")}
 					className={cn(
-						"inline-flex size-control-sm shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50 disabled:pointer-events-none disabled:opacity-0",
+						"inline-flex size-control-sm shrink-0 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary disabled:pointer-events-none disabled:opacity-0",
 						!tabsOverflow.canScrollLeft && "invisible",
 					)}
 					disabled={!tabsOverflow.canScrollLeft}
@@ -105,7 +105,7 @@ export function ShellTerminalsView() {
 				<div
 					ref={tabsOverflow.ref}
 					aria-label={t("terminal.tabsAria")}
-					className="scrollbar-none flex min-w-flex-min flex-1 items-center gap-3 overflow-x-auto"
+					className="scrollbar-none flex min-w-flex-min flex-1 items-center gap-1 overflow-x-auto"
 					onKeyDown={handleTerminalTabListKeyDown}
 					role="tablist"
 				>
@@ -126,7 +126,7 @@ export function ShellTerminalsView() {
 				<button
 					aria-label={t("terminal.scrollTabsRight")}
 					className={cn(
-						"inline-flex size-control-sm shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50 disabled:pointer-events-none disabled:opacity-0",
+						"inline-flex size-control-sm shrink-0 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary disabled:pointer-events-none disabled:opacity-0",
 						!tabsOverflow.canScrollRight && "invisible",
 					)}
 					disabled={!tabsOverflow.canScrollRight}
@@ -138,7 +138,7 @@ export function ShellTerminalsView() {
 				</button>
 				<button
 					aria-label={t("shortcut.new-shell-terminal")}
-					className="ml-auto inline-flex size-control-sm shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50"
+					className="ml-auto inline-flex size-control-sm shrink-0 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 					onClick={requestNewShellTerminal}
 					title={t("terminal.newWithShortcut", { shortcut: newTerminalShortcutLabel })}
 					type="button"
@@ -161,12 +161,12 @@ export function ShellTerminalsView() {
 						theme={theme}
 					/>
 				) : (
-					<div className="grid h-full place-items-center bg-terminal font-mono text-control">
-						<div className="text-center">
-							<div className="text-terminal">{t("terminal.emptyTitle")}</div>
-							<div className="mt-2 text-terminal-dim">
+					<div className="grid h-full place-items-center bg-terminal-opaque">
+						<div className="flex flex-col items-center gap-1 text-center">
+							<div className="wd-label text-wd-primary">{t("terminal.emptyTitle")}</div>
+							<div className="wd-body-s text-wd-secondary">
 								<Trans
-									components={{ shortcut: <span className="text-terminal" /> }}
+									components={{ shortcut: <kbd className="wd-data text-wd-primary" /> }}
 									i18nKey="terminal.emptyHint"
 									values={{ shortcut: newTerminalShortcutLabel }}
 								/>

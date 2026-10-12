@@ -7,6 +7,8 @@ import {
 	SessionCardView,
 	SessionRowView,
 	SessionUsageMetricView,
+	StateLabel,
+	type StateTone,
 	type BoardPullRequestLabels,
 	type BoardSessionPresentation,
 	type BoardSplitLaneLabels,
@@ -32,7 +34,8 @@ import {
 	useTerminateSessionState,
 } from "../hooks/useTerminateSession";
 import { cn } from "../lib/utils";
-import { attentionZone, type AttentionZone } from "../lib/session-presentation";
+import { attentionZone, getAttentionZoneViewForZone, type AttentionZone } from "../lib/session-presentation";
+import { Button } from "./ui/button";
 import { ProductExternalLink } from "./ProductExternalLink";
 import { SessionTerminationPopover } from "./SessionTerminationPopover";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -57,7 +60,8 @@ export function toBoardSessionPresentation(
 			t && switchPresentation && switchVisual
 				? {
 						className: switchVisual.className,
-						indicatorClassName: `${switchVisual.indicatorClassName}${switchVisual.breathe ? " animate-status-pulse" : ""}`,
+						// Waldo states never pulse: an in-flight switch is a still dot and its words.
+						indicatorClassName: switchVisual.indicatorClassName,
 						label: t(switchPresentation.compactLabelKey, switchPresentation.values),
 					}
 				: undefined,
@@ -208,7 +212,7 @@ export function BoardSessionRowAdapter({
 			    while scanning the list, which read as a rapid full-screen flicker. */}
 			{pinnedOpen && typeof document !== "undefined"
 				? createPortal(
-						<div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[49] bg-black/55" data-testid="waldo-brief-backdrop" />,
+						<div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[49] bg-(--bg-scrim)" data-testid="waldo-brief-backdrop" />,
 						document.body,
 					)
 				: null}
@@ -261,7 +265,7 @@ export function BoardSessionRowAdapter({
 			<PopoverContent
 				align="center"
 				aria-label={t("shell.waldoBrief.aria", { title: session.title })}
-				className="z-[60] w-[34rem] max-w-[calc(100vw-2rem)] p-4 shadow-2xl"
+				className="z-[60] w-[34rem] max-w-[calc(100vw-2rem)] rounded-lg p-4 shadow-lg"
 				collisionPadding={16}
 				onOpenAutoFocus={(event) => event.preventDefault()}
 				onFocusCapture={previewBrief}
@@ -300,12 +304,12 @@ function WaldoBrief({
 	zone: AttentionZone;
 }) {
 	const { t } = useTranslation();
-	const toneClassName: Record<AttentionZone, string> = {
-		action: "text-status-needs-you",
-		pending: "text-status-in-review",
-		merge: "text-status-ready",
-		working: "text-status-working",
-		done: "text-status-terminated-foreground",
+	const zoneTone: Record<AttentionZone, StateTone> = {
+		action: "needsYou",
+		pending: "caution",
+		merge: "good",
+		working: "live",
+		done: "neutral",
 	};
 	const fallbackSummaryKey: Record<AttentionZone, MessageKey> = {
 		action: "shell.waldoBrief.actionSummary",
@@ -322,43 +326,32 @@ function WaldoBrief({
 		done: "shell.waldoBrief.doneRecommendation",
 	};
 
+	// NeedsYouCard shape: the subject, what is true now, the recommendation on
+	// an inset, then the actions - the quiet way out leading, the effect trailing.
 	return (
 		<div className="flex flex-col gap-3">
-			<div>
-				<h3 className={cn("text-base font-semibold leading-snug", toneClassName[zone])}>{session.title}</h3>
-				<p className="mt-1 text-2xs font-medium uppercase tracking-wide text-passive">
-					{t(summary ? "shell.waldoBrief.review" : "shell.waldoBrief.status")}
-				</p>
-				{summary ? null : <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("shell.waldoBrief.noSummary")}</p>}
-				<p className={cn("text-sm leading-5 text-muted-foreground", summary && "mt-1")}>
-					{summary ?? t(fallbackSummaryKey[zone])}
-				</p>
-			</div>
-			<div className="rounded-md border border-border bg-background/45 px-3 py-2.5">
-				<p className="text-2xs font-medium uppercase tracking-wide text-passive">{t("shell.waldoBrief.recommendation")}</p>
-				<p className="mt-1 text-sm leading-5 text-foreground">{t(recommendationKey[zone])}</p>
-			</div>
 			<div className="flex flex-col gap-1">
-				<button
-					aria-label={t("shell.waldoBrief.openSession")}
-					className="group flex min-h-9 w-full items-center gap-2 rounded-md border border-border-strong bg-background px-2.5 text-left text-sm text-foreground transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-					onClick={onOpenSession}
-					type="button"
-				>
-					<span className="inline-flex size-5 items-center justify-center rounded border border-border-strong text-2xs">1</span>
-					<span>{t("shell.waldoBrief.openSession")}</span>
-					<span className="rounded-full bg-muted px-2 py-0.5 text-2xs text-muted-foreground">{t("shell.waldoBrief.recommended")}</span>
-					<ArrowRight aria-hidden="true" className="ml-auto size-4 transition-transform group-hover:translate-x-0.5" />
-				</button>
-				<button
-					aria-label={t("shell.waldoBrief.holdOff")}
-					className="flex min-h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-					onClick={onDismiss}
-					type="button"
-				>
-					<span className="inline-flex size-5 items-center justify-center rounded border border-border text-2xs">2</span>
-					<span>{t("shell.waldoBrief.holdOff")}</span>
-				</button>
+				<span className="flex items-center gap-2 text-xs text-wd-secondary">
+					<StateLabel className="font-medium" label={getAttentionZoneViewForZone(zone, t).label} tone={zoneTone[zone]} />
+					<span aria-hidden="true">·</span>
+					<span>{t(summary ? "shell.waldoBrief.review" : "shell.waldoBrief.status")}</span>
+				</span>
+				<h3 className="text-base font-medium leading-snug text-wd-primary">{session.title}</h3>
+				{summary ? null : <p className="text-sm leading-5 text-wd-secondary">{t("shell.waldoBrief.noSummary")}</p>}
+				<p className="text-sm leading-5 text-wd-secondary">{summary ?? t(fallbackSummaryKey[zone])}</p>
+			</div>
+			<div className="rounded-md bg-wd-inset px-3 py-2.5">
+				<p className="text-xs font-medium text-wd-secondary">{t("shell.waldoBrief.recommendation")}</p>
+				<p className="mt-1 text-sm leading-5 text-wd-primary">{t(recommendationKey[zone])}</p>
+			</div>
+			<div className="flex items-center justify-between gap-2">
+				<Button aria-label={t("shell.waldoBrief.holdOff")} onClick={onDismiss} size="sm" variant="ghost">
+					{t("shell.waldoBrief.holdOff")}
+				</Button>
+				<Button aria-label={t("shell.waldoBrief.openSession")} onClick={onOpenSession} size="sm" variant="primary">
+					{t("shell.waldoBrief.openSession")}
+					<ArrowRight aria-hidden="true" className="size-icon-sm" />
+				</Button>
 			</div>
 		</div>
 	);
@@ -449,7 +442,7 @@ function DesktopSessionCard({
 							: t("shell.terminateNamed", { title: session.title })
 					}
 					className={cn(
-						"absolute right-2 top-1.5 z-10 inline-flex size-control-md items-center justify-center rounded-sm text-passive transition-[color,background-color,opacity] hover:bg-error/10 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+						"absolute right-2 top-1.5 z-10 inline-flex size-control-md items-center justify-center rounded-full text-wd-tertiary transition-[color,background-color,opacity] duration-fast hover:bg-critical-bg hover:text-critical focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
 						keepTerminateVisible || termination.isPending
 							? "opacity-100"
 							: "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
@@ -604,7 +597,7 @@ function ChooseSessionButton({ onChoose, sessionTitle }: { onChoose: () => void;
 	return (
 		<button
 			aria-label={t("shell.chooseSession", { title: sessionTitle })}
-			className="relative z-10 inline-flex h-[30px] min-w-[72px] items-center justify-center rounded-md border border-border-strong bg-popover px-2.5 text-brand font-medium text-foreground transition-colors hover:bg-white/10"
+			className="relative z-10 inline-flex h-[30px] min-w-[72px] items-center justify-center rounded-full bg-wd-inset px-3 text-sm font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 			onClick={(event) => {
 				event.stopPropagation();
 				onChoose();
@@ -628,7 +621,7 @@ function cardActions(
 		<>
 			{onOpen ? (
 				<button
-					className="relative z-10 inline-flex h-7 items-center justify-center rounded-md bg-foreground px-2.5 text-xs font-medium text-card transition-opacity hover:opacity-90"
+					className="relative z-10 inline-flex h-7 items-center justify-center rounded-full bg-wd-inverse px-3 text-xs font-medium text-wd-on-inverse transition-opacity duration-fast hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 					onClick={(event) => {
 						event.stopPropagation();
 						onOpen();
@@ -640,7 +633,7 @@ function cardActions(
 			) : null}
 			{primaryPR ? (
 				<ProductExternalLink
-					className="relative z-10 inline-flex h-7 items-center justify-center rounded-md border border-border-strong bg-popover px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-white/10"
+					className="relative z-10 inline-flex h-7 items-center justify-center rounded-full bg-wd-inset px-3 text-xs font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 					href={prBrowserUrl(primaryPR)}
 					stopPropagation
 				>
@@ -704,7 +697,7 @@ function ArchiveRestoreButton({
 			<TooltipTrigger asChild>
 				<button
 					aria-label={label}
-					className="grid size-control-board-sm shrink-0 place-items-center rounded-md text-passive transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50 disabled:cursor-not-allowed disabled:opacity-35"
+					className="grid size-control-board-sm shrink-0 place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) disabled:cursor-not-allowed disabled:text-wd-disabled"
 					disabled={isDisabled}
 					onClick={onClick}
 					type="button"
@@ -721,7 +714,7 @@ function ArchiveRestoreButton({
 
 function ArchiveRestoreError({ message }: { message?: string }) {
 	return message ? (
-		<div className="border-t border-border px-2 py-1.5 text-2xs text-destructive" role="alert">
+		<div className="hairline-t border-wd-hairline px-2 py-1.5 text-xs text-critical" role="alert">
 			{message}
 		</div>
 	) : null;
@@ -754,13 +747,13 @@ function CopyActionButton({ label, value }: { label: string; value: string }) {
 	return (
 		<button
 			aria-label={buttonLabel}
-			className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-passive transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+			className="inline-flex size-4 shrink-0 items-center justify-center rounded-xs text-wd-tertiary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 			onClick={(event) => void copyValue(event)}
 			title={buttonLabel}
 			type="button"
 		>
 			{copied ? (
-				<Check className="size-icon-2xs text-success" aria-hidden="true" />
+				<Check className="size-icon-2xs text-good" aria-hidden="true" />
 			) : (
 				<Copy className="size-icon-2xs" aria-hidden="true" />
 			)}

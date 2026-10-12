@@ -8,7 +8,7 @@ describe("HomeMemoryReview", () => {
   it("keeps a memory candidate inspectable and visibly outside durable memory", () => {
     render(<HomeShell destination="memory" fixture={homeFixture("memory")} />);
 
-    expect(screen.getByRole("heading", { name: "Memory Review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Memory review" })).toBeInTheDocument();
     expect(screen.getByText("Candidate — not memory")).toBeInTheDocument();
     expect(
       screen.getByText("Ashish should receive the deck only after the revision is reviewed."),
@@ -22,9 +22,9 @@ describe("HomeMemoryReview", () => {
   });
 
   it.each([
-    ["Reject", "Rejected in this preview — no durable memory changed"],
-    ["Correct", "Correction opened in this preview — no durable memory changed"],
-    ["Defer", "Deferred in this preview — no durable memory changed"],
+    ["Forget", "Forgotten in this preview. No durable memory changed."],
+    ["Correct", "Correction opened in this preview. No durable memory changed."],
+    ["Defer", "Deferred in this preview. No durable memory changed."],
   ])("keeps %s as a local review outcome", async (action, expected) => {
     const user = userEvent.setup();
     render(<HomeShell destination="memory" fixture={homeFixture("memory")} />);

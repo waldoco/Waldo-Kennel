@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -73,13 +72,12 @@ export function AgentModelPicker({
 	if (catalogLoading) {
 		return (
 			<span
-				className="composer-chip composer-toolbar-option w-full cursor-not-allowed justify-start opacity-50"
+				className="composer-chip composer-toolbar-option w-full cursor-not-allowed justify-start"
 				role="status"
 				aria-label={t("settings.models.loading")}
 				aria-busy="true"
 			>
-				<Loader2 className="size-icon-sm shrink-0 animate-spin text-settings-muted" aria-hidden="true" />
-				<span className="truncate text-settings-muted">{t("settings.models.loading")}</span>
+				<span className="truncate text-wd-secondary">{t("settings.models.loading")}</span>
 			</span>
 		);
 	}
@@ -99,7 +97,7 @@ export function AgentModelPicker({
 				triggerClassName="composer-chip composer-toolbar-option w-full justify-between"
 				menuAlign="start"
 				renderTrigger={() => (
-					<span className="min-w-0 truncate text-control text-foreground" title={visibleModeLabel}>
+					<span className="min-w-0 truncate text-sm text-wd-primary" title={visibleModeLabel}>
 						{visibleModeLabel}
 					</span>
 				)}
@@ -142,7 +140,7 @@ export function AgentModelPicker({
 				renderTrigger={(label) => {
 					const visibleLabel = value ? label : noOverrideLabel;
 					return (
-						<span className="min-w-0 truncate text-control text-foreground" title={visibleLabel}>
+						<span className="min-w-0 truncate text-sm text-wd-primary" title={visibleLabel}>
 							{visibleLabel}
 						</span>
 					);
@@ -156,7 +154,7 @@ export function AgentModelPicker({
 			<input
 				aria-label={t("newTask.model")}
 				className={cn(
-					"composer-chip composer-toolbar-option min-w-0 flex-1 text-control placeholder:text-passive disabled:cursor-not-allowed disabled:opacity-50",
+					"composer-chip composer-toolbar-option min-w-0 flex-1 text-sm placeholder:text-wd-tertiary disabled:cursor-not-allowed disabled:text-wd-disabled",
 					!hasCatalog && "rounded-r-md!",
 				)}
 				value={value}

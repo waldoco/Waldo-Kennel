@@ -184,7 +184,7 @@ describe("WaldoRail", () => {
 
     const proposal = screen.getByRole("region", { name: "Proposal preview" });
     expect(proposal).toHaveTextContent("Proposal");
-    expect(proposal).toHaveTextContent("Approval required");
+    expect(proposal).toHaveTextContent("Needs you");
     expect(proposal).toHaveTextContent("No command has run");
   });
 

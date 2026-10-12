@@ -1,8 +1,9 @@
-// Mono pill badges. Color is rare and meaningful (DESIGN.md → Color).
+// State badges: a quiet word on a faint tint (radius-xs). The raw hue appears
+// only in the word; colour never carries the state alone (Waldo StateBadge).
 import * as React from "react";
 import { cn } from "../../lib/utils";
 
-type BadgeVariant = "neutral" | "outline" | "accent" | "success" | "warning" | "error";
+type BadgeVariant = "neutral" | "outline" | "accent" | "spot" | "success" | "warning" | "error";
 
 export function Badge({
 	className,
@@ -13,13 +14,14 @@ export function Badge({
 		<span
 			data-slot="badge"
 			className={cn(
-				"inline-flex h-5 shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [&>svg]:pointer-events-none [&>svg]:size-3",
-				variant === "neutral" && "bg-secondary text-secondary-foreground",
-				variant === "outline" && "border-border text-foreground hover:bg-muted",
-				variant === "accent" && "bg-primary text-primary-foreground",
-				variant === "success" && "border-success/40 text-success",
-				variant === "warning" && "border-warning/40 text-warning",
-				variant === "error" && "bg-destructive/10 text-destructive",
+				"inline-flex h-5 shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-xs border border-transparent px-1.5 py-0.5 text-xs font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) [&>svg]:pointer-events-none [&>svg]:size-3",
+				variant === "neutral" && "bg-wd-inset text-wd-secondary",
+				variant === "outline" && "border-wd-strong text-wd-secondary hover:bg-wd-hover",
+				variant === "accent" && "bg-wd-inverse text-wd-on-inverse",
+				variant === "spot" && "bg-spot-subtle text-spot-text",
+				variant === "success" && "bg-good-bg text-good",
+				variant === "warning" && "bg-caution-bg text-caution",
+				variant === "error" && "bg-critical-bg text-critical",
 				className,
 			)}
 			{...props}

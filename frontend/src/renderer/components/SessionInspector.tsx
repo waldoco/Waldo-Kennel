@@ -12,7 +12,9 @@ import {
 	InspectorSection as Section,
 	SessionInspectorShellView,
 	SessionInspectorSummaryView,
+	StateBadge,
 	inspectorEmptyClass,
+	type StateTone,
 	type InspectorPullRequest,
 	type InspectorInlineComment,
 	type InspectorGithubReview,
@@ -31,7 +33,6 @@ import {
 	Info,
 	Play,
 	Trash2,
-	Loader2,
 	MessageSquare,
 	X,
 } from "lucide-react";
@@ -314,7 +315,7 @@ function InspectorPolicyRow({
 	return (
 		<div className="flex items-center justify-between gap-3 py-1" data-slot="inspector-policy-row">
 			<div className="flex min-w-0 items-center gap-1.5">
-				<label className="min-w-0 text-xs font-medium text-settings-label" htmlFor={id}>
+				<label className="min-w-0 text-xs font-medium text-wd-primary" htmlFor={id}>
 					{label}
 				</label>
 				{description ? (
@@ -322,7 +323,7 @@ function InspectorPolicyRow({
 						<TooltipTrigger asChild>
 							<button
 								aria-label={description}
-								className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-wd-tertiary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 								type="button"
 							>
 								<Info aria-hidden="true" className="size-icon-2xs" />
@@ -353,23 +354,23 @@ function UsageCostTelemetry({ usage }: { usage: SessionUsage }) {
 		<div>
 			<div className="grid grid-cols-2 gap-4">
 				<div className="min-w-0">
-					<p className="text-2xs text-settings-muted">{t("inspector.usage.totalTokens")}</p>
+					<p className="wd-caption text-wd-secondary">{t("inspector.usage.totalTokens")}</p>
 					<p
 						aria-label={
 							totalTokens === null
 								? t("inspector.usage.totalTokensUnavailable")
 								: t("inspector.usage.totalTokensAria", { count: exactTotal })
 						}
-						className="mt-0.5 truncate font-mono text-md-sm font-medium text-settings-label"
+						className="wd-data mt-0.5 truncate font-medium text-wd-primary"
 						title={totalTokens === null ? undefined : t("inspector.usage.tokensExact", { count: exactTotal })}
 					>
 						{totalTokens === null ? t("inspector.usage.noUsageYet") : formatTelemetryTokenValue(totalTokens)}
 					</p>
 				</div>
 				<div className="min-w-0 text-right">
-					<p className="text-2xs text-settings-muted">{t("inspector.usage.totalCost")}</p>
+					<p className="wd-caption text-wd-secondary">{t("inspector.usage.totalCost")}</p>
 					<p
-						className="mt-0.5 truncate text-sm-md text-settings-muted"
+						className="wd-caption mt-0.5 truncate text-wd-tertiary"
 						title={t("inspector.usage.costComingSoon")}
 					>
 						{t("inspector.usage.comingSoon")}
@@ -379,7 +380,7 @@ function UsageCostTelemetry({ usage }: { usage: SessionUsage }) {
 
 			<div className="mt-3">
 				<div
-					className="rounded-lg border border-(--color-border-settings-input) bg-(--color-bg-settings-input) px-2.5 py-2.5"
+					className="rounded-md bg-wd-inset px-3 py-3"
 					data-testid="session-usage-metrics"
 				>
 					<UsageMetrics totals={usage.totals} />
@@ -387,8 +388,8 @@ function UsageCostTelemetry({ usage }: { usage: SessionUsage }) {
 			</div>
 
 			{usage.harnesses.length > 0 ? (
-				<div className="mt-3 border-t border-(--color-border-settings-input) pt-2">
-					<div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2 px-1 pb-1 text-2xs text-settings-muted">
+				<div className="mt-3 hairline-t border-wd-hairline pt-2">
+					<div className="wd-caption grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2 px-1 pb-1 text-wd-secondary">
 						<span>{t("inspector.usage.agent")}</span>
 						<span className="text-right">{t("inspector.usage.tokens")}</span>
 						<span className="text-right">{t("inspector.usage.cost")}</span>
@@ -454,7 +455,7 @@ function AutoInjectCIPolicyControl({ session }: { session: WorkspaceSession }) {
 				tooltipClassName="max-w-64"
 			/>
 			{error ? (
-				<p className="mt-1 text-2xs leading-normal text-error" role="status">
+				<p className="wd-caption mt-1 text-critical" role="status">
 					{error}
 				</p>
 			) : null}
@@ -488,8 +489,8 @@ function ProviderUsageDetails({ harness }: { harness: SessionUsage["harnesses"][
 				<UsageMetrics totals={harness.totals} />
 			</div>
 
-			<div className="border-t border-(--color-border-settings-input) pt-2">
-				<div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2 px-1 pb-1 text-2xs text-settings-muted">
+			<div className="hairline-t border-wd-hairline pt-2">
+				<div className="wd-caption grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2 px-1 pb-1 text-wd-secondary">
 					<span>{t("inspector.usage.models", { count: harness.models.length })}</span>
 					<span className="text-right">{t("inspector.usage.tokens")}</span>
 					<span className="text-right">{t("inspector.usage.cost")}</span>
@@ -499,7 +500,7 @@ function ProviderUsageDetails({ harness }: { harness: SessionUsage["harnesses"][
 						<UsageModelRow key={`${model.modelId}:${index}`} model={model} />
 					))
 				) : (
-					<p className="px-1 py-2 text-2xs text-settings-muted">{t("inspector.usage.noModelTelemetry")}</p>
+					<p className="wd-caption px-1 py-2 text-wd-secondary">{t("inspector.usage.noModelTelemetry")}</p>
 				)}
 			</div>
 		</>
@@ -545,7 +546,7 @@ function AutoInjectReviewPolicyControl({ session }: { session: WorkspaceSession 
 				tooltipClassName="max-w-60"
 			/>
 			{error ? (
-				<p className="mt-1 text-2xs leading-normal text-error" role="status">
+				<p className="wd-caption mt-1 text-critical" role="status">
 					{error}
 				</p>
 			) : null}
@@ -578,7 +579,7 @@ function UsageModelRow({
 		<UsageDisclosureRow
 			detailsLabel={t("inspector.usage.modelDetails", { name: modelName })}
 			name={modelName}
-			nameClassName="font-mono text-2xs"
+			nameClassName="text-2xs"
 			regionLabel={t("inspector.usage.modelPeek", { name: modelName })}
 			totals={model.totals}
 		>
@@ -614,20 +615,20 @@ function UsageDisclosureRow({
 				aria-controls={detailID}
 				aria-expanded={open}
 				aria-label={detailsLabel}
-				className="grid w-full grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2 rounded-md px-1 py-2 text-left outline-none transition-colors hover:bg-interactive-hover focus-visible:bg-interactive-hover focus-visible:ring-1 focus-visible:ring-ring"
+				className="grid w-full grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2 rounded-sm px-1 py-2 text-left transition-colors duration-fast hover:bg-wd-hover"
 				onClick={() => setOpen((current) => !current)}
 				type="button"
 			>
-				<span className={`flex min-w-0 items-center gap-1 text-settings-label ${nameClassName}`}>
+				<span className={`flex min-w-0 items-center gap-1 text-wd-primary ${nameClassName}`}>
 					{open ? (
-						<ChevronDown aria-hidden="true" className="size-3 shrink-0 text-settings-muted" />
+						<ChevronDown aria-hidden="true" className="size-3 shrink-0 text-wd-tertiary" />
 					) : (
-						<ChevronRight aria-hidden="true" className="size-3 shrink-0 text-settings-muted" />
+						<ChevronRight aria-hidden="true" className="size-3 shrink-0 text-wd-tertiary" />
 					)}
 					<span className="truncate">{name}</span>
 				</span>
 				<span
-					className="text-right font-mono text-2xs text-settings-label"
+					className="wd-data-s text-right text-wd-primary"
 					title={totalTokens === null ? undefined : t("inspector.usage.tokensExact", { count: exactTotal })}
 				>
 					{totalTokens === null ? "—" : formatTelemetryTokenValue(totalTokens)}
@@ -637,7 +638,7 @@ function UsageDisclosureRow({
 			{open ? (
 				<div
 					aria-label={regionLabel}
-					className="mx-1 mb-2 border-l border-(--color-border-settings-input) py-1.5 pl-2.5"
+					className="mx-1 mb-2 border-l-[length:var(--stroke-hairline)] border-wd-hairline py-1.5 pl-2.5"
 					id={detailID}
 					role="region"
 				>
@@ -652,7 +653,7 @@ function UsageCostPlaceholder() {
 	const { t } = useTranslation();
 	const label = t("inspector.usage.metricUnavailable", { label: t("inspector.usage.cost") });
 	return (
-		<span aria-label={label} className="text-right font-mono text-2xs text-settings-muted" title={label}>
+		<span aria-label={label} className="wd-data-s text-right text-wd-tertiary" title={label}>
 			—
 		</span>
 	);
@@ -687,10 +688,10 @@ function UsageMetric({
 			: t("inspector.usage.metricAria", { label, count: exactValue });
 	return (
 		<div className="min-w-0">
-			<dt className="truncate text-2xs text-settings-muted">{label}</dt>
+			<dt className="wd-caption truncate text-wd-secondary">{label}</dt>
 			<dd
 				aria-label={accessibleLabel}
-				className="mt-0.5 truncate font-mono text-sm-md text-settings-label"
+				className="wd-data mt-0.5 truncate text-wd-primary"
 				title={
 					metric === null
 						? t("inspector.usage.metricUnavailable", { label })
@@ -786,7 +787,7 @@ function ResumeAgentControl({ session }: { session: WorkspaceSession }) {
 
 	const error = resume.error instanceof Error ? resume.error.message : null;
 	return (
-		<div className="mt-3 border-t border-(--color-border-settings-input) pt-3">
+		<div className="mt-3 hairline-t border-wd-hairline pt-3">
 			<Button
 				className="w-full"
 				disabled={resume.isPending}
@@ -799,7 +800,7 @@ function ResumeAgentControl({ session }: { session: WorkspaceSession }) {
 				{resume.isPending ? t("inspector.resumingAgent") : t("inspector.resumeAgent")}
 			</Button>
 			{error ? (
-				<p className="mt-2 text-2xs leading-normal text-error" role="status">
+				<p className="wd-caption mt-2 text-critical" role="status">
 					{error}
 				</p>
 			) : null}
@@ -862,7 +863,7 @@ function SessionControls({ session }: { session: WorkspaceSession }) {
 			<AutoInjectCIPolicyControl session={session} />
 			{session.kind === "orchestrator" ? null : canTerminateNow ? (
 				<div className="flex items-center justify-between gap-3 py-1">
-					<span className="min-w-0 text-xs font-medium text-settings-label">{t("inspector.terminateShort")}</span>
+					<span className="min-w-0 text-xs font-medium text-wd-primary">{t("inspector.terminateShort")}</span>
 					<SessionTerminationPopover
 						onConfirm={confirmTermination}
 						onOpenChange={setConfirmOpen}
@@ -871,7 +872,7 @@ function SessionControls({ session }: { session: WorkspaceSession }) {
 						trigger={
 							<button
 								aria-label={t("inspector.terminate")}
-								className="inline-flex size-control-md items-center justify-center rounded-sm text-passive transition-colors hover:bg-error/10 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+								className="inline-flex size-control-md items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-critical-bg hover:text-critical"
 								onClick={() => clearTerminateSessionState(queryClient, session.id)}
 								type="button"
 							>
@@ -893,7 +894,7 @@ function SessionControls({ session }: { session: WorkspaceSession }) {
 						tooltipClassName="max-w-60"
 					/>
 					{policyError ? (
-						<p className="mt-1 text-2xs leading-normal text-error" role="status">
+						<p className="wd-caption mt-1 text-critical" role="status">
 							{policyError}
 						</p>
 					) : null}
@@ -949,8 +950,9 @@ function PRSummaryCard({ onOpenReviews, pr, sessionId }: { onOpenReviews: () => 
 		href: prBrowserUrl(pr),
 		stateLabel: t(prStateLabelKeys[pr.state]),
 		reviewDetailsAction: pr.review.decision !== "none" ? (
-				<button className="whitespace-nowrap text-2xs text-settings-muted underline-offset-2 hover:underline" onClick={onOpenReviews} type="button">
-				{t("pr.review.viewDetails")} ↗
+				<button className="inline-flex items-center gap-0.5 whitespace-nowrap text-2xs text-(--text-link) underline underline-offset-2 hover:text-(--text-link-hover)" onClick={onOpenReviews} type="button">
+				{t("pr.review.viewDetails")}
+				<ArrowUpRight aria-hidden="true" className="size-icon-2xs shrink-0" strokeWidth={2} />
 			</button>
 		) : undefined,
 	};
@@ -963,17 +965,13 @@ function PRSummaryCard({ onOpenReviews, pr, sessionId }: { onOpenReviews: () => 
 				canMerge ? (
 					<Button
 						aria-label={t("pr.merge.actionFor", { number: pr.number })}
-						className="gap-1 bg-success px-2 text-xs text-background hover:bg-success/80"
+						className="gap-1 px-3 text-xs"
 						disabled={mergePr.isPending}
 						onClick={() => mergePr.mutate()}
 						size="sm"
 						type="button"
 					>
-						{mergePr.isPending ? (
-							<Loader2 className="size-icon-sm animate-spin" aria-hidden="true" />
-						) : (
-							<GitMerge className="size-icon-sm" aria-hidden="true" />
-						)}
+						<GitMerge className="size-icon-sm" aria-hidden="true" />
 						{mergePr.isPending ? t("pr.merge.merging") : t("pr.merge.action")}
 					</Button>
 				) : undefined
@@ -1061,7 +1059,7 @@ function ActivityTimeline({ prs, session }: { prs: SessionPRSummary[]; session: 
 					</span>
 					{session.status === "no_signal" ? (
 						<span className="inline-flex align-middle">
-							<TimelinePill {...getSessionTimelinePillView("no_signal")} />
+							<InspectorScmPill state="no_signal" />
 						</span>
 					) : null}
 					{scmTimelineStates(session).map((state) => (
@@ -1073,7 +1071,8 @@ function ActivityTimeline({ prs, session }: { prs: SessionPRSummary[]; session: 
 			),
 			timestamp: activityAt ? formatTimeCompact(activityAt) : null,
 			markerTone: activityView.tone,
-			markerBreathe: activityView.breathe,
+			// Waldo: no pulsing. The node stays a static dot; the word says what it is.
+			markerBreathe: false,
 		} satisfies InspectorTimelineEvent,
 		activityAt,
 	);
@@ -1085,13 +1084,13 @@ function PRTimelineLink({ pr, verb }: { pr: SessionPRSummary; verb: string }) {
 	return (
 		<a
 			aria-label={`${verb} PR #${pr.number}`}
-			className="inline-flex min-w-0 items-center gap-1 rounded-xs text-foreground underline-offset-2 transition-colors hover:text-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/50"
+			className="inline-flex min-w-0 items-center gap-1 rounded-xs text-(--text-link) underline underline-offset-2 transition-colors duration-fast hover:text-(--text-link-hover)"
 			href={prBrowserUrl(pr)}
 			rel="noopener noreferrer"
 			target="_blank"
 		>
 			<span>{verb} </span>
-			<b>PR #{pr.number}</b>
+			<span className="wd-data font-medium">PR #{pr.number}</span>
 			<ArrowUpRight aria-hidden="true" className="size-icon-2xs shrink-0" strokeWidth={2} />
 		</a>
 	);
@@ -1126,25 +1125,27 @@ function timelineSortTime(timestamp: string | null | undefined): number {
 
 type ScmTimelineState = "ci_failed" | "changes_requested" | "conflict";
 
-function conflictPill() {
-	return { label: appI18n.t("inspector.conflict"), tone: "var(--color-danger)", breathe: false };
-}
-
+// The activity word sits beside the timeline node, which is the single live
+// indicator, so it carries no mark of its own and no colour.
 function InspectorActivityPill({ activity }: { activity?: WorkspaceSession["activity"] }) {
-	return <TimelinePill {...getAgentActivityView(activity)} />;
-}
-
-function InspectorScmPill({ state }: { state: ScmTimelineState }) {
-	if (state === "conflict") return <TimelinePill {...conflictPill()} />;
-	return <TimelinePill {...getSessionTimelinePillView(state)} />;
-}
-
-function TimelinePill({ label, tone }: { label: string; tone: string; breathe: boolean }) {
 	return (
-		<span className="inline-flex shrink-0 whitespace-nowrap text-xs font-semibold" style={{ color: tone }}>
-			{label}
+		<span className="inline-flex shrink-0 whitespace-nowrap text-xs font-medium text-wd-primary">
+			{getAgentActivityView(activity).label}
 		</span>
 	);
+}
+
+// SCM states read as Waldo state badges: a word plus a shape, never colour alone.
+const scmTimelineTones: Record<ScmTimelineState | "no_signal", StateTone> = {
+	ci_failed: "critical",
+	changes_requested: "caution",
+	conflict: "critical",
+	no_signal: "neutral",
+};
+
+function InspectorScmPill({ state }: { state: ScmTimelineState | "no_signal" }) {
+	const label = state === "conflict" ? appI18n.t("inspector.conflict") : getSessionTimelinePillView(state).label;
+	return <StateBadge label={label} tone={scmTimelineTones[state]} />;
 }
 
 function scmTimelineStates(session: WorkspaceSession): ScmTimelineState[] {
@@ -1728,13 +1729,13 @@ function ReviewPanel({
 		<div className="mb-2.5 flex flex-col">
 				<Section surface title={t("inspector.review.controls")}>
 					{error ? (
-						<p className="m-0 rounded-md border border-error/28 bg-error/8 px-2.5 py-2 text-sm-md leading-normal text-error">
+						<p className="wd-caption m-0 rounded-md bg-critical-bg px-3 py-2 text-critical">
 							{apiErrorMessage(error, t("inspector.reviewRequestFailed"))}
 					</p>
 				) : null}
 				{autoReviewFailure ? (
-					<p className="m-0 rounded-md border border-error/28 bg-error/8 px-2.5 py-2 text-sm-md leading-normal text-error" role="status">
-						<span className="font-semibold">
+					<p className="wd-caption m-0 rounded-md bg-critical-bg px-3 py-2 text-critical" role="status">
+						<span className="font-medium">
 							{t("inspector.autoReview")} {t("inspector.review.failed")}:
 						</span>{" "}
 						{autoReviewFailure}
@@ -1754,7 +1755,7 @@ function ReviewPanel({
 							<TooltipTrigger asChild>
 								<button
 									aria-label={notice}
-									className="mb-2 flex max-w-full shrink-0 items-start gap-1 self-start rounded-sm text-left text-2xs font-medium leading-normal text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+									className="mb-2 flex max-w-full shrink-0 items-start gap-1 self-start rounded-xs text-left text-2xs font-medium leading-normal text-wd-secondary transition-colors duration-fast hover:text-wd-primary"
 									type="button"
 								>
 									<Info aria-hidden="true" className="mt-px size-icon-2xs shrink-0" />
@@ -1768,9 +1769,9 @@ function ReviewPanel({
 						</Tooltip>
 					</TooltipProvider>
 				) : null}
-				<div className="review-run-controls-container min-w-0 divide-y divide-border/70 text-xs">
+				<div className="review-run-controls-container min-w-0 divide-y divide-wd-hairline text-xs">
 					<div className="flex min-h-10 min-w-0 items-center justify-between gap-3 py-2">
-						<span className="min-w-0 text-xs font-medium text-foreground">
+						<span className="min-w-0 text-xs font-medium text-wd-primary">
 							{t("inspector.selectReviewerAgent")}
 						</span>
 						<ReviewerSelect
@@ -1799,7 +1800,7 @@ function ReviewPanel({
 						tooltipClassName="max-w-64"
 					/>
 					<div className="flex min-h-10 items-center justify-between gap-3 py-2">
-						<span className="text-xs font-medium text-foreground">{t("inspector.review.session")}</span>
+						<span className="text-xs font-medium text-wd-primary">{t("inspector.review.session")}</span>
 						<div className="flex shrink-0 items-center gap-1.5">
 							<Button
 								aria-label={primaryReviewActionLabel}
@@ -1817,7 +1818,7 @@ function ReviewPanel({
 							{hasReviewerSession ? (
 								<Button
 								aria-label={isKilling ? t("inspector.review.killingSession") : t("inspector.review.killSession")}
-								className="h-control-md w-control-md shrink-0 p-0 text-error [&_svg]:size-icon-sm"
+								className="h-control-md w-control-md shrink-0 p-0 text-wd-secondary hover:bg-critical-bg hover:text-critical [&_svg]:size-icon-sm"
 								disabled={killDisabled}
 								onClick={onKill}
 								size="sm"
@@ -1833,9 +1834,9 @@ function ReviewPanel({
 					<AutoInjectReviewPolicyControl session={session} />
 					</div>
 				{reviewRunning ? (
-					<div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-						<Loader2 aria-hidden="true" className="size-icon-sm shrink-0 animate-spin text-muted-foreground" />
-						<span className="min-w-0 flex-1 truncate text-2xs font-medium text-muted-foreground">
+					<div className="mt-3 flex items-center gap-2 hairline-t border-wd-hairline pt-3">
+						<span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-wd-accent" />
+						<span className="min-w-0 flex-1 truncate text-2xs font-medium text-wd-secondary">
 							{isCancelling
 								? t("inspector.review.cancelling")
 								: `Review in progress · ${agentLabel(activeReviewerHarness)}`}
@@ -1979,8 +1980,8 @@ function BrowserView({
 		return (
 			<div role="tabpanel">
 				<div className={cn(inspectorEmptyClass, "flex flex-col items-center gap-2 py-10 px-5 text-center")}>
-					<p className="text-md-sm text-muted-foreground">{t("inspector.browserInCenter")}</p>
-					<Button onClick={() => onTogglePopOut?.(false)} size="sm" type="button" variant="outline">
+					<p className="wd-body-s text-wd-secondary">{t("inspector.browserInCenter")}</p>
+					<Button onClick={() => onTogglePopOut?.(false)} size="sm" type="button" variant="secondary">
 						{t("inspector.returnToPanel")}
 					</Button>
 				</div>
@@ -2016,8 +2017,8 @@ function FilesView({ filesView, onOpenFiles }: { filesView?: ReactNode; onOpenFi
 	return (
 		<div role="tabpanel">
 			<div className={cn(inspectorEmptyClass, "flex flex-col items-center gap-2 px-5 py-10 text-center")}>
-				<p className="text-md-sm text-muted-foreground">{t("inspector.filesUnavailable")}</p>
-				<Button disabled={!onOpenFiles} onClick={() => onOpenFiles?.()} size="sm" type="button" variant="outline">
+				<p className="wd-body-s text-wd-secondary">{t("inspector.filesUnavailable")}</p>
+				<Button disabled={!onOpenFiles} onClick={() => onOpenFiles?.()} size="sm" type="button" variant="secondary">
 					{t("inspector.openFiles")}
 				</Button>
 			</div>

@@ -1,3 +1,4 @@
+import { Activity, Bell, Circle, CircleCheck, CircleX, Clock } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
@@ -83,39 +84,59 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
    if (ticket === generation.current) { setCode(""); setPending(false); busy.current = false; }
   }
  };
+ const tone = current.kind === "paired"
+  ? current.transport === "online" ? { icon: CircleCheck, tile: "bg-good-bg text-good" } : { icon: Clock, tile: "bg-caution-bg text-caution" }
+  : current.kind === "recovery_required" || current.kind === "error" ? { icon: CircleX, tile: "bg-critical-bg text-critical" }
+  : { icon: Circle, tile: "bg-wd-inset text-wd-secondary" };
+ const ToneIcon = tone.icon;
+ const fieldClass = "h-11 rounded-md border border-transparent bg-wd-inset px-4 text-sm text-wd-primary placeholder:text-wd-tertiary focus-visible:border-(--border-focus) focus-visible:ring-0 focus-visible:shadow-[inset_0_0_0_var(--stroke-1)_var(--border-focus)] disabled:opacity-100 disabled:text-wd-secondary aria-invalid:border-critical aria-invalid:ring-0";
  return <SettingsSection title={t("settings.waldo.title")} titleHidden={titleHidden} sectionId="waldo">
-  <div className="flex min-w-0 flex-col gap-4 px-3 text-sm">
-   {previewAction && <p className="rounded-md border border-border bg-muted p-3 font-medium" data-testid="waldo-preview-label">{t("settings.waldo.preview")}</p>}
-   <p className="text-muted-foreground">{t("settings.waldo.description")}</p>
-   <div className="rounded-md border border-border bg-muted/40 p-3" role="status" aria-live="polite">
-    <p className="font-medium">{t(`settings.waldo.status.${status}`)}</p>
-    {current.kind === "recovery_required" && <p className="mt-2 text-muted-foreground">{t("settings.waldo.recoveryHelp")}</p>}
-    {current.kind === "paired" && <div className="mt-2 flex flex-col gap-1 break-all text-muted-foreground">
-     <p>{t("settings.waldo.identity")}</p>
-     {current.label && <p>{current.label}</p>}
-     {current.deviceId && <p>{current.deviceId}</p>}
-    </div>}
-    {current.kind === "paired" && <p className="mt-2 text-muted-foreground">{t("settings.waldo.unknownAnswers")}</p>}
+  <div className="flex min-w-0 flex-col gap-8">
+   <div className="flex flex-col gap-3">
+    {previewAction && <p className="wd-body-s rounded-md bg-wd-inset px-4 py-3 text-wd-primary" data-testid="waldo-preview-label">{t("settings.waldo.preview")}</p>}
+    <p className="wd-body-l text-wd-secondary">{t("settings.waldo.description")}</p>
    </div>
-   <div className="text-muted-foreground">
-    <p>{t("settings.waldo.scope")}</p>
-    <ul className="mt-1 list-inside list-disc"><li>{t("settings.waldo.queries")}</li><li>{t("settings.waldo.notifications")}</li></ul>
-    <p className="mt-2">{t("settings.waldo.approvals")}</p>
+   <div className="flex flex-col gap-2">
+    <div className="settings-grouped-rows" role="status" aria-live="polite">
+     <div className="settings-row-bar items-start">
+      <div className="flex min-w-0 items-start gap-3">
+       <span className={`settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm ${tone.tile}`} aria-hidden="true"><ToneIcon className="size-4" /></span>
+       <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="wd-body text-wd-primary">{t(`settings.waldo.status.${status}`)}</p>
+        {current.kind === "recovery_required" && <p className="wd-body-s text-wd-secondary">{t("settings.waldo.recoveryHelp")}</p>}
+        {current.kind === "paired" && <div className="flex flex-col gap-0.5 break-all wd-body-s text-wd-secondary">
+         <p>{t("settings.waldo.identity")}</p>
+         {current.label && <p className="text-wd-primary">{current.label}</p>}
+         {current.deviceId && <p className="wd-data">{current.deviceId}</p>}
+        </div>}
+       </div>
+      </div>
+     </div>
+    </div>
+    {current.kind === "paired" && <p className="wd-caption px-4 text-wd-tertiary">{t("settings.waldo.unknownAnswers")}</p>}
    </div>
-   <form onSubmit={submit} className="flex flex-col gap-3" autoComplete="off">
-    <div className="flex flex-col gap-1.5">
-     <label htmlFor={`${id}-code`}>{t("settings.waldo.code")}</label>
-     <Input id={`${id}-code`} type="password" value={code} onChange={e => setCode(e.target.value)} disabled={!canEnter} autoComplete="off" spellCheck={false} autoCapitalize="none" aria-describedby={`${id}-code-help`} aria-invalid={invalid && !validWaldoCode(code)} data-ph-no-capture />
-     <p id={`${id}-code-help`} className="text-xs text-muted-foreground">{t("settings.waldo.codeHelp")}</p>
-     {invalid && !validWaldoCode(code) && <p role="alert" className="text-error">{t("settings.waldo.invalidCode")}</p>}
+   <div className="flex flex-col gap-2">
+    <h3 className="wd-label px-4 text-wd-secondary">{t("settings.waldo.scope")}</h3>
+    <ul className="settings-grouped-rows">
+     <li className="settings-row-bar justify-start"><span className="settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary" aria-hidden="true"><Activity className="size-4" /></span><span className="wd-body text-wd-primary">{t("settings.waldo.queries")}</span></li>
+     <li className="settings-row-bar justify-start"><span className="settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary" aria-hidden="true"><Bell className="size-4" /></span><span className="wd-body text-wd-primary">{t("settings.waldo.notifications")}</span></li>
+    </ul>
+    <p className="wd-caption px-4 text-wd-tertiary">{t("settings.waldo.approvals")}</p>
+   </div>
+   <form onSubmit={submit} className="flex flex-col gap-5" autoComplete="off">
+    <div className="flex flex-col gap-2">
+     <label htmlFor={`${id}-code`} className="wd-label text-wd-secondary">{t("settings.waldo.code")}</label>
+     <Input id={`${id}-code`} type="password" value={code} onChange={e => setCode(e.target.value)} disabled={!canEnter} autoComplete="off" spellCheck={false} autoCapitalize="none" aria-describedby={`${id}-code-help`} aria-invalid={invalid && !validWaldoCode(code)} className={fieldClass} data-ph-no-capture />
+     <p id={`${id}-code-help`} className="wd-body-s text-wd-tertiary">{t("settings.waldo.codeHelp")}</p>
+     {invalid && !validWaldoCode(code) && <p role="alert" className="wd-body-s text-critical">{t("settings.waldo.invalidCode")}</p>}
     </div>
-    <div className="flex flex-col gap-1.5">
-     <label htmlFor={`${id}-label`}>{t("settings.waldo.label")}</label>
-     <Input id={`${id}-label`} value={label} onChange={e => setLabel(e.target.value)} disabled={!canEnter} aria-describedby={`${id}-label-help`} aria-invalid={invalid && !validWaldoLabel(label)} />
-     <p id={`${id}-label-help`} className="text-xs text-muted-foreground">{t("settings.waldo.labelHelp")}</p>
-     {invalid && !validWaldoLabel(label) && <p role="alert" className="text-error">{t("settings.waldo.invalidLabel")}</p>}
+    <div className="flex flex-col gap-2">
+     <label htmlFor={`${id}-label`} className="wd-label text-wd-secondary">{t("settings.waldo.label")}</label>
+     <Input id={`${id}-label`} value={label} onChange={e => setLabel(e.target.value)} disabled={!canEnter} aria-describedby={`${id}-label-help`} aria-invalid={invalid && !validWaldoLabel(label)} className={fieldClass} />
+     <p id={`${id}-label-help`} className="wd-body-s text-wd-tertiary">{t("settings.waldo.labelHelp")}</p>
+     {invalid && !validWaldoLabel(label) && <p role="alert" className="wd-body-s text-critical">{t("settings.waldo.invalidLabel")}</p>}
     </div>
-    <Button type="submit" variant="footer-primary" className="self-start" disabled={!canEnter || !validWaldoCode(code) || !validWaldoLabel(label)}>{t(pending ? "settings.waldo.connecting" : "settings.waldo.connect")}</Button>
+    <Button type="submit" variant="primary" className="self-end" disabled={!canEnter || !validWaldoCode(code) || !validWaldoLabel(label)}>{t(pending ? "settings.waldo.connecting" : "settings.waldo.connect")}</Button>
    </form>
   </div>
  </SettingsSection>;

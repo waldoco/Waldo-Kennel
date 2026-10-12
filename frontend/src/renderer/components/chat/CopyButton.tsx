@@ -56,12 +56,12 @@ export function CopyButton({
 			// tooltip carries the label there and only there.
 			title={compact ? label : undefined}
 			className={cn(
-				"flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground",
+				"flex items-center gap-1 rounded-xs px-1.5 py-0.5 text-[11px] text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary",
 				className,
 			)}
 		>
 			{copied ? (
-				<Check aria-hidden="true" className="size-3 text-success" />
+				<Check aria-hidden="true" className="size-3 text-good" />
 			) : (
 				<Copy aria-hidden="true" className="size-3" />
 			)}

@@ -38,17 +38,17 @@ describe("HomeDailyClose", () => {
     await user.click(screen.getByRole("button", { name: "Add close note" }));
     await user.type(screen.getByRole("textbox", { name: "Close note" }), "Open the latest deck first.");
     await user.click(
-      screen.getByRole("button", { name: "Review complete — preview Daily Close" }),
+      screen.getByRole("button", { name: "Preview closing the day" }),
     );
 
-    expect(screen.getByRole("heading", { name: "Daily Close preview" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Daily close preview" })).toBeInTheDocument();
     expect(
-      screen.getByText("Preview receipt — nothing was saved or closed"),
+      screen.getByText("Preview receipt. Nothing was saved or closed."),
     ).toBeInTheDocument();
     expect(screen.getByText("Resume from the corrected deck follow-up")).toBeInTheDocument();
     expect(screen.getByText("Open the latest deck first.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to Today" })).toHaveAttribute("href", "#/home");
-    expect(screen.getByRole("link", { name: "Inspect Insights" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open Insights" })).toHaveAttribute(
       "href",
       "#/home/history",
     );

@@ -267,7 +267,7 @@ function Sidebar({
 				<div
 					data-sidebar="sidebar"
 					data-slot="sidebar-inner"
-					className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
+					className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-wd-hairline"
 				>
 					{children}
 				</div>
@@ -330,7 +330,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
 			data-slot="sidebar-inset"
 			className={cn(
 				"relative flex w-full flex-1 flex-col bg-background",
-				"md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+				"md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
 				className,
 			)}
 			{...props}
@@ -343,7 +343,7 @@ function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input
 		<Input
 			data-slot="sidebar-input"
 			data-sidebar="input"
-			className={cn("h-control-form w-full bg-background shadow-none", className)}
+			className={cn("h-control-form w-full shadow-none", className)}
 			{...props}
 		/>
 	);
@@ -376,7 +376,7 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
 		<Separator
 			data-slot="sidebar-separator"
 			data-sidebar="separator"
-			className={cn("mx-2 w-auto bg-sidebar-border", className)}
+			className={cn("mx-2 w-auto bg-wd-hairline", className)}
 			{...props}
 		/>
 	);
@@ -419,7 +419,7 @@ function SidebarGroupLabel({
 			data-slot="sidebar-group-label"
 			data-sidebar="group-label"
 			className={cn(
-				"flex h-control-form shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-icon-base [&>svg]:shrink-0",
+				"wd-label flex h-control-form shrink-0 items-center rounded-full px-3 text-wd-tertiary outline-hidden transition-[margin,opacity] duration-normal ease-[var(--ease-standard)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) [&>svg]:size-icon-base [&>svg]:shrink-0",
 				"group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0",
 				className,
 			)}
@@ -440,7 +440,7 @@ function SidebarGroupAction({
 			data-slot="sidebar-group-action"
 			data-sidebar="group-action"
 			className={cn(
-				"absolute top-4 right-3 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-icon-base [&>svg]:shrink-0",
+				"absolute top-4 right-3 flex aspect-square w-5 items-center justify-center rounded-full p-0 text-wd-secondary outline-hidden transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) [&>svg]:size-icon-base [&>svg]:shrink-0",
 				// Increases the hit area of the button on mobile.
 				"after:absolute after:-inset-2 md:after:hidden",
 				"group-data-[collapsible=icon]:hidden",
@@ -485,13 +485,13 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-	"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-control-form! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-icon-base [&>svg]:shrink-0",
+	"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-full px-3 py-2 text-left text-sm text-wd-primary outline-hidden transition-[width,height,padding,background-color] duration-fast group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-control-form! group-data-[collapsible=icon]:p-2! hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) active:bg-wd-pressed disabled:pointer-events-none disabled:text-wd-disabled aria-disabled:pointer-events-none aria-disabled:text-wd-disabled data-[active=true]:bg-wd-selected data-[active=true]:font-medium data-[active=true]:text-wd-primary data-[state=open]:hover:bg-wd-hover [&>span:last-child]:truncate [&>svg]:size-icon-base [&>svg]:shrink-0",
 	{
 		variants: {
 			variant: {
-				default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+				default: "hover:bg-wd-hover",
 				outline:
-					"bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
+					"border border-wd-control bg-transparent hover:bg-wd-hover",
 			},
 			size: {
 				default: "h-control-form text-sm",
@@ -567,7 +567,7 @@ function SidebarMenuAction({
 			data-slot="sidebar-menu-action"
 			data-sidebar="menu-action"
 			className={cn(
-				"absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform peer-hover/menu-button:text-sidebar-accent-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-icon-base [&>svg]:shrink-0",
+				"absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-full p-0 text-wd-secondary outline-hidden transition-colors duration-fast peer-hover/menu-button:text-wd-primary hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) [&>svg]:size-icon-base [&>svg]:shrink-0",
 				// Increases the hit area of the button on mobile.
 				"after:absolute after:-inset-2 md:after:hidden",
 				"peer-data-[size=sm]/menu-button:top-1",
@@ -575,7 +575,7 @@ function SidebarMenuAction({
 				"peer-data-[size=lg]/menu-button:top-2.5",
 				"group-data-[collapsible=icon]:hidden",
 				showOnHover &&
-					"group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground data-[state=open]:opacity-100 md:opacity-0",
+					"group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-[active=true]/menu-button:text-wd-primary data-[state=open]:opacity-100 md:opacity-0",
 				className,
 			)}
 			{...props}
@@ -589,8 +589,8 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) 
 			data-slot="sidebar-menu-badge"
 			data-sidebar="menu-badge"
 			className={cn(
-				"pointer-events-none absolute right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none",
-				"peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[active=true]/menu-button:text-sidebar-accent-foreground",
+				"pointer-events-none absolute right-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium text-wd-secondary tabular-nums select-none",
+				"peer-hover/menu-button:text-wd-primary peer-data-[active=true]/menu-button:text-wd-primary",
 				"peer-data-[size=sm]/menu-button:top-1",
 				"peer-data-[size=default]/menu-button:top-1.5",
 				"peer-data-[size=lg]/menu-button:top-2.5",
@@ -618,10 +618,10 @@ function SidebarMenuSkeleton({
 		<div
 			data-slot="sidebar-menu-skeleton"
 			data-sidebar="menu-skeleton"
-			className={cn("flex h-control-form items-center gap-2 rounded-md px-2", className)}
+			className={cn("flex h-control-form items-center gap-2 rounded-full px-3", className)}
 			{...props}
 		>
-			{showIcon && <Skeleton className="size-icon-base rounded-md" data-sidebar="menu-skeleton-icon" />}
+			{showIcon && <Skeleton className="size-icon-base rounded-sm" data-sidebar="menu-skeleton-icon" />}
 			<Skeleton
 				className="h-4 max-w-(--skeleton-width) flex-1"
 				data-sidebar="menu-skeleton-text"
@@ -641,7 +641,7 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
 			data-slot="sidebar-menu-sub"
 			data-sidebar="menu-sub"
 			className={cn(
-				"mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border px-2.5 py-0.5",
+				"mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-wd-hairline px-2.5 py-0.5",
 				"group-data-[collapsible=icon]:hidden",
 				className,
 			)}
@@ -681,8 +681,8 @@ function SidebarMenuSubButton({
 			data-size={size}
 			data-active={isActive}
 			className={cn(
-				"flex h-control-md min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-icon-base [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
-				"data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground",
+				"flex h-control-md min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-full px-3 text-wd-primary outline-hidden transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) active:bg-wd-pressed disabled:pointer-events-none disabled:text-wd-disabled aria-disabled:pointer-events-none aria-disabled:text-wd-disabled [&>span:last-child]:truncate [&>svg]:size-icon-base [&>svg]:shrink-0 [&>svg]:text-wd-secondary",
+				"data-[active=true]:bg-wd-selected data-[active=true]:text-wd-primary",
 				size === "sm" && "text-xs",
 				size === "md" && "text-sm",
 				"group-data-[collapsible=icon]:hidden",

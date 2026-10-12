@@ -56,7 +56,11 @@ export function ProjectModePickerView({
 }: ProjectModePickerViewProps) {
 	return (
 		<div
-			className="relative isolate flex w-full max-w-(--size-import-modal-max) flex-col items-stretch gap-8 rounded-welcome-panel border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-modal)] p-(--size-import-modal-padding) shadow-[var(--shadow-import-modal)]"
+			className={cn(
+				"relative isolate flex w-full max-w-(--size-import-modal-max) flex-col items-stretch gap-8 rounded-xl hairline border-wd-hairline bg-wd-surface p-(--size-import-modal-padding)",
+				// Only an overlay earns a shadow; inline the picker sits flat on the page.
+				dialog && "shadow-[var(--shadow-import-modal)]",
+			)}
 			role={dialog ? undefined : "group"}
 			aria-label={dialog ? undefined : labels.title}
 		>
@@ -117,7 +121,7 @@ function ProjectModeButton({
 		<button
 			type="button"
 			aria-label={title}
-			className="flex min-h-(--size-import-mode-card-min) w-full flex-1 flex-col justify-start gap-6 self-stretch rounded-welcome-panel border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-card)] p-6 text-left transition-colors hover:bg-[var(--color-bg-import-card-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50 sm:min-h-(--size-import-mode-card-min-sm)"
+			className="flex min-h-(--size-import-mode-card-min) w-full flex-1 flex-col justify-start gap-6 self-stretch rounded-lg hairline border-wd-hairline bg-wd-surface p-6 text-left transition-colors duration-fast motion-reduce:transition-none hover:bg-wd-hover disabled:pointer-events-none disabled:opacity-40 sm:min-h-(--size-import-mode-card-min-sm)"
 			disabled={disabled}
 			onClick={onClick}
 		>
@@ -129,16 +133,16 @@ function ProjectModeButton({
 					)}
 				>
 					{isWorkspace ? (
-						<span className="flex h-(--size-import-mode-illustration) w-full max-w-[240px] flex-col items-start gap-3 rounded-lg border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-illustration)] p-4">
-							<span className="flex items-center gap-2 text-[14px] leading-5 text-[var(--color-text-import-muted)]">
+						<span className="flex h-(--size-import-mode-illustration) w-full max-w-[240px] flex-col items-start gap-3 rounded-md bg-wd-inset p-4">
+							<span className="flex items-center gap-2 text-sm leading-5 text-wd-secondary">
 								{folderIcon}
 								{labels.workspaceExample}
 							</span>
 							<span className="flex w-full flex-col items-start gap-2">
 								{labels.workspaceRepositories.map((repo) => (
 									<span key={repo} className="flex w-full items-center px-3 py-2">
-										<span className="mr-2 size-2 shrink-0 rounded-full bg-accent-strong" aria-hidden="true" />
-										<span className="text-[12px] font-bold leading-4 text-[var(--color-text-import-title)]">
+										<span className="mr-2 size-2 shrink-0 rounded-full bg-wd-strong" aria-hidden="true" />
+										<span className="text-xs font-medium leading-4 text-wd-primary">
 											{repo}
 										</span>
 									</span>
@@ -146,15 +150,15 @@ function ProjectModeButton({
 							</span>
 						</span>
 					) : (
-						<span className="flex h-[50px] w-fit items-center rounded-lg border border-[var(--color-border-import-modal)] bg-[var(--color-bg-import-chip)] px-4 py-3">
-							<span className="mr-2 size-2 shrink-0 rounded-full bg-accent-strong" aria-hidden="true" />
-							<span className="text-[14px] font-bold leading-5 text-[var(--color-text-import-title)]">
+						<span className="flex h-[50px] w-fit items-center rounded-md bg-wd-inset px-4 py-3">
+							<span className="mr-2 size-2 shrink-0 rounded-full bg-wd-strong" aria-hidden="true" />
+							<span className="text-sm font-medium leading-5 text-wd-primary">
 								{labels.projectExample}
 							</span>
-							<span className="px-1 text-[16px] leading-6 text-[var(--color-text-import-muted)]" aria-hidden="true">
+							<span className="px-1 text-base leading-6 text-wd-tertiary" aria-hidden="true">
 								·
 							</span>
-							<span className="text-[14px] font-normal leading-5 text-[var(--color-text-import-muted)]">
+							<span className="text-sm font-normal leading-5 text-wd-secondary">
 								{labels.projectBranchExample}
 							</span>
 						</span>
@@ -162,10 +166,10 @@ function ProjectModeButton({
 				</span>
 			</span>
 			<span className="mt-auto flex w-full flex-col items-start gap-2">
-				<span className="text-[16px] font-bold leading-6 text-[var(--color-text-import-title)]">
+				<span className="text-base font-medium leading-6 text-wd-primary">
 					{title}
 				</span>
-				<span className="text-[14px] font-normal leading-[23px] text-[var(--color-text-import-muted)]">
+				<span className="text-sm font-normal leading-5 text-wd-secondary">
 					{description}
 				</span>
 			</span>
@@ -198,12 +202,12 @@ export function ProjectSetupHeaderView({
 	title: string;
 }) {
 	return (
-		<div className="flex items-start justify-between gap-4 border-b border-[var(--color-border-agents-sheet)] p-(--size-import-dialog-padding)">
+		<div className="flex items-start justify-between gap-4 hairline-b border-wd-hairline p-(--size-import-dialog-padding)">
 			<div className="min-w-0">
-				<Title className="text-subtitle font-semibold text-[var(--color-text-agents-sheet-title)]">
+				<Title className="text-subtitle font-medium text-wd-primary">
 					{title}
 				</Title>
-				<Description className="mt-1 break-all text-xs text-[var(--color-text-agents-sheet-description)]">
+				<Description className="mt-1 break-all text-xs text-wd-secondary">
 					{path}
 				</Description>
 			</div>
@@ -267,16 +271,16 @@ export function ProjectSetupFormView({
 			</div>
 
 			{agents.loading && (
-				<p className="text-xs leading-row text-[var(--color-text-agents-sheet-description)]" role="status">
+				<p className="text-xs leading-row text-wd-secondary" role="status">
 					{agents.loadingMessage}
 				</p>
 			)}
 
-			<div className="flex items-center justify-between gap-3 text-xs leading-row text-[var(--color-text-agents-sheet-description)]">
+			<div className="flex items-center justify-between gap-3 text-xs leading-row text-wd-secondary">
 				<span>{agents.cacheMessage}</span>
 				<button
 					type="button"
-					className="shrink-0 rounded text-[var(--color-text-agents-sheet-title)] underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
+					className="shrink-0 rounded-xs font-medium text-wd-primary underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-40"
 					disabled={agents.refreshing}
 					onClick={agents.onRefresh}
 				>
@@ -286,13 +290,13 @@ export function ProjectSetupFormView({
 
 			{agents.error && (
 				<div
-					className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs leading-row text-destructive"
+					className="flex items-center justify-between gap-3 rounded-md bg-critical-bg px-3 py-2 text-xs leading-row text-critical"
 					role="alert"
 				>
 					<span>{agents.error}</span>
 					<button
 						type="button"
-						className="shrink-0 rounded text-[var(--color-text-agents-sheet-title)] underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
+						className="shrink-0 rounded-xs font-medium text-wd-primary underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-40"
 						disabled={agents.refreshing}
 						onClick={agents.onRefresh}
 					>
@@ -301,12 +305,12 @@ export function ProjectSetupFormView({
 				</div>
 			)}
 
-			<div className="border-t border-[var(--color-border-agents-sheet)] pt-5">{intakeControl}</div>
+			<div className="hairline-t border-wd-hairline pt-5">{intakeControl}</div>
 
 			{setupNotice && (
-				<div className="rounded-lg border border-[var(--color-border-agents-sheet)] bg-[var(--color-bg-agents-sheet-control)]/80 px-3 py-2.5 text-xs leading-body-md text-[var(--color-text-agents-sheet-description)]">
-					<p>{setupNotice.message}</p>
-					{setupNotice.warning && <p className="mt-2 text-warning">{setupNotice.warning}</p>}
+				<div className="rounded-md bg-wd-inset px-3 py-2.5 text-xs leading-body-md text-wd-secondary">
+						<p>{setupNotice.message}</p>
+						{setupNotice.warning && <p className="mt-2 text-caution">{setupNotice.warning}</p>}
 				</div>
 			)}
 
@@ -315,8 +319,8 @@ export function ProjectSetupFormView({
 					role="alert"
 					className={
 						alert.tone === "warning"
-							? "flex gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-xs leading-body-md"
-							: "flex gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs leading-body-md"
+							? "flex gap-2 rounded-md bg-caution-bg px-3 py-2.5 text-xs leading-body-md text-caution"
+								: "flex gap-2 rounded-md bg-critical-bg px-3 py-2.5 text-xs leading-body-md text-critical"
 					}
 				>
 					{alert.icon}
@@ -324,20 +328,20 @@ export function ProjectSetupFormView({
 						<p
 							className={
 								alert.tone === "warning"
-									? "font-medium text-[var(--color-text-agents-sheet-title)]"
-									: "font-medium text-destructive"
+									? "font-medium text-wd-primary"
+									: "font-medium text-critical"
 							}
 						>
 							{alert.title}
 						</p>
-						<p className="text-[var(--color-text-agents-sheet-description)]">{alert.message}</p>
+						<p className="text-wd-secondary">{alert.message}</p>
 					</div>
 				</div>
 			)}
 
 			<div className="flex items-center justify-end gap-3 pt-1">
 				<button
-					className="settings-footer-button disabled:pointer-events-none disabled:opacity-50"
+					className="settings-footer-button disabled:pointer-events-none disabled:opacity-40"
 					type="button"
 					disabled={isBusy}
 					onClick={onCancel}
@@ -345,7 +349,7 @@ export function ProjectSetupFormView({
 					{cancelLabel}
 				</button>
 				<button
-					className="settings-footer-button settings-footer-button-primary disabled:pointer-events-none disabled:opacity-50"
+					className="settings-footer-button settings-footer-button-primary disabled:pointer-events-none disabled:opacity-40"
 					type="submit"
 					disabled={!canSubmit}
 				>
@@ -370,7 +374,7 @@ export function ProjectSettingsSection({
 	return (
 		<section className="flex w-full flex-col items-stretch gap-(--size-settings-section-inner-gap)">
 			{!titleHidden && (
-				<h2 className="px-3 text-xs font-medium leading-4 text-settings-muted">
+				<h2 className="px-3 text-xs font-medium leading-4 text-wd-secondary">
 					{title}
 				</h2>
 			)}
@@ -403,7 +407,7 @@ export function ProjectSettingsRow({
 		<div className={cn("settings-row-bar", className)}>
 			<div className="flex shrink-0 items-center gap-(--size-settings-row-icon-gap)">
 				{icon}
-				<span className="whitespace-nowrap text-sm leading-5 text-settings-label">{label}</span>
+				<span className="whitespace-nowrap text-sm leading-5 text-wd-primary">{label}</span>
 			</div>
 			<div className="flex min-w-0 flex-1 items-center justify-end">{children}</div>
 		</div>
@@ -499,7 +503,7 @@ export function ProjectSettingsValueRow({
 			{href && ExternalLink ? (
 				<ExternalLink
 					href={href}
-					className="settings-row-value text-settings-accent hover:underline"
+					className="settings-row-value text-wd-primary underline-offset-2 hover:underline"
 					title={value}
 				>
 					{value}
@@ -575,7 +579,7 @@ export function ProjectGeneralSettingsView({
 							</ProjectSettingsRow>
 						))
 					) : (
-						<p className="px-1 text-xs text-settings-muted">{labels.workspaceReposEmpty}</p>
+						<p className="px-1 text-xs text-wd-secondary">{labels.workspaceReposEmpty}</p>
 					)}
 				</ProjectSettingsSection>
 			)}
@@ -624,7 +628,7 @@ export function ProjectAgentsSettingsView({
 				<button
 					type="button"
 					aria-label={refresh.label}
-					className="settings-option-trigger inline-flex items-center gap-1.5 disabled:pointer-events-none disabled:opacity-50"
+					className="settings-option-trigger inline-flex items-center gap-1.5 disabled:pointer-events-none disabled:opacity-40"
 					disabled={refresh.disabled}
 					onClick={refresh.onClick}
 				>
@@ -632,9 +636,9 @@ export function ProjectAgentsSettingsView({
 					{refresh.value}
 				</button>
 			</ProjectSettingsRow>
-			{error && <p className="px-1 text-xs leading-row text-error" role="alert">{error}</p>}
+			{error && <p className="px-1 text-xs leading-row text-critical" role="alert">{error}</p>}
 			{missingRequiredMessage && (
-				<p className="px-1 text-xs leading-row text-error" role="alert">{missingRequiredMessage}</p>
+				<p className="px-1 text-xs leading-row text-critical" role="alert">{missingRequiredMessage}</p>
 			)}
 		</ProjectSettingsSection>
 	);
@@ -696,7 +700,7 @@ export function ProjectWorkflowSettingsView({
 					{reviewerControl}
 				</ProjectSettingsRow>
 				{reviewerWarning && (
-					<p className="px-1 text-xs leading-row text-warning" role="status">
+					<p className="px-1 text-xs leading-row text-caution" role="status">
 						{reviewerWarning}
 					</p>
 				)}

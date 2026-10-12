@@ -3,29 +3,33 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
-// Buttons are medium-weight on an 8px radius, stroked with the system's 0.6px
-// hairline. The primary plate is the text colour inverted (a white chip on the
-// dark canvas); secondary is the raised chip plane. Footer variants keep the
-// settings/modal action chrome tokens. See DESIGN.md → Design system.
+// Waldo buttons are pills (radius-full) with a medium label. `primary` is the
+// ink plate (bg-inverse); `spot` is Waldo Spot with an ink label and appears
+// at most once per screen, on the one action Waldo wants taken. `critical`
+// names a destructive effect. Focus is the system ring: 2px border-focus,
+// offset 2px. See DESIGN.md and the Waldo design system's Button contract.
 const buttonVariants = cva(
-	"group/button inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md hairline border-transparent bg-clip-padding text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform,opacity] duration-fast ease-out outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 active:not-aria-[haspopup]:scale-[0.97] active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+	"group/button inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full hairline border-transparent bg-clip-padding text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform,opacity] duration-fast ease-out outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) active:not-aria-[haspopup]:scale-[0.97] disabled:pointer-events-none disabled:bg-wd-inset disabled:text-wd-disabled disabled:border-transparent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 	{
 		variants: {
 			variant: {
-				primary: "border-border bg-primary text-primary-foreground hover:bg-primary/80",
+				primary: "bg-wd-inverse text-wd-on-inverse hover:opacity-90",
+				spot: "bg-spot text-on-spot hover:bg-spot-pressed active:bg-spot-pressed",
+				critical: "bg-critical-bg text-critical hover:bg-[color-mix(in_oklab,var(--critical-bg),var(--critical)_10%)]",
 				outline:
-					"border-border bg-background text-foreground hover:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-transparent dark:hover:bg-input/30",
+					"border-wd-strong bg-transparent text-foreground hover:bg-wd-hover aria-expanded:bg-wd-hover aria-expanded:text-foreground",
 				secondary:
-					"border-border bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]",
-				ghost: "text-foreground hover:bg-muted dark:hover:bg-muted/50",
+					"bg-wd-inset text-foreground hover:bg-wd-pressed",
+				ghost: "text-foreground hover:bg-wd-hover active:bg-wd-pressed",
 				footer:
 					"h-(--size-settings-action-height) rounded-(--radius-settings-action) border-[var(--color-border-settings-input)] bg-[var(--color-bg-settings-input)] px-3 text-[length:var(--font-size-md)] leading-5 text-[var(--color-text-settings-row)] hover:bg-[var(--color-bg-settings-input)] hover:opacity-90 active:not-aria-[haspopup]:scale-100 active:not-aria-[haspopup]:translate-y-0 focus-visible:border-[var(--color-border-settings-input)] focus-visible:ring-0 focus-visible:shadow-[0_0_0_2px_var(--bridge-accent-weak)]",
 				"footer-primary":
 					"h-(--size-settings-action-height) rounded-(--radius-settings-action) border-transparent bg-[var(--color-settings-accent)] px-(--size-settings-footer-button-padding-x) text-[length:var(--font-size-md)] leading-5 text-[var(--color-settings-footer-button-primary-fg)] hover:bg-[var(--color-settings-accent)] hover:opacity-90 active:not-aria-[haspopup]:scale-100 active:not-aria-[haspopup]:translate-y-0 focus-visible:border-transparent focus-visible:ring-0 focus-visible:shadow-[0_0_0_2px_var(--bridge-accent-weak)]",
 			},
 			size: {
-				default: "h-control-form px-3",
-				sm: "h-control-md px-2.5 text-xs",
+				default: "h-control-form px-4",
+				sm: "h-control-md px-3 text-xs",
+				lg: "h-11 px-5 text-base",
 				icon: "size-control-form",
 				"icon-sm": "size-control-md",
 				// Neutral size so footer variants own height/padding via tokens.

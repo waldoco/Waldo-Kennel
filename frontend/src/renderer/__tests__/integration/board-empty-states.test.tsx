@@ -154,7 +154,7 @@ describe("global board first launch", () => {
 		expect(screen.getByTestId("waldo-brand-mark")).toHaveAttribute("data-brand", "waldo");
 		expect(screen.getByRole("status", { name: "Kennel is starting" })).toBeInTheDocument();
 		expect(screen.getByText("Kennel")).toBeInTheDocument();
-		expect(screen.getByText("Starting local services")).toHaveAttribute("aria-hidden", "true");
+		expect(screen.getByText("Starting the Kennel daemon…")).toHaveAttribute("aria-hidden", "true");
 		expect(screen.queryByText("Add a project")).not.toBeInTheDocument();
 		expect(columnCount()).toBe(0);
 	});

@@ -9,12 +9,8 @@ import {
 	FileCheck2,
 	FolderPlus,
 	GitBranch,
-	Loader2,
 	RefreshCw,
 	ShieldCheck,
-	Sparkles,
-	Target,
-	TerminalSquare,
 	X,
 	XCircle,
 } from "lucide-react";
@@ -83,72 +79,71 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 							?.querySelector<HTMLElement>("[data-onboarding-step-heading]")
 							?.focus();
 					}}
-					className="fixed left-1/2 top-1/2 z-overlay flex w-[min(720px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-panel hairline border-border bg-card shadow-[var(--shadow-import-modal)] outline-none data-[state=open]:animate-modal-in"
+					className="fixed left-1/2 top-1/2 z-overlay flex w-[min(720px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-raised shadow-[var(--shadow-overlay)] outline-none data-[state=open]:animate-modal-in"
 					data-testid="onboarding-tour"
 				>
-					<header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-						<Dialog.Title className="flex min-w-0 items-baseline gap-2">
-							<span className="truncate text-sm font-medium text-foreground">
-								{TITLES[step]}
-							</span>
-							<span className="shrink-0 text-2xs text-passive">
-								{t("onboarding.stepCount", { current: stepIndex + 1, total: STEPS.length })}
-							</span>
-						</Dialog.Title>
-						<div className="flex items-center gap-3">
-							<StepPager current={stepIndex} total={STEPS.length} />
+					<header className="flex shrink-0 flex-col gap-4 px-8 pb-2 pt-6">
+						<div className="flex items-center justify-between gap-3">
+							<Dialog.Title className="flex min-w-0 items-baseline gap-1.5">
+								<span className="wd-label truncate text-wd-primary">{TITLES[step]}</span>
+								<span className="wd-label shrink-0 text-wd-tertiary">
+									{t("onboarding.stepCount", { current: stepIndex + 1, total: STEPS.length })}
+								</span>
+							</Dialog.Title>
 							<Dialog.Close
 								aria-label={t("onboarding.close")}
-								className="grid size-control-chip place-items-center rounded-md text-passive transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+								className="settings-close-button"
 							>
 								<X aria-hidden="true" className="size-icon-md" />
 							</Dialog.Close>
 						</div>
+						<StepPager current={stepIndex} total={STEPS.length} />
 					</header>
 					<p
 						aria-live="polite"
 						className="sr-only"
 					>{`Step ${stepIndex + 1} of ${STEPS.length}: ${TITLES[step]}`}</p>
-					<div className="board-scrollbar h-[390px] shrink-0 overflow-y-auto px-5 py-5.5">
+					<div className="board-scrollbar h-[440px] shrink-0 overflow-y-auto px-8 py-6">
 						{step === "welcome" ? <WelcomeStep /> : null}
 						{step === "system" ? <SystemStep /> : null}
 						{step === "codex" ? <CodexStep /> : null}
 						{step === "journey" ? <JourneyStep /> : null}
 						{step === "project" ? <ProjectStep /> : null}
 					</div>
-					<footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-5 py-3.5">
+					<footer className="flex shrink-0 items-center justify-between gap-3 px-8 pb-6 pt-4">
 						<Button
 							className="gap-1.5"
 							disabled={stepIndex === 0}
 							onClick={() => setStepIndex((n) => Math.max(0, n - 1))}
-							size="sm"
 							variant="ghost"
 						>
 							<ArrowLeft aria-hidden="true" className="size-icon-sm" /> {t("onboarding.back")}
 						</Button>
-						<Button onClick={closeOnboarding} size="sm" variant="ghost">
-							{t("onboarding.skip")}
-						</Button>
-						<Button
-							className="gap-1.5"
-							onClick={() =>
-								isLast ? closeOnboarding() : setStepIndex((n) => n + 1)
-							}
-							size="sm"
-							variant="primary"
-						>
-							{isLast ? (
-								<Check aria-hidden="true" className="size-icon-sm" />
-							) : null}
-							{stepIndex === 0
-								? "Set up Kennel"
-								: isLast
-									? "Finish"
-									: "Continue"}
+						<div className="flex items-center gap-2">
 							{isLast ? null : (
-								<ArrowRight aria-hidden="true" className="size-icon-sm" />
+								<Button onClick={closeOnboarding} variant="ghost">
+									{t("onboarding.skip")}
+								</Button>
 							)}
-						</Button>
+							{/* The last step's one primary is its own "Choose a Project
+							    folder"; finishing there is the quiet way out. */}
+							<Button
+								className="gap-1.5"
+								onClick={() =>
+									isLast ? closeOnboarding() : setStepIndex((n) => n + 1)
+								}
+								variant={isLast ? "secondary" : "primary"}
+							>
+								{stepIndex === 0
+									? "Set up Kennel"
+									: isLast
+										? "Finish"
+										: "Continue"}
+								{isLast ? null : (
+									<ArrowRight aria-hidden="true" className="size-icon-sm" />
+								)}
+							</Button>
+						</div>
 					</footer>
 				</Dialog.Content>
 			</Dialog.Portal>
@@ -159,52 +154,55 @@ export function OnboardingTour({ daemonReady }: { daemonReady: boolean }) {
 function StepPager({ current, total }: { current: number; total: number }) {
 	const { t } = useTranslation();
 	return (
-		<div
+		<ol
 			aria-label={t("onboarding.progressAria", { current: current + 1, total })}
 			aria-valuemax={total}
 			aria-valuemin={1}
 			aria-valuenow={current + 1}
-			className="flex items-center gap-1"
+			className="grid gap-2"
 			role="progressbar"
+			style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 1fr))` }}
 		>
-			{Array.from({ length: total }, (_, i) => (
-				<span
-					aria-hidden="true"
-					className={cn(
-						"h-1.5 rounded-full transition-[width,background-color] duration-200",
-						i === current
-							? "w-5 bg-foreground"
-							: i < current
-								? "w-1.5 bg-muted-foreground"
-								: "w-1.5 bg-border-strong",
-					)}
-					key={i}
-				/>
+			{STEPS.slice(0, total).map((name, i) => (
+				<li aria-hidden="true" className="flex min-w-0 flex-col gap-1.5" key={name}>
+					<span
+						className={cn(
+							"h-1 rounded-full transition-colors duration-base ease-out",
+							i <= current ? "bg-wd-inverse" : "bg-wd-inset",
+						)}
+					/>
+					<span
+						className={cn(
+							"wd-caption truncate",
+							i === current ? "text-wd-primary" : "text-wd-tertiary",
+						)}
+					>
+						{TITLES[name]}
+					</span>
+				</li>
 			))}
-		</div>
+		</ol>
 	);
 }
 
 function Heading({
 	body,
-	icon,
 	title,
 }: {
 	body: string;
-	icon: ReactNode;
+	icon?: ReactNode;
 	title: string;
 }) {
 	return (
-		<div className="flex flex-col gap-2.5">
+		<div className="flex flex-col gap-3">
 			<h2
-				className="flex items-center gap-2 text-brand font-medium leading-snug text-foreground outline-none"
+				className="wd-display-2 font-display font-normal text-wd-primary outline-none"
 				data-onboarding-step-heading
 				tabIndex={-1}
 			>
-				{icon}
 				{title}
 			</h2>
-			<p className="max-w-[62ch] text-xs leading-body text-foreground/60">
+			<p className="wd-body-l max-w-[58ch] text-wd-secondary">
 				{body}
 			</p>
 		</div>
@@ -214,23 +212,12 @@ function Heading({
 function WelcomeStep() {
 	const { t } = useTranslation();
 	return (
-		<div className="flex flex-col items-center gap-6 text-center">
-			<div className="grid size-14 place-items-center rounded-2xl hairline border-border bg-popover text-foreground shadow-sm">
-				<Sparkles aria-hidden="true" className="size-6" />
-			</div>
-			<div className="flex flex-col gap-2">
-				<h2
-					className="text-heading-sm font-medium text-foreground outline-none"
-					data-onboarding-step-heading
-					tabIndex={-1}
-				>
-					{t("onboarding.tour.welcome.heading")}
-				</h2>
-				<p className="mx-auto max-w-[54ch] text-xs leading-body text-foreground/60">
-					{t("onboarding.tour.welcome.body")}
-				</p>
-			</div>
-			<div className="grid w-full grid-cols-3 gap-2 text-left">
+		<div className="flex flex-col gap-6">
+			<Heading
+				title={t("onboarding.tour.welcome.heading")}
+				body={t("onboarding.tour.welcome.body")}
+			/>
+			<div className="settings-grouped-rows">
 				<WelcomeCard
 					icon={<ShieldCheck />}
 					title={t("onboarding.tour.welcome.governedTitle")}
@@ -247,7 +234,7 @@ function WelcomeStep() {
 					body="Agent completion never replaces your decision."
 				/>
 			</div>
-			<p className="text-2xs text-passive">
+			<p className="wd-caption text-wd-tertiary">
 				{t("onboarding.tour.welcome.timeHint")}
 			</p>
 		</div>
@@ -263,12 +250,17 @@ function WelcomeCard({
 	title: string;
 }) {
 	return (
-		<div className="rounded-lg hairline border-border bg-popover/60 p-3.5">
-			<span className="mb-2 block text-muted-foreground [&_svg]:size-icon-md">
+		<div className="settings-row-bar justify-start">
+			<span
+				aria-hidden="true"
+				className="settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary [&_svg]:size-4"
+			>
 				{icon}
 			</span>
-			<p className="text-xs font-medium">{title}</p>
-			<p className="mt-1 text-2xs leading-body text-passive">{body}</p>
+			<div className="flex min-w-0 flex-col gap-0.5">
+				<p className="wd-body text-wd-primary">{title}</p>
+				<p className="wd-body-s text-wd-secondary">{body}</p>
+			</div>
 		</div>
 	);
 }
@@ -296,12 +288,6 @@ function SystemStep() {
 	return (
 		<div className="flex flex-col gap-5">
 			<Heading
-				icon={
-					<TerminalSquare
-						aria-hidden="true"
-						className="size-icon-base text-muted-foreground"
-					/>
-				}
 				title={t("onboarding.tour.system.title")}
 				body="Kennel runs coding work on your machine. The daemon is ready. macOS and Linux sessions also need tmux; Windows uses its native terminal runtime."
 			/>
@@ -332,26 +318,21 @@ function SystemStep() {
 							disabled={installState === "installing"}
 							onClick={() => void install()}
 							size="sm"
-							variant="outline"
+							variant="secondary"
 						>
-							{installState === "installing" ? (
-								<>
-									<Loader2 className="mr-1.5 size-icon-sm animate-spin" />
-									{t("onboarding.tour.system.installing")}
-								</>
-							) : (
-								"Install tmux with Homebrew"
-							)}
+							{installState === "installing"
+								? t("onboarding.tour.system.installing")
+								: "Install tmux with Homebrew"}
 						</Button>
 					) : undefined
 				}
 			/>
 			{installState === "cancelled" ? (
-				<p className="text-2xs text-passive" role="status">
+				<p className="wd-body-s text-wd-secondary" role="status">
 					{t("onboarding.tour.system.cancelled")}
 				</p>
 			) : null}
-			<p className="rounded-md bg-muted/45 px-3 py-2.5 text-2xs leading-body text-passive">
+			<p className="wd-body-s rounded-md bg-wd-inset px-4 py-3 text-wd-secondary">
 				{t("onboarding.tour.system.prereqNote")}
 			</p>
 		</div>
@@ -374,25 +355,28 @@ function StatusRow({
 	return (
 		<div
 			className={cn(
-				"rounded-lg hairline border-border bg-popover/55 p-3.5",
+				"rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4",
 				action
 					? "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
 					: "flex items-center gap-3",
 			)}
 		>
-			<Icon
+			<span
+				aria-hidden="true"
 				className={cn(
-					"size-icon-base shrink-0",
+					"grid size-7 shrink-0 place-items-center rounded-sm",
 					state === "ready"
-						? "text-status-ready"
+						? "bg-good-bg text-good"
 						: state === "error"
-							? "text-error"
-							: "text-passive",
+							? "bg-critical-bg text-critical"
+							: "bg-wd-inset text-wd-secondary",
 				)}
-			/>
+			>
+				<Icon className="size-4" />
+			</span>
 			<div className="min-w-0 flex-1">
-				<p className="text-xs font-medium">{title}</p>
-				<p className="mt-0.5 text-2xs leading-body text-passive">{body}</p>
+				<p className="wd-body text-wd-primary">{title}</p>
+				<p className="wd-body-s mt-0.5 text-wd-secondary">{body}</p>
 			</div>
 			{action ? (
 				<div className="col-start-2 sm:col-start-3 sm:row-start-1">
@@ -440,18 +424,11 @@ function CodexStep() {
 	return (
 		<div className="flex flex-col gap-5">
 			<Heading
-				icon={
-					<Sparkles
-						aria-hidden="true"
-						className="size-icon-base text-muted-foreground"
-					/>
-				}
 				title={t("onboarding.tour.codex.title")}
 				body="Codex can reason about Contracts and Plans, then carry out approved WorkUnits inside the Project you choose."
 			/>
 			{agents.isPending ? (
-				<div className="flex items-center gap-2 rounded-lg hairline border-border p-4 text-xs text-passive">
-					<Loader2 className="size-icon-sm animate-spin" />
+				<div className="wd-body-s rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4 text-wd-secondary" role="status">
 					{t("onboarding.tour.codex.looking")}
 				</div>
 			) : agents.isError ? (
@@ -463,7 +440,7 @@ function CodexStep() {
 						<Button
 							onClick={() => void agents.refetch?.()}
 							size="sm"
-							variant="outline"
+							variant="secondary"
 						>
 							<RefreshCw className="mr-1.5 size-icon-sm" />
 							{t("onboarding.tour.codex.tryAgain")}
@@ -479,7 +456,7 @@ function CodexStep() {
 						<Button
 							onClick={() => void agents.refetch?.()}
 							size="sm"
-							variant="outline"
+							variant="secondary"
 						>
 							<RefreshCw className="mr-1.5 size-icon-sm" />
 							{t("onboarding.tour.codex.checkAgain")}
@@ -487,11 +464,11 @@ function CodexStep() {
 					}
 				/>
 			) : (
-				<div className="flex items-center gap-3 rounded-lg hairline border-border bg-popover/55 p-4">
+				<div className="flex items-center gap-3 rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4">
 					<AgentAvatar provider="codex" />
 					<div className="min-w-0 flex-1">
-						<p className="text-xs font-medium">{codex.label || "Codex"}</p>
-						<p className="mt-0.5 text-2xs text-passive">
+						<p className="wd-body text-wd-primary">{codex.label || "Codex"}</p>
+						<p className="wd-body-s mt-0.5 text-wd-secondary">
 							{authorized
 								? "Installed · sign-in detected"
 								: "Installed · sign-in not confirmed"}
@@ -499,7 +476,7 @@ function CodexStep() {
 					</div>
 					{defaultAgentId === "codex" &&
 					settings?.reasoning.provider === "codex" ? (
-						<span className="flex items-center gap-1 text-2xs text-status-ready">
+						<span className="wd-label flex items-center gap-1 rounded-xs bg-good-bg px-2 py-1 text-good">
 							<Check className="size-icon-sm" />
 							{t("onboarding.tour.codex.selected")}
 						</span>
@@ -508,7 +485,7 @@ function CodexStep() {
 							disabled={saving}
 							onClick={() => void connect()}
 							size="sm"
-							variant="primary"
+							variant="secondary"
 						>
 							{saving ? "Connecting…" : "Use Codex"}
 						</Button>
@@ -517,13 +494,13 @@ function CodexStep() {
 			)}
 			{notice ? (
 				<p
-					className="rounded-md bg-muted/45 px-3 py-2.5 text-2xs leading-body text-passive"
+					className="wd-body-s rounded-md bg-wd-inset px-4 py-3 text-wd-secondary"
 					role="status"
 				>
 					{notice}
 				</p>
 			) : null}
-			<p className="text-2xs leading-body text-passive">
+			<p className="wd-caption text-wd-tertiary">
 				{t("onboarding.tour.codex.authorityNote")}
 			</p>
 		</div>
@@ -546,27 +523,21 @@ function JourneyStep() {
 	return (
 		<div className="flex flex-col gap-5">
 			<Heading
-				icon={
-					<GitBranch
-						aria-hidden="true"
-						className="size-icon-base text-muted-foreground"
-					/>
-				}
 				title={t("onboarding.tour.journey.title")}
 				body="Kennel keeps each decision in its own place, so setup never turns into silent execution."
 			/>
-			<ol className="relative flex flex-col gap-1 before:absolute before:bottom-5 before:left-[17px] before:top-5 before:w-px before:bg-border">
+			<ol className="relative flex flex-col gap-1 before:absolute before:bottom-5 before:left-[23px] before:top-5 before:w-px before:bg-(--border-hairline)">
 				{stages.map(([n, title, body]) => (
 					<li
-						className="relative flex gap-3 rounded-lg p-2.5 transition-colors hover:bg-popover/60"
+						className="relative flex gap-3 rounded-md px-3 py-2.5"
 						key={n}
 					>
-						<span className="z-10 grid size-6 shrink-0 place-items-center rounded-full hairline border-border-strong bg-card text-2xs font-medium">
+						<span className="wd-data z-10 grid size-6 shrink-0 place-items-center rounded-full bg-wd-inset text-wd-primary">
 							{n}
 						</span>
 						<div>
-							<p className="text-xs font-medium">{title}</p>
-							<p className="mt-0.5 text-2xs leading-body text-passive">
+							<p className="wd-body text-wd-primary">{title}</p>
+							<p className="wd-body-s mt-0.5 text-wd-secondary">
 								{body}
 							</p>
 						</div>
@@ -584,18 +555,14 @@ function ProjectStep() {
 	);
 	const closeOnboarding = useUiStore((state) => state.closeOnboarding);
 	return (
-		<div className="flex flex-col items-center gap-5 text-center">
-			<div className="grid size-12 place-items-center rounded-xl hairline border-border bg-popover">
-				<Target className="size-5" />
-			</div>
+		<div className="flex flex-col items-start gap-5">
 			<Heading
-				icon={null}
 				title={t("onboarding.tour.project.title")}
 				body="Choose one repository or a workspace of repositories. Registering it records context and provider preferences; it does not start agent work."
 			/>
-			<div className="w-full rounded-lg hairline border-border bg-popover/55 p-4 text-left">
-				<p className="text-xs font-medium">{t("onboarding.tour.project.guideIntro")}</p>
-				<ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-2xs text-passive">
+			<div className="w-full rounded-lg border-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface p-4 text-left">
+				<p className="wd-label text-wd-primary">{t("onboarding.tour.project.guideIntro")}</p>
+				<ul className="wd-body-s mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-wd-secondary">
 					<li>{t("onboarding.tour.project.guideReview")}</li>
 					<li>{t("onboarding.tour.project.guidePairing")}</li>
 					<li>{t("onboarding.tour.project.guideOutcome")}</li>
@@ -608,13 +575,12 @@ function ProjectStep() {
 					closeOnboarding();
 					requestCreateProject();
 				}}
-				size="sm"
 				variant="primary"
 			>
-				<FolderPlus className="size-icon-sm" />
+				<FolderPlus className="size-icon-sm" aria-hidden="true" />
 				{t("onboarding.tour.project.chooseFolder")}
 			</Button>
-			<p className="text-2xs text-passive">
+			<p className="wd-caption text-wd-tertiary">
 				{t("onboarding.tour.project.reopenHint")}
 			</p>
 		</div>

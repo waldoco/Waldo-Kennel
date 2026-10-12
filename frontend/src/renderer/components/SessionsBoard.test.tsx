@@ -593,7 +593,7 @@ describe("SessionsBoard", () => {
 		expect(archivedUsage).toHaveAttribute("aria-label", "2,000 tokens");
 	});
 
-	it("pulses the shared activity indicator on an actively working session card", () => {
+	it("marks an actively working session card with the still live dot", () => {
 		workspaceQueryMock.mockReturnValue({
 			data: [
 				workspaceWithSessions([
@@ -612,7 +612,9 @@ describe("SessionsBoard", () => {
 		renderBoard("p1");
 		const card = screen.getByText("active-card-task").closest('[data-testid="board-session-card"]') as HTMLElement;
 		const working = within(card).getByText("Working").parentElement as HTMLElement;
-		expect(working.querySelector('[aria-hidden="true"]')).toHaveClass("bg-status-working", "animate-status-pulse");
+		const mark = working.querySelector('[data-state-mark="live"]');
+		expect(mark).toHaveClass("bg-wd-accent");
+		expect(mark).not.toHaveClass("animate-status-pulse");
 	});
 
 	it("keeps a spawning card labeled Working when raw activity has not become active", () => {
@@ -659,7 +661,9 @@ describe("SessionsBoard", () => {
 		const card = screen.getByText("switching worker").closest('[data-testid="board-session-card"]') as HTMLElement;
 		const status = within(card).getByText("Switching to Codex").parentElement as HTMLElement;
 		expect(status).toHaveClass("text-status-working");
-		expect(status.querySelector("span")).toHaveClass("animate-status-pulse");
+		// In-flight switch keeps its dot, still - nothing pulses.
+		expect(status.querySelector("span")).toHaveClass("rounded-full");
+		expect(status.querySelector("span")).not.toHaveClass("animate-status-pulse");
 		expect(within(card).queryByText("Exited")).not.toBeInTheDocument();
 	});
 
@@ -723,7 +727,7 @@ describe("SessionsBoard", () => {
 		expect(within(draftCard).getByText("Draft PR").parentElement).toHaveClass("text-status-in-review");
 	});
 
-	it("places an exited live session in Needs Choice with an Exited badge", () => {
+	it("places an exited live session in Needs choice with an Exited badge", () => {
 		workspaceQueryMock.mockReturnValue({
 			data: [
 				workspaceWithSessions([
@@ -747,8 +751,10 @@ describe("SessionsBoard", () => {
 
 		renderBoard("p1");
 
-		const needsYouColumn = screen.getByRole("region", { name: "Needs Choice sessions" });
-		expect(needsYouColumn).toHaveClass("rounded-group", "column-shell");
+		const needsYouColumn = screen.getByRole("region", { name: "Needs choice sessions" });
+		// A flat plate on the shell tone: no glow gradient.
+		expect(needsYouColumn).toHaveClass("rounded-lg", "bg-shell");
+		expect(needsYouColumn).not.toHaveClass("column-shell");
 		expect(needsYouColumn.firstElementChild).toHaveClass("items-center", "justify-between");
 		expect(within(needsYouColumn).getByText("agent-exited-task")).toBeInTheDocument();
 		expect(within(needsYouColumn).getByText("Exited").parentElement).toHaveClass("text-status-exited");
@@ -802,7 +808,7 @@ describe("SessionsBoard", () => {
 		renderBoard("p1");
 
 		const workLane = screen.getByRole("region", { name: "Running sessions" });
-		const reviewLane = screen.getByRole("region", { name: "Needs Input sessions" });
+		const reviewLane = screen.getByRole("region", { name: "Needs input sessions" });
 
 		expect(within(workLane).getByLabelText("3 Running sessions")).toHaveTextContent("3");
 		expect(workLane.querySelectorAll(".overflow-y-auto")).toHaveLength(1);

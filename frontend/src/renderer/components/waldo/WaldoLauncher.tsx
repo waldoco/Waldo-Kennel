@@ -18,8 +18,9 @@ export function WaldoLauncher({ className }: { className?: string }) {
       aria-expanded={waldo.isOpen}
       aria-label={t("shortcut.toggle-waldo")}
       className={cn(
-        "waldo-native-interactive grid size-8 place-items-center rounded-lg border border-border bg-raised/92 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 motion-reduce:transition-none",
-        waldo.isOpen && "bg-interactive-active text-foreground",
+        "waldo-native-interactive grid size-8 place-items-center rounded-full hairline border-wd-hairline bg-wd-surface text-wd-secondary transition-colors duration-fast ease-out hover:bg-wd-hover hover:text-wd-primary active:bg-wd-pressed motion-reduce:transition-none",
+        waldo.isOpen &&
+          "border-transparent bg-wd-inverse text-wd-on-inverse hover:bg-wd-inverse hover:text-wd-on-inverse active:bg-wd-inverse",
         className,
       )}
       onClick={(event) => waldo.toggle(event.currentTarget)}

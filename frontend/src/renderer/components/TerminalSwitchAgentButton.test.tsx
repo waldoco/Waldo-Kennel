@@ -169,9 +169,9 @@ describe("TerminalSwitchAgentButton", () => {
 		expect(button.classList.contains("topbar-control--icon")).toBe(true);
 		expect(button.classList.contains("size-control-md")).toBe(true);
 		expect(button.classList.contains("size-control-lg")).toBe(false);
-		expect(button.classList.contains("rounded-md")).toBe(true);
+		expect(button.classList.contains("rounded-full")).toBe(true);
 		expect(button.classList.contains("ml-1")).toBe(false);
-		expect(button.classList.contains("rounded-full")).toBe(false);
+		expect(button.classList.contains("rounded-md")).toBe(false);
 		expect(button.querySelector(".lucide-repeat-2")).not.toBeNull();
 		expect(button.querySelector("img")).toBeNull();
 		expect(button.textContent).toBe("");
@@ -297,7 +297,8 @@ describe("TerminalSwitchAgentButton", () => {
 		const button = await screen.findByRole("button", { name: "Switching to Codex" });
 		expect(button).toHaveAttribute("aria-busy", "true");
 		expect(button).toBeDisabled();
-		expect(button.querySelector(".lucide-loader-circle")).toBeInTheDocument();
+		expect(button.querySelector(".lucide-repeat-2")).toBeInTheDocument();
+		expect(button.querySelector('[data-testid="agent-switch-live-dot"]')).toBeInTheDocument();
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 	});
 

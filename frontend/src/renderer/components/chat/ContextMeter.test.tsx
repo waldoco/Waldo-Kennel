@@ -63,22 +63,22 @@ describe("ContextMeter", () => {
 	});
 
 	describe("threshold colours", () => {
-		it("uses the Kennel logo accent below 70%", () => {
+		it("stays neutral below 70%", () => {
 			render(<ContextMeter usage={usage({ contextUsed: 172_000 })} />);
-			expect(fill().className).toContain("bg-logo-accent");
+			expect(fill().className).toContain("bg-wd-secondary");
 		});
 
-		it("shifts to the needs-you token from 70%", () => {
+		it("shifts to the caution token from 70%", () => {
 			// Exactly at the boundary, which must warn rather than stay normal.
 			render(<ContextMeter usage={usage({ contextUsed: 180_880 })} />);
-			expect(fill().className).toContain("bg-status-needs-you");
-			expect(screen.getByText("70%").className).toContain("text-status-needs-you");
+			expect(fill().className).toContain("bg-caution");
+			expect(screen.getByText("70%").className).toContain("text-caution");
 		});
 
-		it("shifts to the exited token from 90%, where the next turn is at risk", () => {
+		it("shifts to the critical token from 90%, where the next turn is at risk", () => {
 			render(<ContextMeter usage={usage({ contextUsed: 232_560 })} />);
-			expect(fill().className).toContain("bg-status-exited");
-			expect(screen.getByText("90%").className).toContain("text-status-exited");
+			expect(fill().className).toContain("bg-critical");
+			expect(screen.getByText("90%").className).toContain("text-critical");
 		});
 	});
 
@@ -119,7 +119,7 @@ describe("ContextMeter", () => {
 
 		it("escalates its colour past 90%, where turns start failing", () => {
 			render(<ContextMeter usage={usage()} rateLimits={limits({ primaryUsedPercent: 94 })} />);
-			expect(screen.getByText("94% quota").className).toContain("text-status-exited");
+			expect(screen.getByText("94% quota").className).toContain("text-critical");
 		});
 
 		it("warns on the tighter of the two windows", () => {

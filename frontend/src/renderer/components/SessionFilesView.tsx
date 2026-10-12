@@ -15,6 +15,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
+	ArrowRight,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -83,11 +84,11 @@ const statusLabel: Record<WorkspaceFileStatus, string> = {
 };
 
 const statusTone: Record<WorkspaceFileStatus, string> = {
-	added: "text-success",
-	deleted: "text-error",
-	modified: "text-warning",
-	renamed: "text-accent",
-	unmodified: "text-passive",
+	added: "text-good",
+	deleted: "text-critical",
+	modified: "text-wd-secondary",
+	renamed: "text-wd-secondary",
+	unmodified: "text-wd-tertiary",
 };
 
 // Split (old | new) view only means something when both sides have content to
@@ -258,15 +259,15 @@ export function SessionFilesView({
 		<section
 			ref={rootRef}
 			onKeyDown={onFilesKeyDown}
-			className="flex h-full min-h-0 flex-col bg-background text-foreground"
+			className="flex h-full min-h-0 flex-col bg-wd-canvas text-wd-primary"
 			aria-label={t("files.sessionFiles")}
 		>
-			<header className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border bg-surface px-2">
+			<header className="flex h-10 shrink-0 items-center gap-0.5 hairline-b border-wd-hairline bg-wd-canvas px-2">
 				<label className="relative mr-1 min-w-0 flex-1">
-					<Search className="pointer-events-none absolute left-2.5 top-1/2 size-icon-sm -translate-y-1/2 text-passive" />
+					<Search className="pointer-events-none absolute left-3 top-1/2 size-icon-sm -translate-y-1/2 text-wd-tertiary" />
 					<Input
 						aria-label={t("files.search")}
-						className="h-8 pl-8 font-mono text-xs"
+						className="h-8 rounded-full border-transparent bg-wd-inset pl-8 text-xs"
 						onChange={(event) => setFilter(event.target.value)}
 						placeholder={
 							filesQuery.isPending
@@ -325,7 +326,7 @@ export function SessionFilesView({
 			</header>
 
 			<div
-				className="board-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-background"
+				className="board-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-wd-canvas"
 				data-files-scroll-root=""
 			>
 				<div className={cn("flex w-full flex-col px-0", !isMaximized && "mx-auto max-w-[1200px]")}>
@@ -442,7 +443,7 @@ function ReviewFileCard({
 					aria-label={t(expanded ? "files.collapseFile" : "files.expandFile", { file: fileLabel(file) })}
 					className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1 text-left"
 					data-file-toggle=""
-					headerClassName="min-h-9 hover:bg-interactive-hover/50 data-[state=open]:bg-interactive-active/35"
+					headerClassName="min-h-9 transition-colors duration-fast hover:bg-wd-hover data-[state=open]:bg-wd-selected"
 					trailing={
 						<FileFeedbackButton
 							active={annotation.target?.path === file.path && annotation.target.side === "file"}
@@ -452,9 +453,9 @@ function ReviewFileCard({
 					}
 				>
 					{expanded ? (
-						<ChevronDown className="size-icon-sm shrink-0 text-passive" aria-hidden="true" />
+						<ChevronDown className="size-icon-sm shrink-0 text-wd-tertiary" aria-hidden="true" />
 					) : (
-						<ChevronRight className="size-icon-sm shrink-0 text-passive" aria-hidden="true" />
+						<ChevronRight className="size-icon-sm shrink-0 text-wd-tertiary" aria-hidden="true" />
 					)}
 					<StatusMark status={file.status} />
 					<FilePathLabel file={file} />
@@ -463,7 +464,7 @@ function ReviewFileCard({
 				{annotation.target?.path === file.path && annotation.target.side === "file" ? (
 					<FileAnnotationComposer annotation={annotation} />
 				) : null}
-				<AccordionContent className="border-t border-border/60 bg-background/40">
+				<AccordionContent className="hairline-t border-wd-hairline">
 					{detailQuery.isPending ? <PanelMessage compact>{t("files.loadingDiff")}</PanelMessage> : null}
 					{!detailQuery.isPending && detailQuery.error ? (
 						<PanelMessage compact action={<RetryButton onClick={() => void detailQuery.refetch()} />}>
@@ -505,12 +506,13 @@ function FileFeedbackButton({ active, file, onClick }: { active: boolean; file: 
 }
 function FilePathLabel({ file }: { file: WorkspaceFileSummary }) {
 	if (!file.previousPath) {
-		return <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-foreground">{file.path}</span>;
+		return <span className="min-w-0 flex-1 truncate text-xs font-medium text-wd-primary">{file.path}</span>;
 	}
 	return (
-		<span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-foreground">
-			<span className="text-passive line-through decoration-border">{file.previousPath}</span>
-			<span className="px-1 text-passive">-&gt;</span>
+		<span className="min-w-0 flex-1 truncate text-xs font-medium text-wd-primary">
+			<span className="text-wd-tertiary line-through decoration-wd-strong">{file.previousPath}</span>
+			<ArrowRight aria-hidden="true" className="mx-1 inline size-3 align-[-1px] text-wd-tertiary" />
+			<span className="sr-only">-&gt;</span>
 			<span>{file.path}</span>
 		</span>
 	);
@@ -588,8 +590,8 @@ function ReviewDiffBody({
 }
 
 const diffRowTone: Record<Exclude<DiffRowKind, "hunk">, string> = {
-	add: "bg-success/10",
-	del: "bg-error/10",
+	add: "bg-good-bg",
+	del: "bg-critical-bg",
 	context: "",
 };
 
@@ -800,7 +802,7 @@ function DiffView({
 	return (
 		<div>
 			{truncated ? (
-				<div className="shrink-0 border-b border-border bg-warning/10 px-3 py-1.5 text-xs text-warning">
+				<div className="wd-caption shrink-0 hairline-b border-wd-hairline bg-caution-bg px-3 py-1.5 text-caution">
 					{t("files.diffTruncated")}
 				</div>
 			) : null}
@@ -877,9 +879,9 @@ function DiffView({
 
 const HunkBand = memo(function HunkBand({ row }: { row: DiffRow }) {
 	return (
-		<div className="flex select-none items-baseline gap-2 bg-surface-faint px-2.5 py-0.75 text-passive">
-			<span className="shrink-0 text-passive/70">{row.text}</span>
-			{row.section ? <span className="min-w-0 truncate text-passive/90">{row.section}</span> : null}
+		<div className="flex select-none items-baseline gap-2 bg-wd-inset px-2.5 py-0.75 text-wd-tertiary">
+			<span className="shrink-0 text-wd-tertiary">{row.text}</span>
+			{row.section ? <span className="min-w-0 truncate text-wd-secondary">{row.section}</span> : null}
 		</div>
 	);
 });
@@ -914,14 +916,14 @@ function DiffRowContentInner({ annotation, index, path, previousPath, row, t, wr
 					t={t}
 					target={lineAnnotationTarget(path, previousPath, row, index)}
 				/>
-				<span className="w-9 shrink-0 select-none border-r border-border/50 bg-terminal px-1.5 text-right text-passive/70 tabular-nums">
+				<span className="w-9 shrink-0 select-none border-r-[length:var(--stroke-hairline)] border-wd-hairline bg-terminal px-1.5 text-right text-wd-tertiary tabular-nums">
 					{row.newNo ?? row.oldNo ?? ""}
 				</span>
 				<span
 					className={cn(
 						"w-4 shrink-0 select-none text-center",
-						row.kind === "add" && "text-success",
-						row.kind === "del" && "text-error",
+						row.kind === "add" && "text-good",
+						row.kind === "del" && "text-critical",
 					)}
 				>
 					{diffMarkerGlyph[row.kind]}
@@ -1026,7 +1028,7 @@ function SplitDiff({
 					<HunkBand key={`sh${index}`} row={splitRow.row} />
 				) : (
 					<div key={`sp${index}`}>
-						<div className="grid grid-cols-2 divide-x divide-border/40">
+						<div className="grid grid-cols-2 divide-x divide-wd-hairline">
 							<SplitSide
 								annotation={annotation}
 								path={path}
@@ -1074,7 +1076,7 @@ function SplitSide({
 	side: "old" | "new";
 	t: TFunction;
 }) {
-	if (!row || rowIndex === null) return <div className="bg-surface-faint/20" aria-hidden="true" />;
+	if (!row || rowIndex === null) return <div className="bg-wd-inset" aria-hidden="true" />;
 	const lineNo = side === "old" ? row.oldNo : row.newNo;
 	const tone = row.kind === "hunk" ? "" : diffRowTone[row.kind];
 	const target = lineNo == null ? null : lineAnnotationTarget(path, previousPath, row, rowIndex, side);
@@ -1095,7 +1097,7 @@ function SplitSide({
 					target={target}
 				/>
 			) : null}
-			<span className="w-9 shrink-0 select-none border-r border-border/50 bg-terminal px-1.5 text-right text-passive/70 tabular-nums">
+			<span className="w-9 shrink-0 select-none border-r-[length:var(--stroke-hairline)] border-wd-hairline bg-terminal px-1.5 text-right text-wd-tertiary tabular-nums">
 				{lineNo ?? ""}
 			</span>
 			<span className="min-w-0 whitespace-pre-wrap break-all px-1.5">
@@ -1151,7 +1153,7 @@ function LineFeedbackButton({
 	return (
 		<Button
 			aria-label={label}
-			className="absolute inset-y-0 left-6 z-20 my-auto size-6 rounded-sm border-primary/70 opacity-0 shadow-md shadow-black/30 transition-opacity active:translate-y-0 active:scale-100 focus-visible:opacity-100 group-hover/line:opacity-100"
+			className="absolute inset-y-0 left-6 z-20 my-auto size-6 rounded-full opacity-0 transition-opacity duration-fast active:translate-y-0 active:scale-100 focus-visible:opacity-100 group-hover/line:opacity-100"
 			onClick={onClick}
 			size={null}
 			type="button"
@@ -1175,16 +1177,16 @@ function FileAnnotationComposer({ annotation }: { annotation: FileAnnotationMode
 
 	return (
 		<form
-			className="border-y border-border/70 bg-surface px-3 py-2 font-sans"
+			className="border-y-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-surface px-3 py-3 font-sans"
 			onSubmit={(event) => {
 				event.preventDefault();
 				submit();
 			}}
 		>
 			<div className="mb-1.5 flex items-center justify-between gap-2">
-				<span className="min-w-0 truncate font-mono text-caption text-passive">{targetLabel}</span>
+				<span className="wd-caption min-w-0 truncate text-wd-secondary">{targetLabel}</span>
 				{annotation.status === "sent" ? (
-					<span className="inline-flex items-center gap-1 text-caption text-success" role="status">
+					<span className="wd-caption inline-flex items-center gap-1 text-good" role="status">
 						<Check className="size-icon-sm" aria-hidden="true" />
 						{t("files.feedbackSent")}
 					</span>
@@ -1193,7 +1195,7 @@ function FileAnnotationComposer({ annotation }: { annotation: FileAnnotationMode
 			<textarea
 				aria-label={t("files.feedbackLabel", { target: targetLabel })}
 				autoFocus
-				className="min-h-20 w-full resize-y rounded-md border border-input bg-background px-2.5 py-2 text-sm text-foreground outline-none placeholder:text-passive focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60"
+				className="wd-body-s min-h-20 w-full resize-y rounded-md bg-wd-inset px-3 py-2 text-wd-primary placeholder:text-wd-tertiary disabled:text-wd-disabled"
 				disabled={annotation.status === "sending" || annotation.status === "sent"}
 				onChange={(event) => annotation.setDraft(event.target.value)}
 				onKeyDown={(event) => {
@@ -1209,12 +1211,12 @@ function FileAnnotationComposer({ annotation }: { annotation: FileAnnotationMode
 				value={annotation.draft}
 			/>
 			{annotation.status === "error" ? (
-				<p className="mt-1.5 text-xs text-error" role="alert">
+				<p className="wd-caption mt-1.5 text-critical" role="alert">
 					{annotation.error}
 				</p>
 			) : null}
 			<div className="mt-2 flex items-center justify-end gap-1.5">
-				<span className="mr-auto text-caption text-passive">{t("files.feedbackShortcut")}</span>
+				<span className="wd-caption mr-auto text-wd-tertiary">{t("files.feedbackShortcut")}</span>
 				<Button
 					disabled={annotation.status === "sending" || annotation.status === "sent"}
 					onClick={annotation.cancel}
@@ -1242,7 +1244,7 @@ function DiffLineSegments({ add, segments }: { add: boolean; segments: DiffSegme
 		<>
 			{segments.map((segment, index) =>
 				segment.changed ? (
-					<span className={cn("rounded-sm", add ? "bg-success/35" : "bg-error/35")} key={index}>
+					<span className={cn("rounded-xs", add ? "bg-good/25" : "bg-critical/25")} key={index}>
 						{segment.text}
 					</span>
 				) : (
@@ -1255,9 +1257,9 @@ function DiffLineSegments({ add, segments }: { add: boolean; segments: DiffSegme
 
 function ChangeBadges({ additions, deletions }: { additions: number; deletions: number }) {
 	return (
-		<span className="flex shrink-0 items-center gap-1 font-mono text-caption font-medium">
-			{additions > 0 ? <span className="px-0.5 text-success">+{additions}</span> : null}
-			{deletions > 0 ? <span className="px-0.5 text-error">-{deletions}</span> : null}
+		<span className="wd-data-s flex shrink-0 items-center gap-1 font-medium">
+			{additions > 0 ? <span className="px-0.5 text-good">+{additions}</span> : null}
+			{deletions > 0 ? <span className="px-0.5 text-critical">-{deletions}</span> : null}
 		</span>
 	);
 }
@@ -1266,7 +1268,7 @@ function PanelMessage({ action, children, compact = false }: { action?: ReactNod
 	return (
 		<div
 			className={cn(
-				"grid place-items-center text-center text-xs text-muted-foreground",
+				"wd-caption grid place-items-center text-center text-wd-secondary",
 				compact ? "min-h-16 p-3" : "min-h-[180px] p-6",
 			)}
 		>
@@ -1281,7 +1283,7 @@ function PanelMessage({ action, children, compact = false }: { action?: ReactNod
 function RetryButton({ onClick }: { onClick: () => void }) {
 	const { t } = useTranslation();
 	return (
-		<Button onClick={onClick} size="sm" type="button" variant="outline">
+		<Button onClick={onClick} size="sm" type="button" variant="secondary">
 			{t("files.retry")}
 		</Button>
 	);
@@ -1293,7 +1295,7 @@ function StatusMark({ status }: { status: WorkspaceFileStatus }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex w-5 shrink-0 items-center justify-center font-mono text-caption font-medium",
+				"inline-flex w-5 shrink-0 items-center justify-center text-caption font-medium",
 				statusTone[status],
 			)}
 			title={t(`files.status.${status}`)}

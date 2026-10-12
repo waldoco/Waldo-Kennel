@@ -1,8 +1,12 @@
 import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import type { WorkspaceSession } from "../types/workspace";
+import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
+// Waldo ConfirmSheet contract in a popover: the title names the object, the
+// body names what stops and what is kept, the destructive button names the
+// effect, and the quiet way out comes last.
 export function SessionTerminationPopover({
 	onConfirm,
 	onOpenChange,
@@ -24,33 +28,40 @@ export function SessionTerminationPopover({
 			<PopoverContent
 				align="end"
 				aria-label={title ? t("termination.dialogNamed", { title }) : t("termination.dialog")}
-				className="w-64 max-w-[calc(100vw-1rem)] p-3 shadow-lg"
+				className="flex w-72 max-w-[calc(100vw-1rem)] flex-col gap-3 rounded-lg p-4 shadow-(--shadow-overlay)"
 				collisionPadding={8}
 				onClick={(event) => event.stopPropagation()}
 				role="dialog"
 				side="bottom"
 				sideOffset={6}
 			>
-				<p className="text-control font-semibold text-foreground">{t("termination.dialog")}</p>
-				<p className="mt-1 text-caption leading-4 text-muted-foreground">
-					{title ? t("termination.bodyNamed", { title }) : t("termination.body")}
+				<p className="wd-headline break-words text-wd-primary">
+					{title ? t("termination.dialogNamed", { title }) : t("termination.dialog")}
 				</p>
-				<div className="mt-3 flex justify-end gap-1.5">
-					<button
-						className="h-control-md rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground"
-						onClick={() => onOpenChange(false)}
-						type="button"
-					>
-						{t("common.no")}
-					</button>
-					<button
+				<dl className="flex flex-col gap-2">
+					<div className="flex flex-col gap-0.5">
+						<dt className="wd-caption text-wd-secondary">{t("termination.stopsLabel")}</dt>
+						<dd className="wd-body-s text-wd-primary">{t("termination.stops")}</dd>
+					</div>
+					<div className="flex flex-col gap-0.5">
+						<dt className="wd-caption text-wd-secondary">{t("termination.keptLabel")}</dt>
+						<dd className="wd-body-s text-wd-primary">{t("termination.body")}</dd>
+					</div>
+				</dl>
+				<div className="flex flex-col gap-1.5">
+					<Button
 						aria-label={t("termination.confirmAria")}
-						className="h-control-md rounded-md bg-danger-strong px-2.5 text-xs font-semibold text-white transition-[filter] hover:brightness-110"
+						className="w-full"
 						onClick={onConfirm}
+						size="sm"
 						type="button"
+						variant="critical"
 					>
-						{t("common.yes")}
-					</button>
+						{t("shell.terminateSession")}
+					</Button>
+					<Button className="w-full" onClick={() => onOpenChange(false)} size="sm" type="button" variant="ghost">
+						{t("termination.keep")}
+					</Button>
 				</div>
 			</PopoverContent>
 		</Popover>

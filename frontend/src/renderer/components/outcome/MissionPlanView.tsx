@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "../ui/dialog";
-import { agentLabel } from "@pin4sf/kennel-product-ui";
+import { agentLabel, StateBadge, type StateTone } from "@pin4sf/kennel-product-ui";
+import { Maximize2 } from "lucide-react";
 import { ApprovedChecks } from "./ApprovedChecks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,7 +9,7 @@ import type { AttemptRecord } from "../../hooks/useOutcome";
 import type { MessageKey } from "../../i18n/messages";
 import { MissionWorkUnitGraph } from "./MissionWorkUnitGraph";
 import { layerByDependency } from "../../lib/dependency-layers";
-import { Badge } from "../ui/badge";
+
 import { ENDED_ATTEMPT_PHASES } from "./attemptPhases";
 import { Button } from "../ui/button";
 import { newestAttempt } from "./OutcomeRunBoardAdapters";
@@ -53,26 +54,38 @@ export function MissionPlanView({
 	const title = (id: string) => units.find((unit) => unit.id === id)?.title ?? id;
 	return (
 		<section className="flex min-w-0 flex-col gap-3" data-testid="mission-plan-view">
-			<div className="flex gap-1" role="group" aria-label={t("mission.plan")}>
-				{!graphOnly && (["graph", "table"] as const).map((mode) => (
-					<Button key={mode} size="sm" variant="ghost" aria-pressed={view === mode} onClick={() => setView(mode)}>
-						{t(`mission.${mode}`)}
-					</Button>
-				))}
+			<div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("mission.plan")}>
+				{/* Graph / Table as a segmented control: inset track, ink thumb
+				    on the pressed reading. */}
+				{!graphOnly && (
+					<span className="inline-flex h-9 items-center gap-1 rounded-full bg-wd-inset p-1">
+						{(["graph", "table"] as const).map((mode) => (
+							<button
+								aria-pressed={view === mode}
+								className="inline-flex h-full items-center rounded-full px-3 text-sm font-medium text-wd-secondary transition-[background-color,color] duration-fast hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) aria-pressed:bg-wd-inverse aria-pressed:text-wd-on-inverse motion-reduce:transition-none"
+								key={mode}
+								onClick={() => setView(mode)}
+								type="button"
+							>
+								{t(`mission.${mode}`)}
+							</button>
+						))}
+					</span>
+				)}
 
                 <Dialog>
-                    <DialogTrigger asChild><Button size="sm" variant="outline">{t("mission.expandGraph")}</Button></DialogTrigger>
+                    <DialogTrigger asChild><Button size="sm" variant="ghost"><Maximize2 aria-hidden="true" className="size-3.5" />{t("mission.expandGraph")}</Button></DialogTrigger>
                     <DialogContent className="h-[90vh] w-[95vw] max-w-[95vw] overflow-hidden">
                         <DialogTitle>{t("outcome.missionGraph.heading")}</DialogTitle>
                         <DialogDescription>{t(schedule ? "outcome.missionGraph.serialNote" : "outcome.missionGraph.proposedNote")}</DialogDescription>
                         <div className="min-h-0 flex-1 overflow-auto p-4">
                             <MissionWorkUnitGraph workUnits={units} schedule={schedule} criterionText={criterionText} selectedWorkUnitId={selected?.id} onSelectWorkUnit={setSelectedId} />
-							{!graphOnly && selected && <section className="mt-6 border-t border-border pt-4"><h3 className="font-medium">{selected.title}</h3><p className="mt-2 text-sm">{selected.outputSummary}</p><ApprovedChecks unit={selected} criterionText={criterionText} /></section>}
+							{!graphOnly && selected && <section className="mt-6 hairline-t border-wd-hairline pt-4"><h3 className="text-base font-medium text-wd-primary">{selected.title}</h3><p className="mt-2 text-sm text-wd-secondary">{selected.outputSummary}</p><ApprovedChecks unit={selected} criterionText={criterionText} /></section>}
                         </div>
                     </DialogContent>
                 </Dialog>
 			</div>
-			{!graphOnly && <div className="space-y-3">{units.map(unit => <div key={unit.id}><p className="text-sm font-medium">{unit.title}</p><ApprovedChecks unit={unit} criterionText={criterionText} /></div>)}</div>}
+			{!graphOnly && <div className="space-y-3">{units.map(unit => <div key={unit.id}><p className="text-sm font-medium text-wd-primary">{unit.title}</p><ApprovedChecks unit={unit} criterionText={criterionText} /></div>)}</div>}
             {/* Keep both views mounted to preserve graph zoom, focus and scroll on refresh. */}
 			<div hidden={!graphOnly && view !== "graph"} className="overflow-auto p-1">
 				<MissionWorkUnitGraph
@@ -103,14 +116,14 @@ export function MissionPlanView({
 				/>
 			)}
 			{!graphOnly && <div hidden={view !== "table"} className="overflow-auto">
-				<table className="w-full border-collapse text-left text-xs">
-					<caption className="pb-2 text-left text-muted-foreground">
+				<table className="w-full border-collapse text-left text-xs text-wd-primary">
+					<caption className="pb-2 text-left text-wd-secondary">
 						{t(schedule ? "outcome.missionGraph.serialNote" : "outcome.missionGraph.proposedNote")}
 					</caption>
 					<thead>
 						<tr>
 							{(["workUnit", "state", "dependencies", "output", "agent", "evidence"] as const).map((label) => (
-								<th key={label} className="border-b border-border px-2 py-2 font-medium">
+								<th key={label} className="hairline-b border-wd-hairline px-2 py-2 font-medium text-wd-secondary">
 									{t(`mission.${label}`)}
 								</th>
 							))}
@@ -122,39 +135,39 @@ export function MissionPlanView({
 							return (
 								<tr
 									key={unit.id}
-									className="align-top aria-selected:bg-interactive-hover"
+									className="align-top hover:bg-wd-hover aria-selected:bg-wd-selected"
 									aria-selected={selected?.id === unit.id}
 								>
-									<td className="border-b border-border p-2">
+									<td className="hairline-b border-wd-hairline p-2">
 										<button
 											type="button"
-											className="text-left font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+											className="rounded-xs text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 											onClick={() => setSelectedId(unit.id)}
 										>
 											{unit.title}
 										</button>
 									</td>
-									<td className="border-b border-border p-2">
+									<td className="hairline-b border-wd-hairline p-2">
 										{item ? t(`outcome.missionGraph.state.${item.state}`) : t("outcome.missionGraph.state.proposed")}
 									</td>
-									<td className="border-b border-border p-2">
+									<td className="hairline-b border-wd-hairline p-2">
 										{(unit.dependsOn ?? []).map(title).join(", ") || t("outcome.decide.dependsOnNone")}
 										{item?.blockedReason && (
-											<p className="text-warning">
+											<p className="mt-0.5 text-wd-secondary">
 												{t(`outcome.missionGraph.blocked.${item.blockedReason}`, {
 													units: (item.blockingDependencies ?? []).map(title).join(", "),
 												})}
 											</p>
 										)}
 									</td>
-									<td className="border-b border-border p-2">{unit.outputSummary || t("mission.unknown")}</td>
-									<td className="border-b border-border p-2">
+									<td className="hairline-b border-wd-hairline p-2">{unit.outputSummary || t("mission.unknown")}</td>
+									<td className="hairline-b border-wd-hairline p-2">
 										{unit.provider || t("outcome.missionGraph.bindingUnset")} ·{" "}
 										{unit.modelSelection === "provider_default"
 											? t("outcome.missionGraph.providerDefault")
 											: unit.model || t("mission.unknown")}
 									</td>
-									<td className="border-b border-border p-2">
+									<td className="hairline-b border-wd-hairline p-2">
 										{(unit.evidenceChecks ?? []).join(" · ") || t("mission.none")}
 									</td>
 								</tr>
@@ -164,15 +177,15 @@ export function MissionPlanView({
 				</table>
 			</div>}
 			{!graphOnly && (selected ? (
-					<section className="border-t border-border pt-3" aria-label={selected.title} data-testid="mission-unit-detail">
-						<h3 className="text-sm font-medium break-words">{selected.title}</h3>
-						<p className="mt-1 text-2xs text-muted-foreground">
+					<section className="hairline-t border-wd-hairline pt-3" aria-label={selected.title} data-testid="mission-unit-detail">
+						<h3 className="text-sm font-medium break-words text-wd-primary">{selected.title}</h3>
+						<p className="mt-1 text-xs tabular-nums text-wd-tertiary">
 							{t("mission.planBinding", {
 								plan: schedule?.plan?.number ?? t("mission.notApproved"),
 								contract: selected.contractRevisionNumber,
 							})}
 						</p>
-						<dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+						<dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs text-wd-primary [&>dt]:text-wd-secondary">
 							<dt>{t("mission.objective")}</dt>
 							<dd className="whitespace-pre-wrap break-words">{selected.title}</dd>
 							<dt>{t("mission.dependencies")}</dt>
@@ -212,32 +225,33 @@ export function MissionPlanView({
 						/>
 				</section>
 			) : (
-				<p className="text-xs text-muted-foreground">{t("mission.selectUnit")}</p>
+				<p className="text-sm text-wd-secondary">{t("mission.selectUnit")}</p>
 			))}
 		</section>
 	);
 }
 
-type BadgeVariant = "neutral" | "outline" | "accent" | "success" | "warning" | "error";
-
-const SCHEDULE_STATE_VARIANT: Record<string, BadgeVariant> = {
-	proven: "success",
-	executing: "accent",
-	runnable: "accent",
-	paused: "warning",
-	retryable: "warning",
+// Waldo's state vocabulary: running is the live accent, ready/proved/
+// succeeded are good, a retryable unit is the owner's next move, failed and
+// lost are critical, everything waiting is a neutral word.
+const SCHEDULE_STATE_TONE: Record<string, StateTone> = {
+	proven: "good",
+	executing: "live",
+	runnable: "good",
+	paused: "neutral",
+	retryable: "needsYou",
 	blocked: "neutral",
 };
 
-const ATTEMPT_STATUS_BADGE: Record<AttemptRecord["status"], { key: MessageKey; variant: BadgeVariant }> = {
-	queued: { key: "outcome.run.badgeQueued", variant: "warning" },
-	running: { key: "outcome.run.badgeRunning", variant: "accent" },
-	paused: { key: "outcome.run.badgePaused", variant: "warning" },
-	succeeded: { key: "outcome.run.badgeSucceeded", variant: "success" },
-	failed: { key: "outcome.run.badgeFailed", variant: "error" },
-	cancelled: { key: "outcome.run.badgeCancelled", variant: "neutral" },
-	lost: { key: "outcome.run.badgeLost", variant: "error" },
-	reconciled: { key: "outcome.run.badgeReconciled", variant: "neutral" },
+const ATTEMPT_STATUS_BADGE: Record<AttemptRecord["status"], { key: MessageKey; tone: StateTone }> = {
+	queued: { key: "outcome.run.badgeQueued", tone: "neutral" },
+	running: { key: "outcome.run.badgeRunning", tone: "live" },
+	paused: { key: "outcome.run.badgePaused", tone: "neutral" },
+	succeeded: { key: "outcome.run.badgeSucceeded", tone: "good" },
+	failed: { key: "outcome.run.badgeFailed", tone: "critical" },
+	cancelled: { key: "outcome.run.badgeCancelled", tone: "neutral" },
+	lost: { key: "outcome.run.badgeLost", tone: "critical" },
+	reconciled: { key: "outcome.run.badgeReconciled", tone: "neutral" },
 };
 
 /**
@@ -271,35 +285,37 @@ function WorkUnitExecutionFacts({
 	const changeFiles = unitChanges.flatMap((change) => change.files.slice(0, 10));
 	const changesTruncated = unitChanges.some((change) => change.truncated || change.files.length > 10);
 	return (
-		<div className="mt-2 flex flex-col gap-2" data-testid="work-unit-execution-facts">
-			<div className="flex flex-wrap items-center gap-2">
-				<Badge variant={entry ? (SCHEDULE_STATE_VARIANT[entry.state] ?? "neutral") : "neutral"}>
-					{entry ? t(`outcome.missionGraph.state.${entry.state}`) : t("outcome.missionGraph.state.proposed")}
-				</Badge>
+		<div className="mt-3 flex flex-col gap-3" data-testid="work-unit-execution-facts">
+			<div className="flex flex-col gap-1">
+				<StateBadge
+					className="self-start"
+					label={entry ? t(`outcome.missionGraph.state.${entry.state}`) : t("outcome.missionGraph.state.proposed")}
+					tone={entry ? (SCHEDULE_STATE_TONE[entry.state] ?? "neutral") : "neutral"}
+				/>
 				{entry?.blockedReason ? (
-					<Badge variant="warning">
+					<p className="text-xs leading-body text-wd-primary">
 						{t(`outcome.missionGraph.blocked.${entry.blockedReason}`, { units: blockers })}
-					</Badge>
+					</p>
 				) : null}
 			</div>
 			{entry?.blockedDetail ? (
-				<p className="whitespace-pre-wrap break-words text-2xs text-warning">{entry.blockedDetail}</p>
+				<p className="whitespace-pre-wrap break-words text-xs text-wd-secondary">{entry.blockedDetail}</p>
 			) : null}
 			{(unit.criterionIds ?? []).length > 0 ? (
 				<div>
-					<h4 className="text-2xs font-medium uppercase tracking-wide text-passive">{t("mission.evidence")}</h4>
-					<ul className="mt-1 space-y-1 text-2xs" data-testid="mission-unit-criterion-readiness">
+					<h4 className="text-xs font-medium text-wd-secondary">{t("mission.evidence")}</h4>
+					<ul className="mt-1.5 space-y-1.5 text-xs text-wd-primary" data-testid="mission-unit-criterion-readiness">
 						{(unit.criterionIds ?? []).map((criterionId) => {
 							const ready = entry?.criterionReady == null ? undefined : entry.criterionReady[criterionId];
 							return (
 								<li className="flex flex-wrap items-center gap-1.5" key={criterionId}>
 									<span>{criterionText?.(criterionId) ?? criterionId}</span>
 									{ready === undefined ? (
-										<Badge variant="neutral">{t("mission.proofUnknown")}</Badge>
+										<StateBadge label={t("mission.proofUnknown")} tone="neutral" />
 									) : ready ? (
-										<Badge variant="success">{t("mission.proofReady")}</Badge>
+										<StateBadge label={t("mission.proofReady")} tone="good" />
 									) : (
-										<Badge variant="warning">{t("mission.proofMissing")}</Badge>
+										<StateBadge label={t("mission.proofMissing")} tone="caution" />
 									)}
 								</li>
 							);
@@ -309,39 +325,37 @@ function WorkUnitExecutionFacts({
 			) : null}
 			{changeFiles.length > 0 ? (
 				<div data-testid="mission-unit-changes">
-					<h4 className="text-2xs font-medium uppercase tracking-wide text-passive">{t("outcome.proof.whatChanged")}</h4>
-					<ul className="mt-1 list-disc pl-4 text-2xs text-muted-foreground">
+					<h4 className="text-xs font-medium text-wd-secondary">{t("outcome.proof.whatChanged")}</h4>
+					<ul className="mt-1.5 list-disc pl-4 text-xs text-wd-primary">
 						{changeFiles.map((file) => (
 							<li key={file.path}>{file.path} · {file.changeKind}</li>
 						))}
 					</ul>
-					{changesTruncated ? <p className="mt-1 text-2xs text-muted-foreground">{t("outcome.proof.changesMore")}</p> : null}
+					{changesTruncated ? <p className="mt-1 text-xs text-wd-secondary">{t("outcome.proof.changesMore")}</p> : null}
 				</div>
 			) : null}
 			<div data-testid="mission-unit-attempts">
-				<h4 className="text-2xs font-medium uppercase tracking-wide text-passive">{t("mission.attempts")}</h4>
+				<h4 className="text-xs font-medium text-wd-secondary">{t("mission.attempts")}</h4>
 				{attempts.length > 0 ? (
-					<ul className="mt-1 space-y-1">
+					<ul className="mt-1.5 flex flex-col">
 						{attempts.map((attempt) => (
-							<li className="flex items-center justify-between gap-2 text-2xs" key={attempt.id}>
+							<li className="flex items-center justify-between gap-2 hairline-b border-wd-hairline py-1.5 text-xs text-wd-secondary last:border-b-0" key={attempt.id}>
 								<span className="flex min-w-0 flex-wrap items-center gap-1.5">
 									{(() => {
 										const statusBadge = ATTEMPT_STATUS_BADGE[attempt.status];
 										return statusBadge ? (
-											<Badge variant={statusBadge.variant}>
-												{t(statusBadge.key, { number: attempt.number })}
-											</Badge>
+											<StateBadge label={t(statusBadge.key, { number: attempt.number })} tone={statusBadge.tone} />
 										) : (
 											<span>{attempt.status}</span>
 										);
 									})()}
-									<time dateTime={attempt.updatedAt}>{new Date(attempt.updatedAt).toLocaleString()}</time>
+									<time className="tabular-nums text-wd-tertiary" dateTime={attempt.updatedAt}>{new Date(attempt.updatedAt).toLocaleString()}</time>
 									{attempt.sessions.length > 0
 										? `· ${attempt.sessions.map((session) => `${agentLabel(session.harness)} · ${session.mode ?? t("mission.modeUnknown")}`).join(" · ")}`
 										: ""}
 								</span>
 								{attempt.id === selectedAttempt?.id && attempt.sessions.length > 0 && onOpenAttempt ? (
-									<Button onClick={() => onOpenAttempt(attempt)} size="sm" variant="outline">
+									<Button onClick={() => onOpenAttempt(attempt)} size="sm" variant="secondary">
 										{attempt.presentation && ENDED_ATTEMPT_PHASES.has(attempt.presentation.phase)
 											? t("outcome.run.inspectCta")
 											: t("outcome.run.engageCta")}
@@ -351,7 +365,7 @@ function WorkUnitExecutionFacts({
 						))}
 					</ul>
 				) : (
-					<p className="mt-1 text-2xs text-passive">{t("mission.noAttempts")}</p>
+					<p className="mt-1 text-xs text-wd-tertiary">{t("mission.noAttempts")}</p>
 				)}
 			</div>
 		</div>
@@ -382,8 +396,8 @@ function ExecutionUnitDetail({
 }) {
 	const { t } = useTranslation();
 	return (
-		<section aria-label={unit.title} className="rounded-md border border-border bg-card p-3" data-testid="mission-unit-execution-detail">
-			<h3 className="text-sm font-medium break-words">{unit.title}</h3>
+		<section aria-label={unit.title} className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="mission-unit-execution-detail">
+			<h3 className="text-sm font-medium break-words text-wd-primary">{unit.title}</h3>
 			<WorkUnitExecutionFacts
 				attempts={attempts}
 				changes={changes}
@@ -395,7 +409,7 @@ function ExecutionUnitDetail({
 				unit={unit}
 			/>
 			{onReviewProof ? (
-				<Button className="mt-3" onClick={onReviewProof} size="sm" variant="outline">
+				<Button className="mt-4" onClick={onReviewProof} size="sm" variant="secondary">
 					{t("mission.viewResult")}
 				</Button>
 			) : null}

@@ -42,9 +42,13 @@ describe("MissionAttentionStrip", () => {
 				]}
 			/>,
 		);
-		expect(screen.getByText("Needs approval · 2")).toBeInTheDocument();
-		expect(screen.getByText("Needs choice · 1")).toBeInTheDocument();
-		expect(screen.getByText("Needs input · 3")).toBeInTheDocument();
+		const kind = (name: string) => document.querySelector(`[data-mission-attention-kind="${name}"]`);
+		expect(kind("needs_approval")).toHaveTextContent(/^Needs approval\s*2$/);
+		expect(kind("needs_choice")).toHaveTextContent(/^Needs choice\s*1$/);
+		expect(kind("needs_input")).toHaveTextContent(/^Needs input\s*3$/);
+		// Quiet needs-you state, never a bordered coloured pill.
+		expect(kind("needs_approval")).toHaveAttribute("data-state-tone", "needsYou");
+		expect(kind("needs_approval")?.className).not.toMatch(/\bborder\b|rounded-full/);
 	});
 
 	it("renders nothing visible for a zero count", () => {

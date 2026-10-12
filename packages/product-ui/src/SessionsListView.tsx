@@ -1,6 +1,8 @@
 import { Fragment, type ReactNode } from "react";
 import type { ExternalLinkComponent } from "./external-link";
 import { ChevronIcon, GitBranchIcon } from "./icons";
+import { laneMarkClassName } from "./SessionsBoardView";
+import { StateMark } from "./StateBadge";
 import {
 	attentionZone,
 	getAgentActivityView,
@@ -80,39 +82,26 @@ function ListLaneView<TSession extends BoardSessionPresentation>({
 	return (
 		<section
 			aria-label={labels.columnAria(column.label)}
-			className="flex flex-col gap-2 rounded-group bg-shell px-0.75 py-1.25"
+			className="flex flex-col gap-1 rounded-lg bg-shell p-1.5"
 			data-column={column.zone}
 			data-testid="board-list-lane"
 		>
-			<div className="flex shrink-0 items-center justify-between py-0.75 pl-2.5 pr-1">
-				<div className="flex min-w-0 items-center gap-1.75">
-					<div className="flex min-w-0 items-center gap-2.25">
-						<span
-							aria-hidden="true"
-							className="size-3 shrink-0 rounded-full hairline border-border"
-							style={{ background: column.dot }}
-						/>
-						<span className="truncate text-sm font-medium text-foreground">{column.label}</span>
-					</div>
-					<span
-						aria-label={labels.countSessions(sessions.length, column.label)}
-						className="inline-flex size-control-chip shrink-0 items-center justify-center rounded-md border border-border-strong bg-shell text-sm font-semibold leading-none text-foreground"
-					>
-						{sessions.length}
-					</span>
+			<div className="flex shrink-0 items-center justify-between gap-2 px-2.5 py-1.5">
+				<div className="flex min-w-0 items-center gap-2">
+					<StateMark className={laneMarkClassName(column.stateTone)} tone={column.stateTone} />
+					<span className="truncate text-sm font-medium text-wd-primary">{column.label}</span>
 				</div>
-				<span aria-hidden="true" className="inline-flex size-control-chip shrink-0 items-center justify-center">
-					<span className="flex w-2.5 flex-col gap-0.5">
-						<span className="h-px w-full bg-passive" />
-						<span className="h-px w-full bg-passive" />
-						<span className="h-px w-full bg-passive" />
-					</span>
+				<span
+					aria-label={labels.countSessions(sessions.length, column.label)}
+					className="shrink-0 text-[13px] leading-[18px] tabular-nums text-wd-tertiary"
+				>
+					{sessions.length}
 				</span>
 			</div>
 			{/* One plate for the whole lane, not one per row: the rows are a table,
 			    and a table has a single edge. */}
 			{sessions.length > 0 ? (
-				<div className="overflow-hidden rounded-panel hairline border-border bg-card">
+				<div className="overflow-hidden rounded-md hairline border-wd-hairline bg-card">
 					{sessions.map((session) => (
 						<Fragment key={session.id}>{renderSessionRow(session)}</Fragment>
 					))}
@@ -177,8 +166,8 @@ export function SessionRowView({
 	return (
 		<div
 			className={cn(
-				"group/row relative flex min-h-row-list w-full items-center gap-2.5 px-2.5 py-1 text-left transition-colors",
-				interactive && "cursor-pointer hover:bg-popover focus-within:bg-popover",
+				"group/row relative flex min-h-row-list w-full items-center gap-2.5 px-2.5 py-1 text-left transition-colors duration-fast hairline-b border-wd-hairline last:border-b-0",
+				interactive && "cursor-pointer hover:bg-wd-hover focus-within:bg-wd-hover",
 			)}
 			data-session-id={session.id}
 			data-testid="board-session-row"
@@ -192,7 +181,7 @@ export function SessionRowView({
 			<span className="shrink-0">{renderAvatar(session.provider)}</span>
 
 			<ListCell className="basis-[16.25rem]">
-				<span className="whitespace-nowrap text-brand font-medium text-foreground" title={session.title}>
+				<span className="whitespace-nowrap text-sm font-medium text-wd-primary" title={session.title}>
 					{session.title}
 				</span>
 			</ListCell>
@@ -200,19 +189,24 @@ export function SessionRowView({
 			<ListCell className="basis-[13.5rem]">
 				<span
 					className={cn(
-						"whitespace-nowrap text-brand font-medium underline underline-offset-2",
+						"inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-medium",
 						statusPresentation?.className ?? badge.className,
 					)}
 					style={!statusPresentation && showLiveActivity ? { color: activity.tone } : undefined}
 				>
-					{statusPresentation?.label ?? badge.label}
+					{statusPresentation?.indicatorClassName ? (
+						<span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", statusPresentation.indicatorClassName)} />
+					) : (
+						<StateMark tone={showLiveActivity ? "live" : badge.stateTone} />
+					)}
+					<span>{statusPresentation?.label ?? badge.label}</span>
 				</span>
 			</ListCell>
 
 			<ListCell className="basis-[8.5rem]">
 				{showBranch ? (
 					<span
-						className="inline-flex items-center gap-1.25 whitespace-nowrap rounded-md hairline border-border-strong bg-popover px-2 py-0.5 text-xs text-foreground"
+						className="inline-flex items-center gap-1.25 whitespace-nowrap rounded-xs bg-wd-inset px-2 py-0.5 text-xs text-wd-secondary"
 						title={branch}
 					>
 						{branchIcon ?? <GitBranchIcon aria-hidden="true" className="size-icon-2xs shrink-0" />}
@@ -224,14 +218,14 @@ export function SessionRowView({
 			<ListCell className="basis-[11rem]">
 				{artifact ??
 					(prGroups.length > 0 ? (
-						<span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-passive">
+						<span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-wd-tertiary">
 							{prGroups.map((group) => (
 								<Fragment key={group.state}>
 									{group.prs.map((pr) => {
 										const ExternalLink = externalLink;
 										return (
 											<ExternalLink
-												className="text-foreground underline decoration-link underline-offset-2 transition-colors hover:text-link"
+												className="text-wd-primary underline decoration-link underline-offset-2 transition-colors hover:text-wd-secondary"
 												href={pr.url}
 												key={pr.url || pr.number}
 												stopPropagation
@@ -246,7 +240,7 @@ export function SessionRowView({
 						</span>
 					) : session.trackerIssueId ? (
 						<span
-							className="whitespace-nowrap text-xs text-passive"
+							className="whitespace-nowrap text-xs text-wd-tertiary"
 							title={labels.intakeIssue(session.trackerIssueId)}
 						>
 							{session.trackerIssueId}
@@ -257,21 +251,21 @@ export function SessionRowView({
 			{usage && renderUsage ? <span className="shrink-0">{renderUsage(usage)}</span> : null}
 
 			<span
-				className="w-list-time shrink-0 whitespace-nowrap text-sm text-meta"
+				className="w-list-time shrink-0 whitespace-nowrap text-xs tabular-nums text-wd-tertiary"
 				title={labels.updatedAt(session.updatedAt)}
 			>
 				{labels.formatTime(session.updatedAt)}
 			</span>
 
 			{error ? (
-				<span className="shrink-0 whitespace-nowrap text-2xs text-destructive" role="alert">
+				<span className="shrink-0 whitespace-nowrap text-xs text-critical" role="alert">
 					{error}
 				</span>
 			) : null}
 
 			<span className="ml-auto shrink-0">
 				{action ?? (
-					<ChevronIcon aria-hidden="true" className="size-icon-sm text-passive" direction="right" />
+					<ChevronIcon aria-hidden="true" className="size-icon-sm text-wd-tertiary" direction="right" />
 				)}
 			</span>
 		</div>
@@ -325,7 +319,7 @@ export function SessionsViewSwitch({
 		<div
 			aria-disabled={disabled || undefined}
 			aria-label={labels.ariaLabel}
-			className={cn("inline-flex h-control-segment shrink-0 items-center rounded-lg bg-shell", disabled && "opacity-50")}
+			className={cn("inline-flex h-control-segment shrink-0 items-center rounded-full bg-wd-inset p-0.5", disabled && "cursor-not-allowed")}
 			data-testid="sessions-view-switch"
 			role="tablist"
 		>
@@ -364,11 +358,9 @@ function SessionsViewSwitchItem({
 		<button
 			aria-selected={active}
 			className={cn(
-				"inline-flex h-full items-center justify-center rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-				disabled && "cursor-not-allowed",
-				active
-					? "hairline border-border bg-card font-medium text-foreground"
-					: "text-muted-foreground hover:text-foreground",
+				"inline-flex h-full items-center justify-center rounded-full px-3 text-sm font-medium transition-colors duration-fast ease-out motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
+				disabled && "cursor-not-allowed text-wd-disabled",
+				!disabled && (active ? "bg-wd-inverse text-wd-on-inverse" : "text-wd-secondary hover:text-wd-primary"),
 			)}
 			disabled={disabled}
 			onClick={() => {

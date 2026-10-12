@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check } from "lucide-react";
+import { Bot, Check, CircleCheck, CircleX, Clock, Cpu, Gauge, KeyRound } from "lucide-react";
 import { useSettings, useUpdateReasoning, useVerifyReasoning } from "../../hooks/useSettings";
 import { SettingsOptionMenu, type SettingsOption } from "./SettingsOptionMenu";
-import { SettingsRow } from "./SettingsRow";
+import { SettingsRow, settingsRowInputClass } from "./SettingsRow";
+import { cn } from "../../lib/utils";
 import { SettingsSection } from "./SettingsSection";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
@@ -59,9 +60,17 @@ export function ReasoningSettingsSection({ titleHidden }: { titleHidden?: boolea
 				? reasoningStatusMessage(statusWithVerifyError, provider, t)
 				: reasoningStatusMessage(status, provider, t));
 
+	const isFailure = Boolean(saveError || loadError || !status?.ready);
+	const statusTone = isFailure
+		? { icon: CircleX, tile: "bg-critical-bg text-critical" }
+		: status?.verified && !draftDirty
+			? { icon: CircleCheck, tile: "bg-good-bg text-good" }
+			: { icon: Clock, tile: "bg-wd-inset text-wd-secondary" };
+	const StatusIcon = statusTone.icon;
+
 	return (
-		<SettingsSection title={t("settings.reasoning.title")} titleHidden={titleHidden} grouped>
-			<SettingsRow label={t("settings.reasoning.provider")}>
+		<SettingsSection title={t("settings.reasoning.title")} titleHidden={titleHidden} grouped footer={t("settings.reasoning.privacy")}>
+			<SettingsRow icon={Bot} label={t("settings.reasoning.provider")}>
 				<SettingsOptionMenu
 					aria-label={t("settings.reasoning.provider")}
 					value={provider}
@@ -74,7 +83,7 @@ export function ReasoningSettingsSection({ titleHidden }: { titleHidden?: boolea
 					disabled={isLoading || saving || verifying}
 				/>
 			</SettingsRow>
-			<SettingsRow label={t("settings.reasoning.model")}>
+			<SettingsRow icon={Cpu} label={t("settings.reasoning.model")}>
 				<Input
 					value={model}
 					onChange={(event) => {
@@ -84,10 +93,11 @@ export function ReasoningSettingsSection({ titleHidden }: { titleHidden?: boolea
 					}}
 					placeholder={t("settings.reasoning.providerDefault")}
 					disabled={saving}
+					className={settingsRowInputClass}
 					aria-label={t("settings.reasoning.model")}
 				/>
 			</SettingsRow>
-			<SettingsRow label={t("settings.reasoning.effort")}>
+			<SettingsRow icon={Gauge} label={t("settings.reasoning.effort")}>
 				<Input
 					value={effort}
 					onChange={(event) => {
@@ -97,11 +107,12 @@ export function ReasoningSettingsSection({ titleHidden }: { titleHidden?: boolea
 					}}
 					placeholder={t("settings.reasoning.default")}
 					disabled={saving}
+					className={settingsRowInputClass}
 					aria-label={t("settings.reasoning.effort")}
 				/>
 			</SettingsRow>
 			{provider !== "codex" && (
-				<SettingsRow label={t("settings.reasoning.apiKey")}>
+				<SettingsRow icon={KeyRound} label={t("settings.reasoning.apiKey")}>
 					<Input
 						type="password"
 						value={apiKey}
@@ -116,52 +127,61 @@ export function ReasoningSettingsSection({ titleHidden }: { titleHidden?: boolea
 								: t("settings.reasoning.keyMissing")
 						}
 						disabled={saving}
+						className={settingsRowInputClass}
 						aria-label={t("settings.reasoning.apiKey")}
 						autoComplete="off"
 					/>
 				</SettingsRow>
 			)}
-			<div className="flex items-center justify-between gap-3 px-3 py-3">
-				<p
-					className={saveError || loadError || !status?.ready ? "text-xs text-error" : "text-xs text-muted-foreground"}
-					aria-live="polite"
-					role="status"
-				>
-					{message}
-				</p>
-				{codexNeedsSetup && (
-					<p className="text-xs text-error" role="note">
-						{t("settings.reasoning.codexSetup")}
-					</p>
-				)}
-				<Button
-					type="button"
-					variant="secondary"
-					disabled={saving || verifying}
-					onClick={() => {
-						setSaved(false);
-						void update({ provider, model, effort, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) })
-							.then(() => {
-								setApiKey("");
-								setDraftDirty(false);
-								setSaved(true);
-								resetVerification();
-							})
-							.catch(() => undefined);
-					}}
-				>
-					{saving ? t("settings.reasoning.saving") : saved ? <><Check aria-hidden="true" className="mr-1.5 inline size-3.5" />{t("settings.reasoning.saved")}</> : t("settings.reasoning.save")}
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					disabled={!status?.ready || !status?.configured || saving || verifying || draftDirty}
-					onClick={() => void verify().catch(() => undefined)}
-				>
-					{verifying ? t("settings.reasoning.verifying") : t("settings.reasoning.verify")}
-				</Button>
+			<div className="settings-row-bar flex-col items-stretch gap-3">
+				<div className="flex items-start gap-3">
+					<span className={cn("grid size-7 shrink-0 place-items-center rounded-sm", statusTone.tile)} aria-hidden="true">
+						<StatusIcon className="size-4" />
+					</span>
+					<div className="flex min-w-0 flex-col gap-1">
+						<p
+							className={cn("wd-body-s", isFailure ? "text-critical" : "text-wd-secondary")}
+							aria-live="polite"
+							role="status"
+						>
+							{message}
+						</p>
+						{codexNeedsSetup && (
+							<p className="wd-body-s text-critical" role="note">
+								{t("settings.reasoning.codexSetup")}
+							</p>
+						)}
+					</div>
+				</div>
+				<div className="flex items-center justify-end gap-2">
+					<Button
+						type="button"
+						variant="ghost"
+						disabled={!status?.ready || !status?.configured || saving || verifying || draftDirty}
+						onClick={() => void verify().catch(() => undefined)}
+					>
+						{verifying ? t("settings.reasoning.verifying") : t("settings.reasoning.verify")}
+					</Button>
+					<Button
+						type="button"
+						variant="primary"
+						disabled={saving || verifying}
+						onClick={() => {
+							setSaved(false);
+							void update({ provider, model, effort, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) })
+								.then(() => {
+									setApiKey("");
+									setDraftDirty(false);
+									setSaved(true);
+									resetVerification();
+								})
+								.catch(() => undefined);
+						}}
+					>
+						{saving ? t("settings.reasoning.saving") : saved ? <><Check aria-hidden="true" className="size-3.5" />{t("settings.reasoning.saved")}</> : t("settings.reasoning.save")}
+					</Button>
+				</div>
 			</div>
-			<p className="px-3 pb-3 text-xs leading-relaxed text-muted-foreground">{t("settings.reasoning.privacy")}</p>
 		</SettingsSection>
 	);
 }

@@ -9,7 +9,7 @@ function nodeView(overrides: Partial<MissionNodeView> = {}): MissionNodeView {
 	return {
 		workUnitId: "wu-1",
 		title: "Ship the thing",
-		status: { status: "runnable", label: "Ready", className: "text-status-ready", indicatorClassName: "bg-status-ready" },
+		status: { status: "runnable", label: "Ready", tone: "good", className: "text-status-ready", indicatorClassName: "bg-status-ready" },
 		criteria: { kind: "ready", ready: 1, total: 2 },
 		responsibilityLabel: "Unconfirmed",
 		dependencyUnavailable: false,
@@ -43,7 +43,7 @@ describe("WorkUnitListRow", () => {
 	});
 
 	it("renders no action button when the node has none (a retryable node without a returned action stays non-actionable)", () => {
-		render(<WorkUnitListRow node={nodeView({ status: { status: "retryable", label: "Needs retry", className: "", indicatorClassName: "" } })} onSelect={() => {}} selected={false} />);
+		render(<WorkUnitListRow node={nodeView({ status: { status: "retryable", label: "Needs retry", tone: "needsYou", className: "", indicatorClassName: "" } })} onSelect={() => {}} selected={false} />);
 		expect(screen.queryByTestId("mission-row-action")).not.toBeInTheDocument();
 	});
 

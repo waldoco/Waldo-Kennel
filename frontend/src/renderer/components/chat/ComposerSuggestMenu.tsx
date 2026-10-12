@@ -48,16 +48,16 @@ export function ComposerSuggestMenu({
 
 	return (
 		<div
-			className="absolute bottom-full left-0 z-50 mb-1.5 w-full max-w-md overflow-hidden rounded-md border border-border-strong bg-surface shadow-lg"
+			className="absolute bottom-full left-0 z-50 mb-2 w-full max-w-md overflow-hidden rounded-md bg-wd-raised shadow-md"
 			// The composer owns the keyboard; a pointerdown here must not pull focus
 			// out of the textarea on its way to the click.
 			onMouseDown={(event) => event.preventDefault()}
 		>
-			<div className="flex items-baseline justify-between gap-2 border-b border-border px-2.5 py-1.5">
-				<span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+			<div className="flex items-baseline justify-between gap-2 hairline-b border-wd-hairline px-3 py-2">
+				<span className="text-[11px] font-medium text-wd-secondary">
 					{kind === "skill" ? "Skills" : "Files in this worktree"}
 				</span>
-				<span className="text-[10px] text-muted-foreground">↑↓ · ⏎ select · esc</span>
+				<span className="text-[11px] text-wd-tertiary">↑↓ · ⏎ select · esc</span>
 			</div>
 
 			<ul ref={list} id={id} role="listbox" className="max-h-64 overflow-y-auto py-1">
@@ -71,27 +71,27 @@ export function ComposerSuggestMenu({
 							onClick={() => onPick(item.value)}
 							onMouseEnter={() => onHighlight(index)}
 							className={cn(
-								"flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left",
-								index === highlighted ? "bg-accent-weak" : "bg-transparent",
+								"flex w-full items-baseline gap-2 px-3 py-1.5 text-left",
+								index === highlighted ? "bg-wd-selected" : "bg-transparent",
 							)}
 						>
 							<span className="min-w-0 flex-1">
 								<span
 									className={cn(
 										"block truncate text-xs",
-										index === highlighted ? "text-foreground" : "text-muted-foreground",
+										index === highlighted ? "text-wd-primary" : "text-wd-secondary",
 									)}
 								>
 									{kind === "skill" ? `/${item.label}` : item.label}
 								</span>
 								{item.detail ? (
-									<span className="block truncate text-[11px] leading-snug text-muted-foreground">
+									<span className="block truncate text-[11px] leading-snug text-wd-tertiary">
 										{item.detail}
 									</span>
 								) : null}
 							</span>
 							{item.badge ? (
-								<span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+								<span className="shrink-0 text-[11px] text-wd-tertiary">
 									{item.badge}
 								</span>
 							) : null}
@@ -104,7 +104,7 @@ export function ComposerSuggestMenu({
 				// Said out loud rather than letting a capped list read as the whole
 				// worktree: a file that is missing because of the cap looks identical to
 				// one that does not exist.
-				<p className="border-t border-border px-2.5 py-1 text-[10px] text-muted-foreground">
+				<p className="hairline-t border-wd-hairline px-3 py-1.5 text-[11px] text-wd-secondary">
 					Showing part of a large worktree — type more to narrow it.
 				</p>
 			) : null}

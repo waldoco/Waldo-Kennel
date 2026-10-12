@@ -33,7 +33,7 @@ describe("TitlebarNav", () => {
 		const nav = container.querySelector('[data-slot="titlebar-nav"]');
 		expect(nav).toHaveClass("left-titlebar-cluster-left-fullscreen", "h-traffic-light-clearance-fullscreen", "top-0");
 		expect(nav).not.toHaveClass("h-traffic-light-clearance");
-		expect(screen.getByRole("button", { name: "Go back" })).toHaveClass("disabled:opacity-55");
+		expect(screen.getByRole("button", { name: "Go back" })).toHaveClass("disabled:text-wd-disabled");
 	});
 
 	it("centers collapsed fullscreen navigation on the inset session topbar", () => {

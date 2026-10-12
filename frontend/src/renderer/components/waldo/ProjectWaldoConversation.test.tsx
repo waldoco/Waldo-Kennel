@@ -72,7 +72,7 @@ describe("ProjectWaldoConversation", () => {
     expect(screen.getByText("Project context attached")).toBeInTheDocument();
     expect(screen.getByText("Continued safely")).toBeInTheDocument();
     expect(screen.getByText("Scope unchanged · Provider unchanged · Workspace unchanged · Authority unchanged · Budget unchanged")).toBeInTheDocument();
-    expect(screen.getByText("Needs You")).toBeInTheDocument();
+    expect(screen.getByText("Needs you")).toBeInTheDocument();
     expect(screen.getByText(/fresh verifier Attempt/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open personal context in Home" }));
     expect(onOpenHome).toHaveBeenCalledTimes(1);

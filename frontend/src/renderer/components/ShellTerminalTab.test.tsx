@@ -115,25 +115,24 @@ describe("ShellTerminalTab rename", () => {
 		expect(tab.parentElement?.classList.contains("w-shell-tab-connected")).toBe(true);
 	});
 
-	it("uses a neutral active surface with a strong foreground selection line", () => {
+	it("marks the active connected tab as a neutral selected pill", () => {
 		renderTab({ appearance: "connected", isActive: true });
 
 		expect(screen.getByRole("tab", { name: "ao" }).parentElement).toHaveClass(
-			"self-stretch",
-			"bg-overlay",
-			"after:h-0.5",
-			"after:bg-foreground/80",
+			"self-center",
+			"rounded-full",
+			"bg-wd-selected",
 		);
 		expect(screen.getByRole("tab", { name: "ao" }).parentElement).not.toHaveClass("rounded-md");
 		expect(screen.getByRole("tab", { name: "ao" }).parentElement).not.toHaveClass("before:bg-accent");
-		expect(screen.getByRole("tab", { name: "ao" }).parentElement).not.toHaveClass("after:h-px");
+		expect(screen.getByRole("tab", { name: "ao" }).parentElement).not.toHaveClass("after:h-0.5");
 	});
 
-	it("places the active connected-terminal indicator along the bottom edge", () => {
+	it("does not draw a coloured underline under the active connected tab", () => {
 		renderTab({ appearance: "connected", isActive: true });
 
 		const classes = screen.getByRole("tab", { name: "ao" }).parentElement?.classList;
-		expect(classes?.contains("after:bottom-0")).toBe(true);
+		expect(classes?.contains("after:bottom-0")).toBe(false);
 		expect(classes?.contains("after:top-0")).toBe(false);
 	});
 

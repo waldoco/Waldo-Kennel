@@ -30,16 +30,19 @@ Never imply concurrency while the project custody fence serializes execution. Th
 
 Node faces show only title, typed state/attention, freshness and one next action. Criteria, attempts, activity, artifacts, checks and terminal controls stay in the shared inspector. Topology swaps atomically only after a new Plan revision is authorized.
 
-## Color canon
+## Visual system: Waldo
 
-Color is rare and semantic. Four saturated status colors are canonical:
+Kennel inherits the Waldo design system (Waldo design-system artifact, tokens version 0.3.2). `frontend/src/styles/waldo.css` holds its primitives, semantic tokens, type styles and focus ring; `frontend/src/styles/tokens.css` maps every Kennel/shadcn role onto those semantic tokens. Never add a raw hex to a component or to `tokens.css`.
 
-- **Blue:** active selection, live execution, focus and primary action.
-- **Orange:** Needs You, warning and owner action required.
-- **Green:** proven, accepted or verified success.
-- **Red:** destructive action, failed/refused state or unsafe boundary.
+- **Coat and spots.** Warm neutrals (`bg-canvas`, `bg-surface`, `bg-inset`, `bg-raised`; `text-primary/secondary/tertiary`; 0.6px `border-hairline`) carry the interface. Colour appears only as meaning.
+- **Spot** (`--spot`, Waldo orange) marks at most one thing per screen: the one action Waldo wants taken (`Button variant="spot"`, ink label) or the Needs You dot. Never text, decoration or a lane fill.
+- **State** uses the shared vocabulary with a word and a shape: running/live is the system accent (`--wd-accent`, blue); Needs You is Spot; waiting/stale is `caution`; proven, accepted, ready is `good`; failed, refused, unconfirmed, destructive is `critical`.
+- **Selection is ink** (`bg-inverse` or `bg-selected`), never orange or green. A Switch's on track is the accent.
+- **Type.** Mottle (`font-display`, `.wd-display-*`) sets words at 22px and up: greetings, screen titles, an Outcome's name. SF Pro Rounded sets the interface and every number (`.wd-data*` for tabular times, versions, digests). Mono appears only in terminals, logs and code. Sentence case everywhere; no all-caps eyebrows; nothing italic.
+- **Shape.** Buttons, chips and segmented controls are pills; cards are `radius-lg` (20px) with a hairline and no shadow; inset blocks `radius-md` on `bg-inset`; dialogs and sheets `radius-xl` with `shadow-overlay`. Only overlays cast shadows.
+- **Buttons.** `primary` is the ink plate (Waldo's `ink`), `spot` is Waldo's primary, `secondary` an inset fill, `ghost` quiet, `critical` destructive. Labels name the effect.
 
-Neutral near-black/gray surfaces carry structure. Color always has a text/icon equivalent. Do not spend status colors on navigation, decorative gradients or progress dots. No shimmer prose, continuous “thinking” animation, confetti, 3D effects or error shake.
+Color always has a text or icon equivalent. No gradients, glows, coloured card borders, shimmer prose, continuous "thinking" animation, confetti, 3D effects or error shake.
 
 ## Shared interaction rules
 

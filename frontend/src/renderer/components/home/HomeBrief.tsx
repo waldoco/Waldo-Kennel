@@ -1,8 +1,17 @@
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { HomeFixtureState } from "../../lib/home-fixture";
 import type { HomeContextFlow } from "../../lib/home-day-phase";
+import { Button } from "../ui/button";
+import { HomeCard, HomeCardActions, HomeInset } from "./HomeCards";
 
+type ProposalChoice = "accepted" | "declined";
+
+/**
+ * Home's opening, on the BriefCard contract: the date line, the greeting in
+ * Mottle, written prose at the reading measure, and at most one proposal in
+ * an inset action unit whose accept is the screen's only Spot.
+ */
 export function HomeBrief({
   fixture,
   onReview,
@@ -13,6 +22,8 @@ export function HomeBrief({
   reviewRef: RefObject<HTMLButtonElement | null>;
 }) {
   const { t } = useTranslation();
+  const [reviewed, setReviewed] = useState(false);
+  const [choice, setChoice] = useState<ProposalChoice | null>(null);
   const reviewLabels: Record<HomeContextFlow, string> = {
     catch_up: t("home.visual.brief.review.catchUp"),
     before_next: t("home.visual.brief.review.beforeNext"),
@@ -20,99 +31,87 @@ export function HomeBrief({
     evening_review: t("home.visual.brief.review.evening"),
     quiet_focus: t("home.visual.brief.review.quietFocus"),
   };
-  return (
-    <div className="flex flex-col">
-      <header>
-        <p className="text-xs font-medium tracking-wide text-muted-foreground">
-          {fixture.localDateLabel}
-        </p>
-        <h2
-          className="mt-4 text-[clamp(2rem,4vw,3.25rem)] font-medium leading-[1.05] tracking-[-0.035em] text-foreground"
-          id="home-now-heading"
-        >
-          {fixture.presentation.greeting}
-        </h2>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <p className="text-lg text-foreground/80">
-            {fixture.attention.length === 0
-              ? t("home.visual.brief.noReview")
-              : fixture.presentation.attentionSummary}
-          </p>
-          {fixture.attention.length > 0 ? (
-            <button
-              aria-label={reviewLabels[fixture.contextFlow]}
-              className="text-sm font-medium text-foreground underline decoration-border-strong underline-offset-4 transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none"
-              onClick={onReview}
-              ref={reviewRef}
-              type="button"
-            >
-              {t("home.visual.review")} →
-            </button>
-          ) : null}
-        </div>
-      </header>
+  const hasAttention = fixture.attention.length > 0;
+  const showFinish = fixture.contextFlow === "catch_up";
+  const proposal = fixture.suggestions[0];
 
-      <section className="mt-10" aria-labelledby="home-brief-section-heading">
-        <div className="flex items-center gap-3 border-b border-border pb-3">
-          <h3
-            className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/75"
-            id="home-brief-section-heading"
-          >
+  return (
+    <HomeCard aria-labelledby="home-now-heading" hero>
+      <div className="flex flex-col gap-2">
+        <div className="wd-caption flex flex-wrap items-baseline gap-x-1 text-wd-tertiary">
+          <h3 className="wd-caption" id="home-brief-section-heading">
             {fixture.presentation.briefLabel}
           </h3>
-          <span className="ml-auto text-xs text-muted-foreground">
-            {fixture.sourceLabel}
-          </span>
+          <span aria-hidden="true">·</span>
+          <span>{fixture.localDateLabel}</span>
         </div>
-        <div className="mt-5 max-w-2xl space-y-4 text-sm leading-relaxed text-foreground/82">
-          {fixture.brief.map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-        </div>
-      </section>
+        <h2 className="wd-display-2 text-wd-primary" id="home-now-heading">
+          {fixture.presentation.greeting}
+        </h2>
+      </div>
 
-      <section className="mt-10 grid gap-8 sm:grid-cols-2">
-        <div>
-          <h3 className="border-b border-border pb-3 text-xs font-semibold uppercase tracking-[0.14em] text-foreground/75">
-            {fixture.presentation.primaryListLabel}
-          </h3>
-          <ul aria-label={fixture.presentation.primaryListLabel} className="mt-2" role="list">
-            {fixture.todos.map((item) => (
-              <li
-                className="flex min-h-10 items-center gap-3 border-b border-border/60 py-2 text-sm text-foreground/86"
-                key={item.id}
-              >
-                <span
-                  aria-hidden="true"
-                  className="size-3.5 shrink-0 rounded-[3px] border border-foreground/35"
-                />
-                <span>{item.label}</span>
-              </li>
-            ))}
-          </ul>
+      <div className="wd-body-l flex flex-col gap-3 text-wd-primary">
+        <p>
+          {hasAttention ? fixture.presentation.attentionSummary : t("home.visual.brief.noReview")}
+        </p>
+        {fixture.brief.length > 0 ? <p>{fixture.brief.join(" ")}</p> : null}
+      </div>
+
+      {hasAttention || showFinish ? (
+        <div className="-ml-3 flex flex-wrap items-center gap-1">
+          {hasAttention ? (
+            <Button onClick={onReview} ref={reviewRef} size="sm" type="button" variant="ghost">
+              {reviewLabels[fixture.contextFlow]}
+            </Button>
+          ) : null}
+          {showFinish ? (
+            <Button
+              aria-pressed={reviewed}
+              onClick={() => setReviewed(true)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {reviewed
+                ? t("home.visual.catchUp.reviewed", { briefLabel: fixture.presentation.briefLabel })
+                : fixture.presentation.finishLabel}
+            </Button>
+          ) : null}
         </div>
-        <div>
-          <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/75">
-              {fixture.presentation.suggestionLabel}
-            </h3>
-            <span className="text-xs text-muted-foreground">{t("home.visual.brief.proposed")}</span>
+      ) : null}
+
+      {proposal ? (
+        <HomeInset aria-label={fixture.presentation.suggestionLabel} className="-mx-3" role="group">
+          <div className="wd-caption flex flex-wrap items-baseline justify-between gap-2 text-wd-tertiary">
+            <span>{fixture.presentation.suggestionLabel}</span>
+            <span>{t("home.visual.brief.proposed")}</span>
           </div>
-          <ul aria-label={fixture.presentation.suggestionLabel} className="mt-2" role="list">
-            {fixture.suggestions.map((item) => (
-              <li
-                className="flex min-h-10 items-center gap-3 border-b border-border/60 py-2 text-sm text-foreground/86"
-                key={item.id}
-              >
-                <span aria-hidden="true" className="text-lg leading-none text-foreground/65">
-                  +
-                </span>
-                <span>{item.label}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-    </div>
+          <p className="wd-body text-wd-primary">{proposal.label}</p>
+          {choice ? (
+            <p className="wd-caption text-wd-secondary" role="status">
+              {choice === "accepted" ? t("home.visual.brief.accepted") : t("home.visual.brief.declined")}
+            </p>
+          ) : (
+            <HomeCardActions
+              lead={(
+                <Button data-quiet onClick={() => setChoice("declined")} size="sm" type="button" variant="ghost">
+                  {t("home.visual.brief.decline")}
+                </Button>
+              )}
+              trail={(
+                <Button onClick={() => setChoice("accepted")} size="sm" type="button" variant="spot">
+                  {t("home.visual.brief.accept")}
+                </Button>
+              )}
+            />
+          )}
+        </HomeInset>
+      ) : null}
+
+      <p className="wd-caption flex flex-wrap gap-x-1 text-wd-tertiary">
+        <span className="after:content-[':']">{t("home.visual.source")}</span>
+        <span>{fixture.sourceLabel}</span>
+      </p>
+    </HomeCard>
   );
 }

@@ -29,7 +29,9 @@ export function MissionViewSwitch({
 		<div
 			aria-disabled={disabled || undefined}
 			aria-label={labels.ariaLabel}
-			className={cn("inline-flex h-control-segment shrink-0 items-center rounded-lg bg-shell", disabled && "opacity-50")}
+			// Segmented control: an inset pill track with one ink thumb on the
+			// selected reading.
+			className={cn("inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-wd-inset p-1", disabled && "opacity-40")}
 			data-testid="mission-view-switch"
 			role="tablist"
 		>
@@ -56,9 +58,9 @@ function MissionViewSwitchItem({
 		<button
 			aria-selected={active}
 			className={cn(
-				"inline-flex h-full items-center justify-center rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+				"inline-flex h-full items-center justify-center whitespace-nowrap rounded-full px-3 text-sm font-medium transition-[background-color,color] duration-fast focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none",
 				disabled && "cursor-not-allowed",
-				active ? "hairline border-border bg-card font-medium text-foreground" : "text-passive hover:text-foreground",
+				active ? "bg-wd-inverse text-wd-on-inverse" : "text-wd-secondary hover:text-wd-primary",
 			)}
 			data-testid={`mission-view-${mode}`}
 			disabled={disabled}

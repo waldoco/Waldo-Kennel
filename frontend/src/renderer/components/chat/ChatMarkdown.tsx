@@ -84,7 +84,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({
 			<div
 				className={cn(
 					"chat-md leading-[1.58]",
-					muted ? "text-[13px] text-muted-foreground" : "text-sm text-foreground",
+					muted ? "text-[13px] text-wd-secondary" : "text-sm text-wd-primary",
 				)}
 			>
 				<Markdown remarkPlugins={PLUGINS} components={COMPONENTS}>
@@ -121,17 +121,17 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 
 	return (
 		<div
-			className="chat-code group/code my-2.5 overflow-hidden rounded-lg border border-border bg-surface"
+			className="chat-code group/code my-3 overflow-hidden rounded-md bg-wd-inset"
 			data-wrap={wrap ? "true" : "false"}
 		>
-			<div className="flex items-center gap-2 border-b border-border bg-raised/40 px-2.5 py-1">
-				<span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+			<div className="flex items-center gap-2 px-3 pt-1.5">
+				<span className="text-[11px] text-wd-tertiary">
 					{language || "text"}
 				</span>
 				{/* Hover-revealed, and focus-revealed so the keyboard can reach it. The
 				    timeline's whole point is that prose dominates; a permanent row of
 				    controls on every fence is the opposite. */}
-				<div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/code:opacity-100">
+				<div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity duration-fast focus-within:opacity-100 group-hover/code:opacity-100">
 					<button
 						type="button"
 						onClick={() => {
@@ -142,8 +142,8 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 						aria-label="Wrap long lines"
 						title="Wrap long lines"
 						className={cn(
-							"flex items-center rounded px-1.5 py-0.5 transition-colors hover:bg-interactive-hover hover:text-foreground",
-							wrap ? "text-accent" : "text-muted-foreground",
+							"flex items-center rounded-xs px-1.5 py-0.5 transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary",
+							wrap ? "bg-wd-selected text-wd-primary" : "text-wd-secondary",
 						)}
 					>
 						<WrapText aria-hidden="true" className="size-3" />
@@ -151,8 +151,8 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 					<CopyButton text={code} label="Copy code" />
 				</div>
 			</div>
-			<pre className="overflow-x-auto px-3 py-2.5">
-				<code className="font-mono text-[12px] leading-[1.6] text-foreground">
+			<pre className="overflow-x-auto px-3 pb-3 pt-1.5">
+				<code className="font-mono text-[12px] leading-[1.6] text-wd-primary">
 					<HighlightedCode code={code} language={grammar} streaming={streaming} />
 				</code>
 			</pre>
@@ -235,22 +235,22 @@ const COMPONENTS: Components = {
 	// Headings step down in size but stay in the conversation's voice — an agent's
 	// "## Findings" is a paragraph label, not a page title.
 	h1: ({ children }) => (
-		<h3 className="mb-1.5 mt-4 text-[15px] font-semibold leading-snug text-foreground first:mt-0">
+		<h3 className="mb-1.5 mt-4 text-[15px] font-medium leading-snug text-wd-primary first:mt-0">
 			{children}
 		</h3>
 	),
 	h2: ({ children }) => (
-		<h4 className="mb-1.5 mt-3.5 text-[14px] font-semibold leading-snug text-foreground first:mt-0">
+		<h4 className="mb-1.5 mt-3.5 text-[14px] font-medium leading-snug text-wd-primary first:mt-0">
 			{children}
 		</h4>
 	),
 	h3: ({ children }) => (
-		<h5 className="mb-1 mt-3 text-[13.5px] font-semibold leading-snug text-foreground first:mt-0">
+		<h5 className="mb-1 mt-3 text-[13.5px] font-medium leading-snug text-wd-primary first:mt-0">
 			{children}
 		</h5>
 	),
 	h4: ({ children }) => (
-		<h6 className="mb-1 mt-3 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">
+		<h6 className="mb-1 mt-3 text-[13px] font-medium text-wd-secondary first:mt-0">
 			{children}
 		</h6>
 	),
@@ -263,7 +263,7 @@ const COMPONENTS: Components = {
 	),
 	li: ({ children, className }) => (
 		// A task-list item drops its bullet: the checkbox is the marker.
-		<li className={cn("marker:text-muted-foreground", className?.includes("task-list-item") && "list-none")}>
+		<li className={cn("marker:text-wd-tertiary", className?.includes("task-list-item") && "list-none")}>
 			{compactEmoji(children)}
 		</li>
 	),
@@ -276,7 +276,7 @@ const COMPONENTS: Components = {
 				checked={Boolean(checked)}
 				readOnly
 				aria-label={checked ? "done" : "not done"}
-				className="mr-1.5 -ml-4 size-3 translate-y-[1px] accent-accent"
+				className="mr-1.5 -ml-4 size-3 translate-y-[1px] accent-(--bg-inverse)"
 			/>
 		) : null,
 
@@ -290,7 +290,7 @@ const COMPONENTS: Components = {
 	},
 	// Only inline code reaches here; `pre` above takes every fence.
 	code: ({ children }) => (
-		<code className="rounded bg-surface px-[5px] py-[2px] font-mono text-[11.5px] text-markdown-code">
+		<code className="rounded-xs bg-wd-inset px-[5px] py-[2px] font-mono text-[11.5px] text-markdown-code">
 			{children}
 		</code>
 	),
@@ -298,34 +298,34 @@ const COMPONENTS: Components = {
 	// Wide tables scroll inside their own container so the conversation column
 	// never scrolls sideways.
 	table: ({ children }) => (
-		<div className="my-2.5 overflow-x-auto rounded-lg border border-border">
+		<div className="my-3 overflow-x-auto rounded-md hairline border-wd-hairline">
 			<table className="w-full border-collapse text-[12.5px]">{children}</table>
 		</div>
 	),
-	thead: ({ children }) => <thead className="bg-raised/40">{children}</thead>,
+	thead: ({ children }) => <thead className="bg-wd-inset">{children}</thead>,
 	th: ({ children }) => (
-		<th className="border-b border-border px-2.5 py-1.5 text-left font-medium text-muted-foreground">
+		<th className="hairline-b border-wd-hairline px-3 py-1.5 text-left font-medium text-wd-secondary">
 			{compactEmoji(children)}
 		</th>
 	),
 	td: ({ children }) => (
-		<td className="border-b border-border/60 px-2.5 py-1.5 align-top">{compactEmoji(children)}</td>
+		<td className="hairline-b border-wd-hairline px-3 py-1.5 align-top">{compactEmoji(children)}</td>
 	),
 
 	blockquote: ({ children }) => (
-		<blockquote className="my-2.5 border-l-2 border-border-strong pl-3 text-muted-foreground">
+		<blockquote className="my-3 border-l-2 border-wd-hairline pl-3 text-wd-secondary">
 			{children}
 		</blockquote>
 	),
-	hr: () => <hr className="my-3 border-border" />,
-	strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-	del: ({ children }) => <del className="text-muted-foreground">{children}</del>,
+	hr: () => <hr className="my-4 border-wd-hairline" />,
+	strong: ({ children }) => <strong className="font-medium text-wd-primary">{children}</strong>,
+	del: ({ children }) => <del className="text-wd-tertiary">{children}</del>,
 
 	// Match terminal links: a plain HTTP(S) click uses the session's Kennel Browser;
 	// Option/Alt-click and non-web schemes use the system browser.
 	a: MarkdownLink,
 
 	img: ({ src, alt }) => (
-		<img src={typeof src === "string" ? src : undefined} alt={alt ?? ""} className="my-2 max-w-full rounded-md border border-border" />
+		<img src={typeof src === "string" ? src : undefined} alt={alt ?? ""} className="my-2 max-w-full rounded-md hairline border-wd-hairline" />
 	),
 };

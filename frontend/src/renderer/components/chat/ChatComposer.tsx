@@ -42,7 +42,7 @@ import {
 	type KeyboardEvent,
 	type ReactNode,
 } from "react";
-import { ArrowUp, CornerDownRight, Loader2, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, CornerDownRight, Paperclip, Square, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
 import { ComposerSuggestMenu } from "./ComposerSuggestMenu";
@@ -499,9 +499,11 @@ export function ChatComposer({
 			onDragLeave={() => setDragging(false)}
 			onDrop={onDrop}
 			className={cn(
-				"cursor-chat-composer relative flex flex-col gap-2 border p-2.5 transition-[background,border-color,box-shadow]",
-				attachedTop ? "rounded-b-[10px] rounded-t-none" : "rounded-[10px]",
-				dragging ? "border-logo-accent" : "border-border-strong",
+				"cursor-chat-composer relative flex flex-col gap-2 hairline bg-wd-inset px-3 py-2.5",
+				attachedTop
+					? "rounded-b-[calc(var(--size-field)/2)] rounded-t-none"
+					: "rounded-[calc(var(--size-field)/2)]",
+				dragging ? "border-wd-strong" : "border-wd-hairline",
 			)}
 		>
 			{menuOpen && trigger ? (
@@ -521,27 +523,27 @@ export function ChatComposer({
 					{fileAttachments.attachments.map((file) => (
 						<li
 							key={file.id}
-							className="flex items-center gap-1.5 rounded border border-border bg-background py-0.5 pl-0.5 pr-1"
+							className="flex items-center gap-1.5 rounded-full bg-wd-surface py-0.5 pl-0.5 pr-1.5"
 						>
 							{file.dataUrl ? (
 								<img
 									src={file.dataUrl}
 									alt=""
-									className="size-6 rounded-sm object-cover"
+									className="size-6 rounded-full object-cover"
 								/>
 							) : (
-								<div className="flex size-6 items-center justify-center rounded-sm bg-surface">
-									<File aria-hidden="true" className="size-3.5 text-muted-foreground" />
+								<div className="flex size-6 items-center justify-center rounded-full bg-wd-inset">
+									<File aria-hidden="true" className="size-3.5 text-wd-secondary" />
 								</div>
 							)}
-							<span className="max-w-[120px] truncate text-[11px] text-muted-foreground" title={file.name}>
+							<span className="max-w-[120px] truncate text-[11px] text-wd-secondary" title={file.name}>
 								{file.name}
 							</span>
 							<button
 								type="button"
 								onClick={() => fileAttachments.remove(file.id)}
 								aria-label={`Remove ${file.name}`}
-								className="text-muted-foreground hover:text-foreground"
+								className="rounded-full text-wd-secondary hover:text-wd-primary"
 							>
 								<X aria-hidden="true" className="size-3" />
 							</button>
@@ -575,11 +577,11 @@ export function ChatComposer({
 								? "Agent is working — this sends when it finishes"
 								: "Message the agent…"
 				}
-				className="chat-composer-scrollbar max-h-40 min-h-9 w-full resize-none overflow-y-hidden overscroll-contain bg-transparent px-1.5 py-1.5 text-sm leading-relaxed text-foreground outline-none placeholder:text-passive disabled:opacity-50"
+				className="chat-composer-scrollbar max-h-40 min-h-9 w-full resize-none overflow-y-hidden overscroll-contain bg-transparent px-1 py-1.5 text-sm leading-relaxed text-wd-primary outline-none placeholder:text-wd-tertiary disabled:placeholder:text-wd-secondary"
 			/>
 
 			{attachmentError ? (
-				<p role="alert" className="px-1.5 text-[11px] leading-snug text-destructive">
+				<p role="alert" className="px-1 text-[11px] leading-snug text-critical">
 					{attachmentError}
 				</p>
 			) : null}
@@ -588,7 +590,7 @@ export function ChatComposer({
 			    in the box and the message says which of "send it instead" and "try again
 			    in a moment" applies. */}
 			{steerRefusal ? (
-				<p role="status" className="px-1.5 text-[11px] leading-snug text-warning">
+				<p role="status" className="px-1 text-[11px] leading-snug text-wd-secondary">
 					{steerRefusal}
 				</p>
 			) : null}
@@ -626,18 +628,18 @@ export function ChatComposer({
 								title="Attach a file"
 								className="size-8 shrink-0 p-0"
 							>
-								<Paperclip aria-hidden="true" className="size-4 text-muted-foreground" />
+								<Paperclip aria-hidden="true" className="size-4 text-wd-secondary" />
 							</Button>
 						</>
 					) : null}
 					{canAttach && settings ? (
-						<span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border" />
+						<span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-wd-hairline" />
 					) : null}
 					{settings}
 					{footerAction ? (
 						<>
 							{canAttach || settings ? (
-								<span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border" />
+								<span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-wd-hairline" />
 							) : null}
 							{footerAction}
 						</>
@@ -656,13 +658,12 @@ export function ChatComposer({
 						onClick={canStopTurn ? onInterrupt : undefined}
 						aria-label={canStopTurn ? "Stop turn" : steering ? "Steer the running turn" : "Send message"}
 						title={canStopTurn ? "Stop turn" : undefined}
-						className="size-8 rounded-lg border-logo-accent bg-logo-accent text-logo-accent-foreground hover:bg-logo-accent-bright focus-visible:ring-logo-accent/45"
+						variant="primary"
+						className="size-8 rounded-full disabled:bg-wd-inverse disabled:text-wd-on-inverse disabled:opacity-40"
 					>
 						{canStopTurn ? (
 							<Square aria-hidden="true" className="size-2.5 fill-current" />
-						) : steerPending ? (
-							<Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-						) : steering ? (
+						) : steering || steerPending ? (
 							<CornerDownRight aria-hidden="true" className="size-3.5" />
 						) : (
 							<ArrowUp aria-hidden="true" className="size-3.5" />
@@ -713,10 +714,10 @@ function DeliveryChoice({
 							: "Hold this until the turn ends, then send it as a new message."
 					}
 					className={cn(
-						"rounded px-1.5 py-0.5 text-[11px] transition-colors disabled:opacity-50",
+						"rounded-full px-2 py-0.5 text-[11px] transition-colors duration-fast disabled:text-wd-disabled",
 						value === option
-							? "bg-raised text-foreground"
-							: "text-muted-foreground hover:bg-interactive-hover hover:text-foreground",
+							? "bg-wd-inverse text-wd-on-inverse"
+							: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 					)}
 				>
 					{option === "steer" ? "Steer this turn" : "Queue for next"}

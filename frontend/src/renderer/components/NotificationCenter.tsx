@@ -11,7 +11,6 @@ import {
 	GitPullRequestArrow,
 	GitPullRequestClosed,
 	Inbox,
-	LoaderCircle,
 	MessageSquareDot,
 	RotateCcw,
 } from "lucide-react";
@@ -290,12 +289,12 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 					variant="icon"
 				>
 					{unreadCount > 0 ? (
-						<BellRing className="size-icon-base fill-current text-foreground" aria-hidden="true" />
+						<BellRing className="size-icon-base fill-current text-wd-primary" aria-hidden="true" />
 					) : (
 						<Bell className="size-icon-base" aria-hidden="true" />
 					)}
 					{unreadCount > 0 ? (
-						<span className="pointer-events-none absolute right-px top-px grid h-3 min-w-3 place-items-center rounded-full bg-accent-strong px-0.5 text-[7px] font-semibold leading-none text-accent-foreground shadow-sm ring-1 ring-background">
+						<span className="pointer-events-none absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-wd-inverse px-1 text-2xs font-medium tabular-nums leading-none text-wd-on-inverse ring-2 ring-wd-canvas">
 							{unreadCount > 99 ? "99+" : unreadCount}
 						</span>
 					) : null}
@@ -304,21 +303,21 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 			<PopoverContent
 				align="end"
 				aria-label={t("notify.title")}
-				className="w-notification-width max-w-[calc(100vw-1rem)] overflow-hidden rounded-panel border-border-strong p-0 shadow-xl"
+				className="w-notification-width max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg p-0 shadow-xl"
 				sideOffset={8}
 			>
-				<div className="border-b border-border bg-[var(--color-overlay-subtle)] px-4 py-3.5">
-					<p className="text-subtitle font-semibold tracking-tight text-foreground">{t("notify.title")}</p>
+				<div className="border-b border-wd-hairline [border-bottom-width:var(--stroke-hairline)] px-5 pt-4 pb-3">
+					<p className="wd-headline text-wd-primary">{t("notify.title")}</p>
 				</div>
 
 				{markReadError ? (
 					<div
 						aria-live="polite"
-						className="flex items-center justify-between gap-2 border-b border-border bg-error/5 px-4 py-2 text-caption text-error"
+						className="flex items-center justify-between gap-2 bg-critical-bg px-5 py-2.5 text-sm text-critical"
 					>
 						<span>{markReadError}</span>
 						<button
-							className="shrink-0 font-medium underline underline-offset-2 hover:text-foreground"
+							className="shrink-0 rounded-full px-2.5 py-1 font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 							onClick={retryMarkRead}
 							type="button"
 						>
@@ -327,16 +326,16 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 					</div>
 				) : null}
 				{actionError ? (
-					<div className="border-b border-border bg-error/5 px-4 py-2 text-caption text-error">{actionError}</div>
+					<div className="bg-critical-bg px-5 py-2.5 text-sm text-critical">{actionError}</div>
 				) : null}
 				{workspaceError ? (
 					<div
 						aria-live="polite"
-						className="flex items-center justify-between gap-2 border-b border-border bg-error/5 px-4 py-2 text-caption text-error"
+						className="flex items-center justify-between gap-2 bg-critical-bg px-5 py-2.5 text-sm text-critical"
 					>
 						<span>{t("notify.workspaceLoadFailed")}</span>
 						<button
-							className="shrink-0 font-medium underline underline-offset-2 hover:text-foreground"
+							className="shrink-0 rounded-full px-2.5 py-1 font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 							onClick={retryWorkspace}
 							type="button"
 						>
@@ -385,11 +384,11 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 						{allQuery.isFetchNextPageError ? (
 							<div
 								aria-live="polite"
-								className="flex items-center justify-center gap-2 px-4 py-3 text-caption text-error"
+								className="flex items-center justify-center gap-2 px-4 py-3 text-sm text-critical"
 							>
 								{t("notify.earlierLoadFailed")}
 								<button
-									className="font-medium underline underline-offset-2 hover:text-foreground"
+									className="rounded-full px-2.5 py-1 font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 									onClick={() => void allQuery.fetchNextPage()}
 									type="button"
 								>
@@ -399,9 +398,8 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 						) : allQuery.isFetchingNextPage ? (
 							<div
 								aria-live="polite"
-								className="flex items-center justify-center gap-2 px-4 py-3 text-caption text-passive"
+								className="flex items-center justify-center gap-2 px-4 py-3 text-sm text-wd-secondary"
 							>
-								<LoaderCircle className="size-icon-md animate-spin" aria-hidden="true" />
 								{t("notify.loadingEarlier")}
 							</div>
 						) : null}
@@ -416,10 +414,10 @@ function NotificationEmpty({ icon: Icon, message }: { icon: typeof Bell; message
 	return (
 		<div className="grid min-h-40 place-items-center px-4 py-10 text-center">
 			<div>
-				<div className="mx-auto grid size-control-xl place-items-center rounded-full border border-border bg-surface text-passive">
-					<Icon className={cn("size-icon-base", Icon === LoaderCircle && "animate-spin")} aria-hidden="true" />
+				<div className="mx-auto grid size-control-xl place-items-center rounded-full bg-wd-inset text-wd-tertiary">
+					<Icon className="size-icon-base" aria-hidden="true" />
 				</div>
-				<p className="mt-2.5 text-control text-muted-foreground">{message}</p>
+				<p className="mt-3 text-sm text-wd-secondary">{message}</p>
 			</div>
 		</div>
 	);
@@ -470,12 +468,11 @@ function NotificationItem({
 		<div role="listitem">
 			<div
 				className={cn(
-					"group grid grid-cols-notification items-start gap-3 px-4 py-3 text-left transition-[background-color,opacity,transform] duration-fast will-change-transform",
+					"group mx-1.5 grid grid-cols-notification items-start gap-3 rounded-md px-3.5 py-3 text-left transition-[background-color,transform] duration-fast will-change-transform",
 					highlighted && "notification-row-enter",
 					canOpenSession
-						? "cursor-pointer hover:bg-interactive-hover active:scale-[0.99] active:bg-interactive-active"
+						? "cursor-pointer hover:bg-wd-hover active:scale-[0.99] active:bg-wd-pressed"
 						: "cursor-default",
-					!highlighted && "opacity-55 hover:opacity-80",
 				)}
 				onClick={openRow}
 				onKeyDown={(event) => {
@@ -490,7 +487,7 @@ function NotificationItem({
 			>
 				<div
 					className={cn(
-						"grid size-notification-icon shrink-0 place-items-center transition-transform duration-fast group-hover:brightness-110 group-active:scale-90",
+						"grid size-notification-icon shrink-0 place-items-center",
 						notificationIconClass(notification.type),
 					)}
 				>
@@ -502,8 +499,8 @@ function NotificationItem({
 						<span
 							aria-label={copy.title}
 							className={cn(
-								"min-w-0 break-words text-control leading-snug text-foreground",
-								highlighted && "font-medium",
+								"min-w-0 break-words text-control leading-snug",
+								highlighted ? "font-medium text-wd-primary" : "text-wd-secondary",
 							)}
 						>
 							{titleLink ? (
@@ -511,7 +508,7 @@ function NotificationItem({
 									{titleLink.before}
 									<a
 										aria-label={t("inspector.openPR", { number: titleLink.number })}
-										className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+										className="inline-flex items-center gap-0.5 rounded-xs underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 										href={titleLink.url}
 										onClick={(event) => {
 											event.preventDefault();
@@ -533,14 +530,14 @@ function NotificationItem({
 						</span>
 					</div>
 					{copy.body ? (
-						<p className="mt-0.5 whitespace-pre-wrap break-words text-caption leading-snug text-muted-foreground">
+						<p className="mt-0.5 whitespace-pre-wrap break-words text-caption leading-snug text-wd-secondary">
 							{copy.body}
 						</p>
 					) : null}
 					{meta && (meta.projectName || showSessionMeta) ? (
-						<p className="mt-1 flex min-w-0 items-center gap-1.5 text-caption leading-none text-passive">
+						<p className="mt-1 flex min-w-0 items-center gap-1.5 text-caption leading-none text-wd-tertiary">
 							{meta.projectName ? (
-								<span className="truncate font-medium text-muted-foreground">{meta.projectName}</span>
+								<span className="truncate font-medium text-wd-secondary">{meta.projectName}</span>
 							) : null}
 							{meta.projectName && showSessionMeta ? <span aria-hidden="true">·</span> : null}
 							{showSessionMeta ? <span className="truncate">{meta.sessionName}</span> : null}
@@ -549,7 +546,7 @@ function NotificationItem({
 				</div>
 				{/* Time + restore share the same icon-height band so they stay level. */}
 				<div className="flex h-notification-icon shrink-0 items-center gap-1">
-					<time className="shrink-0 text-[9px] leading-none text-passive" dateTime={notification.createdAt}>
+					<time className="wd-data-s shrink-0 leading-none text-wd-tertiary" dateTime={notification.createdAt}>
 						{formatTimeCompact(notification.createdAt)}
 					</time>
 					{offerRestore && sessionId ? (
@@ -557,7 +554,7 @@ function NotificationItem({
 							<TooltipTrigger asChild>
 								<button
 									aria-label={t("shell.restoreSession")}
-									className="grid size-notification-icon place-items-center rounded-md text-passive transition-colors hover:bg-interactive-active hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+									className="grid size-notification-icon place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary disabled:pointer-events-none disabled:text-wd-disabled"
 									disabled={restoreDisabled}
 									onClick={(event) => {
 										event.stopPropagation();
@@ -565,7 +562,7 @@ function NotificationItem({
 									}}
 									type="button"
 								>
-									<RotateCcw className={cn("size-icon-md", restoring && "animate-spin")} aria-hidden="true" />
+									<RotateCcw className="size-icon-md" aria-hidden="true" />
 								</button>
 							</TooltipTrigger>
 							<TooltipContent side="top">
@@ -648,20 +645,19 @@ function notificationIcon(type: string) {
 	}
 }
 
-// Bare colored glyph per type (no tile). Merged uses GitHub's PR-merged purple;
-// the accent token is a near-black surface color in this theme and reads as
-// invisible, so it must not be used for a glyph.
+// Bare glyph per type (no tile). Waiting on the person is the Needs-you Spot;
+// outcomes use state tones; merged keeps its functional identity colour.
 function notificationIconClass(type: string): string {
 	switch (type) {
 		case "needs_input":
-			return "text-warning";
+			return "text-spot";
 		case "ready_to_merge":
-			return "text-success";
+			return "text-good";
 		case "pr_merged":
-			return "text-[#a371f7]";
+			return "text-[var(--icon-purple)]";
 		case "pr_closed_unmerged":
-			return "text-error";
+			return "text-critical";
 		default:
-			return "text-muted-foreground";
+			return "text-wd-secondary";
 	}
 }

@@ -12,7 +12,7 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 		<CommandPrimitive
 			data-slot="command"
 			className={cn(
-				"flex w-full flex-col overflow-hidden rounded-[var(--radius-command-palette)] bg-[var(--color-bg-command-palette)] text-[var(--color-text-command-item)] outline-none",
+				"flex w-full flex-col overflow-hidden rounded-xl bg-wd-raised text-wd-primary outline-none",
 				className,
 			)}
 			{...props}
@@ -51,8 +51,9 @@ function CommandDialog({
 					// dozens of times a session, and an animation on a keyboard action
 					// reads as latency between the keypress and the caret being ready.
 					// The scrim still fades so the change of context isn't a hard cut.
+					// Waldo overlay: raised plane, radius-xl, shadow-overlay, no border.
 					className={cn(
-						"fixed left-1/2 top-command-palette z-overlay w-command-palette -translate-x-1/2 overflow-hidden rounded-[var(--radius-command-palette)] border border-[var(--color-border-command-palette)] bg-[var(--color-bg-command-palette)] text-[var(--color-text-command-item)] shadow-[var(--shadow-command-palette)] outline-none",
+						"fixed left-1/2 top-command-palette z-overlay w-command-palette -translate-x-1/2 overflow-hidden rounded-xl bg-wd-raised text-wd-primary shadow-xl outline-none",
 						className,
 					)}
 				>
@@ -60,7 +61,7 @@ function CommandDialog({
 					<Dialog.Description className="sr-only">{description}</Dialog.Description>
 					<Command
 						className={cn(
-							"**:[[cmdk-group-heading]]:px-[var(--size-command-pad-x)] **:[[cmdk-group-heading]]:pt-2.5 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:text-[11px] **:[[cmdk-group-heading]]:font-normal **:[[cmdk-group-heading]]:tracking-wide **:[[cmdk-group-heading]]:text-[var(--color-text-command-muted)] **:[[cmdk-group]]:px-0",
+							"**:[[cmdk-group-heading]]:px-[var(--size-command-pad-x)] **:[[cmdk-group-heading]]:pt-3 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-wd-tertiary **:[[cmdk-group]]:px-0",
 							commandClassName,
 						)}
 						{...restCommandProps}
@@ -77,14 +78,14 @@ function CommandInput({ className, ...props }: React.ComponentProps<typeof Comma
 	return (
 		<div
 			data-slot="command-input-wrapper"
-			className="flex items-center gap-2.5 border-b border-[var(--color-border-command-palette)] px-[var(--size-command-pad-x)] py-3"
+			className="flex items-center gap-3 border-b border-wd-hairline [border-bottom-width:var(--stroke-hairline)] px-[var(--size-command-pad-x)] py-4"
 			cmdk-input-wrapper=""
 		>
-			<Search className="size-4 shrink-0 text-[var(--color-text-command-placeholder)]" aria-hidden="true" />
+			<Search className="size-5 shrink-0 text-wd-tertiary" aria-hidden="true" />
 			<CommandPrimitive.Input
 				data-slot="command-input"
 				className={cn(
-					"flex h-6 w-full bg-transparent text-[length:var(--font-size-command-input)] leading-6 text-[var(--color-text-command-item)] caret-[var(--color-text-command-item)] outline-none placeholder:text-[var(--color-text-command-placeholder)] disabled:cursor-not-allowed disabled:opacity-50",
+					"flex h-7 w-full bg-transparent text-heading-sm leading-7 text-wd-primary caret-wd-primary outline-none placeholder:text-wd-tertiary disabled:cursor-not-allowed disabled:text-wd-disabled",
 					className,
 				)}
 				{...props}
@@ -110,7 +111,7 @@ function CommandEmpty({ ...props }: React.ComponentProps<typeof CommandPrimitive
 	return (
 		<CommandPrimitive.Empty
 			data-slot="command-empty"
-			className="py-8 text-center text-sm text-[var(--color-text-command-muted)]"
+			className="py-8 text-center text-sm text-wd-secondary"
 			{...props}
 		/>
 	);
@@ -127,10 +128,10 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
 		<CommandPrimitive.Item
 			data-slot="command-item"
 			className={cn(
-				"relative mx-[var(--size-command-item-inset)] flex cursor-default select-none items-center gap-2.5 rounded-[var(--radius-command-item)] py-1.5 pr-2.5 pl-[var(--size-command-item-pad-l)] text-[13px] leading-[length:var(--leading-command-item)] text-[var(--color-text-command-item)] outline-none",
-				"data-[selected=true]:bg-[var(--color-bg-command-item-active)] data-[selected=true]:text-[var(--color-text-command-item)]",
-				"data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
-				"[&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-[var(--color-text-command-item)] data-[selected=true]:[&_svg]:text-[var(--color-text-command-item)]",
+				"relative mx-[var(--size-command-item-inset)] flex cursor-default select-none items-center gap-2.5 rounded-sm py-1.5 pr-2.5 pl-[var(--size-command-item-pad-l)] text-control leading-[length:var(--leading-command-item)] text-wd-primary outline-none transition-colors duration-fast",
+				"data-[selected=true]:bg-wd-selected data-[selected=true]:text-wd-primary",
+				"data-[disabled=true]:pointer-events-none data-[disabled=true]:text-wd-disabled",
+				"[&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-wd-secondary data-[selected=true]:[&_svg]:text-wd-primary",
 				className,
 			)}
 			{...props}
@@ -143,7 +144,7 @@ function CommandFooter({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="command-footer"
 			className={cn(
-				"flex items-center gap-4 border-t border-[var(--color-border-command-palette)] px-[var(--size-command-pad-x)] pt-3 pb-3 text-sm text-[var(--color-text-command-muted)]",
+				"flex items-center gap-4 border-t border-wd-hairline [border-top-width:var(--stroke-hairline)] px-[var(--size-command-pad-x)] pt-3 pb-3 text-xs text-wd-tertiary",
 				className,
 			)}
 			{...props}

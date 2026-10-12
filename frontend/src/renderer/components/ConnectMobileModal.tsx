@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, Info, Loader2, X } from "lucide-react";
+import { Check, Copy, Info, Smartphone, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { apiClient, apiErrorMessage } from "../lib/api-client";
 import { captureRendererEvent } from "../lib/telemetry";
@@ -222,35 +222,38 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 				</DialogClose>
 				{/* The get-app QR and setup steps can push this past a short window,
 				    so the body scrolls rather than clipping under the screen edges. */}
-				<DialogHeader className={cn(settingsDialogHeaderClass, "items-start text-left")}>
+				<DialogHeader className={cn(settingsDialogHeaderClass, "items-start gap-1 border-b-0 p-6 pb-2 pr-14 text-left")}>
 					<DialogTitle className="settings-dialog-title text-left">{t("mobile.title")}</DialogTitle>
-					<DialogDescription className="max-w-(--size-settings-mobile-desc) text-left text-control font-normal leading-4 text-settings-muted">
+					<DialogDescription className="wd-body-s max-w-(--size-settings-mobile-desc) text-left text-wd-secondary">
 						{t("mobile.description")}
 					</DialogDescription>
 				</DialogHeader>
-				<div className={cn(settingsDialogBodyClass, "max-h-[80vh] gap-0 pt-6 scrollbar-none")}>
+				<div className={cn(settingsDialogBodyClass, "max-h-[80vh] gap-0 p-6 pt-4 scrollbar-none")}>
 					<ConnectMobileGetApp />
 
 					{query.isLoading ? (
-						<p className="mt-6 text-center text-xs text-settings-muted">{t("mobile.checkingStatus")}</p>
+						<p className="wd-body-s mt-6 text-center text-wd-secondary">{t("mobile.checkingStatus")}</p>
 					) : query.isError ? (
-						<p className="mt-6 text-center text-xs text-error">
+						<p className="wd-body-s mt-6 text-center text-critical">
 							{query.error instanceof Error ? query.error.message : t("mobile.loadFailed")}
 						</p>
 					) : status ? (
 						<div className="mt-4 flex flex-col">
 							{/* Toggle row — always visible. Flipping it starts/stops the bridge. */}
-							<div className="relative flex items-start justify-between gap-3 px-3 py-3">
-								<div className="flex min-w-0 flex-col gap-1 pr-2">
-									<span className="text-subtitle leading-(--leading-settings-mobile-title) text-settings-label">
-										{t("mobile.enable")}
+							<div className="settings-row-bar items-start">
+								<div className="flex min-w-0 items-start gap-3 pr-2">
+									<span
+										className="settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary"
+										aria-hidden="true"
+									>
+										<Smartphone className="size-4" />
 									</span>
-									<span className="text-caption leading-(--leading-settings-mobile-hint) text-settings-muted">
-										{t("mobile.enableHint")}
-									</span>
+									<div className="flex min-w-0 flex-col gap-0.5">
+										<span className="wd-body text-wd-primary">{t("mobile.enable")}</span>
+										<span className="wd-body-s text-wd-secondary">{t("mobile.enableHint")}</span>
+									</div>
 								</div>
 								<div className="flex shrink-0 items-center gap-2 pt-0.5">
-									{busy && <Loader2 className="size-4 animate-spin text-settings-muted" aria-hidden="true" />}
 									<Switch
 										checked={enabled}
 										onCheckedChange={onToggle}
@@ -260,7 +263,13 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 								</div>
 							</div>
 
-							{actionError && <p className="mt-3 text-xs text-error">{actionError}</p>}
+							{/* What pairing grants, stated before the switch is flipped. */}
+							<div className="wd-caption mt-2 flex flex-col gap-1 px-4 text-wd-tertiary">
+								<p>{t("mobile.scope.can")}</p>
+								<p>{t("mobile.scope.cannot")}</p>
+							</div>
+
+							{actionError && <p role="alert" className="wd-body-s mt-3 px-4 text-critical">{actionError}</p>}
 
 							{/* Pairing details — expand/collapse with the enable toggle. */}
 							<div
@@ -297,7 +306,8 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 										<div className="mt-6 flex w-(--size-settings-mobile-qr) flex-col items-center">
 											{activeHost && !secureBlocked ? (
 												<>
-													<div className="rounded-md border border-(--color-border-settings-input) bg-white p-2">
+													{/* The code must stay dark-on-white in both themes for cameras. */}
+													<div className="rounded-lg bg-[var(--coat-0)] p-3">
 														<QRCodeSVG
 															value={pairingPayload(activeHost, activePort, status.password, secureActive)}
 															data-qr-value={pairingPayload(activeHost, activePort, status.password, secureActive)}
@@ -305,11 +315,11 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 															className="block size-(--size-settings-mobile-qr-code)"
 														/>
 													</div>
-													<p className="mt-4 text-sm leading-5 text-settings-muted">{t("mobile.scanToPair")}</p>
+													<p className="wd-body-s mt-3 text-wd-secondary">{t("mobile.scanToPair")}</p>
 												</>
 											) : (
-												<div className="flex size-(--size-settings-mobile-qr-code) items-center justify-center rounded-md border border-(--color-border-settings-input) bg-(--color-bg-settings-input) p-4">
-													<p className="text-center text-caption leading-(--leading-settings-mobile-hint) text-settings-muted">
+												<div className="flex size-(--size-settings-mobile-qr-code) items-center justify-center rounded-lg bg-wd-inset p-4">
+													<p className="wd-body-s text-center text-wd-secondary">
 														{mode === "tailscale" ? t("mobile.noTailscaleHost") : t("mobile.noPairingHost")}
 													</p>
 												</div>
@@ -317,28 +327,28 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 										</div>
 
 										{status.warning && !secureActive && (
-											<p className="mt-6 flex w-full max-w-(--size-settings-mobile-warning) items-start gap-2 text-caption leading-(--leading-settings-mobile-warning) text-warning">
+											<p className="wd-body-s mt-6 flex w-full max-w-(--size-settings-mobile-warning) items-start gap-2 text-caution">
 												<Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 												<span>{status.warning}</span>
 											</p>
 										)}
 
-										<div className="mt-6 flex w-full flex-col gap-1 px-(--size-settings-mobile-details-pad-x)">
-											<div className="flex items-center gap-6 text-sm leading-5" data-testid="mobile-pairing-address">
-												<span className="w-(--size-settings-mobile-label) shrink-0 text-settings-muted">{t("mobile.address")}</span>
-												<span className="tracking-settings-mono text-settings-label">
+										<div className="mt-6 flex w-full flex-col gap-2 rounded-md bg-wd-inset px-4 py-3">
+											<div className="wd-body-s flex items-center gap-6" data-testid="mobile-pairing-address">
+												<span className="w-(--size-settings-mobile-label) shrink-0 text-wd-secondary">{t("mobile.address")}</span>
+												<span className="wd-data text-wd-primary">
 													{activeHost ? `${activeHost}:${activePort}` : "—"}
 												</span>
 											</div>
-											<div className="flex items-center gap-6 text-sm leading-5">
-												<span className="w-(--size-settings-mobile-label) shrink-0 text-settings-muted">{t("mobile.password")}</span>
+											<div className="wd-body-s flex items-center gap-6">
+												<span className="w-(--size-settings-mobile-label) shrink-0 text-wd-secondary">{t("mobile.password")}</span>
 												<div className="flex min-w-0 items-center gap-2">
-													<span className="tracking-settings-mono text-settings-label">{status.password}</span>
+													<span className="wd-data text-wd-primary">{status.password}</span>
 													<button
 														type="button"
 														aria-label={copied ? t("mobile.passwordCopied") : t("mobile.copyPassword")}
 														tabIndex={enabled ? 0 : -1}
-														className="inline-flex size-6 shrink-0 items-center justify-center text-settings-muted transition-colors hover:text-settings-label"
+														className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 														onClick={() => void copyPassword()}
 													>
 														{copied ? (
@@ -353,8 +363,8 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 
 										<Button
 											type="button"
-											variant="footer"
-											className="mt-5 w-(--size-settings-mobile-regen-width) rounded-md"
+											variant="secondary"
+											className="mt-4"
 											onClick={() => {
 												clearActionErrors();
 												regenerate.mutate();
@@ -362,7 +372,6 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 											disabled={busy || !enabled}
 											tabIndex={enabled ? 0 : -1}
 										>
-											{regenerate.isPending && <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />}
 											{t("mobile.regenerate")}
 										</Button>
 
@@ -370,7 +379,11 @@ export function ConnectMobileModal({ open, onOpenChange }: ConnectMobileModalPro
 										    Switch/remove controls issue real PATCH/DELETE calls, so they must be
 										    absent from the DOM (not merely aria-hidden) while the bridge is off —
 										    otherwise they stay keyboard-focusable behind the collapse animation. */}
-										{enabled && <MobileDevicesSection />}
+										{enabled && (
+											<div className="mt-8 w-full">
+												<MobileDevicesSection />
+											</div>
+										)}
 									</div>
 								</div>
 							</div>

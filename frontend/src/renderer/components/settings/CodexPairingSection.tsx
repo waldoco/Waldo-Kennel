@@ -1,3 +1,4 @@
+import { Circle, CircleCheck, CircleX, Clock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
@@ -146,17 +147,38 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
       : pairing?.repair === "retry_pairing"
         ? t("settings.pairing.action.retry")
         : t("settings.pairing.action.pair");
+  const tone =
+    pairing?.state === "connected"
+      ? { icon: CircleCheck, tile: "bg-good-bg text-good" }
+      : pairing?.state === "error" || discovery?.state === "error"
+        ? { icon: CircleX, tile: "bg-critical-bg text-critical" }
+        : pairing?.state === "action_needed"
+          ? { icon: Clock, tile: "bg-caution-bg text-caution" }
+          : { icon: Circle, tile: "bg-wd-inset text-wd-secondary" };
+  const ToneIcon = tone.icon;
   return (
-    <SettingsSection title={t("settings.pairing.title")} grouped>
+    <SettingsSection
+      title={t("settings.pairing.title")}
+      grouped
+      footer={t("settings.pairing.footer")}
+    >
       <div
         data-testid="codex-pairing"
-        className="flex items-center justify-between gap-4 p-4"
+        className="settings-row-bar items-start"
       >
-        <div>
-          <p className="text-sm font-medium">{t("settings.pairing.name")}</p>
-          <p role="status" className="mt-1 text-xs text-muted-foreground">
-            {statusMessage(discovery, pairing)}
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className={`settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm ${tone.tile}`}
+            aria-hidden="true"
+          >
+            <ToneIcon className="size-4" />
+          </span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="wd-body text-wd-primary">{t("settings.pairing.name")}</p>
+            <p role="status" className="wd-body-s text-wd-secondary">
+              {statusMessage(discovery, pairing)}
+            </p>
+          </div>
         </div>
         <div className="flex shrink-0 gap-2">
           {needsRefresh ? (
@@ -171,6 +193,7 @@ export function CodexPairingSection({ projectId }: { projectId: string }) {
           ) : null}
           <Button
             type="button"
+            variant="secondary"
             aria-busy={busy}
             disabled={!canPair || busy || refreshing}
             onClick={() => void pair()}

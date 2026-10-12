@@ -12,16 +12,37 @@ import type {
 	PRSummaryPart,
 	PRSummaryPartKey,
 } from "./pull-request-models";
+import { StateMark, type StateTone } from "./StateBadge";
 import { cn } from "./utils";
 
 const toneClass: Record<PRDisplayTone, string> = {
-	neutral: "text-muted-foreground",
-	passive: "text-passive",
-	success: "text-success",
-	review: "text-status-in-review",
-	warning: "text-warning",
-	error: "text-error",
+	neutral: "text-wd-secondary",
+	passive: "text-wd-tertiary",
+	success: "text-good",
+	review: "text-caution",
+	warning: "text-caution",
+	error: "text-critical",
 };
+
+const toneState: Record<PRDisplayTone, StateTone> = {
+	neutral: "neutral",
+	passive: "neutral",
+	success: "good",
+	review: "caution",
+	warning: "caution",
+	error: "critical",
+};
+
+/** The status's Waldo shape cue in a fixed slot so neutral rows (no mark)
+ *  keep the same text edge. In-flight work reads as live (blue dot), never
+ *  as a pulse. */
+function PRStatusMark({ breathe, className, tone }: { breathe?: boolean; className?: string; tone: PRDisplayTone }) {
+	return (
+		<span aria-hidden="true" className={cn("inline-flex h-4 w-3 shrink-0 items-center justify-center", className)} data-pr-status-mark="">
+			<StateMark tone={breathe ? "live" : toneState[tone]} />
+		</span>
+	);
+}
 
 export type CountNounLabel = (count: number, noun: PRNoun) => string;
 
@@ -49,7 +70,7 @@ export function PRSummaryMeta({
 		author =
 			pr.provider === "github" ? (
 				<ExternalLink
-					className="inline-flex min-w-0 items-center gap-1 text-settings-label underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+					className="inline-flex min-w-0 items-center gap-1 text-wd-primary underline-offset-2 hover:underline focus-visible:rounded-xs"
 					href={`https://github.com/${encodeURIComponent(authorHandle)}`}
 				>
 					<GithubAvatar className="size-3" login={authorHandle} />
@@ -65,16 +86,16 @@ export function PRSummaryMeta({
 	return (
 		<div className={cn("min-w-0 text-2xs leading-4", className)}>
 			{primary.length > 0 ? (
-				<div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
+				<div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-wd-secondary">
 					{primary.map((part, index) => (
 						<Fragment key={index}>
-							{index > 0 ? <span className="shrink-0 text-passive">·</span> : null}
+							{index > 0 ? <span className="shrink-0 text-wd-tertiary">·</span> : null}
 							<span className="min-w-0 break-words [overflow-wrap:anywhere]">{part}</span>
 						</Fragment>
 					))}
 				</div>
 			) : null}
-			{author ? <div className="mt-0.5 min-w-0 break-words [overflow-wrap:anywhere] text-muted-foreground">{author}</div> : null}
+			{author ? <div className="mt-0.5 min-w-0 break-words [overflow-wrap:anywhere] text-wd-secondary">{author}</div> : null}
 			{hasDiff ? <PRDiffMeta countNounLabel={countNounLabel} pr={pr} /> : null}
 		</div>
 	);
@@ -90,30 +111,30 @@ function PRDiffMeta({
 	const parts: ReactNode[] = [];
 	if (pr.changedFiles > 0) {
 		parts.push(
-			<span className="text-muted-foreground" key="files">
+			<span className="text-wd-secondary" key="files">
 				{countNounLabel(pr.changedFiles, "file")}
 			</span>,
 		);
 	}
 	if (pr.additions > 0) {
 		parts.push(
-			<span className="text-success" key="additions">
+			<span className="text-wd-secondary" key="additions">
 				+{pr.additions}
 			</span>,
 		);
 	}
 	if (pr.deletions > 0) {
 		parts.push(
-			<span className="text-error" key="deletions">
+			<span className="text-wd-secondary" key="deletions">
 				-{pr.deletions}
 			</span>,
 		);
 	}
 	return (
-		<div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-muted-foreground">
+		<div className="flex min-w-0 flex-wrap items-center gap-x-1.5 tabular-nums text-wd-secondary">
 			{parts.map((part, index) => (
 				<Fragment key={index}>
-					{index > 0 ? <span className="text-passive">·</span> : null}
+					{index > 0 ? <span className="text-wd-tertiary">·</span> : null}
 					{part}
 				</Fragment>
 			))}
@@ -143,31 +164,31 @@ export function PRCardStatusSummary({
 	const rows = presentation.statusRows?.filter((status) => status.key === "lifecycle" || !omitted?.has(status.key));
 	if (rows && presentation.readiness) {
 		return (
-			<div className={cn("border-t border-border pt-2", className)}>
+			<div className={cn("hairline-t border-wd-hairline pt-2", className)}>
 				<div className="grid min-w-0 grid-cols-1 gap-y-1.5">
 					{rows.map((status) => (
 						<div className="min-w-0" key={status.key}>
 							<div className={cn("flex min-w-0 items-center gap-2 text-xs font-medium leading-4", toneClass[status.tone])}>
-								<span aria-hidden="true" className={cn("size-dot-sm shrink-0 rounded-full bg-current", status.breathe && "animate-status-pulse")} />
+								<PRStatusMark breathe={status.breathe} tone={status.tone} />
 								<PRCardStatusLink externalLink={externalLink} status={status} />
 							</div>
 							{status.detail || (status.key === "review" && reviewDetailsAction) ? (
-								<div className="mt-0.5 flex min-w-0 items-baseline gap-2 pl-4 text-2xs leading-4">
-									{status.detail ? <span className="text-muted-foreground">{status.detail}</span> : null}
+								<div className="mt-0.5 flex min-w-0 items-baseline gap-2 pl-5 text-2xs leading-4">
+									{status.detail ? <span className="text-wd-secondary">{status.detail}</span> : null}
 									{status.key === "review" && reviewDetailsAction ? reviewDetailsAction : null}
 								</div>
 							) : null}
 						</div>
 					))}
 				</div>
-				<div className="mt-2 border-t border-border pt-2">
+				<div className="mt-2 hairline-t border-wd-hairline pt-2">
 					<div className="flex min-w-0 items-center justify-between gap-3">
 						<div className="min-w-0">
 							<div className={cn("flex items-center gap-2 text-xs font-medium leading-4", toneClass[presentation.readiness.tone])}>
-								<span aria-hidden="true" className="size-dot-sm shrink-0 rounded-full bg-current" />
+								<PRStatusMark tone={presentation.readiness.tone} />
 								{presentation.readiness.label}
 							</div>
-							<div className="mt-0.5 min-w-0 break-words pl-4 text-2xs leading-4 text-muted-foreground">{presentation.readiness.detail}</div>
+							<div className="mt-0.5 min-w-0 break-words pl-5 text-2xs leading-4 text-wd-secondary">{presentation.readiness.detail}</div>
 						</div>
 						{action ? <div className="shrink-0 self-center">{action}</div> : null}
 					</div>
@@ -176,29 +197,26 @@ export function PRCardStatusSummary({
 		);
 	}
 	return (
-		<div className={cn("border-t border-border pt-2", className)}>
+		<div className={cn("hairline-t border-wd-hairline pt-2", className)}>
 			<div className="flex min-w-0 items-center gap-3">
 				<div className="flex min-w-0 flex-1 flex-col gap-1.5">
 					<div className="flex min-w-0 items-start gap-2">
-						<span
-							aria-hidden="true"
-							className={cn(
-								"mt-1 size-dot-sm shrink-0 rounded-full bg-current",
-								toneClass[presentation.primary.tone],
-								presentation.primary.breathe && "animate-status-pulse",
-							)}
+						<PRStatusMark
+							breathe={presentation.primary.breathe}
+							className={toneClass[presentation.primary.tone]}
+							tone={presentation.primary.tone}
 						/>
 						<div className="min-w-0 flex-1">
 							<div
 								className={cn(
-									"text-xs font-semibold leading-4",
+									"text-xs font-medium leading-4",
 									toneClass[presentation.primary.tone],
 								)}
 							>
 								<PRCardStatusLink externalLink={externalLink} status={presentation.primary} />
 							</div>
 							{presentation.primary.detail ? (
-								<div className="mt-0.5 min-w-0 break-words text-2xs leading-4 text-muted-foreground">
+								<div className="mt-0.5 min-w-0 break-words text-2xs leading-4 text-wd-secondary">
 									{presentation.primary.detail}
 								</div>
 							) : null}
@@ -218,20 +236,14 @@ export function PRCardStatusSummary({
 						</div>
 					</div>
 					{supporting.length > 0 ? (
-						<div className="min-w-0 pl-4">
+						<div className="min-w-0 pl-5">
 							<div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-2xs">
 								{supporting.map((status) => (
 									<span
 										className={cn("inline-flex items-center gap-1", toneClass[status.tone])}
 										key={status.key}
 									>
-										<span
-											aria-hidden="true"
-											className={cn(
-												"size-1 rounded-full bg-current",
-												status.breathe && "animate-status-pulse",
-											)}
-										/>
+										<PRStatusMark breathe={status.breathe} tone={status.tone} />
 										<PRCardStatusLink externalLink={externalLink} status={status} />
 									</span>
 								))}
@@ -257,7 +269,7 @@ function PRCardStatusLink({
 	}
 	return (
 		<ExternalLink
-			className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+			className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline focus-visible:rounded-xs"
 			href={status.href}
 		>
 			{status.label}
@@ -315,9 +327,9 @@ export function PRSummaryParts({
 						key={part.key}
 					>
 						<div className="min-w-0 truncate">
-							<span className="text-passive">{part.label}</span>{" "}
+							<span className="text-wd-tertiary">{part.label}</span>{" "}
 							<span className={cn("font-medium", toneClass[part.tone])}>{part.status}</span>
-							{part.summary ? <span className="text-passive"> · {part.summary}</span> : null}
+							{part.summary ? <span className="text-wd-tertiary"> · {part.summary}</span> : null}
 						</div>
 						{links.length > 0 || overflowLabel ? (
 							<div
@@ -334,7 +346,7 @@ export function PRSummaryParts({
 										link={link}
 									/>
 								))}
-								{overflowLabel ? <span className="text-passive">{overflowLabel}</span> : null}
+								{overflowLabel ? <span className="tabular-nums text-wd-tertiary">{overflowLabel}</span> : null}
 							</div>
 						) : null}
 					</div>
@@ -359,7 +371,7 @@ function SummaryLink({
 		return (
 			<ExternalLink
 				className={cn(
-					"inline-flex max-w-full min-w-0 items-center gap-0.5 text-settings-label underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+					"inline-flex max-w-full min-w-0 items-center gap-0.5 text-wd-primary underline-offset-2 hover:underline focus-visible:rounded-xs",
 					className,
 				)}
 				href={link.href}
@@ -372,7 +384,7 @@ function SummaryLink({
 		);
 	}
 	return (
-		<span className="max-w-full truncate text-muted-foreground" title={link.title}>
+		<span className="max-w-full truncate text-wd-secondary" title={link.title}>
 			{link.label}
 		</span>
 	);

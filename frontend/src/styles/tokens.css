@@ -1,9 +1,10 @@
 /*
  * Design tokens — Kennel frontend
  * ============================================
- * Source of truth for the app (Electron renderer) visual system.
- * Extracted from the existing dark-first Cursor-like UI in
- * src/renderer/styles.css — not a restyle.
+ * Kennel's role layer. Every value resolves to a Waldo design-system token
+ * defined in waldo.css (imported first), so legacy names such as --card or
+ * --color-text-muted land on the Waldo coat, Spot and state colours.
+ * Never add a hex here: add or reuse a semantic token in waldo.css.
  *
  * Theme switching:
  *   - Default (:root)              → dark
@@ -19,45 +20,44 @@
 	/* ── Color scheme hint for native form controls / scrollbars ── */
 	color-scheme: dark;
 
-	/* Kennel orchestrator design system (Figma "Waldo", node 2984-17556).
-	 * Warm near-black ramp: the canvas is neutral #151515, every raised plane
-	 * warms slightly (#272725 card, #353533 chip/popover) so elevation reads by
-	 * temperature, not by shadow. Dark is the designed theme; light below is a
-	 * derived counterpart. */
-	--background: #151515; /* window canvas */
-	--foreground: #fafaf8; /* primary text */
-	--card: #272725; /* session card, list row, active segment */
-	--card-foreground: #fafaf8;
-	--popover: #353533; /* chips, secondary buttons, popovers, choice panel */
-	--popover-foreground: #fafaf8;
-	--primary: #fafaf8; /* primary button plate is the text colour inverted */
-	--primary-foreground: #272725;
-	--secondary: #353533;
-	--secondary-foreground: #fafaf8;
-	--muted: #1e1e1e; /* row hover / pressed inside sidebar-weight surfaces */
-	--muted-foreground: #9a9a96; /* secondary label (sidebar rows, List tab) */
-	--accent: #272725; /* selected row inside a popover-weight surface */
-	--accent-foreground: #fafaf8;
-	--destructive: #ff453a;
+	/* Waldo coat: surfaces separate by tone, one step at a time (canvas,
+	 * surface, inset, raised). Cards get a hairline, never a shadow. The
+	 * primary plate is ink (bg-inverse); Spot is reserved for the one primary
+	 * action on a screen and the Needs You dot. */
+	--background: var(--bg-canvas);
+	--foreground: var(--text-primary);
+	--card: var(--bg-surface);
+	--card-foreground: var(--text-primary);
+	--popover: var(--bg-raised);
+	--popover-foreground: var(--text-primary);
+	--primary: var(--bg-inverse);
+	--primary-foreground: var(--text-inverse);
+	--secondary: var(--bg-inset);
+	--secondary-foreground: var(--text-primary);
+	--muted: var(--bg-hover);
+	--muted-foreground: var(--text-secondary);
+	--accent: var(--bg-selected);
+	--accent-foreground: var(--text-primary);
+	--destructive: var(--critical);
 	/* Hairlines separate, they do not decorate. The design draws them at 0.6px
 	 * white/8 on cards and white/10 on chips — see --size-hairline-fine. */
-	--border: rgb(255 255 255 / 8%);
-	--input: rgb(255 255 255 / 10%);
-	--ring: #2388ff;
-	--chart-1: #00e07a; /* success-bright */
-	--chart-2: #9a9a96;
-	--chart-3: #6b6b68; /* passive text, terminated lane */
-	--chart-4: #8338ec; /* branch / purple */
-	--chart-5: #353533;
-	--radius: 0.5rem; /* 8px — the system's default control radius */
-	--sidebar: #161616;
-	--sidebar-foreground: #fafaf8;
-	--sidebar-primary: #2388ff;
-	--sidebar-primary-foreground: #fafaf8;
-	--sidebar-accent: #1e1e1e;
-	--sidebar-accent-foreground: #fafaf8;
+	--border: var(--border-hairline);
+	--input: var(--border-strong);
+	--ring: var(--border-focus);
+	--chart-1: var(--good);
+	--chart-2: var(--text-secondary);
+	--chart-3: var(--text-tertiary);
+	--chart-4: var(--icon-purple);
+	--chart-5: var(--bg-inset);
+	--radius: var(--wd-radius-md);
+	--sidebar: var(--bg-canvas);
+	--sidebar-foreground: var(--text-primary);
+	--sidebar-primary: var(--bg-inverse);
+	--sidebar-primary-foreground: var(--text-inverse);
+	--sidebar-accent: var(--bg-hover);
+	--sidebar-accent-foreground: var(--text-primary);
 	--sidebar-border: var(--border);
-	--sidebar-ring: #2388ff;
+	--sidebar-ring: var(--border-focus);
 
 	/* ═══════════════════════════════════════════════════════════════
 	   COLOR — semantic (swap these per theme; do not invent new roles
@@ -73,13 +73,13 @@
 	/* The plate a board column or list section sits on. It is one step above the
 	 * canvas and below the card, so a column reads as a container even before a
 	 * card lands in it. Board columns fade it out downward; list groups keep it flat. */
-	--color-bg-shell: #1a1a1a;
+	--color-bg-shell: color-mix(in oklab, var(--bg-canvas) 45%, var(--bg-surface));
 	/* Token keeps the historical #101317e7 value; painted surfaces use the
 	   opaque plate so the p-2 gutter cannot composite into #111316. */
-	--color-bg-terminal-opaque: #101317;
-	--color-bg-terminal: #101317e7;
+	--color-bg-terminal-opaque: var(--bg-canvas);
+	--color-bg-terminal: var(--bg-canvas);
 	/* Opaque backing for terminal swaps/covers; prevents retained frames leaking through. */
-	--color-bg-terminal-opaque: #101317;
+	--color-bg-terminal-opaque: var(--bg-canvas);
 
 	/* Text */
 	--color-text-primary: var(--foreground);
@@ -87,20 +87,20 @@
 	--color-text-passive: var(--chart-3);
 	/* Row meta in the list view sits one step above passive so timestamps stay
 	 * legible against the card plate rather than the canvas. */
-	--color-text-meta: #979797;
+	--color-text-meta: var(--text-tertiary);
 	/* Links carry the only saturated blue in the neutral ramp; branch names
 	 * carry the only violet. Both are identity, not state. */
-	--color-link: #2388ff;
-	--color-link-hover: #4c9dff;
-	--color-branch: #8338ec;
-	--color-brand-logo: #79b0dc;
-	--color-brand-logo-bright: #a5cde7;
-	--color-brand-logo-foreground: #0a0b0d;
+	--color-link: var(--text-link);
+	--color-link-hover: var(--text-link-hover);
+	--color-branch: var(--text-secondary);
+	--color-brand-logo: var(--text-primary);
+	--color-brand-logo-bright: var(--text-secondary);
+	--color-brand-logo-foreground: var(--text-inverse);
 	--color-text-markdown-code: var(--color-brand-logo);
 	--color-text-markdown-link: var(--color-brand-logo); /* underline distinguishes links */
 	--color-text-markdown-link-hover: var(--color-brand-logo-bright);
-	--color-text-terminal: #d7d7d2;
-	--color-text-terminal-dim: #7c7c7c;
+	--color-text-terminal: var(--coat-100);
+	--color-text-terminal-dim: var(--text-tertiary);
 
 	/* Borders */
 	--color-border: var(--border);
@@ -120,23 +120,24 @@
 	/* Accent and destructive roles */
 	--color-accent: var(--primary);
 	--color-accent-foreground: var(--primary-foreground);
-	--color-accent-weak: color-mix(in oklch, var(--primary) 16%, transparent);
-	--color-accent-dim: var(--chart-4);
+	--color-accent-weak: var(--bg-selected);
+	--color-accent-dim: var(--text-secondary);
 	--color-accent-strong: var(--primary);
 	--color-danger-strong: var(--destructive);
 
-	/* Board lane signals, taken from the Figma column dots:
-	 * Needs Choice #fb8404, Needs Input #fbbc04, Ready #00cc6e, Running #2388ff. */
-	--color-status-working: #2388ff;
-	--color-status-needs-you: #fb8404;
-	--color-status-in-review: #fbbc04;
-	--color-status-ready: #00cc6e;
+	/* Board lane signals in Waldo's state vocabulary: running is the system
+	 * accent, Needs You is Spot, waiting is caution, ready is good, failed is
+	 * critical. Each always travels with its word. */
+	--color-status-working: var(--wd-accent);
+	--color-status-needs-you: var(--spot);
+	--color-status-in-review: var(--caution);
+	--color-status-ready: var(--good);
 	--color-status-merged: var(--color-status-ready);
 	--color-status-idle: var(--muted-foreground);
 	--color-status-exited: var(--destructive);
 	--color-status-terminated: var(--chart-3);
 	--color-status-terminated-foreground: var(--chart-3);
-	--color-status-unknown: var(--chart-4);
+	--color-status-unknown: var(--text-tertiary);
 
 	/* Compatibility roles used by non-session surfaces. */
 	--color-working: var(--color-status-working);
@@ -147,14 +148,14 @@
 	--color-purple: var(--chart-4);
 
 	/* Interactive overlays */
-	--color-interactive-hover: color-mix(in oklch, var(--foreground) 4%, transparent);
-	--color-interactive-active: color-mix(in oklch, var(--foreground) 7%, transparent);
+	--color-interactive-hover: var(--bg-hover);
+	--color-interactive-active: var(--bg-pressed);
 	--color-overlay-subtle: color-mix(in oklch, var(--foreground) 1.8%, transparent);
 	--color-overlay-faint: color-mix(in oklch, var(--foreground) 2%, transparent);
 	--color-scrollbar: color-mix(in oklch, var(--foreground) 12%, transparent);
 	--color-scrollbar-board: color-mix(in oklch, var(--foreground) 26%, transparent);
 	--color-scrollbar-board-hover: color-mix(in oklch, var(--foreground) 45%, transparent);
-	--color-scrim: color-mix(in oklch, var(--background) 85%, transparent);
+	--color-scrim: var(--bg-scrim);
 	--blur-overlay: 1px;
 
 	/* ═══════════════════════════════════════════════════════════════
@@ -163,17 +164,13 @@
 
 	/* The design is set in SF Pro Rounded. macOS resolves it by name (and via the
 	 * ui-rounded generic); Windows/Linux fall back to the bundled Geist. */
-	--font-family-base:
-		"SF Pro Rounded", ui-rounded, -apple-system, "Geist Variable", "Geist", ui-sans-serif, system-ui, sans-serif;
-	--font-family-mono:
-		"Geist Mono Variable", "Geist Mono", "JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font",
-		"FiraCode Nerd Font Mono", "FiraCode Nerd Font", "MesloLGS NF", ui-monospace, SFMono-Regular, Menlo, Monaco,
-		Consolas, "Liberation Mono", "Courier New", monospace;
+	--font-family-base: var(--font-text);
+	--font-family-mono: var(--font-cli);
 
 	/* Scale — dense UI chrome uses half-steps between base sizes */
 	--font-size-2xs: 10px; /* card meta line, timestamps, lane counts */
 	--font-size-xs: 10px; /* micro labels, tight pills */
-	--font-size-nano: 8px; /* smallest chrome text — sidebar search label */
+	--font-size-nano: 10px;
 	--font-size-caption: 11px; /* badges, kanban labels */
 	--font-size-sm-md: 11.5px; /* inspector tabs, status pills */
 	--font-size-sm: 12px; /* secondary chrome / Tailwind text-xs */
@@ -201,10 +198,10 @@
 	/* Letter-spacing — SF Pro Rounded is set at a uniform +2% across every size
 	 * in the design, so the "tight" roles resolve to the system tracking rather
 	 * than pulling glyphs together. Applied globally on <body>. */
-	--tracking-base: 0.02em;
-	--tracking-tight-xl: 0.02em;
-	--tracking-tight-lg: 0.02em;
-	--tracking-tight: 0.02em;
+	--tracking-base: 0;
+	--tracking-tight-xl: -0.01em;
+	--tracking-tight-lg: -0.005em;
+	--tracking-tight: 0;
 	--tracking-wide-xs: 0.04em;
 	--tracking-wide-sm: 0.05em;
 	--tracking-wide: 0.06em;
@@ -213,11 +210,11 @@
 	--tracking-wide-xl: 0.12em;
 
 	/* Motion */
-	--duration-fast: 120ms;
+	--duration-fast: 150ms;
 	--duration-normal: 150ms;
 	/* Panels that travel a full edge need longer than panels that scale in
 	   place; a 150ms sheet reads as a jump cut. */
-	--duration-slow: 240ms;
+	--duration-slow: 300ms;
 
 	/* ═══════════════════════════════════════════════════════════════
 	   SPACING — 4px base (audit: 4/6/8/10/12/14/16/18 most common)
@@ -264,13 +261,13 @@
 
 	/* Figma steps, not multipliers: 5 / 6 / 8 / 12 / 15 / 16 / 18. 8px is the
 	   workhorse (chips, buttons, sidebar rows); 15/16/18 frame the planes. */
-	--radius-xs: 5px; /* option index chips */
-	--radius-sm: 6px; /* keyboard hints, micro buttons */
-	--radius-md: 8px; /* chips, buttons, rows — the default */
-	--radius-lg: 12px; /* segmented control track + thumb */
-	--radius-card: 15px; /* session card */
-	--radius-panel: 16px; /* popovers, choice panel, list group plate */
-	--radius-group: 18px; /* board column shell */
+	--radius-xs: var(--wd-radius-xs);
+	--radius-sm: var(--wd-radius-sm);
+	--radius-md: var(--wd-radius-md);
+	--radius-lg: var(--wd-radius-lg);
+	--radius-card: var(--wd-radius-lg);
+	--radius-panel: var(--wd-radius-lg);
+	--radius-group: var(--wd-radius-lg);
 	--radius-full: 999px; /* pills, avatars, status dots */
 	--radius-swatch: 2px; /* board lane squares: square-reading, not a dot */
 
@@ -285,7 +282,7 @@
 	   LAYOUT — fixed chrome dimensions (not spacing scale)
 	   ═══════════════════════════════════════════════════════════════ */
 
-	--ring-width-focus: 3px; /* select trigger focus ring */
+	--ring-width-focus: 2px;
 
 	--size-hairline: 1px;
 	/* Cards and chips are stroked at 0.6px in the design — a rule that reads as
@@ -336,7 +333,7 @@
 	--space-topbar-x: 10px;
 	--space-topbar-zone: 10px;
 	--space-topbar-group: 4px;
-	--radius-topbar-control: 7px;
+	--radius-topbar-control: var(--wd-radius-full);
 	--size-row-md: 52px;
 	/* One session as a line in the list view, and the fixed width its timestamp
 	   column reserves so the action buttons stay in a straight edge. */
@@ -418,8 +415,8 @@
 	--color-text-command-item: var(--foreground);
 	--color-text-command-placeholder: var(--muted-foreground);
 	--color-text-command-muted: var(--muted-foreground);
-	--radius-command-palette: 12px;
-	--radius-command-item: 6px;
+	--radius-command-palette: var(--wd-radius-lg);
+	--radius-command-item: var(--wd-radius-sm);
 	--shadow-command-palette: var(--elevation-xl);
 	--shadow-popover: var(--elevation-xl);
 	--size-command-palette: 720px;
@@ -481,7 +478,7 @@
 	--size-import-mode-illustration: 178px;
 
 	/* Settings */
-	--color-bg-settings-row: transparent;
+	--color-bg-settings-row: var(--bg-surface);
 	--color-bg-settings-menu: var(--popover);
 	--color-bg-settings-menu-selected: color-mix(in oklch, var(--popover) 92%, var(--foreground) 8%);
 	--color-bg-settings-dialog: var(--card);
@@ -494,8 +491,8 @@
 	--tracking-settings-title: -0.015em;
 	--tracking-settings-section: 0.06em;
 	--tracking-settings-mono: 0.08em;
-	--radius-settings-panel: 14px;
-	--radius-settings-row: 16px;
+	--radius-settings-panel: var(--wd-radius-lg);
+	--radius-settings-row: var(--wd-radius-lg);
 	--size-settings-row: 52px;
 	--size-settings-content-width: 768px;
 	--size-settings-panel-padding-top: 64px;
@@ -518,15 +515,15 @@
 	--size-settings-dialog-wide: 920px;
 	--size-settings-dialog-height: 680px;
 	--size-settings-dialog-max-h: 680px;
-	--color-border-settings-dialog: oklch(1 0 0 / 3%);
-	--color-border-settings-dialog-header: oklch(1 0 0 / 3%);
+	--color-border-settings-dialog: var(--border-hairline);
+	--color-border-settings-dialog-header: var(--border-hairline);
 	--color-bg-settings-input: var(--input);
 	--color-border-settings-input: var(--color-border-settings-dialog);
 	--color-text-settings-input: var(--foreground);
 	--color-text-settings-placeholder: var(--muted-foreground);
 	--color-text-import-sep: var(--color-text-import-muted);
-	--color-settings-accent: var(--primary);
-	--color-settings-switch-on: var(--primary);
+	--color-settings-accent: var(--text-primary);
+	--color-settings-switch-on: var(--wd-accent);
 
 	/* Project / workspace agents sheet — aliases shared chrome where themes match */
 	--color-bg-agents-sheet: var(--color-bg-settings-dialog);
@@ -553,8 +550,8 @@
 	--leading-settings-mobile-hint: 14px;
 	--leading-settings-mobile-warning: 15px;
 	--size-settings-action-height: 38px;
-	--radius-settings-action: 16px;
-	--radius-settings-dialog-lg: 24px;
+	--radius-settings-action: var(--wd-radius-full);
+	--radius-settings-dialog-lg: var(--wd-radius-xl);
 	--shadow-settings-dialog: var(--elevation-xl);
 	--shadow-settings-qr: var(--elevation-md);
 
@@ -590,8 +587,8 @@
 	--color-term-magenta: #c678dd;
 	--color-term-cyan: #56b6c2;
 	--color-term-white: #d7dae0;
-	--color-term-selection-dark: rgb(77 141 255 / 0.3);
-	--color-term-selection-light: rgb(37 99 235 / 0.25);
+	--color-term-selection-dark: rgba(250, 250, 248, 0.18);
+	--color-term-selection-light: rgba(26, 26, 26, 0.14);
 	--color-term-selection-inactive: rgb(128 128 128 / 0.2);
 	--color-term-selection-inactive-light: rgb(128 128 128 / 0.15);
 	--color-term-bright-black: #7f8792;
@@ -607,14 +604,10 @@
 	   SHADOWS
 	   ═══════════════════════════════════════════════════════════════ */
 
-	--elevation-sm: 0 1px 0 color-mix(in oklch, var(--background) 35%, transparent);
-	--elevation-md:
-		0 1px 0 color-mix(in oklch, var(--background) 40%, transparent),
-		0 12px 32px color-mix(in oklch, var(--background) 50%, transparent);
-	--elevation-lg: 0 8px 40px color-mix(in oklch, var(--background) 55%, transparent);
-	--elevation-xl:
-		0 1px 0 color-mix(in oklch, var(--background) 40%, transparent),
-		0 20px 50px color-mix(in oklch, var(--background) 55%, transparent);
+	--elevation-sm: none;
+	--elevation-md: var(--shadow-overlay);
+	--elevation-lg: var(--shadow-overlay);
+	--elevation-xl: var(--shadow-overlay);
 
 	/* @theme bridge — avoids Tailwind theme key / :root name collisions */
 	--bridge-border: var(--color-border);
@@ -689,67 +682,65 @@
 :root[data-theme="light"] {
 	color-scheme: light;
 
-	/* Light is the derived counterpart of the designed dark ramp: the same warm
-	 * neutral family inverted, so a card still reads as one step off the canvas
-	 * and chips one step off the card. */
-	--background: #f2f2ef; /* window canvas */
-	--foreground: #1a1a18; /* primary text */
-	--card: #ffffff; /* session card, list row, active segment */
-	--card-foreground: #1a1a18;
-	--popover: #ffffff; /* chips, secondary buttons, popovers, choice panel */
-	--popover-foreground: #1a1a18;
-	--primary: #272725; /* primary plate is the text colour inverted */
-	--primary-foreground: #fafaf8;
-	--secondary: #eaeae5;
-	--secondary-foreground: #1a1a18;
-	--muted: #e7e7e2; /* row hover / pressed */
-	--muted-foreground: #6f6f6a; /* secondary label */
-	--accent: #eaeae5; /* selected row inside a popover-weight surface */
-	--accent-foreground: #1a1a18;
-	--destructive: #d70015;
+	/* Same roles as dark; waldo.css switches the semantic values per theme. */
+	--background: var(--bg-canvas);
+	--foreground: var(--text-primary);
+	--card: var(--bg-surface);
+	--card-foreground: var(--text-primary);
+	--popover: var(--bg-raised);
+	--popover-foreground: var(--text-primary);
+	--primary: var(--bg-inverse);
+	--primary-foreground: var(--text-inverse);
+	--secondary: var(--bg-inset);
+	--secondary-foreground: var(--text-primary);
+	--muted: var(--bg-hover);
+	--muted-foreground: var(--text-secondary);
+	--accent: var(--bg-selected);
+	--accent-foreground: var(--text-primary);
+	--destructive: var(--critical);
 	/* Same intent as dark: a hairline that separates without framing. */
-	--border: rgb(0 0 0 / 8%);
-	--input: rgb(0 0 0 / 12%);
-	--ring: #0a6fd8;
-	--chart-1: #00a85c; /* success-bright */
-	--chart-2: #6f6f6a;
-	--chart-3: #8c8c86; /* passive text, terminated lane */
-	--chart-4: #6a24c4; /* branch / purple */
-	--chart-5: #eaeae5;
-	--sidebar: #ededea;
-	--sidebar-foreground: #1a1a18;
-	--sidebar-primary: #0a6fd8;
-	--sidebar-primary-foreground: #ffffff;
-	--sidebar-accent: #e3e3de;
-	--sidebar-accent-foreground: #1a1a18;
+	--border: var(--border-hairline);
+	--input: var(--border-strong);
+	--ring: var(--border-focus);
+	--chart-1: var(--good);
+	--chart-2: var(--text-secondary);
+	--chart-3: var(--text-tertiary);
+	--chart-4: var(--icon-purple);
+	--chart-5: var(--bg-inset);
+	--sidebar: var(--bg-canvas);
+	--sidebar-foreground: var(--text-primary);
+	--sidebar-primary: var(--bg-inverse);
+	--sidebar-primary-foreground: var(--text-inverse);
+	--sidebar-accent: var(--bg-hover);
+	--sidebar-accent-foreground: var(--text-primary);
 	--sidebar-border: var(--border);
-	--sidebar-ring: #0a6fd8;
+	--sidebar-ring: var(--border-focus);
 
 	--color-bg-primary: var(--background);
 	--color-bg-secondary: var(--card);
 	--color-bg-tertiary: var(--muted);
 	--color-bg-elevated: var(--popover);
 	--color-bg-sidebar: var(--sidebar);
-	--color-bg-shell: #e9e9e5;
-	--color-bg-terminal-opaque: #f5f5f4;
-	--color-bg-terminal: #f5f5f4;
-	--color-bg-terminal-opaque: #f5f5f4;
+	--color-bg-shell: color-mix(in oklab, var(--bg-canvas) 45%, var(--bg-surface));
+	--color-bg-terminal-opaque: var(--bg-surface);
+	--color-bg-terminal: var(--bg-surface);
+	--color-bg-terminal-opaque: var(--bg-surface);
 
 	--color-text-primary: var(--foreground);
 	--color-text-muted: var(--muted-foreground);
 	--color-text-passive: var(--chart-3);
-	--color-text-meta: #7a7a74;
-	--color-link: #0a6fd8;
-	--color-link-hover: #0a5cb4;
-	--color-branch: var(--chart-4);
-	--color-brand-logo: #304c83;
-	--color-brand-logo-bright: #466daa;
-	--color-brand-logo-foreground: #ffffff;
+	--color-text-meta: var(--text-tertiary);
+	--color-link: var(--text-link);
+	--color-link-hover: var(--text-link-hover);
+	--color-branch: var(--text-secondary);
+	--color-brand-logo: var(--text-primary);
+	--color-brand-logo-bright: var(--text-secondary);
+	--color-brand-logo-foreground: var(--text-inverse);
 	--color-text-markdown-code: var(--color-brand-logo);
 	--color-text-markdown-link: var(--color-brand-logo);
 	--color-text-markdown-link-hover: var(--color-brand-logo-bright);
-	--color-text-terminal: #24292f;
-	--color-text-terminal-dim: #6b7280;
+	--color-text-terminal: var(--text-primary);
+	--color-text-terminal-dim: var(--text-tertiary);
 
 	--color-border: var(--border);
 	--color-border-strong: var(--input);
@@ -765,22 +756,22 @@
 
 	--color-accent: var(--primary);
 	--color-accent-foreground: var(--primary-foreground);
-	--color-accent-weak: color-mix(in oklch, var(--primary) 12%, transparent);
-	--color-accent-dim: var(--chart-4);
+	--color-accent-weak: var(--bg-selected);
+	--color-accent-dim: var(--text-secondary);
 	--color-accent-strong: var(--primary);
 	--color-danger-strong: var(--destructive);
 
 	/* Same lane hues as dark, deepened so they hold contrast on a light canvas. */
-	--color-status-working: #0a6fd8;
-	--color-status-needs-you: #c96400;
-	--color-status-in-review: #a37a00;
-	--color-status-ready: #00874a;
+	--color-status-working: var(--wd-accent);
+	--color-status-needs-you: var(--spot);
+	--color-status-in-review: var(--caution);
+	--color-status-ready: var(--good);
 	--color-status-merged: var(--color-status-ready);
 	--color-status-idle: var(--muted-foreground);
 	--color-status-exited: var(--destructive);
 	--color-status-terminated: var(--chart-3);
 	--color-status-terminated-foreground: var(--chart-3);
-	--color-status-unknown: var(--chart-4);
+	--color-status-unknown: var(--text-tertiary);
 
 	--color-working: var(--color-status-working);
 	--color-warning: var(--color-status-needs-you);
@@ -789,23 +780,19 @@
 	--color-danger: var(--destructive);
 	--color-purple: var(--chart-4);
 
-	--color-interactive-hover: color-mix(in oklch, var(--foreground) 4%, transparent);
-	--color-interactive-active: color-mix(in oklch, var(--foreground) 7%, transparent);
+	--color-interactive-hover: var(--bg-hover);
+	--color-interactive-active: var(--bg-pressed);
 	--color-overlay-subtle: color-mix(in oklch, var(--foreground) 2%, transparent);
 	--color-overlay-faint: color-mix(in oklch, var(--foreground) 3%, transparent);
 	--color-scrollbar: color-mix(in oklch, var(--foreground) 12%, transparent);
 	--color-scrollbar-board: color-mix(in oklch, var(--foreground) 26%, transparent);
 	--color-scrollbar-board-hover: color-mix(in oklch, var(--foreground) 45%, transparent);
-	--color-scrim: color-mix(in oklch, var(--foreground) 45%, transparent);
+	--color-scrim: var(--bg-scrim);
 
-	--elevation-sm: 0 1px 0 color-mix(in oklch, var(--foreground) 6%, transparent);
-	--elevation-md:
-		0 1px 0 color-mix(in oklch, var(--foreground) 3%, transparent),
-		0 12px 30px color-mix(in oklch, var(--foreground) 10%, transparent);
-	--elevation-lg: 0 16px 48px color-mix(in oklch, var(--foreground) 16%, transparent);
-	--elevation-xl:
-		0 1px 0 color-mix(in oklch, var(--foreground) 3%, transparent),
-		0 20px 50px color-mix(in oklch, var(--foreground) 14%, transparent);
+	--elevation-sm: none;
+	--elevation-md: var(--shadow-overlay);
+	--elevation-lg: var(--shadow-overlay);
+	--elevation-xl: var(--shadow-overlay);
 
 	/* Command palette */
 	--color-bg-command-palette: var(--popover);
@@ -838,7 +825,7 @@
 	--color-text-agents-sheet-description: var(--muted-foreground);
 	--color-text-agents-sheet-label: var(--foreground);
 
-	--color-bg-settings-row: var(--card);
+	--color-bg-settings-row: var(--bg-surface);
 	--color-bg-settings-menu: var(--popover);
 	--color-bg-settings-menu-selected: color-mix(in oklch, var(--popover) 92%, var(--foreground) 8%);
 	--color-bg-settings-dialog: var(--card);
@@ -846,13 +833,13 @@
 	--color-text-settings-muted: var(--muted-foreground);
 	--color-text-settings-row: var(--foreground);
 	--color-border-settings-menu: color-mix(in oklch, var(--border) 60%, var(--foreground) 40%);
-	--color-border-settings-dialog: var(--border);
-	--color-border-settings-dialog-header: color-mix(in oklch, var(--border) 70%, transparent);
+	--color-border-settings-dialog: var(--border-hairline);
+	--color-border-settings-dialog-header: var(--border-hairline);
 	--color-bg-settings-input: var(--input);
 	--color-text-settings-input: var(--foreground);
 	--color-text-settings-placeholder: var(--muted-foreground);
-	--color-settings-accent: var(--primary);
-	--color-settings-switch-on: var(--primary);
+	--color-settings-accent: var(--text-primary);
+	--color-settings-switch-on: var(--wd-accent);
 
 	--color-term-black: #24292f;
 	--color-term-red: #a13c37;

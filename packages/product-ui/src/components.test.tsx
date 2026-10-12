@@ -91,7 +91,9 @@ describe("portable leaf components", () => {
 
 		expect(screen.getByText("Review required")).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Checks running" })).toBeInTheDocument();
-		expect(container.querySelector(".animate-status-pulse")).toBeInTheDocument();
+		// Running checks read as live (accent dot), never as a pulse.
+		expect(container.querySelector('[data-state-mark="live"]')).toBeInTheDocument();
+		expect(container.querySelector(".animate-status-pulse")).toBeNull();
 	});
 
 	it("keeps review details compact and inline with the review detail", () => {

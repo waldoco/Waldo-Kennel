@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Send, Square } from "lucide-react";
+import { FactList, StateBadge, type StateTone } from "@pin4sf/kennel-product-ui";
+import { ArrowUp, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -14,7 +15,7 @@ import {
 	type PlanningTurn,
 } from "../../hooks/usePlanning";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
+
 import { PlanningAgentPicker } from "./PlanningAgentPicker";
 import { PlanningContextGrant } from "./PlanningContextGrant";
 
@@ -121,23 +122,25 @@ export function MissionPlanningConversation({
 	}
 
 	return (
-		<section className="flex flex-col gap-4 rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="mission-planning">
-			<div>
-			<h3 className="text-sm font-medium">{t("planning.title")}</h3>
-			<p className="mt-1 text-xs text-muted-foreground">{t("planning.intro")}</p>
-		</div>
+		<section className="flex flex-col gap-4 rounded-lg hairline border-wd-hairline bg-wd-surface p-5" data-testid="mission-planning">
+			<div className="flex flex-col gap-1.5">
+				<h3 className="wd-display-4 text-wd-primary">{t("planning.title")}</h3>
+				<p className="text-sm leading-body text-wd-secondary">{t("planning.intro")}</p>
+			</div>
 
-			{actionError && <div className="flex flex-wrap items-center gap-2 text-sm text-destructive" role="alert"><span>{t("planning.actionFailed", { message: actionError.message })}</span>{failedAction && <Button onClick={beginNewAttempt} size="sm" type="button" variant="outline">{t("planning.startAnother")}</Button>}{candidatesQuery.failure && <Button onClick={candidatesQuery.refetch} size="sm" type="button" variant="outline">{t("mission.refresh")}</Button>}{planningQuery.failure && <Button onClick={planningQuery.refetch} size="sm" type="button" variant="outline">{t("mission.refresh")}</Button>}</div>}
-			{planningQuery.isLoading && <p className="text-xs text-muted-foreground">{t("planning.loading")}</p>}
+			{actionError && <div className="flex flex-wrap items-center gap-2 text-sm text-critical" role="alert"><span>{t("planning.actionFailed", { message: actionError.message })}</span>{failedAction && <Button onClick={beginNewAttempt} size="sm" type="button" variant="secondary">{t("planning.startAnother")}</Button>}{candidatesQuery.failure && <Button onClick={candidatesQuery.refetch} size="sm" type="button" variant="secondary">{t("mission.refresh")}</Button>}{planningQuery.failure && <Button onClick={planningQuery.refetch} size="sm" type="button" variant="secondary">{t("mission.refresh")}</Button>}</div>}
+			{planningQuery.isLoading && <p className="text-sm text-wd-secondary">{t("planning.loading")}</p>}
 			{!activeSession && !planningQuery.isLoading && !planningQuery.failure && (
 				<>
 					<PlanningAgentPicker candidates={candidatesQuery.candidates} failure={candidatesQuery.failure?.message} loading={candidatesQuery.isLoading} onRetry={candidatesQuery.refetch} selectedId={candidateId} onChange={setCandidateId} disabled={pending || candidatesQuery.isLoading} />
-					<div className="flex items-center gap-2 text-xs text-muted-foreground">
+					<div className="flex items-center gap-2 text-xs text-wd-secondary">
 						<span>{t("planning.scope", { scope: contextMode === "repository_read" ? t("planning.repositoryScope") : t("planning.packetScope") })}</span>
 						<Button className="h-auto px-1 py-0 text-xs" onClick={() => setEditingContext((current) => !current)} size="sm" type="button" variant="ghost">{t("planning.change")}</Button>
 					</div>
 					{editingContext && <PlanningContextGrant value={contextMode} onChange={setContextMode} disabled={pending} />}
 					<Button
+						aria-busy={start.pending || undefined}
+						className="self-start"
 						data-testid="planning-start"
 						disabled={startDisabled}
 						onClick={() => {
@@ -148,11 +151,10 @@ export function MissionPlanningConversation({
 						}}
 						type="button"
 					>
-						{start.pending && <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />}
 						{t("planning.start")}
 					</Button>
 					{startDisabledReason && (
-						<p className="text-xs text-muted-foreground" data-testid="planning-start-disabled-reason">{startDisabledReason}</p>
+						<p className="-mt-2 text-xs text-wd-secondary" data-testid="planning-start-disabled-reason">{startDisabledReason}</p>
 					)}
 				</>
 			)}
@@ -160,45 +162,47 @@ export function MissionPlanningConversation({
 			{activeSession && visiblePlanning && (
 				<>
 					{activeSession.waitingOn === "owner" && activeSession.lastFailureCode && (
-						<div className="flex flex-wrap items-center gap-2 text-sm text-destructive" role="alert" data-testid="planning-provider-failure">
+						<div className="flex flex-wrap items-center gap-2 text-sm text-critical" role="alert" data-testid="planning-provider-failure">
 							<span>{activeSession.lastFailureDetail ?? activeSession.lastFailureCode}</span>
-							<Button onClick={startAnotherPlanningSession} size="sm" type="button" variant="outline">{t("planning.startAnother")}</Button>
-						</div>
+							<Button onClick={startAnotherPlanningSession} size="sm" type="button" variant="secondary">{t("planning.startAnother")}</Button>
+							</div>
 					)}
 					<div className="flex flex-wrap items-center gap-2 text-xs" data-testid="planning-session-status">
-						<Badge variant={activeSession.status === "proposal_ready" ? "success" : "accent"}>{t(`planning.status.${activeSession.status}`)}</Badge>
-						{activeSession.waitingOn === "provider" && <span className="text-muted-foreground">{t("planning.waiting")}</span>}
+						<StateBadge label={t(`planning.status.${activeSession.status}`)} tone={PLANNING_STATUS_TONE[activeSession.status] ?? "neutral"} />
+						{activeSession.waitingOn === "provider" && <span className="text-wd-secondary">{t("planning.waiting")}</span>}
 					</div>
-					<div className="flex items-center gap-2 text-xs text-muted-foreground">
+					<div className="flex items-center gap-2 text-xs text-wd-secondary">
 						<span>{t("planning.scope", { scope: activeSession.contextMode === "repository_read" ? t("planning.repositoryScope") : t("planning.packetScope") })}</span>
 						<Button className="h-auto px-1 py-0 text-xs" onClick={() => undefined} size="sm" type="button" variant="ghost" disabled>{t("planning.change")}</Button>
 					</div>
-					<details className="text-xs text-muted-foreground">
-						<summary className="cursor-pointer">{t("planning.details")}</summary>
-						<div className="mt-2 flex flex-col gap-1 rounded-md border border-border bg-background/40 px-3 py-2">
-							<p>{t("planning.grantDigest")}: <code>{activeSession.planningGrantDigest}</code></p>
+					<details className="text-xs text-wd-secondary">
+						<summary className="cursor-pointer rounded-sm hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)">{t("planning.details")}</summary>
+						<div className="mt-2 flex flex-col gap-1 rounded-md bg-wd-inset p-3">
+							<p>{t("planning.grantDigest")}: <span className="break-all tabular-nums text-wd-primary">{activeSession.planningGrantDigest}</span></p>
 							<p>{t("planning.binding")}: {activeSession.binding.provider} · {activeSession.binding.modelSelection === "explicit" ? activeSession.binding.model ?? t("planning.explicitModel") : t("planning.providerDefault")}</p>
 							{activeSession.effectiveProvider && <p>{t("planning.effective")}: {activeSession.effectiveProvider}{activeSession.effectiveModel ? ` · ${activeSession.effectiveModel}` : ""}</p>}
 							<PlanningContextGrant value={activeSession.contextMode} locked suppliedPacketAvailable={activeSession.contextMode === "supplied_packet"} />
 						</div>
 					</details>
-					<div className="flex flex-col gap-2" data-testid="planning-turns">
+					<div className="flex flex-col gap-4" data-testid="planning-turns">
 						{visiblePlanning.turns.map((turn) => <PlanningTurnView key={turn.id} turn={turn} onSuggestion={setMessage} />)}
-						{visiblePlanning.turns.length === 0 && <p className="text-sm text-muted-foreground">{activeSession.waitingOn === "owner" ? t("planning.preparing") : t("planning.waiting")}</p>}
+						{visiblePlanning.turns.length === 0 && <p className="text-sm text-wd-secondary">{activeSession.waitingOn === "owner" ? t("planning.preparing") : t("planning.waiting")}</p>}
 					</div>
 					{activeSession.status === "active" && (
 						<form className="flex flex-col gap-2" onSubmit={submitMessage}>
-							<textarea aria-label={t("planning.messageLabel")} className="min-h-20 w-full rounded-md border border-border bg-background p-2 text-sm" disabled={pending || Boolean(planningQuery.failure) || activeSession.waitingOn === "provider"} onChange={(event) => setMessage(event.target.value)} placeholder={t("planning.messagePlaceholder")} value={message} />
-							<div className="flex flex-wrap gap-2">
-								<Button disabled={!message.trim() || conversationPending || cancel.pending || Boolean(planningQuery.failure) || activeSession.waitingOn === "provider"} size="sm" type="submit"><Send aria-hidden="true" className="size-3.5" /> {t("planning.send")}</Button>
+							{/* Composer contract: inset field with a hairline, the system
+							    focus ring, send in ink. */}
+							<textarea aria-label={t("planning.messageLabel")} className="min-h-20 w-full resize-none rounded-lg hairline border-wd-hairline bg-wd-inset px-4 py-3 text-sm leading-body text-wd-primary outline-none placeholder:text-wd-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) disabled:text-wd-secondary" disabled={pending || Boolean(planningQuery.failure) || activeSession.waitingOn === "provider"} onChange={(event) => setMessage(event.target.value)} placeholder={t("planning.messagePlaceholder")} value={message} />
+							<div className="flex flex-wrap items-center gap-2">
+								<Button disabled={!message.trim() || conversationPending || cancel.pending || Boolean(planningQuery.failure) || activeSession.waitingOn === "provider"} size="sm" type="submit"><ArrowUp aria-hidden="true" className="size-3.5" /> {t("planning.send")}</Button>
 								<Button disabled={conversationPending || cancel.pending || Boolean(planningQuery.failure) || activeSession.waitingOn === "provider"} onClick={() => { const requestKey = stableRequestKey("proposal", activeSession.id, activeSession.revision); const expectedSessionRevision = requestKeys.current.proposal?.expectedRevision ?? activeSession.revision; void finalize.mutate({ expectedSessionRevision, requestKey }).catch(() => undefined); }} size="sm" type="button" variant="secondary">{t("planning.prepare")}</Button>
 								<Button disabled={cancel.pending || Boolean(planningQuery.failure)} onClick={() => void cancel.mutate({ expectedSessionRevision: activeSession.revision }).catch(() => undefined)} size="sm" type="button" variant="ghost"><Square aria-hidden="true" className="size-3.5" /> {t("planning.cancel")}</Button>
 							</div>
 						</form>
 					)}
-					{activeSession.status === "proposal_ready" && visiblePlanning.proposedPlan && <p className="text-sm text-muted-foreground">{t("planning.proposalReady")}</p>}
+					{activeSession.status === "proposal_ready" && visiblePlanning.proposedPlan && <p className="text-sm text-wd-secondary">{t("planning.proposalReady")}</p>}
 					{["cancelled", "superseded", "proposal_ready"].includes(activeSession.status) && (
-						<Button onClick={startAnotherPlanningSession} size="sm" type="button" variant="outline">{t("planning.startAnother")}</Button>
+						<Button className="self-start" onClick={startAnotherPlanningSession} size="sm" type="button" variant="secondary">{t("planning.startAnother")}</Button>
 					)}
 				</>
 			)}
@@ -206,16 +210,41 @@ export function MissionPlanningConversation({
 	);
 }
 
+const PLANNING_STATUS_TONE: Record<string, StateTone> = {
+	active: "live",
+	proposal_ready: "good",
+	superseded: "neutral",
+	cancelled: "neutral",
+};
+
+/**
+ * One turn, per the Message contract: the planner writes on the page under a
+ * quiet attribution line; the owner speaks in a right-aligned inset bubble.
+ * A clarification's reason and suggestion are inline facts, and its
+ * alternatives are reply chips.
+ */
 function PlanningTurnView({ turn, onSuggestion }: { turn: PlanningTurn; onSuggestion: (suggestion: string) => void }) {
 	const { t } = useTranslation();
+	if (turn.role !== "planner") {
+		return (
+			<article className="ml-auto max-w-[85%] rounded-lg bg-wd-inset px-3.5 py-2.5" data-testid={`planning-turn-${turn.sequence}`}>
+				<p className="sr-only">{t("planning.owner")}</p>
+				<p className="whitespace-pre-wrap text-sm leading-body text-wd-primary">{turn.clarification?.question ?? turn.text}</p>
+			</article>
+		);
+	}
 	return (
-		<article className={`rounded-md border px-3 py-2 ${turn.role === "planner" ? "border-accent/40 bg-accent/5" : "border-border"}`} data-testid={`planning-turn-${turn.sequence}`}>
-			<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{turn.role === "planner" ? t("planning.planner") : t("planning.owner")}</p>
-			<p className="mt-1 whitespace-pre-wrap text-sm">{turn.clarification?.question ?? turn.text}</p>
+		<article className="flex max-w-prose flex-col gap-1.5" data-testid={`planning-turn-${turn.sequence}`}>
+			<p className="text-xs text-wd-secondary">{t("planning.planner")}</p>
+			<p className="whitespace-pre-wrap text-base leading-relaxed text-wd-primary">{turn.clarification?.question ?? turn.text}</p>
 			{turn.clarification && (
-				<div className="mt-2 flex flex-col gap-2 rounded-md bg-background/60 p-2 text-xs">
-					<p><span className="font-medium">{t("planning.why")}:</span> {turn.clarification.reason}</p>
-					{turn.clarification.recommendation && <p><span className="font-medium">{t("planning.suggested")}:</span> {turn.clarification.recommendation}</p>}
+				<div className="mt-1 flex flex-col gap-2.5 rounded-md bg-wd-inset p-3">
+					<FactList
+						facts={[
+							{ label: t("planning.why"), value: turn.clarification.reason },
+							{ label: t("planning.suggested"), value: turn.clarification.recommendation },
+						]}
+					/>
 					{turn.clarification.alternatives?.length ? (
 						<div className="flex flex-wrap gap-1.5">
 							{turn.clarification.alternatives.map((alternative) => <Button key={alternative} onClick={() => onSuggestion(alternative)} size="sm" type="button" variant="outline">{alternative}</Button>)}

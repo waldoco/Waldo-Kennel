@@ -1,4 +1,5 @@
-import { CheckCircle2, FolderOpen, Loader2, RefreshCw } from "lucide-react";
+import { StateBadge, StateMark, type StateTone } from "@pin4sf/kennel-product-ui";
+import { CheckCircle2, FolderOpen, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,7 +12,6 @@ import {
 import { useOutcomeAttempts, useOutcomeProof } from "../../hooks/useOutcome";
 import { useOutcomeRunState } from "../../hooks/useOutcomeRunState";
 import { aoBridge } from "../../lib/bridge";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -23,12 +23,12 @@ function latestAcceptedDecision(proof: ReturnType<typeof useOutcomeProof>["proof
 		.at(-1);
 }
 
-function stateVariant(state: OutcomeDeliveryRecord["state"]) {
-	if (state === "succeeded") return "success" as const;
-	if (state === "failed") return "error" as const;
-	if (state === "pending") return "accent" as const;
-	return "outline" as const;
-}
+const DELIVERY_STATE: Record<OutcomeDeliveryRecord["state"], { tone: StateTone; key: "mission.delivery.state.pending" | "mission.delivery.state.succeeded" | "mission.delivery.state.failed" | "mission.delivery.state.cancelled" }> = {
+	pending: { tone: "neutral", key: "mission.delivery.state.pending" },
+	succeeded: { tone: "good", key: "mission.delivery.state.succeeded" },
+	failed: { tone: "critical", key: "mission.delivery.state.failed" },
+	cancelled: { tone: "neutral", key: "mission.delivery.state.cancelled" },
+};
 
 /**
  * Delivery is the final transfer boundary, not a synonym for acceptance. The
@@ -104,14 +104,14 @@ export function OutcomeDeliveryPanel({ outcomeId }: { outcomeId: string }) {
 	}
 
 	return (
-		<section className="mt-5 rounded-md border border-border p-4" data-testid="outcome-delivery-panel">
+		<section className="mt-5 flex flex-col gap-3 rounded-lg hairline border-wd-hairline bg-wd-surface p-5" data-testid="outcome-delivery-panel">
 			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div>
+				<div className="flex min-w-0 flex-col gap-1">
 					<div className="flex items-center gap-2">
-						<CheckCircle2 aria-hidden="true" className="size-4 text-muted-foreground" />
-						<h3 className="text-sm font-medium">{t("mission.delivery.heading")}</h3>
+						<CheckCircle2 aria-hidden="true" className="size-4 text-wd-secondary" />
+						<h3 className="text-sm font-medium text-wd-primary">{t("mission.delivery.heading")}</h3>
 					</div>
-					<p className="mt-1 text-xs text-muted-foreground">{t("mission.delivery.intro")}</p>
+					<p className="text-xs text-wd-secondary">{t("mission.delivery.intro")}</p>
 				</div>
 				{deliveriesQuery.failure && (
 					<Button onClick={deliveriesQuery.refetch} size="sm" variant="ghost">
@@ -121,63 +121,62 @@ export function OutcomeDeliveryPanel({ outcomeId }: { outcomeId: string }) {
 				)}
 			</div>
 
-			<div className="mt-3 rounded border border-border bg-muted/20 p-3">
-				<p className="text-xs text-muted-foreground">{t("mission.delivery.exactArtifact")}</p>
-				<div className="mt-3 grid gap-3 sm:grid-cols-2">
-					<div>
+			<div className="flex flex-col gap-3 rounded-md bg-wd-inset p-3">
+				<p className="text-xs text-wd-secondary">{t("mission.delivery.exactArtifact")}</p>
+				<div className="grid gap-3 sm:grid-cols-2">
+					<div className="flex flex-col gap-1">
 						<Label htmlFor="delivery-attempt-id">{t("mission.delivery.attemptId")}</Label>
-						<Input id="delivery-attempt-id" onChange={(event) => setAttemptId(event.target.value)} value={attemptId} />
+						<Input className="bg-wd-surface tabular-nums" id="delivery-attempt-id" onChange={(event) => setAttemptId(event.target.value)} value={attemptId} />
 					</div>
-					<div>
+					<div className="flex flex-col gap-1">
 						<Label htmlFor="delivery-artifact-version">{t("mission.delivery.artifactVersion")}</Label>
-						<Input id="delivery-artifact-version" onChange={(event) => setArtifactVersion(event.target.value)} value={artifactVersion} />
+						<Input className="bg-wd-surface tabular-nums" id="delivery-artifact-version" onChange={(event) => setArtifactVersion(event.target.value)} value={artifactVersion} />
 					</div>
 				</div>
-				<div className="mt-3">
+				<div className="flex flex-col gap-1">
 					<Label htmlFor="delivery-destination">{t("mission.delivery.destination")}</Label>
-					<div className="mt-1 flex gap-2">
-						<Input id="delivery-destination" onChange={(event) => setDestination(event.target.value)} value={destination} />
-						<Button aria-label={t("mission.delivery.chooseDestination")} onClick={() => void chooseDestination()} size="icon" type="button" variant="outline">
+					<div className="flex gap-2">
+						<Input className="bg-wd-surface" id="delivery-destination" onChange={(event) => setDestination(event.target.value)} value={destination} />
+						<Button aria-label={t("mission.delivery.chooseDestination")} onClick={() => void chooseDestination()} size="icon" type="button" variant="ghost">
 							<FolderOpen aria-hidden="true" className="size-4" />
 						</Button>
 					</div>
 				</div>
-				<fieldset className="mt-3" disabled={pending}>
-					<legend className="text-xs font-medium">{t("mission.delivery.disposition")}</legend>
-					<div className="mt-2 flex flex-wrap gap-3 text-xs">
+				<fieldset disabled={pending}>
+					<legend className="text-xs text-wd-secondary">{t("mission.delivery.disposition")}</legend>
+					<div className="mt-2 flex flex-wrap gap-4 text-sm text-wd-primary">
 						<label className="flex items-center gap-2">
-							<input checked={disposition === "draft"} name="delivery-disposition" onChange={() => setDisposition("draft")} type="radio" />
+							<input checked={disposition === "draft"} className="accent-(--text-primary)" name="delivery-disposition" onChange={() => setDisposition("draft")} type="radio" />
 							{t("mission.delivery.draft")}
 						</label>
 						<label className="flex items-center gap-2">
-							<input checked={disposition === "accepted"} disabled={!acceptanceDecision} name="delivery-disposition" onChange={() => setDisposition("accepted")} type="radio" />
+							<input checked={disposition === "accepted"} className="accent-(--text-primary)" disabled={!acceptanceDecision} name="delivery-disposition" onChange={() => setDisposition("accepted")} type="radio" />
 							{t("mission.delivery.accepted")}
 						</label>
 					</div>
-					<p className="mt-1 text-2xs text-muted-foreground">
+					<p className="mt-1 text-xs text-wd-secondary">
 						{acceptanceDecision ? t("mission.delivery.acceptedAvailable") : t("mission.delivery.acceptedUnavailable")}
 					</p>
 				</fieldset>
-				<div className="mt-3 flex flex-wrap items-center gap-2">
-					<Button data-testid="outcome-delivery-request" disabled={!canRequest || pending} onClick={() => void request()} size="sm">
-						{pending && <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />}
-						{t("mission.delivery.request")}
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+					<Button aria-busy={pending || undefined} data-testid="outcome-delivery-request" disabled={!canRequest || pending} onClick={() => void request()} size="sm">
+						{pending ? t("mission.delivery.requesting") : t("mission.delivery.request")}
 					</Button>
-					{featureUnavailable && <span className="text-2xs text-warning">{t("mission.delivery.unavailableReason", { reason: unavailableReason })}</span>}
-					{!exportEligibility && <span className="text-2xs text-muted-foreground">{t("mission.delivery.waitingForEligibility")}</span>}
+					{featureUnavailable && <span className="text-xs text-wd-secondary">{t("mission.delivery.unavailableReason", { reason: unavailableReason })}</span>}
+					{!exportEligibility && <span className="text-xs text-wd-secondary">{t("mission.delivery.waitingForEligibility")}</span>}
 				</div>
 			</div>
 
-			<p className="mt-2 text-2xs text-muted-foreground">{t("mission.delivery.boundary")}</p>
-			{deliveriesQuery.isLoading && <p className="mt-3 text-xs text-muted-foreground">{t("mission.delivery.loading")}</p>}
-			{failure && <p className="mt-3 text-xs text-destructive" role="alert">{failure.message}</p>}
+			<p className="text-xs text-wd-tertiary">{t("mission.delivery.boundary")}</p>
+			{deliveriesQuery.isLoading && <p className="text-xs text-wd-secondary" role="status">{t("mission.delivery.loading")}</p>}
+			{failure && <p className="flex items-start gap-1.5 text-xs text-wd-primary" role="alert"><StateMark className="mt-0.5 text-critical" tone="critical" />{failure.message}</p>}
 
-			<div className="mt-4">
-				<h4 className="text-xs font-medium">{t("mission.delivery.history")}</h4>
+			<div className="flex flex-col gap-1">
+				<h4 className="text-sm font-medium text-wd-primary">{t("mission.delivery.history")}</h4>
 				{deliveries.length === 0 ? (
-					<p className="mt-2 text-xs text-muted-foreground">{t("mission.delivery.empty")}</p>
+					<p className="text-xs text-wd-secondary">{t("mission.delivery.empty")}</p>
 				) : (
-					<ul className="mt-2 space-y-2">
+					<ul className="flex flex-col">
 						{deliveries.map((delivery) => <DeliveryHistoryRow delivery={delivery} key={delivery.id} onReuse={reuseDelivery} />)}
 					</ul>
 				)}
@@ -196,23 +195,25 @@ function DeliveryHistoryRow({ delivery, onReuse }: { delivery: OutcomeDeliveryRe
 			: undefined;
 
 	return (
-		<li className="rounded border border-border p-3 text-xs" data-testid={`delivery-${delivery.id}`}>
-			<div className="flex flex-wrap items-center justify-between gap-2">
-				<div className="flex flex-wrap items-center gap-2">
-					<Badge variant={stateVariant(delivery.state)}>{delivery.state}</Badge>
-					<Badge variant="outline">{delivery.disposition}</Badge>
-					<span className="text-muted-foreground">{new Date(delivery.requestedAt).toLocaleString()}</span>
-				</div>
-				{sameDestinationRetry && <Button onClick={() => onReuse(delivery)} size="sm" variant="outline">{t("mission.delivery.retrySame")}</Button>}
+		<li className="flex flex-col gap-1 hairline-b border-wd-hairline py-3 text-xs last:border-b-0" data-testid={`delivery-${delivery.id}`}>
+			<div className="flex flex-wrap items-start justify-between gap-2">
+				<p className="min-w-0 break-all text-sm text-wd-primary">{delivery.destination}</p>
+				<StateBadge label={t(DELIVERY_STATE[delivery.state]?.key ?? "mission.delivery.state.pending")} tone={DELIVERY_STATE[delivery.state]?.tone ?? "neutral"} />
 			</div>
-			<p className="mt-2 break-all">{delivery.destination}</p>
-			<p className="mt-1 text-2xs text-muted-foreground">{t("mission.delivery.artifactSummary", { attempt: delivery.attemptId, version: delivery.artifactVersion })}</p>
-			{recoveryNote && <p className="mt-1 text-2xs text-muted-foreground">{recoveryNote}</p>}
-			{delivery.failureCode && <p className="mt-2 text-warning">{delivery.failureCode}: {delivery.failureDetail ?? t("mission.delivery.noFailureDetail")}</p>}
-			{delivery.failureCode === "DELIVERY_RECOVERY_MISMATCH" && <p className="mt-1 text-2xs text-muted-foreground">{t("mission.delivery.chooseDifferentDestination")}</p>}
-			{delivery.failureCode === "DELIVERY_RECOVERY_UNREADABLE" && <p className="mt-1 text-2xs text-muted-foreground">{t("mission.delivery.unreadable")}</p>}
-			{delivery.failureCode === "DELIVERY_RECOVERY_UNVERIFIABLE" && <p className="mt-1 text-2xs text-muted-foreground">{t("mission.delivery.reproduce")}</p>}
-			{delivery.state === "pending" && <p className="mt-1 text-2xs text-muted-foreground">{t("mission.delivery.pendingNoRetry")}</p>}
+			<p className="text-wd-tertiary">
+				{delivery.disposition === "accepted" ? t("mission.delivery.accepted") : t("mission.delivery.draft")}
+				{" · "}
+				<span className="tabular-nums">{t("mission.delivery.artifactSummary", { attempt: delivery.attemptId, version: delivery.artifactVersion })}</span>
+				{" · "}
+				<time className="tabular-nums" dateTime={delivery.requestedAt}>{new Date(delivery.requestedAt).toLocaleString()}</time>
+			</p>
+			{recoveryNote && <p className="text-wd-secondary">{recoveryNote}</p>}
+			{delivery.failureCode && <p className="text-wd-primary"><span className="text-wd-secondary">{delivery.failureCode}: </span>{delivery.failureDetail ?? t("mission.delivery.noFailureDetail")}</p>}
+			{delivery.failureCode === "DELIVERY_RECOVERY_MISMATCH" && <p className="text-wd-secondary">{t("mission.delivery.chooseDifferentDestination")}</p>}
+			{delivery.failureCode === "DELIVERY_RECOVERY_UNREADABLE" && <p className="text-wd-secondary">{t("mission.delivery.unreadable")}</p>}
+			{delivery.failureCode === "DELIVERY_RECOVERY_UNVERIFIABLE" && <p className="text-wd-secondary">{t("mission.delivery.reproduce")}</p>}
+			{delivery.state === "pending" && <p className="text-wd-secondary">{t("mission.delivery.pendingNoRetry")}</p>}
+			{sameDestinationRetry && <Button className="mt-1 self-start" onClick={() => onReuse(delivery)} size="sm" variant="secondary">{t("mission.delivery.retrySame")}</Button>}
 		</li>
 	);
 }

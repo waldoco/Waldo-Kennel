@@ -1,6 +1,8 @@
 import { useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { HomeFixtureState } from "../../lib/home-fixture";
+import { Button } from "../ui/button";
+import { HomeCardActions, HomeFacts } from "./HomeCards";
 import { HomeContextFrame } from "./HomeContextFrame";
 
 export function HomeBeforeNext({
@@ -21,64 +23,55 @@ export function HomeBeforeNext({
       headingRef={headingRef}
       title={t("home.visual.beforeNext.title")}
     >
-      <article aria-label={next.title} className="border-y border-border py-5">
-        <h3 className="text-xl font-medium tracking-tight text-foreground">{next.title}</h3>
-        <p className="mt-3 text-sm leading-relaxed text-foreground/82">{next.framing}</p>
+      <div aria-label={next.title} className="flex flex-col gap-3" role="article">
+        <h3 className="wd-headline text-wd-primary">{next.title}</h3>
+        <p className="wd-body max-w-(--layout-measure) text-wd-primary">{next.framing}</p>
 
-        <section className="mt-7" aria-labelledby="promises-heading">
-          <h4
-            className="border-b border-border pb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-            id="promises-heading"
-          >
+        <section aria-labelledby="promises-heading" className="flex flex-col gap-1">
+          <h4 className="wd-label text-wd-secondary" id="promises-heading">
             {t("home.visual.beforeNext.promises")}
           </h4>
-          <ul className="divide-y divide-border/60" role="list">
+          <ul className="flex flex-col" role="list">
             {next.promises.map((promise) => (
-              <li className="py-3 text-sm leading-relaxed text-foreground" key={promise.id}>
+              <li
+                className="wd-body-s border-wd-hairline py-2 text-wd-primary [&+&]:border-t-[length:var(--stroke-hairline)]"
+                key={promise.id}
+              >
                 {promise.label}
               </li>
             ))}
           </ul>
         </section>
 
-        <section className="mt-6" aria-labelledby="questions-heading">
-          <h4
-            className="border-b border-border pb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-            id="questions-heading"
-          >
+        <section aria-labelledby="questions-heading" className="flex flex-col gap-1">
+          <h4 className="wd-label text-wd-secondary" id="questions-heading">
             {t("home.visual.beforeNext.openQuestion")}
           </h4>
           {next.openQuestions.map((question) => (
-            <p className="py-3 text-sm leading-relaxed text-foreground" key={question.id}>
+            <p className="wd-body-s text-wd-primary" key={question.id}>
               {question.label}
             </p>
           ))}
         </section>
 
-        <dl className="mt-6 space-y-3 border-t border-border pt-5 text-xs">
-          <div>
-            <dt className="font-medium text-muted-foreground">{t("home.visual.sourcesSearched")}</dt>
-            <dd className="mt-1 leading-relaxed text-foreground/82">{next.sourceSummary}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-warning">{t("home.visual.knownGap")}</dt>
-            <dd className="mt-1 leading-relaxed text-muted-foreground">{next.sourceGap}</dd>
-          </div>
-        </dl>
+        <HomeFacts
+          facts={[
+            { label: t("home.visual.sourcesSearched"), value: next.sourceSummary },
+            { label: t("home.visual.knownGap"), tone: "caution", value: next.sourceGap },
+          ]}
+        />
 
-        <button
-          className="mt-6 w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 motion-reduce:transition-none"
-          onClick={() => setPreviewOpen(true)}
-          type="button"
-        >
-          {t("home.visual.prepareInWork")}
-        </button>
-        {previewOpen ? (
-          <p className="mt-3 border-l border-border-strong pl-3 text-xs leading-relaxed text-muted-foreground" role="status">
-            {t("home.visual.workPreviewBoundary")}
-          </p>
-        ) : null}
-      </article>
+        <HomeCardActions
+          hint={previewOpen ? (
+            <span role="status">{t("home.visual.workPreviewBoundary")}</span>
+          ) : undefined}
+          trail={(
+            <Button onClick={() => setPreviewOpen(true)} size="sm" type="button" variant="primary">
+              {t("home.visual.prepareInWork")}
+            </Button>
+          )}
+        />
+      </div>
     </HomeContextFrame>
   );
 }

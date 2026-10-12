@@ -179,7 +179,7 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 
 				<div className={settingsDialogHeaderClass}>
 					<DialogTitle className="settings-dialog-title">{t("report.title")}</DialogTitle>
-					<DialogDescription className="text-control leading-4 text-settings-muted">
+					<DialogDescription className="wd-body-s text-wd-secondary">
 						{t("report.subtitle")}
 					</DialogDescription>
 				</div>
@@ -236,24 +236,24 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 					</RadioGroup.Root>
 
 					{copyError && (
-						<p role="alert" className="text-caption leading-4 text-error">
+						<p role="alert" className="wd-body-s text-critical">
 							{copyError}
 						</p>
 					)}
 					{copiedLabel && !copyError && (
-						<p className="text-caption leading-4 text-success">{t("report.draftCopied", { label: copiedLabel })}</p>
+						<p className="wd-body-s text-good">{t("report.draftCopied", { label: copiedLabel })}</p>
 					)}
 				</div>
 
 				<div className={settingsDialogFooterClass}>
 					<DialogClose asChild>
-						<Button type="button" variant="footer">
+						<Button type="button" variant="ghost">
 							{t("report.cancel")}
 						</Button>
 					</DialogClose>
 					<Button
 						type="button"
-						variant="footer-primary"
+						variant="primary"
 						disabled={!canSubmit}
 						onClick={() => {
 							if (!canSubmit) return;

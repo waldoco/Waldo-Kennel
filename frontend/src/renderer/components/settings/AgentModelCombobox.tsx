@@ -161,8 +161,8 @@ export function AgentModelCombobox({
 				<button
 					type="button"
 					className={cn(
-						"group/agent-model-trigger settings-option-trigger max-w-full min-w-0 hover:text-settings-label focus:outline-none focus-visible:outline-none focus-visible:ring-0 data-[state=open]:outline-none data-[state=open]:ring-0",
-						disabled && "cursor-not-allowed opacity-50",
+						"group/agent-model-trigger settings-option-trigger max-w-full min-w-0",
+						disabled && "cursor-not-allowed text-wd-disabled",
 						triggerClassName,
 					)}
 					aria-label={ariaLabel}
@@ -174,7 +174,7 @@ export function AgentModelCombobox({
 						<span className="min-w-0 truncate">{currentLabel}</span>
 					)}
 					<ChevronDown
-						className="size-icon-sm shrink-0 opacity-70 transition-transform duration-normal ease-out group-data-[state=open]/agent-model-trigger:rotate-180"
+						className="size-icon-sm shrink-0 text-wd-tertiary transition-transform duration-fast ease-out group-data-[state=open]/agent-model-trigger:rotate-180"
 						aria-hidden="true"
 					/>
 				</button>
@@ -182,12 +182,12 @@ export function AgentModelCombobox({
 			<DropdownMenuContent
 				align={menuAlign}
 				onCloseAutoFocus={onCloseAutoFocus}
-				className="settings-menu-surface max-h-select-menu-max! w-[min(22rem,calc(100vw-2rem))] overflow-hidden! rounded-(--radius-settings-panel) border-settings-menu bg-settings-menu"
+				className="settings-menu-surface max-h-select-menu-max! w-[min(22rem,calc(100vw-2rem))] overflow-hidden! rounded-md border-wd-hairline bg-wd-raised"
 			>
 				{showSearch && (
 					<div className="relative shrink-0 p-1" onKeyDown={(event) => event.stopPropagation()}>
 						<Search
-							className="pointer-events-none absolute left-3.5 top-1/2 size-icon-sm -translate-y-1/2 text-settings-muted"
+							className="pointer-events-none absolute left-3.5 top-1/2 size-icon-sm -translate-y-1/2 text-wd-secondary"
 							aria-hidden="true"
 						/>
 						<input
@@ -216,7 +216,7 @@ export function AgentModelCombobox({
 						{groups.map((group, groupIndex) => (
 							<div key={group.key}>
 								{!compact && (groupIndex > 0 || normalizedSearch === "") && <DropdownMenuSeparator />}
-								{!compact && <DropdownMenuLabel className="normal-case tracking-normal">{group.label}</DropdownMenuLabel>}
+								{!compact && <DropdownMenuLabel className="wd-label normal-case tracking-normal text-wd-tertiary">{group.label}</DropdownMenuLabel>}
 								{group.models.map((item) =>
 									compact ? (
 										<DropdownMenuItem
@@ -224,7 +224,7 @@ export function AgentModelCombobox({
 											onSelect={() => selectModel(item.id)}
 											className={modelItemClass(item.id === value)}
 										>
-											<span className="truncate text-settings-label">{item.label}</span>
+											<span className="truncate text-wd-primary">{item.label}</span>
 										</DropdownMenuItem>
 									) : (
 										<DropdownMenuItem
@@ -235,19 +235,19 @@ export function AgentModelCombobox({
 											<div className="flex min-w-0 flex-1 items-center gap-3">
 												<div className="min-w-0 flex-1">
 													<div className="flex items-center gap-2">
-														<span className="truncate text-settings-label">{item.label}</span>
+														<span className="truncate text-wd-primary">{item.label}</span>
 														{item.model.isDefault && (
-															<span className="rounded-full bg-settings-menu-selected px-1.5 py-0.5 text-micro text-settings-muted">
+															<span className="wd-micro rounded-xs bg-wd-inset px-1.5 py-0.5 text-wd-secondary">
 																{t("settings.models.default")}
 															</span>
 														)}
 													</div>
 													{shouldShowModelID(item, visibleModels, normalizedSearch) && (
-														<p className="truncate text-xs text-settings-muted">{item.id}</p>
+														<p className="wd-data truncate text-wd-tertiary">{item.id}</p>
 													)}
 												</div>
 												{group.kind !== "provider" && item.provider !== "Other" && (
-													<span className="shrink-0 text-xs text-settings-muted">{item.provider}</span>
+													<span className="shrink-0 text-xs text-wd-secondary">{item.provider}</span>
 												)}
 											</div>
 										</DropdownMenuItem>
@@ -262,7 +262,7 @@ export function AgentModelCombobox({
 							</DropdownMenuItem>
 						)}
 						{normalizedSearch !== "" && rankedModels.length === 0 && !allowCustom && (
-							<p className="px-2 py-1.5 text-xs text-settings-muted">{t("settings.models.noMatches")}</p>
+							<p className="wd-body-s px-3 py-2 text-wd-secondary">{t("settings.models.noMatches")}</p>
 						)}
 						{normalizedSearch === "" && allowCustom && (
 							<>
@@ -287,7 +287,7 @@ export function AgentModelCombobox({
 									className={modelItemClass(false)}
 								>
 									<RefreshCw
-										className={cn("size-icon-sm shrink-0 opacity-70", refreshing && "animate-spin")}
+										className="size-icon-sm shrink-0 text-wd-tertiary"
 										aria-hidden="true"
 									/>
 									{refreshing ? t("settings.models.refreshing") : t("settings.models.refreshList")}
@@ -295,7 +295,7 @@ export function AgentModelCombobox({
 							</>
 						)}
 						{showSearch && (
-							<p className="px-2 py-1.5 text-xs text-settings-muted" aria-live="polite">
+							<p className="wd-body-s px-3 py-2 text-wd-secondary" aria-live="polite">
 								{t("settings.models.matchingCount", {
 									visible: visibleModels.length.toLocaleString(),
 									total: rankedModels.length.toLocaleString(),
@@ -588,8 +588,8 @@ function groupModels(
 function modelItemClass(selected: boolean): string {
 	return cn(
 		"settings-menu-item min-w-0 cursor-default outline-none",
-		"focus:bg-settings-menu-selected focus:text-settings-title",
-		"data-highlighted:bg-settings-menu-selected data-highlighted:text-settings-title",
-		selected && "border-settings-menu bg-settings-menu-selected text-settings-title",
+		"focus:bg-wd-hover focus:text-wd-primary",
+		"data-highlighted:bg-wd-hover data-highlighted:text-wd-primary",
+		selected && "bg-wd-selected text-wd-primary",
 	);
 }

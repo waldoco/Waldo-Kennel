@@ -13,6 +13,7 @@ import {
 	type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { StateLabel } from "@pin4sf/kennel-product-ui";
 import { useTranslation } from "react-i18next";
 
 import type { MissionNodeRecord, useOutcomeMission } from "../../hooks/useOutcome";
@@ -59,25 +60,27 @@ const MissionCanvasFlowNode = memo(function MissionCanvasFlowNode({ data, select
 			    instant under reduced motion. */}
 			<div
 				aria-hidden="true"
-				className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-md hairline border-border bg-card px-3 py-2 opacity-0 shadow-lg motion-safe:transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+				className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-md bg-wd-raised px-3 py-2 opacity-0 shadow-md motion-safe:transition-opacity motion-safe:duration-fast group-hover:opacity-100 group-focus-within:opacity-100"
 				data-testid={`mission-node-preview-${view.workUnitId}`}
 			>
-				<p className="truncate text-sm font-medium text-foreground">{view.title}</p>
-				<p className={cn("mt-0.5 text-xs", view.status.className)}>{view.status.label}</p>
+				<p className="truncate text-sm font-medium text-wd-primary">{view.title}</p>
+				<StateLabel className="mt-0.5 text-xs" label={view.status.label} tone={view.status.tone} />
 				{view.attention ? (
-					<p className="mt-0.5 line-clamp-2 text-muted-foreground text-xs">
+					<p className="mt-0.5 line-clamp-2 text-xs text-wd-secondary">
 						{view.attention.label}: {view.attention.summary}
 					</p>
 				) : null}
-				<p className="mt-0.5 text-2xs text-passive">
+				<p className="mt-0.5 text-xs tabular-nums text-wd-tertiary">
 					{t("mission.row.dependencySummary" satisfies MessageKey, {
 						downstream: view.dependentCount,
 						upstream: view.dependencyCount,
 					})}
 				</p>
 			</div>
+			{/* Selected is the quiet selected fill with an ink hairline - never a
+			    coloured glow. */}
 			<WorkUnitFace
-				className={cn(selected && "ring-1 ring-ring", "focus-visible:outline-none")}
+				className={cn(selected && "bg-wd-selected border-wd-strong")}
 				layout="node"
 				view={view}
 			/>
@@ -218,7 +221,10 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 		return model.nodes.map((node) => ({
 			ariaLabel: `${node.title} - ${graph.nodesByWorkUnitId.get(node.workUnitId)?.status.label ?? node.state}`,
 			className: cn(
-				"group motion-safe:transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+				// React Flow suppresses outlines on its node wrapper, so the
+				// system focus ring (2px border-focus, offset 2px) is drawn as a
+				// ring here.
+				"group rounded-md motion-safe:transition-opacity focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
 				lineage && !lineage.related.has(node.workUnitId) && "opacity-40",
 			),
 			data: { view: graph.nodesByWorkUnitId.get(node.workUnitId) as MissionNodeView },
@@ -289,7 +295,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 					type: "smoothstep",
 				};
 			});
-	}, [model, layout, lineage]);
+	}, [model, graph, layout, lineage]);
 
 	// Arrow-key movement follows the drawn topology, never arbitrary DOM order.
 	const canvasLayers = useMemo(
@@ -408,10 +414,10 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 
 	if (missionQuery.failure && !displayMission) {
 		return (
-			<div className="rounded-group hairline border-warning/40 bg-warning/5 px-4.5 py-3.5" data-testid="mission-canvas-error">
-				<h3 className="text-sm font-medium">{t("mission.list.error.title" satisfies MessageKey)}</h3>
-				<p className="mt-1 text-muted-foreground text-sm">{missionQuery.failure.message}</p>
-				<Button className="mt-2" data-testid="mission-canvas-retry" onClick={missionQuery.refetch} size="sm" variant="outline">
+			<div className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="mission-canvas-error">
+				<h3 className="text-sm font-medium text-wd-primary">{t("mission.list.error.title" satisfies MessageKey)}</h3>
+				<p className="mt-1 text-sm text-wd-secondary">{missionQuery.failure.message}</p>
+				<Button className="mt-3" data-testid="mission-canvas-retry" onClick={missionQuery.refetch} size="sm" variant="secondary">
 					{t("mission.list.retry" satisfies MessageKey)}
 				</Button>
 			</div>
@@ -423,14 +429,14 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 	if (!displayMission && missionQuery.isLoading) {
 		if (planWorkUnits && planWorkUnits.length > 0) {
 			return (
-				<div className="rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="mission-canvas-plan-pending">
-					<h3 className="text-sm font-medium">{t("mission.list.planPending.title" satisfies MessageKey)}</h3>
-					<p className="mt-1 text-muted-foreground text-sm">{t("mission.list.planPending.body" satisfies MessageKey)}</p>
+				<div className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="mission-canvas-plan-pending">
+					<h3 className="text-sm font-medium text-wd-primary">{t("mission.list.planPending.title" satisfies MessageKey)}</h3>
+					<p className="mt-1 text-sm text-wd-secondary">{t("mission.list.planPending.body" satisfies MessageKey)}</p>
 				</div>
 			);
 		}
 		return (
-			<p className="text-muted-foreground text-sm" data-testid="mission-canvas-loading">
+			<p className="text-sm text-wd-secondary" data-testid="mission-canvas-loading">
 				{t("mission.list.loading" satisfies MessageKey)}
 			</p>
 		);
@@ -440,9 +446,9 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 
 	if (model.nodes.length === 0) {
 		return (
-			<div className="rounded-group hairline border-border bg-card px-4.5 py-3.5" data-testid="mission-canvas-empty">
-				<h3 className="text-sm font-medium">{t("mission.list.empty.title" satisfies MessageKey)}</h3>
-				<p className="mt-1 text-muted-foreground text-sm">{t("mission.list.empty.body" satisfies MessageKey)}</p>
+			<div className="rounded-lg hairline border-wd-hairline bg-wd-surface p-4" data-testid="mission-canvas-empty">
+				<h3 className="text-sm font-medium text-wd-primary">{t("mission.list.empty.title" satisfies MessageKey)}</h3>
+				<p className="mt-1 text-sm text-wd-secondary">{t("mission.list.empty.body" satisfies MessageKey)}</p>
 			</div>
 		);
 	}
@@ -452,29 +458,29 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-2.5" data-testid="mission-canvas">
 			{frozen && (
-				<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-canvas-stale-banner">
-					<p className="text-muted-foreground text-xs">
+				<div className="flex items-center justify-between gap-3 rounded-md bg-wd-inset px-3 py-2" data-testid="mission-canvas-stale-banner">
+					<p className="text-xs text-wd-primary">
 						{t("mission.list.stale.banner" satisfies MessageKey, { time: displayMission.updatedAt })}
 					</p>
-					<Button data-testid="mission-canvas-refresh" onClick={missionQuery.refetch} size="sm" variant="outline">
+					<Button data-testid="mission-canvas-refresh" onClick={missionQuery.refetch} size="sm" variant="secondary">
 						{t("mission.list.stale.refresh" satisfies MessageKey)}
 					</Button>
 				</div>
 			)}
 
 			{refreshFailed && (
-				<div className="flex items-center justify-between gap-2 rounded-md hairline border-warning/40 bg-warning/5 px-3 py-2" data-testid="mission-canvas-refresh-failed-banner">
-					<p className="text-muted-foreground text-xs">
+				<div className="flex items-center justify-between gap-3 rounded-md bg-wd-inset px-3 py-2" data-testid="mission-canvas-refresh-failed-banner">
+					<p className="text-xs text-wd-primary">
 						{t("mission.list.refreshFailed.banner" satisfies MessageKey, { message: missionQuery.failure?.message ?? "" })}
 					</p>
-					<Button data-testid="mission-canvas-refresh-failed-retry" onClick={missionQuery.refetch} size="sm" variant="outline">
+					<Button data-testid="mission-canvas-refresh-failed-retry" onClick={missionQuery.refetch} size="sm" variant="secondary">
 						{t("mission.list.retry" satisfies MessageKey)}
 					</Button>
 				</div>
 			)}
 
 			{displayMission.noRunnableReason && (
-				<p className="text-2xs leading-body text-passive" data-testid="mission-graph-no-runnable">
+				<p className="text-xs leading-body text-wd-secondary" data-testid="mission-graph-no-runnable">
 					{t(`outcome.missionGraph.noRunnable.${displayMission.noRunnableReason}` as MessageKey)}
 				</p>
 			)}
@@ -482,7 +488,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 			<div className="relative flex min-h-0 flex-1">
 				<div
 					aria-hidden={selectedNode ? true : undefined}
-					className="min-h-0 min-w-0 flex-1 rounded-group hairline border-border bg-card"
+					className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg hairline border-wd-hairline bg-wd-surface"
 					inert={selectedNode ? true : undefined}
 					data-testid="mission-canvas-viewport"
 					onKeyDownCapture={handleCanvasKeyDown}
@@ -492,6 +498,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 					{layoutReady ? (
 						<ReactFlow
 							aria-label={t("mission.list.heading" satisfies MessageKey)}
+							className="mission-canvas-flow"
 							colorMode={colorMode}
 							edges={flowEdges}
 							edgesFocusable={false}
@@ -503,14 +510,14 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 							onInit={handleInit}
 							onNodesChange={onNodesChange}
 						>
-							<Background gap={24} />
-							<Controls showInteractive={false} />
+							<Background gap={24} size={1} />
+							<Controls className="mission-canvas-controls" orientation="horizontal" showInteractive={false} />
 						</ReactFlow>
 					) : layoutFailure ? (
-						<div className="px-4.5 py-3.5" data-testid="mission-canvas-layout-error">
-							<p className="text-muted-foreground text-sm">{layoutFailure}</p>
+						<div className="p-4" data-testid="mission-canvas-layout-error">
+							<p className="text-sm text-wd-secondary">{layoutFailure}</p>
 							<Button
-								className="mt-2"
+								className="mt-3"
 								data-testid="mission-canvas-layout-retry"
 								onClick={() => {
 									setLayout(undefined);
@@ -518,13 +525,13 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 									setLayoutRetrySeq((seq) => seq + 1);
 								}}
 								size="sm"
-								variant="outline"
+								variant="secondary"
 							>
 								{t("mission.list.retry" satisfies MessageKey)}
 							</Button>
 						</div>
 					) : (
-						<p className="px-4.5 py-3.5 text-muted-foreground text-sm" data-testid="mission-canvas-layout-pending">
+						<p className="p-4 text-sm text-wd-secondary" data-testid="mission-canvas-layout-pending">
 							{t("mission.list.loading" satisfies MessageKey)}
 						</p>
 					)}
@@ -564,7 +571,7 @@ function MissionCanvasInner({ missionQuery, planApproved, planWorkUnits, initial
 						role="dialog"
 						tabIndex={-1}
 					>
-						<div className="h-full w-[min(22rem,calc(100%-1rem))] bg-card shadow-xl">
+						<div className="h-full w-[min(22rem,calc(100%-1rem))] bg-wd-raised shadow-xl">
 							<OutcomeInspector node={selectedNode} onClose={dismissInspector} onOpenSession={onOpenSession} view={selectedView} withinDialog />
 						</div>
 					</div>

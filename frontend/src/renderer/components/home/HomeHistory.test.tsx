@@ -20,7 +20,7 @@ describe("HomeHistory", () => {
     await user.click(screen.getByRole("button", { name: "Why this?" }));
     expect(screen.getByText(/may help you decide/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByRole("button", { name: "Confirm insight" }));
     expect(screen.getByText("Confirmed", { selector: "span" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Records" }));
@@ -92,7 +92,7 @@ describe("HomeHistory", () => {
     await user.click(screen.getByRole("tab", { name: "Records" }));
     const event = screen.getByRole("button", { name: "Tomorrow re-entry selected" });
     await user.click(event);
-    await user.click(screen.getByRole("button", { name: "Back to Records" }));
+    await user.click(screen.getByRole("button", { name: "Back to records" }));
 
     expect(event).toHaveFocus();
   });
@@ -103,6 +103,6 @@ describe("HomeHistory", () => {
     expect(screen.getByRole("heading", { name: "Insights" })).toBeInTheDocument();
     expect(screen.getByText("No insight candidates yet")).toBeInTheDocument();
     expect(screen.queryByText("Candidate", { selector: "span" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm insight" })).not.toBeInTheDocument();
   });
 });

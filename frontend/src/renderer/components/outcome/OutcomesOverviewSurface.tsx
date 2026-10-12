@@ -2,9 +2,9 @@ import { OutcomeTrash } from "./OutcomeDeletionControls";
 import { Button } from "../ui/button";
 import { useMissionAttention } from "../../hooks/useMissionAttention";
 import { type MissionAttention } from "../../lib/mission-attention";
-import { boardLane, BOARD_LANE_TONE } from "../../lib/mission-lane-tone";
+import { attentionTone, boardLane, BOARD_LANE_STATE } from "../../lib/mission-lane-tone";
 import { Fragment, useMemo, useState } from "react";
-import { Flag, Network, Plus } from "lucide-react";
+import { Flag, Network, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useProjectOutcomes, type OutcomeRecord } from "../../hooks/useOutcome";
@@ -16,7 +16,7 @@ import { buildOutcomeTree, outcomeDestinationStage, type OutcomeDestinationStage
 import type { WorkspaceSummary } from "../../types/workspace";
 import { useUiStore } from "../../stores/ui-store";
 
-import { SessionsViewSwitch } from "@pin4sf/kennel-product-ui";
+import { FactList, SessionsViewSwitch, StateBadge, StateMark } from "@pin4sf/kennel-product-ui";
 
 type OutcomesOverviewSurfaceProps = {
 	projectId?: string;
@@ -61,21 +61,15 @@ export function OutcomesOverviewSurface({
 			: undefined;
 
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto" data-testid="outcomes-overview-surface">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="max-w-xl">
-					<h2 className="text-base font-medium">{t("outcome.overview.heading")}</h2>
-				</div>
+		<div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto" data-testid="outcomes-overview-surface">
+			<header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+				<h2 className="wd-display-3 min-w-0 text-wd-primary">{t("outcome.overview.heading")}</h2>
 				<div className="flex flex-wrap items-center gap-2">
 					{scopedWorkspace && onNewOutcome ? (
-						<button
-							className="flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium transition-[background-color,transform] duration-fast ease-out hover:bg-interactive-hover active:scale-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 motion-reduce:transition-none"
-							onClick={() => onNewOutcome(scopedWorkspace.id)}
-							type="button"
-						>
+						<Button onClick={() => onNewOutcome(scopedWorkspace.id)} size="sm" variant="primary">
 							<Plus aria-hidden="true" className="size-icon-sm" />
 							{t("outcome.dashboard.newOutcome")}
-						</button>
+						</Button>
 					) : null}
 					<SessionsViewSwitch
 						labels={{
@@ -86,21 +80,26 @@ export function OutcomesOverviewSurface({
 						onChange={setView}
 						value={view}
 					/>
-					<input
-						aria-label={t("shell.search")}
-						className="h-8 rounded-md border border-border bg-card px-2 text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-ring/70"
-						onChange={(event) => setQuery(event.target.value)}
-						placeholder={t("shell.search")}
-						value={query}
-					/>
-					<details className="relative text-xs">
-						<summary className="cursor-pointer rounded-lg border border-border px-3 py-2 hover:bg-interactive-hover">
+					<label className="relative flex h-8 items-center">
+						<Search aria-hidden="true" className="pointer-events-none absolute left-2.5 size-icon-sm text-wd-tertiary" />
+						<input
+							aria-label={t("shell.search")}
+							className="h-8 w-44 rounded-full bg-wd-inset pl-8 pr-3 text-sm text-wd-primary outline-none placeholder:text-wd-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
+							onChange={(event) => setQuery(event.target.value)}
+							placeholder={t("shell.search")}
+							type="search"
+							value={query}
+						/>
+					</label>
+					<details className="group/filters relative text-sm">
+						<summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full px-3 font-medium text-wd-primary transition-colors duration-fast hover:bg-wd-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) group-open/filters:bg-wd-selected [&::-webkit-details-marker]:hidden">
+							<SlidersHorizontal aria-hidden="true" className="size-icon-sm" />
 							{t("mission.filters")}
 						</summary>
-						<div className="absolute right-0 top-full z-20 mt-2 flex w-64 flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+						<div className="absolute right-0 top-full z-20 mt-2 flex w-64 flex-col gap-3 rounded-lg hairline border-wd-hairline bg-wd-raised p-3 shadow-lg">
 							<select
 								aria-label={t("command.group.projects")}
-								className="h-8 rounded-md border border-border bg-card px-2 text-xs"
+								className={filterSelectClassName}
 								onChange={(event) => setProjectFilter(event.target.value)}
 								value={projectFilter}
 							>
@@ -113,7 +112,7 @@ export function OutcomesOverviewSurface({
 							</select>
 							<select
 								aria-label={t("mission.statusFilter")}
-								className="h-8 rounded-md border border-border bg-card px-2 text-xs"
+								className={filterSelectClassName}
 								value={attentionFilter}
 								onChange={(event) => setAttentionFilter(event.target.value)}
 							>
@@ -121,8 +120,9 @@ export function OutcomesOverviewSurface({
 								<option value="needsYou">{t("mission.lane.needsYou")}</option>
 								<option value="history">{t("mission.includeHistory")}</option>
 							</select>
-							<label className="flex items-center gap-1 text-xs text-muted-foreground">
+							<label className="flex items-center gap-2 text-sm text-wd-secondary">
 								<input
+									className="size-4 accent-(--wd-accent)"
 									type="checkbox"
 									checked={includeContributors}
 									onChange={(event) => setIncludeContributors(event.target.checked)}
@@ -132,29 +132,32 @@ export function OutcomesOverviewSurface({
 						</div>
 					</details>
 				</div>
-			</div>
+			</header>
 
 			{workspaceQuery.isLoading ? (
 				<div
 					aria-label={t("outcome.overview.loading")}
-					className="flex flex-col gap-5"
+					className="flex flex-col gap-6"
 					data-testid="outcomes-overview-loading"
 					role="status"
 				>
+					<p aria-hidden="true" className="text-sm text-wd-secondary">
+						{t("outcome.overview.loading")}
+					</p>
 					{[0, 1].map((groupIndex) => (
-						<div className="flex flex-col gap-2" key={groupIndex}>
-							<SkeletonBlock className="h-3.5 w-40" />
+						<div className="flex flex-col gap-3" key={groupIndex}>
+							<SkeletonBlock className="h-4 w-40" />
 							<OutcomeCardSkeleton board={view === "board"} />
 							<OutcomeCardSkeleton board={view === "board"} />
 						</div>
 					))}
 				</div>
 			) : workspaces.length === 0 ? (
-				<p className="text-muted-foreground text-sm" data-testid="outcomes-overview-empty">
-					{t("outcome.overview.noProjects")}
-				</p>
+				<div className="flex flex-col gap-1 py-10" data-testid="outcomes-overview-empty">
+					<p className="text-sm text-wd-primary">{t("outcome.overview.noProjects")}</p>
+				</div>
 			) : (
-				<div className="flex flex-col gap-5">
+				<div className="flex flex-col gap-8">
 					{visibleWorkspaces.map((workspace) => (
 						<ProjectOutcomesGroup
 							key={workspace.id}
@@ -173,6 +176,29 @@ export function OutcomesOverviewSurface({
 			)}
 		</div>
 	);
+}
+
+const filterSelectClassName =
+	"h-8 rounded-full bg-wd-inset px-3 text-sm text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)";
+
+const BOARD_LANES = ["define", "needsYou", "observe", "review", "accepted"] as const;
+
+/** Lane heading: the state's shape cue, the lane word, and a quiet count. */
+function LaneHeading({ lane, count }: { lane: (typeof BOARD_LANES)[number]; count?: number }) {
+	const { t } = useTranslation();
+	return (
+		<h4 className="flex h-9 items-center gap-2 px-2.5 text-sm font-medium text-wd-primary">
+			<StateMark tone={BOARD_LANE_STATE[lane]} className={laneMarkClassName(lane)} />
+			{t(`mission.boardLane.${lane}`)}
+			{count === undefined ? null : <span className="wd-data ml-auto text-wd-tertiary">{count}</span>}
+		</h4>
+	);
+}
+
+/** Glyph marks pick up their state colour; dots already carry their own fill. */
+function laneMarkClassName(lane: (typeof BOARD_LANES)[number]) {
+	const tone = BOARD_LANE_STATE[lane];
+	return tone === "good" ? "text-good" : tone === "neutral" ? "text-wd-tertiary" : undefined;
 }
 
 function ProjectOutcomesGroup({
@@ -212,48 +238,48 @@ function ProjectOutcomesGroup({
 			? boardLane(lane) === "needsYou" || boardLane(lane) === "review"
 			: lane !== "accepted");
 	});
-	const lanes = view === "board" ? (["define", "needsYou", "observe", "review", "accepted"] as const) : [undefined];
+	const lanes = view === "board" ? BOARD_LANES : [undefined];
 
 
 	// Keep the project heading and Trash reachable after its final Outcome is removed.
 
 	return (
-		<section className="flex flex-col gap-2" data-testid="outcomes-overview-project">
-			<div className="flex items-center justify-between"><h3 className="text-sm font-medium text-foreground">{workspace.name}</h3><OutcomeTrash projectId={workspace.id}/></div>
+		<section className="flex flex-col gap-3" data-testid="outcomes-overview-project">
+			<div className="flex items-center justify-between gap-3">
+				<h3 className="wd-headline min-w-0 truncate text-wd-primary">{workspace.name}</h3>
+				<OutcomeTrash projectId={workspace.id} />
+			</div>
 			{outcomesQuery.failure ? (
 				<div
-					className="flex items-center gap-3 rounded-md hairline border-border bg-card px-3 py-2 text-xs text-muted-foreground"
+					className="flex items-center gap-3 rounded-lg hairline border-wd-hairline bg-wd-surface px-4 py-3 text-sm text-wd-primary"
 					role="alert"
 				>
 					<span className="min-w-0 flex-1">{t("outcome.dashboard.loadFailed")}</span>
-					<button className="font-medium text-foreground hover:underline" onClick={outcomesQuery.refetch} type="button">
+					<Button onClick={outcomesQuery.refetch} size="sm" variant="ghost">
 						{t("outcome.understand.retry")}
-					</button>
+					</Button>
 				</div>
 			) : outcomesQuery.isLoading ? (
-				// Skeleton cards inside the real lane shells: lane names and dots
+				// Skeleton cards inside the real lane shells: lane names and marks
 				// are static canon, so the board's shape is honest before the
 				// counts arrive. No pulse - the motion vocabulary bans endless
 				// shimmer, so the skeleton is static and content simply appears.
 				<div aria-label={t("outcome.overview.loading")} className="flex flex-col gap-2" role="status">
 					{view === "board" ? (
 						<div className="flex gap-3 overflow-x-auto pb-2">
-							{(["define", "needsYou", "observe", "review", "accepted"] as const).map((lane) => (
-								<section className="min-h-80 min-w-[220px] flex-1 rounded-2xl bg-surface/50 p-1" key={lane}>
-									<h4 className="flex h-10 items-center gap-2 px-3 text-xs font-medium">
-										<span aria-hidden="true" className={cn("size-2 rounded-full", BOARD_LANE_TONE[lane]?.dot ?? "bg-muted-foreground")} />
-										{t(`mission.boardLane.${lane}`)}
-									</h4>
+							{BOARD_LANES.map((lane) => (
+								<section className={laneShellClassName} key={lane}>
+									<LaneHeading lane={lane} />
 									<OutcomeCardSkeleton board />
 								</section>
 							))}
 						</div>
 					) : (
-						<>
+						<div className={listShellClassName}>
 							<OutcomeCardSkeleton board={false} />
 							<OutcomeCardSkeleton board={false} />
 							<OutcomeCardSkeleton board={false} />
-						</>
+						</div>
 					)}
 				</div>
 			) : outcomes.length === 0 ? (
@@ -265,45 +291,31 @@ function ProjectOutcomesGroup({
 				onNewOutcome ? (
 					<ProjectOutcomesEmptyState projectName={workspace.name} onNewOutcome={() => onNewOutcome(workspace.id)} />
 				) : (
-					<p className="px-3 py-2 text-xs text-muted-foreground">{t("outcome.empty.compact")}</p>
+					<p className="text-sm text-wd-secondary">{t("outcome.empty.compact")}</p>
 				)
 			) : (
-				<div className="flex flex-col gap-2">
+				<div className="flex flex-col gap-3">
 					{filteredNodes.length === 0 && (
-						<p className="px-3 py-2 text-xs text-muted-foreground">{t("mission.noMatchingOutcomes")}</p>
+						<p className="text-sm text-wd-secondary">{t("mission.noMatchingOutcomes")}</p>
 					)}
 					<div className={cn(view === "board" ? "flex gap-3 overflow-x-auto pb-2" : "flex flex-col")}>
-						{lanes.map((lane) => (
-							<section
-								key={lane ?? "list"}
-								className={cn(
-									"min-w-0",
-									view === "board" && "min-w-[220px] flex-1 rounded-2xl bg-surface/50 p-1 min-h-80",
-								)}
-							>
-								{lane && (
-									<h4 className="flex h-10 items-center gap-2 px-3 text-xs font-medium">
-										<span
-											aria-hidden="true"
-											className={cn("size-2 rounded-full", BOARD_LANE_TONE[lane]?.dot ?? "bg-muted-foreground")}
-										/>
-										{t(`mission.boardLane.${lane}`)}
-										<span className="ml-auto tabular-nums text-muted-foreground">
-											{filteredNodes.filter((node) => boardLane(attention.get(node.outcome.id)?.lane) === lane).length}
-										</span>
-									</h4>
-								)}
-								<ul className="flex flex-col gap-2">
-									{filteredNodes
-										.filter((node) => !lane || boardLane(attention.get(node.outcome.id)?.lane) === lane)
-										.map((node) => (
+						{lanes.map((lane) => {
+							const laneNodes = filteredNodes.filter(
+								(node) => !lane || boardLane(attention.get(node.outcome.id)?.lane) === lane,
+							);
+							if (!lane && laneNodes.length === 0) return null;
+							return (
+								<section key={lane ?? "list"} className={lane ? laneShellClassName : listShellClassName}>
+									{lane && <LaneHeading count={laneNodes.length} lane={lane} />}
+									<ul className={cn("flex flex-col", lane && "gap-2")}>
+										{laneNodes.map((node) => (
 											<Fragment key={node.outcome.id}>
 												<OutcomeOverviewRow
 													attention={attention.get(node.outcome.id)}
 													workspaceName={workspace.name}
 													selected={selectedOutcomeId === node.outcome.id}
-												onOpen={() => onOpenOutcome(workspace.id, node.outcome, outcomeDestinationStage(node, attention.get(node.outcome.id)?.lane))}
-												onOpenMissionControl={() => onOpenOutcome(workspace.id, node.outcome, outcomeDestinationStage(node, attention.get(node.outcome.id)?.lane))}
+													onOpen={() => onOpenOutcome(workspace.id, node.outcome, outcomeDestinationStage(node, attention.get(node.outcome.id)?.lane))}
+													onOpenMissionControl={() => onOpenOutcome(workspace.id, node.outcome, outcomeDestinationStage(node, attention.get(node.outcome.id)?.lane))}
 													outcome={node.outcome}
 												/>
 												{includeContributors &&
@@ -318,18 +330,15 @@ function ProjectOutcomesGroup({
 													))}
 											</Fragment>
 										))}
-								</ul>
-							</section>
-						))}
+									</ul>
+								</section>
+							);
+						})}
 					</div>
 					{outcomeTree.length > limit && (
-						<button
-							type="button"
-							className="self-start text-xs hover:underline"
-							onClick={() => setLimit((value) => value + 24)}
-						>
+						<Button className="self-start" onClick={() => setLimit((value) => value + 24)} size="sm" variant="ghost">
 							{t("mission.moreOutcomes")}
-						</button>
+						</Button>
 					)}
 				</div>
 			)}
@@ -337,9 +346,18 @@ function ProjectOutcomesGroup({
 	);
 }
 
-// `contributor` indents a contributing Outcome under the parent that claims
-// it. The Mission Control action sits outside the row's own button rather than
-// inside it — a button cannot nest, and the two go to different places.
+/** Board lane plate: the shell tone, radius-lg, no glow and no coloured top. */
+const laneShellClassName = "flex min-h-80 min-w-[232px] flex-1 flex-col gap-1 rounded-lg bg-shell p-1.5";
+/** List view: one surface, rows separated by hairlines. */
+const listShellClassName = "min-w-0 overflow-hidden rounded-lg hairline border-wd-hairline bg-wd-surface";
+
+// The Outcome card (Waldo OutcomeCard): eyebrow with the project and the state
+// badge, the title in the person's words, then the next move with its actor
+// named. Never agent counts or percent complete. The whole card is the press
+// target. `contributor` indents a contributing Outcome under the parent that
+// claims it. The Mission Control action sits outside the card's own button
+// rather than inside it — a button cannot nest, and the two go to different
+// places.
 function OutcomeOverviewRow({
 	attention,
 	selected,
@@ -360,99 +378,101 @@ function OutcomeOverviewRow({
 	const { t } = useTranslation();
 	const presentation = deriveOutcomeDashboardPresentation(outcome);
 	const board = useUiStore((state) => state.outcomeRunViewMode === "board");
-	// Canon lane colors (locked 2026-09-18): the status sentence carries its
-	// lane's dot color, so a card reads its state before its words. Derived
-	// from the board bucket so unrecognized lanes (e.g. unavailable) match
-	// the lane the card actually sits in.
-	const statusTone = BOARD_LANE_TONE[boardLane(attention?.lane)].text;
+	const tone = attentionTone(attention);
+	const stateLabel = attention ? t(`mission.lane.${attention.lane}`) : t(presentation.stateKey);
+	const next = attention?.reason
+		? t(`mission.reason.${attention.reason}`, { defaultValue: attention.reason })
+		: attention
+			? t(`mission.next.${attention.lane}`)
+			: t(presentation.nextActionKey);
+	const updated = formatTimeCompact(outcome.updatedAt);
+	const revisions = t("mission.revisions", {
+		contract: outcome.currentRevisionNumber,
+		plan: outcome.latestPlan?.number ?? t("mission.noPlan"),
+	});
+
+	const missionControl = onOpenMissionControl ? (
+		<button
+			aria-label={t("outcome.dashboard.missionControlAria", { title: outcome.title })}
+			data-outcome-mission-control-id={outcome.id}
+			className={cn(
+				"grid size-7 shrink-0 place-items-center rounded-full text-wd-secondary opacity-0",
+				"transition-[background-color,color,opacity] duration-fast hover:bg-wd-hover hover:text-wd-primary motion-reduce:transition-none",
+				"focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
+				"group-hover/outcome-overview-row:opacity-100 group-focus-within/outcome-overview-row:opacity-100",
+				board ? "absolute bottom-3 right-3" : "mr-2",
+			)}
+			onClick={onOpenMissionControl}
+			type="button"
+		>
+			<Network aria-hidden="true" className="size-icon-sm" />
+		</button>
+	) : null;
+
+	if (board) {
+		return (
+			<li className={cn(contributor && "pl-6")}>
+				<div
+					className={cn(
+						"group/outcome-overview-row relative rounded-lg hairline transition-[background-color,border-color] duration-fast ease-out motion-reduce:transition-none",
+						selected
+							? "border-wd-strong bg-wd-selected"
+							: "border-wd-hairline bg-wd-surface hover:bg-wd-hover active:bg-wd-pressed",
+					)}
+				>
+					<button
+						className="flex w-full min-w-0 flex-col items-start gap-2 rounded-lg p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
+						data-testid="outcomes-overview-row"
+						data-outcome-id={outcome.id}
+						aria-current={selected ? "true" : undefined}
+						onClick={onOpen}
+						type="button"
+					>
+						<span className="flex w-full min-w-0 items-center gap-2 text-xs text-wd-secondary">
+							<Flag aria-hidden="true" className="size-icon-sm shrink-0" />
+							{workspaceName ? <span className="min-w-0 truncate">{workspaceName}</span> : null}
+							<StateBadge className="ml-auto" label={stateLabel} tone={tone} />
+						</span>
+						<span className="wd-headline line-clamp-3 w-full break-words text-wd-primary">{outcome.title}</span>
+						<FactList className="w-full text-[13px] leading-[18px]" facts={[{ label: t("outcome.card.next"), value: next }]} />
+						<span className={cn("flex w-full min-w-0 items-center gap-1.5 text-wd-tertiary", onOpenMissionControl && "pr-8")}>
+							<span className="wd-data shrink-0">{updated}</span>
+							<span aria-hidden="true" className="wd-data">·</span>
+							<span className="wd-data min-w-0 truncate">{revisions}</span>
+						</span>
+					</button>
+					{missionControl}
+				</div>
+			</li>
+		);
+	}
+
 	return (
-		<li className={cn(contributor && "pl-6")}>
+		<li className={cn("hairline-b border-wd-hairline last:border-b-0", contributor && "pl-6")}>
 			<div
 				className={cn(
-					"group/outcome-overview-row flex w-full min-w-0 items-center hairline border-border bg-card transition-[background-color,transform] duration-fast ease-out motion-reduce:transition-none hover:bg-interactive-hover focus-within:bg-interactive-hover active:scale-press",
-					board ? "rounded-[18px]" : "rounded-lg",
-					selected && "ring-1 ring-ring/60",
+					"group/outcome-overview-row flex w-full min-w-0 items-center transition-colors duration-fast ease-out motion-reduce:transition-none",
+					selected ? "bg-wd-selected" : "hover:bg-wd-hover active:bg-wd-pressed",
 				)}
 			>
 				<button
-					className={cn(
-						"flex min-w-0 flex-1 items-center gap-2.5 text-left outline-hidden focus-visible:ring-2 focus-visible:ring-ring/70",
-						board ? "flex-col items-start rounded-[18px] p-[18px]" : "rounded-lg px-3.5 py-3",
-					)}
+					className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--border-focus)"
 					data-testid="outcomes-overview-row"
 					data-outcome-id={outcome.id}
 					aria-current={selected ? "true" : undefined}
 					onClick={onOpen}
 					type="button"
 				>
-					{board && workspaceName ? (
-						<span className="flex w-full items-center gap-2 text-xs text-muted-foreground">
-							<Flag aria-hidden="true" className="size-icon-sm shrink-0" />
-							<span className="min-w-0 truncate">{workspaceName}</span>
-							<span className="ml-auto shrink-0 tabular-nums">{formatTimeCompact(outcome.updatedAt)}</span>
-						</span>
-					) : null}
-					<span className={cn("flex items-center gap-2 text-xs text-muted-foreground", board && "w-full")}>
-						{board ? null : <Flag aria-hidden="true" className="size-icon-sm shrink-0" />}
-						<span className="min-w-0 truncate">
-							{t("mission.revisions", {
-								contract: outcome.currentRevisionNumber,
-								plan: outcome.latestPlan?.number ?? t("mission.noPlan"),
-							})}
-						</span>
+					<span className="flex min-w-0 flex-1 flex-col gap-1">
+						<span className="line-clamp-2 break-words text-sm font-medium text-wd-primary">{outcome.title}</span>
+						<FactList className="text-[13px] leading-[18px]" facts={[{ label: t("outcome.card.next"), value: next }]} />
 					</span>
-					<span className={cn("flex min-w-0 flex-1 flex-col gap-2 text-foreground", board ? "text-base" : "text-sm")}>
-						<span className={cn("break-words font-medium", board ? "line-clamp-2" : "line-clamp-3")}>{outcome.title}</span>
-						<span
-							className={cn(
-								"text-xs leading-relaxed",
-								board ? "order-first" : "flex items-center gap-1.5",
-								statusTone,
-							)}
-						>
-							{board ? null : (
-								<span
-									aria-hidden="true"
-									className={cn(
-										"size-1.5 shrink-0 rounded-full",
-										BOARD_LANE_TONE[boardLane(attention?.lane)].dot,
-									)}
-								/>
-							)}
-							{attention?.reason
-								? t(`mission.reason.${attention.reason}`, { defaultValue: attention.reason })
-								: attention
-									? t(`mission.next.${attention.lane}`)
-									: t(presentation.nextActionKey)}
-						</span>
+					<span className="flex shrink-0 flex-col items-end gap-1">
+						<StateBadge label={stateLabel} tone={tone} />
+						<span className="wd-data text-wd-tertiary">{updated}</span>
 					</span>
-					{board ? (
-						<span className="text-xs text-muted-foreground">
-							{attention ? t(`mission.lane.${attention.lane}`) : t(presentation.stateKey)}
-						</span>
-					) : (
-						<span className="flex shrink-0 flex-col items-end gap-0.5 text-xs text-muted-foreground">
-							<span className="tabular-nums">{formatTimeCompact(outcome.updatedAt)}</span>
-							<span>{attention ? t(`mission.lane.${attention.lane}`) : t(presentation.stateKey)}</span>
-						</span>
-					)}
 				</button>
-				{onOpenMissionControl ? (
-					<button
-						aria-label={t("outcome.dashboard.missionControlAria", { title: outcome.title })}
-						data-outcome-mission-control-id={outcome.id}
-						className={cn(
-							"mr-2 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0",
-							"transition-[background-color,color,opacity] hover:bg-interactive-hover hover:text-foreground",
-							"focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50",
-							"group-hover/outcome-overview-row:opacity-100 group-focus-within/outcome-overview-row:opacity-100",
-						)}
-						onClick={onOpenMissionControl}
-						type="button"
-					>
-						<Network aria-hidden="true" className="size-icon-sm" />
-					</button>
-				) : null}
+				{missionControl}
 			</div>
 		</li>
 	);
@@ -468,14 +488,16 @@ export function ProjectOutcomesEmptyState({
 	const { t } = useTranslation();
 	return (
 		<div
-			className="flex flex-col items-center gap-2 rounded-2xl hairline border-border bg-surface/50 px-6 py-10 text-center"
+			className="flex flex-col items-start gap-2 rounded-lg hairline border-wd-hairline bg-wd-surface p-6"
 			data-testid="outcomes-empty-project"
 		>
-			<p className="text-sm font-medium text-foreground">{t("outcome.empty.title", { project: projectName })}</p>
-			<p className="max-w-md text-xs leading-body text-muted-foreground">
+			<p className="text-base font-medium text-wd-primary">{t("outcome.empty.title", { project: projectName })}</p>
+			<p className="max-w-md text-sm leading-5 text-wd-secondary">
 				{t("outcome.empty.body", { project: projectName })}
 			</p>
-			<Button className="mt-2" onClick={onNewOutcome} size="sm" variant="primary">
+			{/* Creating the first Outcome is this screen's single purpose, so its
+			    one action may carry Spot. */}
+			<Button className="mt-2" onClick={onNewOutcome} size="sm" variant="spot">
 				<Plus aria-hidden="true" className="size-icon-sm" />
 				{t("outcome.dashboard.newOutcome")}
 			</Button>
@@ -484,7 +506,7 @@ export function ProjectOutcomesEmptyState({
 }
 
 function SkeletonBlock({ className }: { className: string }) {
-	return <div aria-hidden="true" className={cn("rounded-md bg-secondary", className)} />;
+	return <div aria-hidden="true" className={cn("rounded-xs bg-wd-inset", className)} />;
 }
 
 export function OutcomeCardSkeleton({ board }: { board: boolean }) {
@@ -492,8 +514,9 @@ export function OutcomeCardSkeleton({ board }: { board: boolean }) {
 		<div
 			aria-hidden="true"
 			className={cn(
-				"hairline border-border bg-card",
-				board ? "rounded-[18px] p-[18px]" : "rounded-lg px-3.5 py-3",
+				board
+					? "rounded-lg hairline border-wd-hairline bg-wd-surface p-4"
+					: "hairline-b border-wd-hairline px-4 py-3 last:border-b-0",
 			)}
 		>
 			<div className="flex flex-col gap-2.5">
@@ -501,12 +524,12 @@ export function OutcomeCardSkeleton({ board }: { board: boolean }) {
 					<div className="flex items-center gap-2">
 						<SkeletonBlock className="size-3 rounded-full" />
 						<SkeletonBlock className="h-2.5 w-24" />
-						<SkeletonBlock className="ml-auto h-2.5 w-8" />
+						<SkeletonBlock className="ml-auto h-4 w-14" />
 					</div>
 				) : null}
-				<SkeletonBlock className="h-2.5 w-3/4" />
-				<SkeletonBlock className="h-3.5 w-full" />
-				{board ? <SkeletonBlock className="h-3.5 w-2/3" /> : null}
+				<SkeletonBlock className="h-3.5 w-3/4" />
+				<SkeletonBlock className="h-2.5 w-full" />
+				{board ? <SkeletonBlock className="h-2.5 w-1/2" /> : null}
 			</div>
 		</div>
 	);

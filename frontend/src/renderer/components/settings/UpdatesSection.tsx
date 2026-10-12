@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, GitBranch, Info, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { aoBridge } from "../../lib/bridge";
 import { useUiStore } from "../../stores/ui-store";
@@ -176,24 +176,24 @@ export function UpdatesSection({ titleHidden }: { titleHidden?: boolean } = {}) 
 			<SettingsSection title={t("settings.updates")} sectionId="updates" titleHidden={titleHidden} grouped>
 				{featurePr != null && (
 					<div className="flex flex-col gap-2">
-						<div className="settings-row-bar h-auto min-h-(--size-settings-row) flex-wrap gap-2">
-							<Badge variant="accent">PR #{featurePr}</Badge>
-							<span className="min-w-0 flex-1 text-sm leading-5 text-settings-label">
+						<div className="settings-row-bar flex-wrap gap-2">
+							<Badge variant="neutral">PR #{featurePr}</Badge>
+							<span className="wd-body-s min-w-0 flex-1 text-wd-primary">
 								{activeBuild
 									? t("settings.updates.onFeatureBuild", { pr: featurePr })
 									: t("settings.updates.featurePinned", { pr: featurePr })}
 							</span>
-							<Button type="button" variant="outline" size="sm" onClick={() => void handleReturnToHome()}>
+							<Button type="button" variant="secondary" size="sm" onClick={() => void handleReturnToHome()}>
 								{form.channel === "nightly" ? t("settings.updates.returnToNightly") : t("settings.updates.returnToStable")}
 							</Button>
 						</div>
-					<p className="px-(--size-settings-row-padding) text-xs text-settings-muted">
+					<p className="wd-body-s px-4 pb-3 text-wd-secondary">
 						{t("settings.updates.featureTracking", { pr: featurePr })}
 					</p>
 					</div>
 				)}
 
-				<SettingsRow label={t("settings.updates.automatic")}>
+				<SettingsRow icon={RefreshCw} label={t("settings.updates.automatic")}>
 					<SettingsOptionMenu
 						aria-label={t("settings.updates.automatic")}
 						value={form.enabled ? "on" : "off"}
@@ -204,7 +204,7 @@ export function UpdatesSection({ titleHidden }: { titleHidden?: boolean } = {}) 
 				</SettingsRow>
 
 				<div className="w-full">
-					<SettingsRow label={t("settings.updates.channel")} className="rounded-none">
+					<SettingsRow icon={GitBranch} label={t("settings.updates.channel")}>
 						<SettingsOptionMenu
 							aria-label={t("settings.updates.channel")}
 							value={primaryValue}
@@ -222,8 +222,8 @@ export function UpdatesSection({ titleHidden }: { titleHidden?: boolean } = {}) 
 					)}
 
 					{primaryValue === "nightly" && form.enabled && (
-						<p className="nightly-warning px-(--size-settings-row-padding) pb-(--size-settings-row-padding) text-xs leading-row text-warning">
-							<span className="mr-2 inline-flex align-middle" aria-hidden="true">
+						<p className="nightly-warning wd-body-s flex items-start gap-2 px-4 pb-3 text-caution">
+							<span className="mt-0.5 inline-flex shrink-0" aria-hidden="true">
 								<AlertTriangle className="size-icon-sm" />
 							</span>
 							{t("settings.updates.nightlyWarning")}
@@ -232,14 +232,14 @@ export function UpdatesSection({ titleHidden }: { titleHidden?: boolean } = {}) 
 				</div>
 
 				{status.staleCheckNudge && (
-					<p className="flex items-center gap-2 px-(--size-settings-row-padding) text-xs leading-row text-warning">
+					<p className="wd-body-s flex items-center gap-2 px-4 py-3 text-caution">
 						<AlertTriangle className="size-icon-sm shrink-0" aria-hidden="true" />
 						<span>{t("settings.updates.networkStale")}</span>
 					</p>
 				)}
 
 			{save.isError && (
-				<p className="px-(--size-settings-row-padding) text-xs text-error">{save.error instanceof Error ? save.error.message : t("settings.updates.saveFailed")}</p>
+				<p role="alert" className="wd-body-s px-4 py-3 text-critical">{save.error instanceof Error ? save.error.message : t("settings.updates.saveFailed")}</p>
 			)}
 
 				<UpdateActions status={status} suppressTopBorder={primaryValue === "nightly" && form.enabled} />
@@ -268,7 +268,7 @@ function FeatureBuildsSelect({
 	const builds = buildsQuery.data ?? [];
 
 	if (!buildsQuery.isLoading && builds.length === 0) {
-		return <p className="px-3 text-xs text-settings-muted">{t("settings.updates.noFeatureReleases")}</p>;
+		return <p className="wd-body-s px-4 pb-3 text-wd-secondary">{t("settings.updates.noFeatureReleases")}</p>;
 	}
 
 	return (
@@ -306,29 +306,25 @@ function UpdateActions({ status, suppressTopBorder = false }: { status: UpdateSt
 
 	return (
 		<>
-			<SettingsRow label={t("settings.updates.checksForUpdates")} className={suppressTopBorder ? "!border-t-0" : undefined}>
+			<SettingsRow icon={Info} label={t("settings.updates.checksForUpdates")} className={suppressTopBorder ? "!border-t-0" : undefined}>
 				<div className="flex items-center gap-2">
-					<span className="text-control text-settings-muted" data-testid="app-version">
+					<span className="wd-data text-wd-secondary" data-testid="app-version">
 						{t("settings.updates.currentVersion", { version: version.data ? `v${version.data}` : "…" })}
 					</span>
 					<button
 						type="button"
 						aria-label={t("settings.updates.check")}
-						className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-settings-muted transition-colors hover:text-settings-label disabled:cursor-not-allowed disabled:opacity-50"
+						className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary disabled:cursor-not-allowed disabled:text-wd-disabled"
 						onClick={() => void aoBridge.updates.check()}
 						disabled={busy}
 					>
-						{checking ? (
-							<Loader2 className="size-icon-base animate-spin" aria-hidden="true" />
-						) : (
-							<RefreshCw className="size-icon-base" aria-hidden="true" />
-						)}
+						<RefreshCw className="size-icon-base" aria-hidden="true" />
 					</button>
 				</div>
 			</SettingsRow>
 
 			{showStatus && (
-				<div className="settings-row-bar h-auto min-h-0 flex-wrap justify-start gap-3 py-3">
+				<div className="settings-row-bar flex-wrap justify-start gap-3">
 					{status.state === "available" && (
 						<Button type="button" variant="primary" onClick={() => void aoBridge.updates.download()}>
 							{status.version ? t("settings.updates.updateTo", { version: `v${status.version}` }) : t("settings.updates.updateToLatest")}
@@ -350,10 +346,10 @@ function UpdateStatusLine({ status }: { status: UpdateStatus }) {
 	const { t } = useTranslation();
 	switch (status.state) {
 		case "checking":
-			return <span className="text-xs text-settings-muted">{t("settings.updates.checking")}</span>;
+			return <span className="wd-body-s text-wd-secondary">{t("settings.updates.checking")}</span>;
 		case "available":
 			return (
-				<span className="text-xs text-settings-muted">
+				<span className="wd-body-s text-wd-secondary">
 					{t("settings.updates.available", { version: status.version ? ` (v${status.version})` : "" })}
 				</span>
 			);
@@ -361,7 +357,7 @@ function UpdateStatusLine({ status }: { status: UpdateStatus }) {
 			const percent = Math.min(100, Math.max(0, Math.round(status.percent ?? 0)));
 			return (
 				<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-					<span className="text-xs text-settings-muted">
+					<span className="wd-body-s text-wd-secondary">
 						{t("settings.updates.downloading", { percent })}
 					</span>
 					{/*
@@ -377,10 +373,10 @@ function UpdateStatusLine({ status }: { status: UpdateStatus }) {
 						aria-valuemax={100}
 						aria-valuenow={percent}
 						aria-label={t("settings.updates.downloading", { percent })}
-						className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-border"
+						className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-wd-inset"
 					>
 						<div
-							className="block h-full w-full origin-left rounded-full bg-primary transition-transform duration-normal ease-out motion-reduce:transition-none"
+							className="block h-full w-full origin-left rounded-full bg-wd-inverse transition-transform duration-fast ease-out motion-reduce:transition-none"
 							style={{ transform: `scaleX(${Math.max(percent / 100, 0.02)})` }}
 						/>
 					</div>
@@ -388,14 +384,14 @@ function UpdateStatusLine({ status }: { status: UpdateStatus }) {
 			);
 		}
 		case "downloaded":
-			return <span className="text-xs text-success">{t("settings.updates.downloaded")}</span>;
+			return <span className="wd-body-s text-good">{t("settings.updates.downloaded")}</span>;
 		case "not-available":
-			return <span className="text-xs text-settings-muted">{t("settings.updates.latest")}</span>;
+			return <span className="wd-body-s text-wd-secondary">{t("settings.updates.latest")}</span>;
 		case "unsupported":
-			return <span className="text-xs text-settings-muted">{status.message ?? t("settings.updates.needInstalledApp")}</span>;
+			return <span className="wd-body-s text-wd-secondary">{status.message ?? t("settings.updates.needInstalledApp")}</span>;
 		case "error":
 			return (
-				<span className="text-xs text-error">
+				<span className="wd-body-s text-critical">
 				{status.netError
 					? t("settings.updates.netErrorRestartGuidance")
 					: status.message ?? t("settings.updates.updateFailed")}

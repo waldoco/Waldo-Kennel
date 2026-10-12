@@ -103,7 +103,7 @@ export function WorkShell({ projectId, outcomeId, children }: WorkShellProps) {
 			    (styles.css .waldo-launcher-reserved) that keeps the Outcomes
 			    button clear of the fixed WaldoLauncher icon sharing this corner. */}
 			<div
-				className="workspace-topbar-container flex shrink-0 items-center gap-2 border-b border-border-strong px-1 pb-2.5"
+				className="workspace-topbar-container flex shrink-0 items-center gap-2 hairline-b border-wd-hairline px-1 pb-2.5"
 				data-testid="work-shell-topbar"
 			>
 				<div className="flex shrink-0 items-center gap-1">
@@ -235,7 +235,7 @@ export function WorkShell({ projectId, outcomeId, children }: WorkShellProps) {
 				<TooltipTrigger asChild>
 					<button
 						aria-label={t("work.shell.help")}
-						className="absolute bottom-3 left-3 z-chrome grid size-8 place-items-center rounded-full border border-border bg-raised/92 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+						className="absolute bottom-3 left-3 z-chrome grid size-8 place-items-center rounded-full hairline border-wd-hairline bg-wd-raised text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none"
 						data-testid="work-shell-help"
 						onClick={() => setKeyboardShortcutsOpen(true)}
 						type="button"

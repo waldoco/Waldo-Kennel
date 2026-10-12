@@ -1,3 +1,4 @@
+import { Clock } from "lucide-react";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { CenterPanelShell } from "../CenterPanelShell";
@@ -9,9 +10,11 @@ import {
   type HomeDestination,
   type HomeFixtureState,
 } from "../../lib/home-fixture";
+import { cn } from "../../lib/utils";
 import { HomeBrief } from "./HomeBrief";
 import { HomeContextPanel } from "./HomeContextPanel";
 import { HomeDestinationView } from "./HomeDestinationView";
+import { HomeCarrying, HomeReentry, HomeTodayGlance } from "./HomeOutcomes";
 import { HomeQuickCapture } from "./HomeQuickCapture";
 import { usesWaldoUiPreview } from "../../lib/preview-mode";
 
@@ -40,22 +43,26 @@ function HomeAvailabilityStatus({ fixture }: { fixture: HomeFixtureState }) {
     },
   };
   const content = availabilityContent[fixture.availability];
+  // Missing or old facts are recoverable: caution with a clock and the words.
+  const caution =
+    fixture.availability === "partial" ||
+    fixture.availability === "stale" ||
+    fixture.availability === "offline";
   return (
     <section
       aria-label={t("home.visual.availability.label")}
-      className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 border-b border-border pb-4"
+      className="wd-caption flex flex-wrap items-baseline gap-x-2 gap-y-1"
       role="status"
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span
-          aria-hidden="true"
-          className="size-1.5 shrink-0 rounded-full bg-muted-foreground"
-        />
-        <p className="text-xs font-medium text-foreground">{content.title}</p>
-      </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        {content.description}
+      <p className={cn("inline-flex items-center gap-1.5", caution ? "text-caution" : "text-wd-secondary")}>
+        {caution ? (
+          <Clock aria-hidden="true" className="size-3.5 shrink-0" />
+        ) : (
+          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-wd-control" />
+        )}
+        {content.title}
       </p>
+      <p className="text-wd-tertiary">{content.description}</p>
     </section>
   );
 }
@@ -78,7 +85,7 @@ export function HomeShell({
   const contextHeadingRef = useRef<HTMLHeadingElement>(null);
   const showToday = destination === "today";
   const offlineToday = showToday && fixture.availability === "offline";
-  const focusContext = () => contextHeadingRef.current?.focus({ preventScroll: true });
+  const focusContext = () => contextHeadingRef.current?.focus({ preventScroll: false });
   const destinationLabel: Record<HomeDestination, string> = {
     today: t("home.visual.navigation.today"),
     chat: t("home.visual.navigation.chat"),
@@ -88,87 +95,96 @@ export function HomeShell({
     history: t("home.visual.history.title"),
   };
   const waldoContextLabel = `${t("home.visual.title")} · ${destinationLabel[destination]}`;
+  // Pages with a master/detail desk keep their two panes up to the page
+  // width; everything else is one authored column, extra width is margin.
+  const destinationWidth =
+    destination === "chat"
+      ? "max-w-none"
+      : destination === "daily_close"
+        ? "max-w-(--layout-column)"
+        : "max-w-(--layout-page)";
 
   return (
     <CenterPanelShell titlebarAlign={false}>
-      <section
-        aria-labelledby="home-heading"
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-        ref={scrollContainerRef}
-      >
-        <h1 className="sr-only" id="home-heading">{t("home.visual.title")}</h1>
+      <div className="relative flex min-h-0 flex-1">
+        <section
+          aria-labelledby="home-heading"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-wd-canvas"
+          ref={scrollContainerRef}
+        >
+          <h1 className="sr-only" id="home-heading">{t("home.visual.title")}</h1>
 
-        {offlineToday ? (
-          <div className="mx-auto w-full max-w-5xl px-5 pb-10 pt-14 sm:px-9 sm:pb-12 sm:pt-16">
-            <HomeAvailabilityStatus fixture={fixture} />
-            <section className="py-8" aria-labelledby="offline-heading">
-              <h2 className="text-lg font-semibold text-foreground" id="offline-heading">
-                {t("home.visual.offline.title")}
-              </h2>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                {t("home.visual.offline.description")}
-              </p>
-              <div className="mt-7 max-w-2xl">
+          {offlineToday ? (
+            <div className="home-today-column">
+              <div className="home-today-body">
+                <HomeAvailabilityStatus fixture={fixture} />
+                <section aria-labelledby="offline-heading" className="flex flex-col gap-2">
+                  <h2 className="wd-title text-wd-primary" id="offline-heading">
+                    {t("home.visual.offline.title")}
+                  </h2>
+                  <p className="wd-body max-w-(--layout-measure) text-wd-secondary">
+                    {t("home.visual.offline.description")}
+                  </p>
+                </section>
+              </div>
+              <div className="home-today-foot">
                 <HomeQuickCapture placeholder={fixture.presentation.capturePlaceholder} />
               </div>
-            </section>
-          </div>
-        ) : null}
+            </div>
+          ) : null}
 
-        {showToday && !offlineToday ? (
-          <div className="home-today-layout">
-            <div className="home-today-brief-pane px-5 pb-8 pt-14 sm:px-9 sm:pb-10 sm:pt-16">
-              <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
-                <HomeAvailabilityStatus fixture={fixture} />
-                <div className="mt-7">
+          {showToday && !offlineToday ? (
+            <div className="home-today-layout">
+              <div className="home-today-column">
+                <div className="home-today-body">
+                  <HomeAvailabilityStatus fixture={fixture} />
                   <HomeBrief
                     fixture={fixture}
                     onReview={focusContext}
                     reviewRef={reviewRef}
                   />
+                  <HomeContextPanel
+                    fixture={fixture}
+                    headingRef={contextHeadingRef}
+                    scrollContainerRef={scrollContainerRef}
+                  />
+                  <HomeCarrying fixture={fixture} />
+                  <HomeReentry fixture={fixture} />
                 </div>
-                <div className="mt-auto pt-10">
+                <div className="home-today-foot">
                   <HomeQuickCapture placeholder={fixture.presentation.capturePlaceholder} />
                 </div>
               </div>
+              {waldo.isOpen ? null : <HomeTodayGlance fixture={fixture} />}
             </div>
-            <aside className="home-today-catch-up-pane home-today-context-pane border-t border-border sm:min-h-[34rem]">
-              {waldo.isOpen ? (
-                <WaldoRail
-                  contextLabel={waldoContextLabel}
-                  onClose={waldo.close}
-                  previewEnabled={previewEnabled}
-                />
-              ) : (
-                <HomeContextPanel
-                  fixture={fixture}
-                  headingRef={contextHeadingRef}
-                  scrollContainerRef={scrollContainerRef}
-                />
-              )}
-            </aside>
-          </div>
-        ) : null}
+          ) : null}
 
-        {destination !== "today" ? (
-          <div className="home-destination-surface flex min-h-full flex-1 px-5 pb-10 pt-14 sm:px-9 sm:pb-12 sm:pt-16">
-            <div className="mx-auto flex w-full max-w-5xl flex-col gap-7">
-              <HomeAvailabilityStatus fixture={fixture} />
-              <p className="text-xs text-muted-foreground">{fixture.localDateLabel}</p>
+          {destination !== "today" ? (
+            <div
+              className={cn(
+                "home-destination-surface mx-auto flex w-full min-h-full flex-1 flex-col gap-6",
+                destination === "chat" ? "px-5 pb-6 pt-8 sm:px-6" : "px-6 pb-12 pt-12",
+                destinationWidth,
+              )}
+            >
+              <div className="flex flex-col gap-1">
+                <HomeAvailabilityStatus fixture={fixture} />
+                <p className="wd-caption text-wd-tertiary">{fixture.localDateLabel}</p>
+              </div>
               <HomeDestinationView destination={destination} fixture={fixture} initialRecordId={initialRecordId} previewEnabled={previewEnabled} />
             </div>
-            {waldo.isOpen ? (
-              <div className="waldo-home-layer">
-                <WaldoRail
-                  contextLabel={waldoContextLabel}
-                  onClose={waldo.close}
-                  previewEnabled={previewEnabled}
-                />
-              </div>
-            ) : null}
+          ) : null}
+        </section>
+        {waldo.isOpen ? (
+          <div className="waldo-home-layer">
+            <WaldoRail
+              contextLabel={waldoContextLabel}
+              onClose={waldo.close}
+              previewEnabled={previewEnabled}
+            />
           </div>
         ) : null}
-      </section>
+      </div>
     </CenterPanelShell>
   );
 }

@@ -131,7 +131,7 @@ function TitlebarButton({
 		<button
 			aria-label={label}
 			aria-disabled={disabled || undefined}
-			className="grid size-control-md place-items-center rounded-md text-passive transition-colors hover:bg-interactive-hover hover:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent disabled:hover:text-passive"
+			className="grid size-control-md place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary active:bg-wd-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) disabled:cursor-not-allowed disabled:text-wd-disabled disabled:hover:bg-transparent disabled:hover:text-wd-disabled"
 			disabled={disabled}
 			onClick={onClick}
 			onPointerEnter={onPointerEnter}

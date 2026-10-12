@@ -147,7 +147,7 @@ export function IntakeContractReview({
 	}
 
 	return (
-		<div className="flex min-w-0 flex-col gap-2" data-testid="intake-contract-review">
+		<div className="flex min-w-0 flex-col gap-3" data-testid="intake-contract-review">
 			<Block title={t("outcome.intake.section.identity")}>
 				<EditorField
 					label={t("outcome.intake.titleField")}
@@ -168,9 +168,9 @@ export function IntakeContractReview({
 			<Block hint={t("outcome.intake.section.criteriaHint")} title={t("outcome.intake.section.criteria")}>
 				<div className="flex flex-col gap-2">
 					{draft.criteria.map((criterion, index) => (
-						<div className="rounded-md hairline border-border bg-background/40 p-3" key={criterion.id ?? index}>
+						<div className="rounded-md hairline border-wd-hairline p-3" key={criterion.id ?? index}>
 							<div className="flex items-start justify-between gap-2">
-								<span className="text-2xs text-passive">
+								<span className="text-xs tabular-nums text-wd-tertiary">
 									{t("outcome.intake.criterionIndex", { index: index + 1 })}
 								</span>
 								<Button
@@ -205,7 +205,7 @@ export function IntakeContractReview({
 					onClick={() => patch({ criteria: [...draft.criteria, { text: "", evidenceExpected: [""] }] })}
 					size="sm"
 					type="button"
-					variant="outline"
+					variant="secondary"
 				>
 					<Plus aria-hidden="true" className="size-3.5" />
 					{t("outcome.intake.addCriterion")}
@@ -248,7 +248,7 @@ export function IntakeContractReview({
 			<Block hint={t("outcome.intake.section.facetsHint")} title={t("outcome.intake.section.facets")}>
 				<div className="flex flex-col gap-2">
 					{draft.facets.map((facet, index) => (
-						<div className="rounded-md hairline border-border bg-background/40 p-3" key={index}>
+						<div className="rounded-md hairline border-wd-hairline p-3" key={index}>
 							<div className="flex items-start justify-between gap-2">
 								<FacetKindField onChange={(kind) => patchFacet(index, { kind })} value={facet.kind ?? "software"} />
 								<Button
@@ -281,7 +281,7 @@ export function IntakeContractReview({
 					onClick={() => patch({ facets: [...draft.facets, { kind: "software", summary: "" }] })}
 					size="sm"
 					type="button"
-					variant="outline"
+					variant="secondary"
 				>
 					<Plus aria-hidden="true" className="size-3.5" />
 					{t("outcome.intake.addFacet")}
@@ -300,7 +300,7 @@ export function IntakeContractReview({
 			    on the way to this proposal. Rewriting them would rewrite history. */}
 			{draft.clarificationNotes && draft.clarificationNotes.length > 0 ? (
 				<Block title={t("outcome.intake.section.clarifications")}>
-					<ul className="flex list-disc flex-col gap-1 pl-4 text-xs leading-body text-muted-foreground">
+					<ul className="flex list-disc flex-col gap-1 pl-4 text-sm leading-body text-wd-secondary">
 						{draft.clarificationNotes.map((note, index) => (
 							<li key={index}>{note}</li>
 						))}
@@ -316,7 +316,7 @@ export function IntakeProposalSummary({ draft }: { draft: ProposalInput }) {
 	const { t } = useTranslation();
 	const lines = (values: string[]) =>
 		values.length ? (
-			<ul className="list-disc space-y-1 pl-4 text-sm">
+			<ul className="list-disc space-y-1 pl-4 text-sm text-wd-primary">
 				{values.map((value, index) => (
 					<li className="whitespace-pre-wrap break-words" key={index}>
 						{value}
@@ -324,25 +324,25 @@ export function IntakeProposalSummary({ draft }: { draft: ProposalInput }) {
 				))}
 			</ul>
 		) : (
-			<p className="text-sm text-muted-foreground">{t("mission.none")}</p>
+			<p className="text-sm text-wd-tertiary">{t("mission.none")}</p>
 		);
 	return (
-		<div className="flex flex-col gap-2" data-testid="intake-proposal-summary">
+		<div className="flex flex-col gap-3" data-testid="intake-proposal-summary">
 			<Block title={t("outcome.intake.section.identity")}>
-				<h2 className="text-base font-medium">{draft.title}</h2>
-				<p className="mt-2 whitespace-pre-wrap text-sm">{draft.desiredState}</p>
+				<h2 className="wd-display-4 text-wd-primary">{draft.title}</h2>
+				<p className="mt-2 whitespace-pre-wrap text-sm leading-body text-wd-primary">{draft.desiredState}</p>
 			</Block>
 			<Block title={t("outcome.intake.section.criteria")}>
 				{draft.criteria.map((criterion, index) => (
 					<div key={criterion.id ?? index} className="mb-3">
-						<p className="text-sm font-medium">{criterion.text}</p>
-						<p className="mt-1 text-xs text-muted-foreground">{t("outcome.intake.evidenceExpected")}</p>
+						<p className="text-sm font-medium text-wd-primary">{criterion.text}</p>
+						<p className="mt-1 text-xs text-wd-secondary">{t("outcome.intake.evidenceExpected")}</p>
 						{lines(criterion.evidenceExpected)}
 					</div>
 				))}
 			</Block>
 			<Block title={t("outcome.intake.section.review")}>
-				<p className="whitespace-pre-wrap text-sm">{draft.reviewMethod}</p>
+				<p className="whitespace-pre-wrap text-sm text-wd-primary">{draft.reviewMethod}</p>
 			</Block>
 			{(
 				[
@@ -358,7 +358,7 @@ export function IntakeProposalSummary({ draft }: { draft: ProposalInput }) {
 			))}
 			<Block title={t("outcome.intake.section.facets")}>
 				{draft.facets.map((facet, index) => (
-					<div key={index} className="mb-2 text-sm">
+					<div key={index} className="mb-2 text-sm text-wd-primary">
 						<p>
 							{facet.kind} · {facet.summary}
 						</p>
@@ -367,7 +367,7 @@ export function IntakeProposalSummary({ draft }: { draft: ProposalInput }) {
 				))}
 			</Block>
 			<Block title={t("outcome.intake.section.temporal")}>
-				<p className="text-sm">{draft.temporalCondition || t("mission.none")}</p>
+				<p className={cn("text-sm", draft.temporalCondition ? "text-wd-primary" : "text-wd-tertiary")}>{draft.temporalCondition || t("mission.none")}</p>
 			</Block>
 		</div>
 	);
@@ -389,17 +389,17 @@ export function IntakeAuthorityEditor({
 }) {
 	const { t } = useTranslation();
 	return (
-		<div className="flex flex-col gap-2" data-testid="intake-authority-editor">
+		<div className="flex flex-col" data-testid="intake-authority-editor">
 			{AUTHORITY_KEYS.map((key) => (
-				<label className="flex items-center justify-between gap-3 text-xs" key={key}>
-					<span className={cn(value[key] ? "text-foreground" : "text-muted-foreground")}>
+				<label className="flex min-h-9 items-center justify-between gap-3 hairline-b border-wd-hairline py-1.5 text-sm last:border-b-0" key={key}>
+					<span className={cn(value[key] ? "text-wd-primary" : "text-wd-secondary")}>
 						{t(AUTHORITY_LABEL_KEYS[key] as never)}
 					</span>
 					{readOnly ? (
-						<span className="text-xs">{t(value[key] ? "mission.allowed" : "mission.denied")}</span>
+						<span className="text-xs text-wd-secondary">{t(value[key] ? "mission.allowed" : "mission.denied")}</span>
 					) : (
 						<span className="flex items-center gap-2">
-						<span>{t(value[key] ? "mission.allowed" : "mission.denied")}</span>
+						<span className="text-xs text-wd-secondary">{t(value[key] ? "mission.allowed" : "mission.denied")}</span>
 						<Switch
 							aria-label={t(AUTHORITY_LABEL_KEYS[key] as never)}
 							checked={value[key]}
@@ -414,12 +414,17 @@ export function IntakeAuthorityEditor({
 	);
 }
 
+/** TextField contract: inset fill, radius-md, no heavy border, the system
+ *  focus ring. */
+const FIELD_CLASS =
+	"rounded-md border border-transparent bg-wd-inset px-3 py-2 text-sm font-normal text-wd-primary outline-none placeholder:text-wd-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)";
+
 function Block({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
 	return (
-		<section className="flex flex-col rounded-lg hairline border-border bg-card px-4 py-3">
-			<h3 className="text-xs font-medium text-foreground">{title}</h3>
-			{hint ? <p className="mt-0.5 text-2xs leading-body text-passive">{hint}</p> : null}
-			<div className="mt-2 flex flex-col">{children}</div>
+		<section className="flex flex-col rounded-lg hairline border-wd-hairline bg-wd-surface p-4">
+			<h3 className="text-sm font-medium text-wd-primary">{title}</h3>
+			{hint ? <p className="mt-0.5 text-xs leading-body text-wd-secondary">{hint}</p> : null}
+			<div className="mt-3 flex flex-col">{children}</div>
 		</section>
 	);
 }
@@ -437,12 +442,12 @@ function EditorField({
 }) {
 	const id = useId();
 	return (
-		<label className="mt-2 flex flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor={id}>
+		<label className="mt-2 flex flex-col gap-1.5 text-xs text-wd-secondary" htmlFor={id}>
 			{label}
 			{multiline ? (
 				<textarea
 					aria-label={label}
-					className="min-h-16 rounded-md hairline border-border bg-background px-2.5 py-2 font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+					className={cn(FIELD_CLASS, "min-h-20")}
 					id={id}
 					onChange={(event) => onChange(event.target.value)}
 					value={value}
@@ -450,7 +455,7 @@ function EditorField({
 			) : (
 				<input
 					aria-label={label}
-					className="rounded-md hairline border-border bg-background px-2.5 py-1.5 font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+					className={FIELD_CLASS}
 					id={id}
 					onChange={(event) => onChange(event.target.value)}
 					value={value}
@@ -481,13 +486,13 @@ function StringList({
 	const { t } = useTranslation();
 	return (
 		<fieldset className="mt-2 flex flex-col gap-1">
-			<legend className="text-xs font-medium text-muted-foreground">{label}</legend>
-			{values.length === 0 ? <p className="text-2xs text-passive">{t("outcome.intake.listEmpty")}</p> : null}
+			<legend className="text-xs text-wd-secondary">{label}</legend>
+			{values.length === 0 ? <p className="text-xs text-wd-tertiary">{t("outcome.intake.listEmpty")}</p> : null}
 			{values.map((entry, index) => (
 				<div className="flex items-center gap-1" key={index}>
 					<input
 						aria-label={`${label} ${index + 1}`}
-						className="min-w-0 flex-1 rounded-md hairline border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+						className={cn(FIELD_CLASS, "min-w-0 flex-1")}
 						onChange={(event) => onChange(values.map((line, i) => (i === index ? event.target.value : line)))}
 						value={entry}
 					/>
@@ -514,11 +519,11 @@ function FacetKindField({ value, onChange }: { value: FacetKind; onChange: (kind
 	const { t } = useTranslation();
 	const id = useId();
 	return (
-		<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground" htmlFor={id}>
+		<label className="flex items-center gap-2 text-xs text-wd-secondary" htmlFor={id}>
 			{t("outcome.intake.facetKind")}
 			<select
 				aria-label={t("outcome.intake.facetKind")}
-				className="rounded-md hairline border-border bg-background px-2 py-1 font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+				className={cn(FIELD_CLASS, "py-1.5")}
 				id={id}
 				onChange={(event) => onChange(event.target.value as FacetKind)}
 				value={value}

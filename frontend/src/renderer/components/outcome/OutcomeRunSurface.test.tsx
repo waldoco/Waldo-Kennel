@@ -622,9 +622,9 @@ describe("Mission List/Graph switch", () => {
 	});
 
 	it("carries the active affordance on the selected segment in both readings", async () => {
-		// The white/dark pill must sit on the segment whose view is rendered.
+		// The ink thumb must sit on the segment whose view is rendered.
 		// Inverted affordances read as the other view being active (owner catch).
-		const activeClasses = ["hairline", "border-border", "bg-card", "font-medium", "text-foreground"];
+		const activeClasses = ["bg-wd-inverse", "text-wd-on-inverse"];
 		mockApprovedRun();
 		renderSurface();
 
@@ -636,8 +636,8 @@ describe("Mission List/Graph switch", () => {
 			expect(tokens(listSegment)).toContain(cls);
 			expect(tokens(graphSegment)).not.toContain(cls);
 		}
-		expect(tokens(listSegment)).not.toContain("text-passive");
-		expect(tokens(graphSegment)).toContain("text-passive");
+		expect(tokens(listSegment)).not.toContain("text-wd-secondary");
+		expect(tokens(graphSegment)).toContain("text-wd-secondary");
 
 		fireEvent.click(screen.getByTestId("mission-view-graph"));
 		expect(await screen.findByTestId("mission-canvas")).toBeInTheDocument();
@@ -645,8 +645,8 @@ describe("Mission List/Graph switch", () => {
 			expect(tokens(graphSegment)).toContain(cls);
 			expect(tokens(listSegment)).not.toContain(cls);
 		}
-		expect(tokens(graphSegment)).not.toContain("text-passive");
-		expect(tokens(listSegment)).toContain("text-passive");
+		expect(tokens(graphSegment)).not.toContain("text-wd-secondary");
+		expect(tokens(listSegment)).toContain("text-wd-secondary");
 	});
 
 	it("opens on the remembered Graph reading when a preference is stored", async () => {

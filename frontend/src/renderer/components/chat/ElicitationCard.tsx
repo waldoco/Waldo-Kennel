@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { ExternalLink, HelpCircle, Loader2 } from "lucide-react";
+import { ExternalLink, HelpCircle } from "lucide-react";
 import { aoBridge } from "../../lib/bridge";
 import { cn } from "../../lib/utils";
 import type { ConversationActivity } from "../../types/conversation";
@@ -41,22 +41,23 @@ export function ElicitationCard({
 	return (
 		<section
 			aria-label="Agent question"
-			className="overflow-hidden rounded-xl border border-logo-accent/25 bg-logo-accent/[0.035]"
+			className="overflow-hidden rounded-lg hairline border-wd-hairline bg-wd-surface"
 		>
-			<div className="flex items-start gap-3 px-4 py-3.5">
-				<div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-logo-accent/10 text-logo-accent">
+			<div className="flex items-start gap-3 px-4 py-4">
+				<div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-sm bg-wd-inset text-wd-secondary">
 					<HelpCircle aria-hidden="true" className="size-4" />
 				</div>
 				<div className="min-w-0 flex-1">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-logo-accent">
+					<p className="flex items-center gap-1.5 text-xs font-medium text-wd-secondary">
+						{pending ? <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-spot" /> : null}
 						Agent needs your input
 					</p>
-					<h3 className="mt-1 text-sm font-medium leading-relaxed text-foreground">
+					<h3 className="mt-1 text-sm font-medium leading-relaxed text-wd-primary">
 						{activity.detail?.message || activity.summary}
 					</h3>
 				</div>
 				{!pending ? (
-					<span className="mt-1 text-[11px] font-medium text-muted-foreground">
+					<span className="mt-1 text-[11px] font-medium text-wd-secondary">
 						{activity.status === "failed" ? "Expired" : "Answered"}
 					</span>
 				) : null}
@@ -69,7 +70,7 @@ export function ElicitationCard({
 			) : null}
 
 			{error ? (
-				<p role="alert" className="border-t border-destructive/20 px-4 py-2 text-xs text-destructive">
+				<p role="alert" className="hairline-t border-wd-hairline px-4 py-2 text-xs text-critical">
 					{error}
 				</p>
 			) : null}
@@ -108,20 +109,20 @@ function URLRequest({
 	}
 
 	return (
-		<div className="border-t border-logo-accent/15 px-4 py-3">
+		<div className="hairline-t border-wd-hairline px-4 py-3">
 			{parsed ? (
-				<div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-					<p className="text-[11px] font-medium text-foreground">{parsed.hostname}</p>
-					<p className="mt-0.5 break-all font-mono text-[10px] leading-relaxed text-muted-foreground">
+				<div className="rounded-md bg-wd-inset px-3 py-2.5">
+					<p className="text-[11px] font-medium text-wd-primary">{parsed.hostname}</p>
+					<p className="mt-0.5 break-all text-[11px] leading-relaxed text-wd-secondary">
 						{parsed.href}
 					</p>
 				</div>
 			) : (
-				<p role="alert" className="text-xs text-destructive">
+				<p role="alert" className="text-xs text-critical">
 					The provider supplied an unsafe or invalid URL. It was not opened.
 				</p>
 			)}
-			{openError ? <p role="alert" className="mt-2 text-xs text-destructive">{openError}</p> : null}
+			{openError ? <p role="alert" className="mt-2 text-xs text-critical">{openError}</p> : null}
 			<div className="mt-3 flex items-center justify-end gap-2">
 				<Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => onResolve("cancel")}>
 					Cancel
@@ -130,7 +131,7 @@ function URLRequest({
 					Decline
 				</Button>
 				<Button type="button" size="sm" disabled={disabled || !parsed} onClick={() => void consent()} className="gap-1.5">
-					{opening ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : <ExternalLink aria-hidden="true" className="size-3.5" />}
+					<ExternalLink aria-hidden="true" className="size-3.5" />
 					Open {parsed?.hostname ?? "link"}
 				</Button>
 			</div>
@@ -166,9 +167,9 @@ function FormRequest({
 	}
 
 	return (
-		<form onSubmit={submit} className="border-t border-logo-accent/15 px-4 pb-3.5 pt-3">
+		<form onSubmit={submit} className="hairline-t border-wd-hairline px-4 pb-4 pt-3">
 			{schema?.description ? (
-				<p className="mb-3 text-xs leading-relaxed text-muted-foreground">{schema.description}</p>
+				<p className="mb-3 text-xs leading-relaxed text-wd-secondary">{schema.description}</p>
 			) : null}
 			<div className="flex flex-col gap-3">
 				{properties.map(([name, property]) => (
@@ -201,8 +202,8 @@ function FormRequest({
 						Skip
 					</Button>
 				</div>
-				<Button type="submit" size="sm" disabled={disabled} className="min-w-20">
-					{disabled ? <Loader2 aria-label="Sending answer" className="size-3.5 animate-spin" /> : "Continue"}
+				<Button type="submit" size="sm" variant="primary" disabled={disabled} className="min-w-20">
+					{disabled ? "Sending answer" : "Send answer"}
 				</Button>
 			</div>
 		</form>
@@ -242,32 +243,32 @@ function FormField({
 				aria-invalid={invalid || undefined}
 				aria-describedby={invalid ? errorId : undefined}
 			>
-				<legend className="text-xs font-medium text-foreground">{label}{required ? " *" : ""}</legend>
-				{description ? <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{description}</p> : null}
+				<legend className="text-xs font-medium text-wd-primary">{label}{required ? " *" : ""}</legend>
+				{description ? <p className="mt-0.5 text-[11px] leading-relaxed text-wd-secondary">{description}</p> : null}
 				<div className="mt-2 grid gap-1.5">
 					{options.map((option) => {
 						const checked = multi
 							? Array.isArray(value) && value.includes(option.value)
 							: value === option.value;
 						return (
-							<label key={option.value} className={cn("flex cursor-pointer gap-2 rounded-lg border px-3 py-2 transition-colors", checked ? "border-logo-accent/45 bg-logo-accent/[0.06]" : "border-border bg-background/50 hover:bg-interactive-hover") }>
+							<label key={option.value} className={cn("flex cursor-pointer gap-2 rounded-md hairline px-3 py-2 transition-colors duration-fast", checked ? "border-wd-strong bg-wd-selected" : "border-wd-hairline bg-wd-surface hover:bg-wd-hover") }>
 								<input
 									type={multi ? "checkbox" : "radio"}
 									name={name}
 									value={option.value}
 									checked={checked}
 									onChange={() => onChange(multi ? toggleValue(Array.isArray(value) ? value : [], option.value) : option.value)}
-									className="mt-0.5 accent-[var(--logo-accent)]"
+									className="mt-0.5 accent-(--bg-inverse)"
 								/>
 								<span className="min-w-0">
-									<span className="block text-xs text-foreground">{option.label}</span>
-									{option.description ? <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{option.description}</span> : null}
+									<span className="block text-xs text-wd-primary">{option.label}</span>
+									{option.description ? <span className="mt-0.5 block text-[11px] leading-relaxed text-wd-secondary">{option.description}</span> : null}
 								</span>
 							</label>
 						);
 					})}
 				</div>
-				{invalid ? <p id={errorId} className="mt-1 text-[11px] text-destructive">Choose an answer.</p> : null}
+				{invalid ? <p id={errorId} className="mt-1 text-[11px] text-critical">Choose an answer.</p> : null}
 			</fieldset>
 		);
 	}
@@ -275,7 +276,7 @@ function FormField({
 	if (property.type === "boolean") {
 		return (
 			<div>
-				<label className="flex items-start gap-2 text-xs text-foreground">
+				<label className="flex items-start gap-2 text-xs text-wd-primary">
 					<input
 						type="checkbox"
 						checked={value === true}
@@ -284,11 +285,11 @@ function FormField({
 						aria-invalid={invalid || undefined}
 						aria-describedby={invalid ? errorId : undefined}
 						onChange={(event) => onChange(event.target.checked)}
-						className="mt-0.5 accent-[var(--logo-accent)]"
+						className="mt-0.5 accent-(--bg-inverse)"
 					/>
-					<span><span className="font-medium">{label}</span>{description ? <span className="mt-0.5 block text-[11px] text-muted-foreground">{description}</span> : null}</span>
+					<span><span className="font-medium">{label}</span>{description ? <span className="mt-0.5 block text-[11px] text-wd-secondary">{description}</span> : null}</span>
 				</label>
-				{invalid ? <p id={errorId} className="mt-1 text-[11px] text-destructive">Choose yes or no.</p> : null}
+				{invalid ? <p id={errorId} className="mt-1 text-[11px] text-critical">Choose yes or no.</p> : null}
 			</div>
 		);
 	}
@@ -296,8 +297,8 @@ function FormField({
 	const numeric = property.type === "number" || property.type === "integer";
 	return (
 		<label htmlFor={id} className="block">
-			<span className="text-xs font-medium text-foreground">{label}{required ? " *" : ""}</span>
-			{description ? <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{description}</span> : null}
+			<span className="text-xs font-medium text-wd-primary">{label}{required ? " *" : ""}</span>
+			{description ? <span className="mt-0.5 block text-[11px] leading-relaxed text-wd-secondary">{description}</span> : null}
 			<input
 				id={id}
 				type={numeric ? "number" : "text"}
@@ -312,9 +313,9 @@ function FormField({
 				aria-invalid={invalid || undefined}
 				aria-describedby={invalid ? errorId : undefined}
 				onChange={(event) => onChange(numeric && event.target.value !== "" ? Number(event.target.value) : event.target.value)}
-				className={cn("mt-1.5 h-9 w-full rounded-lg border bg-background px-3 text-xs text-foreground outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-logo-accent/40", invalid ? "border-destructive" : "border-border")}
+				className={cn("mt-1.5 h-9 w-full rounded-full hairline bg-wd-inset px-3 text-xs text-wd-primary", invalid ? "border-critical" : "border-wd-hairline")}
 			/>
-			{invalid ? <span id={errorId} className="mt-1 block text-[11px] text-destructive">This field is required.</span> : null}
+			{invalid ? <span id={errorId} className="mt-1 block text-[11px] text-critical">This field is required.</span> : null}
 		</label>
 	);
 }

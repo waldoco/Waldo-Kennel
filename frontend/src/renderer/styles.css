@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../styles/waldo.css";
 @import "../styles/tokens.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
@@ -28,6 +29,40 @@
 @theme inline {
 	--font-sans: var(--font-family-base);
 	--font-mono: var(--font-family-mono);
+	--font-display: var(--font-display);
+
+	/* Waldo semantic colours as utilities: bg-wd-canvas, text-wd-secondary,
+	   bg-spot, text-on-spot, text-good, bg-caution-bg… */
+	--color-wd-canvas: var(--bg-canvas);
+	--color-wd-surface: var(--bg-surface);
+	--color-wd-raised: var(--bg-raised);
+	--color-wd-inset: var(--bg-inset);
+	--color-wd-hover: var(--bg-hover);
+	--color-wd-selected: var(--bg-selected);
+	--color-wd-pressed: var(--bg-pressed);
+	--color-wd-inverse: var(--bg-inverse);
+	--color-wd-primary: var(--text-primary);
+	--color-wd-secondary: var(--text-secondary);
+	--color-wd-tertiary: var(--text-tertiary);
+	--color-wd-disabled: var(--text-disabled);
+	--color-wd-on-inverse: var(--text-inverse);
+	--color-wd-hairline: var(--border-hairline);
+	--color-wd-strong: var(--border-strong);
+	--color-wd-control: var(--border-control);
+	--color-wd-focus: var(--border-focus);
+	--color-wd-accent: var(--wd-accent);
+	--color-spot: var(--spot);
+	--color-spot-pressed: var(--spot-pressed);
+	--color-on-spot: var(--on-spot);
+	--color-spot-text: var(--spot-text);
+	--color-spot-subtle: var(--spot-subtle);
+	--color-good: var(--good);
+	--color-good-bg: var(--good-bg);
+	--color-caution: var(--caution);
+	--color-caution-bg: var(--caution-bg);
+	--color-critical: var(--critical);
+	--color-critical-bg: var(--critical-bg);
+	--radius-xl: var(--wd-radius-xl);
 
 	/* Typography — align Tailwind text-* with token scale */
 	--text-xs: var(--font-size-sm);
@@ -309,27 +344,27 @@
 	--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
 	--animate-status-pulse: status-pulse 1.8s var(--ease-in-out) infinite;
-	--animate-overlay-in: overlay-in 80ms var(--ease-out);
-	--animate-modal-in: modal-in 120ms var(--ease-out);
-	--animate-popover-in: popover-in 150ms var(--ease-out);
-	/* A tooltip is smaller and cheaper than a popover, so it gets there sooner. */
-	--animate-tooltip-in: popover-in 125ms var(--ease-out);
-	/* Exits are shorter than entries: the system is responding, not deciding. */
-	--animate-overlay-out: overlay-out 60ms var(--ease-in);
-	--animate-modal-out: modal-out 70ms var(--ease-in);
-	--animate-popover-out: popover-out 100ms var(--ease-in);
-	--animate-tooltip-out: popover-out 90ms var(--ease-in);
+	/* Waldo overlay motion: enter on --duration-base (240ms) with ease-enter,
+	   exit a fifth shorter with ease-exit. Overlays fade; nothing zooms or
+	   bounces. Tooltips share the curve but start sooner. */
+	--animate-overlay-in: overlay-in var(--duration-base) var(--ease-enter);
+	--animate-modal-in: modal-in var(--duration-base) var(--ease-enter);
+	--animate-popover-in: popover-in var(--duration-base) var(--ease-enter);
+	--animate-tooltip-in: popover-in var(--duration-fast) var(--ease-enter);
+	--animate-overlay-out: overlay-out calc(var(--duration-base) * 0.8) var(--ease-exit);
+	--animate-modal-out: modal-out calc(var(--duration-base) * 0.8) var(--ease-exit);
+	--animate-popover-out: popover-out calc(var(--duration-base) * 0.8) var(--ease-exit);
+	--animate-tooltip-out: popover-out var(--duration-instant) var(--ease-exit);
 
-	/* Sheets travel a full edge, so they run on the slow token and the drawer
-	   curve rather than the modal's scale timing. */
-	--animate-sheet-in-right: sheet-in-right var(--duration-slow) var(--ease-drawer);
-	--animate-sheet-out-right: sheet-out-right var(--duration-normal) var(--ease-in);
-	--animate-sheet-in-left: sheet-in-left var(--duration-slow) var(--ease-drawer);
-	--animate-sheet-out-left: sheet-out-left var(--duration-normal) var(--ease-in);
-	--animate-sheet-in-top: sheet-in-top var(--duration-slow) var(--ease-drawer);
-	--animate-sheet-out-top: sheet-out-top var(--duration-normal) var(--ease-in);
-	--animate-sheet-in-bottom: sheet-in-bottom var(--duration-slow) var(--ease-drawer);
-	--animate-sheet-out-bottom: sheet-out-bottom var(--duration-normal) var(--ease-in);
+	/* Sheets travel an edge on the same enter/exit curves, no overshoot. */
+	--animate-sheet-in-right: sheet-in-right var(--duration-base) var(--ease-enter);
+	--animate-sheet-out-right: sheet-out-right calc(var(--duration-base) * 0.8) var(--ease-exit);
+	--animate-sheet-in-left: sheet-in-left var(--duration-base) var(--ease-enter);
+	--animate-sheet-out-left: sheet-out-left calc(var(--duration-base) * 0.8) var(--ease-exit);
+	--animate-sheet-in-top: sheet-in-top var(--duration-base) var(--ease-enter);
+	--animate-sheet-out-top: sheet-out-top calc(var(--duration-base) * 0.8) var(--ease-exit);
+	--animate-sheet-in-bottom: sheet-in-bottom var(--duration-base) var(--ease-enter);
+	--animate-sheet-out-bottom: sheet-out-bottom calc(var(--duration-base) * 0.8) var(--ease-exit);
 }
 
 /*
@@ -348,20 +383,18 @@
 	transition-duration: var(--duration-slow);
 }
 
-/* Full-viewport modal/sheet scrim — dim + blur everything behind pop panels. */
+/* Full-viewport modal/sheet scrim — Waldo bg-scrim, no blur on the content. */
 @utility dialog-overlay {
 	position: fixed;
 	inset: 0;
 	z-index: var(--z-overlay);
 	background-color: var(--color-scrim);
-	-webkit-backdrop-filter: blur(var(--blur-overlay));
-	backdrop-filter: blur(var(--blur-overlay));
 }
 
+/* Opaque terminal plate under the agent-switch card: retained frames must not
+   show through, and Waldo keeps blur off content. */
 @utility agent-switch-terminal-scrim {
-	background-color: color-mix(in srgb, var(--color-terminal) 95%, transparent);
-	-webkit-backdrop-filter: blur(3px);
-	backdrop-filter: blur(3px);
+	background-color: var(--color-terminal-opaque);
 }
 
 @utility w-daemon-failure-toast {
@@ -430,9 +463,10 @@
 		0 0 8px var(--color-working);
 }
 
+/* An ended session reads as closed: canvas tone with its hairline, no tint. */
 @utility session-card-terminated {
-	border-color: color-mix(in srgb, var(--color-status-terminated) 32%, var(--color-border));
-	background-color: color-mix(in srgb, var(--color-status-terminated) 7%, var(--color-bg-primary));
+	border-color: var(--border-hairline);
+	background-color: var(--bg-canvas);
 }
 
 @utility bg-surface-faint {
@@ -469,10 +503,10 @@
 	border-bottom-style: solid;
 }
 
-/* Board column plate: solid at the header, gone by the foot, so a short
-   column does not draw a box around empty space. */
+/* Board column plate: a flat shell-tone plate (Waldo: no glow gradients).
+   Board lanes now use `rounded-lg bg-shell` directly; kept for any caller. */
 @utility column-shell {
-	background-image: linear-gradient(to bottom, var(--color-bg-shell) 0%, transparent 100%);
+	background-color: var(--color-bg-shell);
 }
 
 /* Horizontal fade used to truncate a list-row cell into the row plate
@@ -524,7 +558,7 @@
 	height: 100%;
 	min-height: 0;
 	width: 100%;
-	background-color: var(--color-bg-sidebar);
+	background-color: var(--bg-canvas);
 	padding-top: var(--size-center-panel-inset);
 	padding-right: var(--size-center-panel-inline-inset);
 	padding-bottom: var(--size-center-panel-bottom-inset);
@@ -542,46 +576,66 @@
 	flex-direction: column;
 	overflow: hidden;
 	border-radius: var(--radius-center-panel);
-	border: 1px solid var(--color-border-strong);
-	background-color: var(--color-bg-primary);
+	/* Waldo: the framed work surface is drawn with a hairline, never a heavy rule. */
+	border: var(--stroke-hairline) solid var(--border-hairline);
+	background-color: var(--bg-canvas);
 	transition:
 		border-color 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
 		border-radius 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-/* Personal Home / Today: an editorial brief and a decision workspace share one
- * continuous surface. The cool field gives the brief identity without turning
- * the page into a stack of cards; the right pane stays on the neutral app ramp. */
+/* Personal Home / Today (Waldo ScreenKennelHome): one authored column at
+ * --layout-column, centred; extra width becomes margin, not more cards. The
+ * Composer sits at the column's foot. From 1024px a quiet inspector
+ * (--layout-inspector) sits beside the column; below it, it drops under. */
 .home-today-layout {
-	position: relative;
+	display: grid;
+	flex: 1 0 auto;
+	grid-template-columns: minmax(0, 1fr);
+	min-height: 100%;
+}
+
+.home-today-column {
 	display: flex;
-	min-height: 0;
-	flex: 1 1 0%;
+	flex: 1 0 auto;
 	flex-direction: column;
+	min-width: 0;
 }
 
-.home-today-context-pane:has(.waldo-rail) {
+.home-today-body {
 	display: flex;
-	min-height: 0;
+	flex: 1 0 auto;
+	flex-direction: column;
+	gap: var(--wd-space-8);
+	box-sizing: border-box;
+	width: 100%;
+	max-width: var(--layout-column);
+	margin: 0 auto;
+	padding: var(--wd-space-12) var(--wd-space-6) var(--wd-space-6);
 }
 
-.home-today-brief-pane {
-	background-color: color-mix(in oklch, var(--color-bg-primary) 91%, var(--color-status-working));
-	background-image: radial-gradient(
-		circle at 18% 8%,
-		color-mix(in oklch, var(--color-status-working) 14%, transparent),
-		transparent 54%
-	);
+.home-today-foot {
+	position: sticky;
+	bottom: 0;
+	z-index: 1;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: var(--layout-column);
+	margin: 0 auto;
+	padding: var(--wd-space-2) var(--wd-space-6) var(--wd-space-4);
+	background: var(--bg-canvas);
+}
+
+.home-today-inspector {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: var(--layout-column);
+	margin: 0 auto;
+	padding: 0 var(--wd-space-6) var(--wd-space-8);
 }
 
 .home-destination-surface {
 	position: relative;
-	background-color: color-mix(in oklch, var(--color-bg-primary) 94%, var(--color-status-working));
-	background-image: radial-gradient(
-		circle at 16% 4%,
-		color-mix(in oklch, var(--color-status-working) 9%, transparent),
-		transparent 48%
-	);
 }
 
 .home-chat-workspace {
@@ -611,15 +665,15 @@
 	min-width: 0;
 	min-height: 0;
 	overflow-y: auto;
-	background: color-mix(in oklch, var(--color-bg-sidebar) 52%, var(--color-bg-primary));
+	background: transparent;
 }
 
 .home-chat-side-rail {
-	border-right: 1px solid var(--color-border);
+	border-right: var(--stroke-hairline) solid var(--border-hairline);
 }
 
 .home-chat-inspector {
-	border-left: 1px solid var(--color-border);
+	border-left: var(--stroke-hairline) solid var(--border-hairline);
 }
 
 .home-chat-primary {
@@ -627,7 +681,7 @@
 	min-width: 0;
 	min-height: 0;
 	flex-direction: column;
-	background: var(--color-bg-primary);
+	background: transparent;
 }
 
 .home-chat-transcript {
@@ -639,19 +693,22 @@
 
 .home-chat-source {
 	display: inline-flex;
-	min-height: 1.75rem;
+	min-height: var(--size-control-form);
 	align-items: center;
-	gap: 0.375rem;
-	border: 1px solid var(--color-border);
-	border-radius: 0.5rem;
-	padding: 0.25rem 0.5rem;
-	font-size: var(--text-xs);
+	gap: var(--space-1);
+	border: 0;
+	border-radius: var(--radius-full);
+	padding: 0 var(--space-3);
+	background: var(--bg-inset);
+	font-size: 13px;
+	line-height: 18px;
 	font-weight: 500;
-	color: var(--color-fg-primary);
+	color: var(--text-primary);
+	transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .home-chat-source:hover {
-	background: var(--color-bg-interactive-hover);
+	background: var(--bg-pressed);
 }
 
 @media (max-width: 1240px) {
@@ -680,7 +737,7 @@
 		gap: 0;
 		border: 0;
 		border-radius: 0;
-		background: var(--color-bg-primary);
+		background: var(--bg-surface);
 		box-shadow: none;
 		transform: none;
 	}
@@ -703,11 +760,14 @@
 	display: flex;
 	width: min(27.5rem, 100%);
 	min-height: 0;
-	border-left: 1px solid var(--color-border);
-	background: var(--color-bg-primary);
-	box-shadow: -1rem 0 2.5rem color-mix(in oklch, var(--color-bg-primary) 65%, transparent);
+	border-left: var(--stroke-hairline) solid var(--border-hairline);
+	background: var(--bg-surface);
+	box-shadow: var(--shadow-overlay);
+	animation: waldo-rail-enter var(--duration-base) var(--ease-enter) both;
 }
 
+/* The Waldo rail is a layer over Work: surface, hairline edge, and the one
+ * overlay shadow. Nothing decorative. */
 .waldo-shell-rail {
 	position: absolute;
 	inset: 0 0 0 auto;
@@ -715,10 +775,10 @@
 	display: flex;
 	width: min(27.5rem, 100%);
 	min-height: 0;
-	border-left: 1px solid var(--color-border);
-	background: var(--color-bg-primary);
-	box-shadow: -1rem 0 2.5rem color-mix(in oklch, var(--color-bg-primary) 65%, transparent);
-	animation: waldo-rail-enter 160ms ease-out both;
+	border-left: var(--stroke-hairline) solid var(--border-hairline);
+	background: var(--bg-surface);
+	box-shadow: var(--shadow-overlay);
+	animation: waldo-rail-enter var(--duration-base) var(--ease-enter) both;
 }
 
 /* Waldo overlaps Work's native draggable topbar. Explicitly subtract both the
@@ -760,7 +820,7 @@
 
 	.waldo-rail-close {
 		width: auto;
-		padding-inline: 0.5rem;
+		padding-inline: var(--space-3);
 	}
 
 	.waldo-rail-back-label {
@@ -771,32 +831,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.waldo-shell-rail {
+	.waldo-shell-rail,
+	.waldo-home-layer {
 		animation: none;
 	}
 }
 
 @container center-panel (max-width: 959px) {
-	.home-today-context-pane:has(.waldo-rail) {
-		position: absolute;
-		inset: 0;
-		z-index: var(--z-index-overlay);
-		min-height: 0;
-		border-top: 0;
-		background: var(--color-bg-primary);
-	}
-
-	.home-today-context-pane .waldo-rail-close {
-		width: auto;
-		padding-inline: 0.5rem;
-	}
-
-	.home-today-context-pane .waldo-rail-back-label {
-		display: inline;
-		font-size: var(--text-xs);
-		font-weight: 500;
-	}
-
 	.waldo-home-layer {
 		inset: 0;
 		width: 100%;
@@ -806,7 +847,7 @@
 
 	.waldo-home-layer .waldo-rail-close {
 		width: auto;
-		padding-inline: 0.5rem;
+		padding-inline: var(--space-3);
 	}
 
 	.waldo-home-layer .waldo-rail-back-label {
@@ -816,57 +857,31 @@
 	}
 }
 
-.home-today-catch-up-pane {
-	background-color: color-mix(in oklch, var(--color-bg-primary) 88%, var(--color-bg-sidebar));
-}
 
 .home-open-loops-desk {
 	display: grid;
-	grid-template-columns: minmax(14rem, 0.78fr) minmax(0, 1.5fr);
-	gap: 2rem;
-	margin-top: 1.75rem;
+	grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.4fr);
+	gap: 2.5rem;
 }
 
 .home-open-loops-detail {
-	border-left: 1px solid var(--color-border);
-	padding-left: 2rem;
+	border-left: var(--stroke-hairline) solid var(--border-hairline);
+	padding-left: 2.5rem;
 }
 
 .home-open-loops-back {
 	display: none;
 }
 
-.home-daily-close-review-grid,
-.home-daily-close-receipt {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	column-gap: 2.5rem;
-}
-
-.home-daily-close-review-grid > :nth-child(2) {
-	border-top: 0;
-	border-left: 1px solid var(--color-border);
-	padding-left: 2.5rem;
-}
-
-.home-daily-close-receipt > :nth-child(even) {
-	border-left: 1px solid var(--color-border);
-	padding-left: 2.5rem;
-}
-
-.home-daily-close-receipt > :nth-child(2) {
-	border-top: 0;
-}
-
 .home-memory-review-desk {
 	display: grid;
-	grid-template-columns: minmax(14rem, 0.78fr) minmax(0, 1.5fr);
-	gap: 2rem;
+	grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.4fr);
+	gap: 2.5rem;
 }
 
 .home-memory-review-detail {
-	border-left: 1px solid var(--color-border);
-	padding-left: 2rem;
+	border-left: var(--stroke-hairline) solid var(--border-hairline);
+	padding-left: 2.5rem;
 }
 
 .home-memory-review-back {
@@ -875,31 +890,17 @@
 
 .home-history-desk {
 	display: grid;
-	grid-template-columns: minmax(15rem, 0.85fr) minmax(0, 1.5fr);
-	gap: 2rem;
+	grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.4fr);
+	gap: 2.5rem;
 }
 
 .home-history-detail {
-	border-left: 1px solid var(--color-border);
-	padding-left: 2rem;
+	border-left: var(--stroke-hairline) solid var(--border-hairline);
+	padding-left: 2.5rem;
 }
 
 .home-history-back {
 	display: none;
-}
-
-.home-history-marker {
-	border-radius: 999px;
-}
-
-.home-history-marker[data-kind="correction"] {
-	border-radius: 2px;
-}
-
-.home-history-marker[data-kind="work_link_preview"],
-.home-history-marker[data-kind="close_receipt_preview"] {
-	border-radius: 2px;
-	transform: rotate(45deg);
 }
 
 @container center-panel (max-width: 760px) {
@@ -919,17 +920,6 @@
 	.home-open-loops-desk[data-mobile-view="index"] .home-open-loops-detail,
 	.home-open-loops-desk[data-mobile-view="detail"] .home-open-loops-index {
 		display: none;
-	}
-
-	.home-daily-close-review-grid,
-	.home-daily-close-receipt {
-		display: block;
-	}
-
-	.home-daily-close-review-grid > :nth-child(2),
-	.home-daily-close-receipt > :nth-child(even) {
-		border-left: 0;
-		padding-left: 0;
 	}
 
 	.home-memory-review-desk {
@@ -969,23 +959,18 @@
 	}
 }
 
-@container center-panel (min-width: 960px) {
+@container center-panel (min-width: 1024px) {
 	.home-today-layout {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 27.5rem);
-		overflow: hidden;
+		grid-template-columns: minmax(0, 1fr) var(--layout-inspector);
 	}
 
-	.home-today-brief-pane {
-		min-height: 0;
-		overflow-y: auto;
-	}
-
-	.home-today-catch-up-pane {
-		min-height: 0;
-		overflow: hidden;
-		border-top: 0;
-		border-left: 1px solid var(--color-border);
+	.home-today-inspector {
+		position: sticky;
+		top: 0;
+		align-self: start;
+		max-width: none;
+		margin: 0;
+		padding: var(--wd-space-12) var(--wd-space-6) var(--wd-space-8) 0;
 	}
 }
 
@@ -1002,37 +987,42 @@
 	border-radius: 0;
 }
 
+/* Waldo left rail on the board shell: canvas ground (no separate plate),
+ * pill rows, ink-on-selected, sentence-case group labels in text-tertiary. */
 .figma-board-sidebar {
 	border: 0 !important;
 }
 
 .figma-board-sidebar [data-sidebar="sidebar"] {
-	background: #161616;
+	background: var(--bg-canvas);
 }
 
 .figma-board-sidebar__header {
 	flex: 0 0 auto;
-	padding: 51px 19px 11px;
+	padding: 48px var(--space-5) var(--space-3);
 }
 
+/* Brand line in Mottle at 22px (display-4): words only, never below 22px. */
 .figma-board-sidebar__brand {
 	width: fit-content;
-	color: #f4f4f3;
-	font-size: 18px;
-	font-weight: 600;
-	letter-spacing: -0.2px;
-	line-height: 22px;
+	border-radius: var(--radius-xs);
+	color: var(--text-primary);
+	font-family: var(--font-display);
+	font-size: 22px;
+	font-weight: 400;
+	letter-spacing: 0;
+	line-height: 28px;
 	text-align: left;
 }
 
 .figma-board-sidebar__mode-switch {
-	padding: 0 12px 15px;
+	padding: 0 var(--space-3) var(--space-4);
 }
 
 .figma-board-sidebar__mode-switch [data-slot="home-work-mode-switch"] {
 	height: 32px;
-	border-color: #2f2f2d;
-	background: #1a1a19;
+	border-color: transparent;
+	background: var(--bg-inset);
 	box-shadow: none;
 }
 
@@ -1042,17 +1032,18 @@
 	flex: 0 0 auto;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0 19px;
-	color: #8c8c89;
+	padding: 0 var(--space-5);
+	color: var(--text-tertiary);
 	font-size: 14px;
-	font-weight: 400;
-	line-height: 20px;
+	font-weight: 500;
+	letter-spacing: 0;
+	line-height: 18px;
 }
 
 .figma-board-sidebar__section-icons {
 	display: inline-flex;
 	align-items: center;
-	gap: 7px;
+	gap: var(--space-2);
 }
 
 .figma-board-sidebar__section-icons svg {
@@ -1062,36 +1053,42 @@
 }
 
 .figma-board-sidebar__content {
-	padding: 0 12px;
+	padding: 0 var(--space-3);
 }
 
 .figma-board-sidebar__tree {
-	gap: 1px;
+	gap: 2px;
 	border-radius: 0;
 }
 
 .figma-board-sidebar__project-row {
 	position: relative;
-	height: 28px;
-	gap: 6px;
+	height: 32px;
+	gap: var(--space-2);
 	border: 0;
-	border-radius: 6px;
-	padding: 0 50px 0 7px;
-	color: #8f8f8c;
+	border-radius: var(--radius-full);
+	padding: 0 52px 0 var(--space-3);
+	color: var(--text-secondary);
 	font-size: 14px;
 	font-weight: 400;
 	line-height: 20px;
 	box-shadow: none;
+	transition: background-color var(--duration-instant) var(--ease-standard), color var(--duration-instant) var(--ease-standard);
 }
 
-.figma-board-sidebar__project-row:hover,
+.figma-board-sidebar__project-row:hover {
+	background: var(--bg-hover);
+	color: var(--text-primary);
+}
+
 .figma-board-sidebar__project-row:active {
-	background: #222221;
+	background: var(--bg-pressed);
 }
 
 .figma-board-sidebar__project-row[data-active="true"] {
-	background: #292927;
-	color: #a8a8a5;
+	background: var(--bg-selected);
+	color: var(--text-primary);
+	font-weight: 500;
 	box-shadow: none;
 }
 
@@ -1107,30 +1104,30 @@
 
 .figma-board-sidebar__project-chevron {
 	position: absolute;
-	right: 7px;
+	right: var(--space-3);
 	width: 12px !important;
 	height: 12px !important;
 	flex: 0 0 auto;
-	transition: transform 140ms ease-out;
+	transition: transform var(--duration-fast) var(--ease-standard);
 }
 
 .figma-board-sidebar__project-new-outcome {
 	position: absolute;
-	top: 4px;
-	right: 26px;
+	top: 6px;
+	right: 28px;
 	z-index: 20;
 	display: grid;
 	width: 20px;
 	height: 20px;
 	place-items: center;
-	border-radius: 4px;
-	color: #8f8f8c;
+	border-radius: var(--radius-full);
+	color: var(--text-secondary);
 	opacity: 0;
 	pointer-events: none;
 	transition:
-		background-color 120ms ease-out,
-		color 120ms ease-out,
-		opacity 120ms ease-out;
+		background-color var(--duration-instant) var(--ease-standard),
+		color var(--duration-instant) var(--ease-standard),
+		opacity var(--duration-instant) var(--ease-standard);
 }
 
 [data-project-press]:hover .figma-board-sidebar__project-new-outcome,
@@ -1141,13 +1138,13 @@
 
 .figma-board-sidebar__project-new-outcome:hover,
 .figma-board-sidebar__project-new-outcome:focus-visible {
-	background: #333330;
-	color: #d8d8d4;
+	background: var(--bg-pressed);
+	color: var(--text-primary);
 }
 
 .figma-board-sidebar__project-new-outcome:focus-visible {
-	outline: 1px solid var(--ring);
-	outline-offset: 1px;
+	outline: 2px solid var(--border-focus);
+	outline-offset: 2px;
 }
 
 .figma-board-sidebar__project-new-outcome svg {
@@ -1157,8 +1154,8 @@
 }
 
 .figma-board-sidebar__sessions {
-	gap: 0;
-	padding: 1px 0 4px;
+	gap: 2px;
+	padding: 2px 0 var(--space-1);
 }
 
 .figma-board-sidebar__session-item {
@@ -1166,14 +1163,14 @@
 }
 
 .figma-board-sidebar__session-item [data-session-row] {
-	height: 26px;
-	border-radius: 6px;
+	height: 28px;
+	border-radius: var(--radius-full);
 }
 
 .figma-board-sidebar__session-item [data-session-row] > div:first-child > button {
-	height: 26px;
+	height: 28px;
 	gap: 0;
-	padding: 0 0 0 27px;
+	padding: 0 0 0 28px;
 	font-size: 14px;
 	line-height: 20px;
 }
@@ -1184,18 +1181,19 @@
 
 .figma-board-sidebar__show-more {
 	display: flex;
-	height: 25px;
+	height: 28px;
 	width: 100%;
 	align-items: center;
-	padding-left: 27px;
-	color: #646461;
-	font-size: 12px;
-	line-height: 16px;
+	padding-left: 28px;
+	border-radius: var(--radius-full);
+	color: var(--text-tertiary);
+	font-size: 13px;
+	line-height: 18px;
 	text-align: left;
 }
 
 .figma-board-sidebar__show-more:hover {
-	color: #92928f;
+	color: var(--text-secondary);
 }
 
 /* A fully hidden sidebar no longer contributes a left layout gutter. Restore
@@ -1234,14 +1232,14 @@
  * treatment so the topbar still looks like a standalone panel header. */
 .session-topbar-surface {
 	overflow: hidden;
-	border: 1px solid var(--color-border-strong);
+	border: var(--stroke-hairline) solid var(--border-hairline);
 	border-radius: var(--radius-center-panel) var(--radius-center-panel) 0 0;
-	background-color: var(--color-bg-primary);
+	background-color: var(--bg-canvas);
 }
 
 .center-panel-surface .session-topbar-surface {
 	border: none;
-	border-bottom: 1px solid var(--color-border-strong);
+	border-bottom: var(--stroke-hairline) solid var(--border-hairline);
 	border-radius: 0;
 }
 
@@ -1334,17 +1332,21 @@
 	padding-top: 0;
 }
 
+/* Waldo ListRow (18-settings, ListRow contract). A row standing alone is a
+ * one-row ListGroup: surface, hairline, radius-lg. Inside .settings-grouped-rows
+ * the group owns the surface and rows are separated by inset hairlines. */
 @utility settings-row-bar {
+	position: relative;
 	display: flex;
-	height: var(--size-settings-row);
-	min-height: var(--size-settings-row);
+	min-height: calc(var(--size-touch) + var(--space-2));
 	align-items: center;
 	justify-content: space-between;
-	gap: var(--size-settings-row-icon-gap);
-	border-radius: var(--radius-settings-row);
-	background-color: var(--color-bg-settings-row);
-	padding-inline: var(--size-settings-row-padding);
-	padding-block: var(--size-settings-row-padding);
+	gap: var(--space-3);
+	border: var(--stroke-hairline) solid var(--border-hairline);
+	border-radius: var(--wd-radius-lg);
+	background-color: var(--bg-surface);
+	padding: var(--space-3) var(--space-4);
+	color: var(--text-primary);
 }
 
 /* Helper copy belongs to the preceding settings row, not a separate divided row. */
@@ -1353,59 +1355,94 @@
 	border-block-start: 0 !important;
 }
 
-/* Tailwind preflight clears button backgrounds; keep settings rows filled. */
+/* Tailwind preflight clears button backgrounds; keep standalone rows filled. */
 button.settings-row-bar {
-	background-color: var(--color-bg-settings-row);
+	background-color: var(--bg-surface);
 }
 
-button.settings-link-row:hover,
-button.settings-link-row:active {
-	background-color: var(--color-bg-settings-row-hover);
-	color: var(--color-text-settings-title);
+button.settings-link-row:hover:not(:disabled) {
+	background-color: var(--bg-hover);
 }
 
-/* Grouped rows size around the shared action control, keeping its top/bottom
- * inset equal to the row's right and left inset. */
+button.settings-link-row:active:not(:disabled) {
+	background-color: var(--bg-pressed);
+}
+
+button.settings-link-row:focus-visible {
+	outline-offset: -2px;
+}
+
+/* Waldo ListGroup body: one rounded surface with a hairline; rows inside are
+ * transparent and separated by hairlines inset past the icon column. */
+.settings-grouped-rows {
+	overflow: hidden;
+	border: var(--stroke-hairline) solid var(--border-hairline);
+	border-radius: var(--wd-radius-lg);
+	background-color: var(--bg-surface);
+}
+
 .settings-grouped-rows .settings-row-bar {
-	height: auto;
-	min-height: calc(var(--size-settings-action-height) + (var(--space-2) * 2));
-	padding-block: var(--space-2);
-	padding-inline: var(--space-3);
+	border: 0;
 	border-radius: 0;
+	background-color: transparent;
 }
 
-/* Button/link rows (e.g. Connect Mobile, Keyboard Shortcuts) keep rounded
- * corners even though the shared group container lost its outer border. */
+.settings-grouped-rows > * {
+	position: relative;
+}
+
+.settings-grouped-rows > * + *::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: var(--space-4);
+	border-top: var(--stroke-hairline) solid var(--border-hairline);
+	pointer-events: none;
+}
+
+.settings-grouped-rows > :has(.settings-row-icon) + *::before,
+.settings-grouped-rows > :has(.settings-row-icon)::before {
+	left: calc(var(--space-4) + var(--size-tile-sm) + var(--space-3));
+}
+
 .settings-grouped-rows .settings-link-row.settings-row-bar {
-	border-radius: var(--radius-md);
+	border-radius: 0;
 }
 
 @utility settings-menu-item {
 	display: flex;
 	align-items: center;
 	gap: calc(var(--spacing) * 2);
-	border-radius: var(--radius-settings-row);
-	border: 1px solid transparent;
+	border-radius: var(--wd-radius-sm);
+	border: 0;
 	padding-inline: var(--space-3);
-	padding-block: var(--space-2_5);
-	font-size: var(--font-size-md);
-	line-height: var(--line-height-row);
-	color: var(--color-text-settings-row);
+	padding-block: var(--space-2);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-primary);
 }
 
+/* Trailing value control in a ListRow: a quiet pill. */
 @utility settings-option-trigger {
 	display: inline-flex;
+	height: var(--size-control-form);
 	align-items: center;
 	gap: calc(var(--spacing) * 1.5);
-	border-radius: var(--radius-md);
-	padding-inline: var(--space-2);
-	padding-block: var(--space-1);
-	font-size: var(--font-size-base);
-	color: var(--color-text-settings-muted);
-	outline: none;
+	border-radius: var(--wd-radius-full);
+	padding-inline: var(--space-3);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-secondary);
 	box-shadow: none;
 	transition-property: color, background-color;
 	transition-duration: var(--duration-fast);
+
+	&:hover:not(:disabled),
+	&[data-state="open"] {
+		background-color: var(--bg-hover);
+		color: var(--text-primary);
+	}
 }
 
 .review-run-controls-container {
@@ -1434,12 +1471,12 @@ button.settings-link-row:active {
 	overflow-x: hidden;
 	overflow-y: auto;
 	overscroll-behavior: contain;
-	border-radius: var(--radius-settings-panel);
-	border: 1px solid var(--color-border-settings-menu);
-	background-color: var(--color-bg-settings-menu);
-	padding: var(--space-2);
-	gap: var(--space-1_5);
-	box-shadow: none;
+	border-radius: var(--wd-radius-md);
+	border: var(--stroke-hairline) solid var(--border-hairline);
+	background-color: var(--bg-raised);
+	padding: var(--space-1_5);
+	gap: var(--space-0_5);
+	box-shadow: var(--shadow-overlay);
 }
 
 @utility settings-agent-menu-surface {
@@ -1454,33 +1491,42 @@ button.settings-link-row:active {
 	padding-block: var(--space-3);
 }
 
+/* TextField label (.wd-label, text-secondary), above the field. */
 @utility settings-field-label {
-	font-size: var(--font-size-base);
-	font-weight: var(--font-weight-medium);
-	line-height: 1rem;
-	color: var(--color-text-settings-row);
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 20px;
+	color: var(--text-secondary);
 }
 
+/* TextField field: bg-inset, radius-md; focus thickens the edge to 2px. */
 @utility settings-field-control {
 	width: 100%;
-	border-radius: var(--radius-settings-action);
-	border: 1px solid var(--color-border-settings-input);
-	background-color: var(--color-bg-settings-input);
-	padding-inline: calc(var(--spacing) * 3.5);
-	font-size: var(--font-size-md);
-	line-height: 1.25rem;
-	color: var(--color-text-settings-input);
+	min-height: var(--size-touch);
+	border-radius: var(--wd-radius-md);
+	border: var(--stroke-1) solid transparent;
+	background-color: var(--bg-inset);
+	padding-inline: var(--space-3);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-primary);
 	outline: none;
 	transition-property: border-color, box-shadow;
-	transition-duration: var(--duration-normal);
+	transition-duration: var(--duration-fast);
 
 	&::placeholder {
-		color: var(--color-text-settings-placeholder);
+		color: var(--text-tertiary);
 	}
 
 	&:focus-visible {
-		border-color: var(--bridge-accent);
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
+		border-color: var(--border-focus);
+		box-shadow: inset 0 0 0 var(--stroke-1) var(--border-focus);
+		color: var(--text-primary);
+		outline: none;
+	}
+
+	&[aria-invalid="true"] {
+		border-color: var(--critical);
 	}
 }
 
@@ -1493,22 +1539,17 @@ button.settings-link-row:active {
 	justify-content: flex-end;
 	gap: calc(var(--spacing) * 1.5);
 	border: 0;
+	border-radius: var(--wd-radius-full);
 	background: transparent;
-	padding: 0;
-	color: var(--color-text-settings-muted);
-	outline: none;
+	padding: var(--space-1) var(--space-2);
+	color: var(--text-secondary);
 	cursor: pointer;
-	transition-property: color;
+	transition-property: color, background-color;
 	transition-duration: var(--duration-fast);
 
-	&:hover,
-	&:focus-visible {
-		color: var(--color-text-settings-row);
-	}
-
-	&:focus-visible {
-		border-radius: var(--radius-md);
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
+	&:hover {
+		background-color: var(--bg-hover);
+		color: var(--text-primary);
 	}
 
 	& .settings-row-value {
@@ -1520,7 +1561,7 @@ button.settings-link-row:active {
 	width: var(--size-icon-sm);
 	height: var(--size-icon-sm);
 	flex-shrink: 0;
-	opacity: 0.7;
+	color: var(--text-tertiary);
 }
 
 @utility settings-inline-edit-input {
@@ -1528,32 +1569,28 @@ button.settings-link-row:active {
 	max-width: var(--size-settings-inline-input-max);
 	min-width: 0;
 	flex: 0 1 auto;
-	height: var(--size-settings-inline-input-height);
-	border: 1px solid var(--color-border-settings-input);
-	border-radius: var(--radius-lg);
-	background-color: var(--color-bg-settings-input);
-	padding-inline: calc(var(--spacing) * 2.5);
-	font-size: var(--font-size-base);
-	line-height: 1.25rem;
-	color: var(--color-text-settings-input);
+	height: var(--size-control-form);
+	border: var(--stroke-1) solid transparent;
+	border-radius: var(--wd-radius-sm);
+	background-color: var(--bg-inset);
+	padding-inline: var(--space-3);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-primary);
 	text-align: right;
 	outline: none;
 	box-shadow: none;
 	transition-property: border-color, box-shadow, color;
-	transition-duration: var(--duration-normal);
+	transition-duration: var(--duration-fast);
 
 	&::placeholder {
-		color: var(--color-text-settings-placeholder);
-	}
-
-	&:hover {
-		color: var(--color-text-settings-row);
+		color: var(--text-tertiary);
 	}
 
 	&:focus-visible {
-		border-color: var(--bridge-accent);
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
-		color: var(--color-text-settings-row);
+		border-color: var(--border-focus);
+		box-shadow: inset 0 0 0 var(--stroke-1) var(--border-focus);
+		color: var(--text-primary);
 		outline: none;
 	}
 }
@@ -1563,32 +1600,28 @@ button.settings-link-row:active {
 	max-width: min(var(--size-settings-inline-input-max), var(--size-settings-inline-input-max-percent));
 	min-width: var(--size-settings-inline-input-min);
 	flex: 0 1 auto;
-	height: var(--size-settings-inline-input-height);
-	border: 1px solid var(--color-border-settings-input);
-	border-radius: var(--radius-lg);
-	background-color: var(--color-bg-settings-input);
-	padding-inline: calc(var(--spacing) * 2.5);
-	font-size: var(--font-size-base);
-	line-height: 1.25rem;
-	color: var(--color-text-settings-input);
+	height: var(--size-control-form);
+	border: var(--stroke-1) solid transparent;
+	border-radius: var(--wd-radius-sm);
+	background-color: var(--bg-inset);
+	padding-inline: var(--space-3);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-primary);
 	text-align: right;
 	outline: none;
 	box-shadow: none;
 	transition-property: border-color, box-shadow, color;
-	transition-duration: var(--duration-normal);
+	transition-duration: var(--duration-fast);
 
 	&::placeholder {
-		color: var(--color-text-settings-placeholder);
-	}
-
-	&:hover {
-		color: var(--color-text-settings-row);
+		color: var(--text-tertiary);
 	}
 
 	&:focus-visible {
-		border-color: var(--bridge-accent);
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
-		color: var(--color-text-settings-row);
+		border-color: var(--border-focus);
+		box-shadow: inset 0 0 0 var(--stroke-1) var(--border-focus);
+		color: var(--text-primary);
 		outline: none;
 	}
 }
@@ -1636,9 +1669,10 @@ button.settings-link-row:active {
 	border-radius: inherit;
 }
 
+/* Drop target: the quiet hover fill plus the ink focus edge — no tint, no glow. */
 .composer-prompt-surface[data-dragging="true"] {
-	background-color: var(--color-accent-weak);
-	box-shadow: inset 0 0 0 2px var(--bridge-accent);
+	background-color: var(--bg-hover);
+	box-shadow: inset 0 0 0 var(--stroke-2) var(--border-focus);
 }
 
 .composer-run-controls {
@@ -1647,12 +1681,9 @@ button.settings-link-row:active {
 	grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
 	align-items: center;
 	overflow: hidden;
-	border-radius: var(--radius-md);
-	/* Same mix formula as the settings-modal dropdown trigger, but anchored to
-	   --card (an opaque color) instead of --color-bg-settings-row (transparent
-	   by design there, since it always sits inside an already-painted dialog
-	   surface) — this pill floats on its own with nothing painted behind it. */
-	background-color: color-mix(in oklch, var(--card) 97%, var(--foreground));
+	/* Waldo: the run controls are one quiet pill on the inset fill. */
+	border-radius: var(--radius-full);
+	background-color: var(--bg-inset);
 }
 
 .composer-toolbar-slot {
@@ -1670,7 +1701,7 @@ button.settings-link-row:active {
    is focused, it becomes part of that segment's own border/focus ring
    instead of staying a disconnected neutral line. */
 .composer-run-controls:has(.composer-toolbar-slot :focus-within) .composer-toolbar-divider {
-	background-color: var(--bridge-accent);
+	background-color: var(--border-focus);
 }
 
 .composer-toolbar .composer-toolbar-option {
@@ -1681,11 +1712,13 @@ button.settings-link-row:active {
 
 .composer-toolbar .composer-toolbar-option:hover:not(:disabled),
 .composer-toolbar .composer-toolbar-option[data-state="open"] {
-	background-color: color-mix(in oklch, var(--card) 88%, var(--foreground)) !important;
+	background-color: var(--bg-hover) !important;
 }
 
+/* The pill clips an outside outline, so the focus edge is drawn inside. */
 .composer-toolbar .composer-toolbar-option:focus-visible {
-	box-shadow: inset 0 0 0 2px var(--bridge-accent-weak);
+	outline: none;
+	box-shadow: inset 0 0 0 var(--stroke-2) var(--border-focus);
 }
 
 /* Inline value control inside the task composer's bottom toolbar. Reads as a
@@ -1762,28 +1795,28 @@ button.settings-link-row:active {
    its text, which reads as a stray half-width box once it sits in a menu. */
 @utility menu-search-input {
 	width: 100%;
-	height: var(--size-settings-action-height);
-	border: 1px solid var(--color-border-settings-input);
-	border-radius: var(--radius-md);
-	background-color: var(--color-bg-settings-input);
-	padding-inline: var(--space-2_5);
-	font-size: var(--font-size-md);
-	line-height: 1.25rem;
-	color: var(--color-text-settings-input);
+	height: var(--size-control-form);
+	border: var(--stroke-1) solid transparent;
+	border-radius: var(--wd-radius-sm);
+	background-color: var(--bg-inset);
+	padding-inline: var(--space-3);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-primary);
 	text-align: left;
 	outline: none;
 	box-shadow: none;
 	transition-property: border-color, box-shadow, color;
-	transition-duration: var(--duration-normal);
+	transition-duration: var(--duration-fast);
 
 	&::placeholder {
-		color: var(--color-text-settings-placeholder);
+		color: var(--text-tertiary);
 	}
 
 	&:focus-visible {
-		border-color: var(--bridge-accent);
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
-		color: var(--color-text-settings-row);
+		border-color: var(--border-focus);
+		box-shadow: inset 0 0 0 var(--stroke-1) var(--border-focus);
+		color: var(--text-primary);
 		outline: none;
 	}
 }
@@ -1796,12 +1829,13 @@ button.settings-link-row:active {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	text-align: right;
-	/* Match settings-option-trigger (Refresh / agent selects) size. */
-	font-size: var(--font-size-base);
-	line-height: 1.25rem;
-	color: var(--color-text-settings-muted);
+	font-size: 14px;
+	line-height: 20px;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
 }
 
+/* Dialog footer actions: Waldo pills. Base is the secondary (inset) pill. */
 @utility settings-footer-button {
 	display: inline-flex;
 	height: var(--size-settings-action-height);
@@ -1810,35 +1844,39 @@ button.settings-link-row:active {
 	justify-content: center;
 	gap: calc(var(--spacing) * 2);
 	white-space: nowrap;
-	border-radius: var(--radius-settings-action);
-	border: 1px solid var(--color-border-settings-input);
-	background-color: var(--color-bg-settings-input);
-	padding-inline: var(--space-3);
-	font-size: var(--font-size-md);
-	line-height: 1.25rem;
-	color: var(--color-text-settings-row);
-	outline: none;
-	transition-property: color, background-color, border-color, opacity, box-shadow;
-	transition-duration: var(--duration-normal);
+	border-radius: var(--wd-radius-full);
+	border: 0;
+	background-color: var(--bg-inset);
+	padding-inline: var(--space-4);
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 20px;
+	color: var(--text-primary);
+	transition-property: color, background-color, opacity, transform;
+	transition-duration: var(--duration-fast);
 
-	&:hover {
-		opacity: 0.9;
+	&:hover:not(:disabled) {
+		background-color: var(--bg-pressed);
 	}
 
-	&:focus-visible {
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
+	&:active:not(:disabled) {
+		transform: scale(0.97);
+	}
+
+	&:disabled {
+		background-color: var(--bg-inset);
+		color: var(--text-disabled);
 	}
 }
 
+/* Ink primary. */
 @utility settings-footer-button-primary {
-	border-color: transparent;
-	background-color: var(--color-settings-accent);
-	padding-inline: var(--size-settings-footer-button-padding-x);
-	color: var(--color-settings-footer-button-primary-fg);
-	transition-property: opacity;
-	transition-duration: var(--duration-normal);
+	background-color: var(--bg-inverse);
+	padding-inline: var(--space-5);
+	color: var(--text-inverse);
 
 	&:hover:not(:disabled) {
+		background-color: var(--bg-inverse);
 		opacity: 0.9;
 	}
 
@@ -1847,15 +1885,15 @@ button.settings-link-row:active {
 	}
 }
 
-/* Segmented control — ReportProblem destination picker, ConnectMobile LAN/Tailscale. */
+/* Waldo SegmentedControl: inset pill track, one ink thumb. */
 @utility settings-segment {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-0_5);
-	border-radius: var(--radius-settings-action);
-	border: 1px solid var(--color-border-settings-input);
-	background-color: var(--color-bg-settings-input);
-	padding: var(--space-0_5);
+	border-radius: var(--wd-radius-full);
+	border: 0;
+	background-color: var(--bg-inset);
+	padding: var(--space-1);
 }
 
 @utility settings-segment-item {
@@ -1863,67 +1901,62 @@ button.settings-link-row:active {
 	height: var(--size-control-form);
 	cursor: default;
 	align-items: center;
+	justify-content: center;
 	gap: calc(var(--spacing) * 1.5);
-	border-radius: var(--radius-lg);
+	border-radius: var(--wd-radius-full);
 	padding-inline: var(--space-3);
-	font-size: var(--font-size-base);
+	font-size: 14px;
+	font-weight: 500;
 	line-height: 1;
-	color: var(--color-text-settings-muted);
-	outline: none;
+	white-space: nowrap;
+	color: var(--text-secondary);
 	transition-property: color, background-color;
-	transition-duration: var(--duration-normal);
+	transition-duration: var(--duration-base);
 
 	&:hover {
-		color: var(--color-text-settings-title);
-	}
-
-	&:focus-visible {
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
+		color: var(--text-primary);
 	}
 
 	&[data-state="checked"] {
-		background-color: var(--color-bg-settings-menu-selected);
-		color: var(--color-text-settings-title);
+		background-color: var(--bg-inverse);
+		color: var(--text-inverse);
 	}
 }
 
 @utility settings-mobile-steps {
 	list-style-type: decimal;
-	padding-left: var(--space-4);
-	font-size: var(--font-size-caption);
-	line-height: var(--leading-settings-mobile-hint);
-	color: var(--color-text-settings-muted);
+	padding-left: var(--space-5);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--text-secondary);
 
 	& > li + li {
-		margin-top: calc(var(--spacing) * 1.5);
+		margin-top: var(--space-2);
 	}
 }
 
+/* Dialog title: .wd-title. */
 @utility settings-dialog-title {
-	font-size: var(--font-size-heading-sm);
-	font-weight: var(--font-weight-semibold);
-	line-height: 1.5rem;
-	color: var(--color-text-settings-title);
+	font-size: 20px;
+	font-weight: 500;
+	line-height: 26px;
+	color: var(--text-primary);
 }
 
+/* Quiet icon button: round, text-secondary, hover tint. Focus is the global ring. */
 @utility settings-close-button {
 	display: grid;
 	width: calc(var(--spacing) * 8);
 	height: calc(var(--spacing) * 8);
 	place-items: center;
-	border-radius: var(--radius-md);
-	color: var(--color-text-settings-muted);
+	border-radius: var(--wd-radius-full);
+	color: var(--text-secondary);
 	transition-property: color, background-color;
-	transition-duration: var(--duration-normal);
+	transition-duration: var(--duration-fast);
 
 	&:hover {
-		background-color: var(--color-bg-settings-row-hover);
-		color: var(--color-text-settings-title);
-	}
-
-	&:focus-visible {
-		outline: none;
-		box-shadow: 0 0 0 2px var(--bridge-accent-weak);
+		background-color: var(--bg-hover);
+		color: var(--text-primary);
 	}
 }
 
@@ -1974,23 +2007,34 @@ button.settings-link-row:active {
 	}
 }
 
+/* TextField label: .wd-label, text-secondary, above the field. */
 @utility agents-sheet-label {
-	font-size: var(--font-size-sm);
-	font-weight: var(--font-weight-medium);
-	color: var(--color-text-agents-sheet-label);
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 20px;
+	color: var(--text-secondary);
 }
 
+/* TextField field: bg-inset, radius-md, no border until focus. */
 @utility agents-sheet-control {
-	border-radius: var(--radius-lg);
-	border-color: var(--color-border-agents-sheet);
-	background-color: var(--color-bg-agents-sheet-control);
+	min-height: var(--size-touch);
+	border-radius: var(--wd-radius-md);
+	border-color: transparent;
+	background-color: var(--bg-inset);
 	box-shadow: none;
+
+	&:focus-visible {
+		border-color: var(--border-focus);
+		box-shadow: inset 0 0 0 var(--stroke-1) var(--border-focus);
+		outline: none;
+	}
 }
 
 @utility agents-sheet-menu {
-	border-radius: var(--radius-lg);
-	border-color: var(--color-border-agents-sheet);
-	background-color: var(--color-bg-agents-sheet);
+	border-radius: var(--wd-radius-md);
+	border-color: var(--border-hairline);
+	background-color: var(--bg-raised);
+	box-shadow: var(--shadow-overlay);
 }
 
 * {
@@ -2255,80 +2299,37 @@ textarea,
 	}
 }
 
-.agent-switch-transfer-pulse {
-	animation: agent-switch-transfer 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
 .agent-switch-progress-step:not(:last-child)::before {
 	position: absolute;
 	top: 0.21875rem;
 	left: calc(50% + 0.25rem);
 	width: calc(100% - 0.5rem);
-	height: 1px;
-	background: var(--color-border-strong);
+	height: var(--stroke-hairline);
+	background: var(--border-strong);
 	content: "";
-	transition: background-color 320ms var(--ease-out);
+	transition: background-color var(--duration-base) var(--ease-standard, ease);
 }
 
+/* Steps are static: done = ink, current = the live accent dot, next = hollow.
+   The current step's label carries the word, so colour is never alone. */
 .agent-switch-progress-dot {
 	transition:
-		border-color 280ms var(--ease-out),
-		background-color 280ms var(--ease-out),
-		box-shadow 280ms var(--ease-out);
+		border-color var(--duration-base) var(--ease-standard, ease),
+		background-color var(--duration-base) var(--ease-standard, ease);
 }
 
 .agent-switch-progress-step.is-complete::before,
-.agent-switch-progress-step.is-complete .agent-switch-progress-dot,
-.agent-switch-progress-step.is-current .agent-switch-progress-dot {
-	border-color: var(--color-accent);
-	background: var(--color-accent);
+.agent-switch-progress-step.is-complete .agent-switch-progress-dot {
+	border-color: var(--text-primary);
+	background: var(--text-primary);
 }
 
 .agent-switch-progress-step.is-current .agent-switch-progress-dot {
-	animation: agent-switch-step-pulse 1.4s ease-in-out infinite;
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent);
-}
-
-@keyframes agent-switch-step-pulse {
-	0%,
-	100% {
-		opacity: 1;
-		transform: scale(1);
-	}
-	50% {
-		opacity: 0.55;
-		transform: scale(0.72);
-	}
-}
-
-@keyframes agent-switch-transfer {
-	0% {
-		left: -2.5rem;
-		opacity: 0;
-	}
-	18% {
-		opacity: 1;
-	}
-	82% {
-		opacity: 1;
-	}
-	100% {
-		left: 100%;
-		opacity: 0;
-	}
+	border-color: var(--wd-accent);
+	background: var(--wd-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.agent-switch-transfer-pulse {
-		left: calc(50% - 1.25rem);
-		opacity: 0.85;
-		animation: none;
-	}
-
-	.agent-switch-progress-step.is-current .agent-switch-progress-dot {
-		animation: none;
-	}
-
 	.agent-switch-toolbar-spinner {
 		animation: none;
 	}
@@ -2339,44 +2340,6 @@ textarea,
 	}
 }
 
-@keyframes ao-startup-logo-breathe {
-	0%,
-	100% {
-		opacity: 0.86;
-		transform: translateY(0);
-	}
-	50% {
-		opacity: 1;
-		transform: translateY(-2px);
-	}
-}
-
-@keyframes ao-startup-status-in {
-	from {
-		opacity: 0;
-		filter: blur(2px);
-		transform: translateY(3px);
-	}
-	to {
-		opacity: 1;
-		filter: blur(0);
-		transform: translateY(0);
-	}
-}
-
-@keyframes ao-startup-dot-pulse {
-	0%,
-	70%,
-	100% {
-		opacity: 0.25;
-		transform: translateY(0);
-	}
-	35% {
-		opacity: 1;
-		transform: translateY(-3px);
-	}
-}
-
 .ao-startup-screen {
 	position: relative;
 	flex: 1 1 0%;
@@ -2384,31 +2347,9 @@ textarea,
 	min-height: 0;
 }
 
-.ao-startup-logo {
-	animation: ao-startup-logo-breathe 3.2s ease-in-out infinite;
-	filter: drop-shadow(0 7px 20px rgb(0 0 0 / 0.28));
-}
-
+/* Static mark and line: Waldo's working state does not breathe or pulse. */
 .ao-startup-status {
 	display: inline-block;
-	animation: ao-startup-status-in 240ms ease-out;
-}
-
-.ao-startup-dots span {
-	width: 4px;
-	height: 4px;
-	animation: ao-startup-dot-pulse 1.4s ease-in-out infinite;
-	border-radius: var(--radius-full);
-	background: var(--color-accent);
-	opacity: 0.25;
-}
-
-.ao-startup-dots span:nth-child(2) {
-	animation-delay: 160ms;
-}
-
-.ao-startup-dots span:nth-child(3) {
-	animation-delay: 320ms;
 }
 
 @keyframes overlay-in {
@@ -2432,44 +2373,36 @@ textarea,
 @keyframes modal-in {
 	from {
 		opacity: 0;
-		scale: 0.95;
 	}
 	to {
 		opacity: 1;
-		scale: 1;
 	}
 }
 
 @keyframes modal-out {
 	from {
 		opacity: 1;
-		scale: 1;
 	}
 	to {
 		opacity: 0;
-		scale: 0.95;
 	}
 }
 
 @keyframes popover-in {
 	from {
 		opacity: 0;
-		scale: 0.98;
 	}
 	to {
 		opacity: 1;
-		scale: 1;
 	}
 }
 
 @keyframes popover-out {
 	from {
 		opacity: 1;
-		scale: 1;
 	}
 	to {
 		opacity: 0;
-		scale: 0.98;
 	}
 }
 
@@ -2560,10 +2493,11 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	transition: none;
 }
 
-/* Keep keyboard focus visible without adding a ring to the sidebar chrome. */
+/* Sidebar rows sit in clipped scroll lists, so the system focus ring is drawn
+ * just inside the row instead of outside it (2px border-focus, pill-shaped). */
 .sidebar-focusless :focus-visible {
-	background-color: var(--color-interactive-hover) !important;
-	outline: none !important;
+	outline: 2px solid var(--border-focus) !important;
+	outline-offset: -2px !important;
 	box-shadow: none !important;
 }
 
@@ -2594,36 +2528,15 @@ body.is-resizing-x [data-slot="inspector-container"] {
 
 /* Conversation minimap: each dash is a real turn anchor. The rail forwards
    pointer, wheel, and keyboard navigation to the conversation viewport. */
+/* Waldo: the conversation sits on the plain canvas. No glow, no gradient; the
+   person's bubble and the composer field carry the only fills (bg-inset). */
 .cursor-chat-surface {
-	background:
-		radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-logo-accent) 3%, transparent), transparent 34rem),
-		var(--color-bg-primary);
-}
-
-.cursor-chat-header {
-	border-bottom: 1px solid var(--color-border);
-	background: color-mix(in srgb, var(--color-bg-sidebar) 72%, var(--color-bg-primary));
-}
-
-.cursor-chat-role-icon {
-	color: var(--color-text-muted);
-	background: var(--color-interactive-hover);
-	box-shadow: 0 0 0 1px var(--color-border) inset;
-}
-
-.cursor-chat-role-label {
-	color: var(--color-text-muted);
-}
-
-.cursor-chat-mode-badge {
-	color: var(--color-text-passive);
-	background: var(--color-interactive-hover);
+	background: var(--bg-canvas);
 }
 
 .cursor-chat-timeline {
 	--chat-readable-font-size: var(--chat-font-size, var(--font-size-md));
 	--chat-readable-code-font-size: max(10px, calc(var(--chat-readable-font-size) - 1.5px));
-	background: linear-gradient(to bottom, color-mix(in srgb, var(--color-bg-secondary) 16%, transparent), transparent 7rem);
 }
 
 .cursor-chat-timeline .chat-md,
@@ -2656,20 +2569,37 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	font-size: var(--chat-readable-code-font-size);
 }
 
+/* The agent's answer sits on the page, not in a card, and its prose keeps to a
+   readable measure. Code blocks and tables keep the full column so they scroll
+   less. */
+.chat-assistant-message .chat-md > :is(p, ul, ol, blockquote, h3, h4, h5, h6) {
+	max-width: var(--layout-measure);
+}
+
 .cursor-chat-composer-dock {
-	border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
-	background: linear-gradient(to top, var(--color-bg-primary) 76%, color-mix(in srgb, var(--color-bg-primary) 92%, transparent));
+	border-top: var(--stroke-hairline) solid var(--border-hairline);
+	background: var(--bg-canvas);
 }
 
+/* The composer field: an inset pill with a hairline (classes in ChatComposer).
+   Focus draws the system ring around the whole field while the draft has focus,
+   as the Composer contract does; toolbar buttons inside keep their own ring. */
 .cursor-chat-composer {
-	background: color-mix(in srgb, var(--color-bg-secondary) 94%, var(--color-bg-elevated));
-	box-shadow: var(--elevation-sm);
+	outline: var(--stroke-2) solid transparent;
+	outline-offset: 2px;
+	transition:
+		outline-color var(--duration-fast) var(--ease-standard),
+		border-color var(--duration-fast) var(--ease-standard);
 }
 
-.cursor-chat-composer:focus-within {
-	border-color: color-mix(in srgb, var(--color-logo-accent) 45%, var(--color-border-strong));
-	background: var(--color-bg-secondary);
-	box-shadow: var(--elevation-md);
+.cursor-chat-composer:has(textarea:focus-visible) {
+	outline-color: var(--border-focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cursor-chat-composer {
+		transition: none;
+	}
 }
 
 /* The draft grows to seven lines before it becomes its own scroll surface. A
@@ -2707,79 +2637,17 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	background-clip: content-box;
 }
 
-.cursor-chat-human-message {
-	background: color-mix(in srgb, var(--color-bg-elevated) 72%, var(--color-bg-secondary));
-	border-color: color-mix(in srgb, var(--color-border-strong) 85%, transparent);
-}
-
-.cursor-chat-origin-message,
-.cursor-chat-activity-panel {
-	background: color-mix(in srgb, var(--color-bg-secondary) 62%, transparent);
-}
-
-:root[data-theme="light"] .cursor-chat-surface {
-	background:
-		radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-logo-accent) 5%, transparent), transparent 34rem),
-		var(--color-bg-primary);
-}
-
-:root[data-theme="light"] .cursor-chat-surface .text-foreground,
-:root[data-theme="light"] .cursor-chat-surface .chat-md {
-	color: var(--color-text-primary);
-}
-
-:root[data-theme="light"] .cursor-chat-surface .text-muted-foreground,
-:root[data-theme="light"] .cursor-chat-surface [class*="text-muted-foreground/"],
-:root[data-theme="light"] .cursor-chat-role-label,
-:root[data-theme="light"] .cursor-chat-role-icon {
-	color: color-mix(in oklch, var(--color-text-primary) 64%, transparent);
-}
-
-:root[data-theme="light"] .cursor-chat-surface .text-passive,
-:root[data-theme="light"] .cursor-chat-composer textarea::placeholder,
-:root[data-theme="light"] .cursor-chat-mode-badge {
-	color: color-mix(in oklch, var(--color-text-primary) 48%, transparent);
-}
-
-:root[data-theme="light"] .cursor-chat-header {
-	background: color-mix(in srgb, var(--color-bg-sidebar) 86%, var(--color-bg-primary));
-}
-
-:root[data-theme="light"] .cursor-chat-composer {
-	background: color-mix(in srgb, var(--color-bg-secondary) 98%, var(--color-bg-tertiary));
-	border-color: color-mix(in oklch, var(--color-text-primary) 18%, transparent);
-	box-shadow:
-		0 1px 0 color-mix(in oklch, var(--color-text-primary) 4%, transparent),
-		0 10px 28px color-mix(in oklch, var(--color-text-primary) 8%, transparent);
-}
-
-:root[data-theme="light"] .cursor-chat-composer:focus-within {
-	border-color: color-mix(in srgb, var(--color-logo-accent) 48%, var(--color-border-strong));
-	background: var(--color-bg-secondary);
-}
-
-:root[data-theme="light"] .cursor-chat-human-message {
-	background: color-mix(in srgb, var(--color-bg-secondary) 78%, var(--color-bg-tertiary));
-	border-color: color-mix(in oklch, var(--color-text-primary) 14%, transparent);
-}
-
-:root[data-theme="light"] .cursor-chat-origin-message,
-:root[data-theme="light"] .cursor-chat-activity-panel {
-	background: color-mix(in srgb, var(--color-bg-tertiary) 66%, transparent);
-	border-color: color-mix(in oklch, var(--color-text-primary) 12%, transparent);
-}
-
 /* The live caret belongs to the text being written. A separate block after the
-   markdown looked like an empty automation row, especially between tool calls. */
+   markdown looked like an empty automation row, especially between tool calls.
+   It is a still mark, not a pulse: the text arriving is the working state. */
 .chat-assistant-streaming .chat-md > :last-child::after {
 	display: inline-block;
 	width: 2px;
 	height: 1em;
 	margin-left: 0.25rem;
 	vertical-align: -0.12em;
-	background: var(--color-text-muted);
+	background: var(--text-tertiary);
 	content: "";
-	animation: pulse 1.5s ease-in-out infinite;
 }
 
 .chat-md-emoji {
@@ -2805,12 +2673,12 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	height: 2px;
 	transform: translate(-50%, -50%);
 	border-radius: 999px;
-	background: color-mix(in srgb, var(--color-text-muted) 54%, transparent);
+	background: var(--text-tertiary);
 	opacity: 0.76;
 	transition:
-		width 180ms cubic-bezier(0.16, 1, 0.3, 1),
-		background-color 140ms ease,
-		opacity 140ms ease;
+		width var(--duration-fast) var(--ease-standard),
+		background-color var(--duration-fast) var(--ease-standard),
+		opacity var(--duration-fast) var(--ease-standard);
 }
 
 .chat-scroll-marker-hit {
@@ -2822,21 +2690,21 @@ body.is-resizing-x [data-slot="inspector-container"] {
 }
 
 .chat-scroll-marker-visible {
-	background: color-mix(in srgb, var(--color-text-muted) 82%, transparent);
+	background: var(--text-secondary);
 	opacity: 1;
 }
 
 .group\/scroll:hover .chat-scroll-marker,
 .group\/scroll:focus-visible .chat-scroll-marker {
 	width: 9px;
-	background: color-mix(in srgb, var(--color-text-muted) 72%, transparent);
+	background: var(--text-secondary);
 	opacity: 0.96;
 }
 
 .group\/scroll:hover .chat-scroll-marker-visible,
 .group\/scroll:focus-visible .chat-scroll-marker-visible {
 	width: 11px;
-	background: var(--color-text-muted);
+	background: var(--text-secondary);
 }
 
 .group\/scroll .chat-scroll-marker-near,
@@ -2855,14 +2723,14 @@ body.is-resizing-x [data-slot="inspector-container"] {
 .group\/scroll:hover .chat-scroll-marker-active,
 .group\/scroll:focus-visible .chat-scroll-marker-active {
 	width: 28px;
-	background: var(--color-foreground);
+	background: var(--text-primary);
 	opacity: 1;
 }
 
 .chat-scroll-preview {
 	transform: translate(-6px, -50%) scale(0.98);
 	transform-origin: right center;
-	animation: chat-scroll-preview-in 140ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+	animation: chat-scroll-preview-in var(--duration-fast) var(--ease-enter) forwards;
 }
 
 @keyframes chat-scroll-preview-in {
@@ -2901,9 +2769,9 @@ body.is-resizing-x [data-slot="inspector-container"] {
 
 .workspace-topbar__utility-separator,
 .workspace-topbar__identity-separator {
-	width: 1px;
-	flex: 0 0 1px;
-	background: color-mix(in srgb, var(--color-text-topbar) 28%, transparent);
+	width: var(--stroke-hairline);
+	flex: 0 0 var(--stroke-hairline);
+	background: var(--border-strong);
 }
 
 .workspace-topbar__utility-separator {
@@ -2923,12 +2791,12 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	border-radius: var(--radius-topbar-control);
 	font-size: var(--font-size-sm-md);
 	transition:
-		background-color var(--duration-fast) ease,
-		border-color var(--duration-fast) ease,
-		color var(--duration-fast) ease,
-		filter var(--duration-fast) ease,
-		gap var(--duration-normal) ease,
-		padding-inline var(--duration-normal) ease;
+		background-color var(--duration-instant) var(--ease-standard),
+		border-color var(--duration-instant) var(--ease-standard),
+		color var(--duration-instant) var(--ease-standard),
+		opacity var(--duration-instant) var(--ease-standard),
+		gap var(--duration-base) var(--ease-standard),
+		padding-inline var(--duration-base) var(--ease-standard);
 }
 
 .workspace-topbar-actions .topbar-control--labeled,
@@ -2936,18 +2804,10 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	padding-inline: var(--space-2_5);
 }
 
-/* The Outcome is Kennel's primary entry point. Give it enough visual weight
- * to remain the obvious next action beside quieter project controls. */
+/* The Outcome is Kennel's primary entry point. It carries weight through the
+ * ink plate (TopbarButton primary), not a glow: only overlays cast shadows. */
 .outcome-primary-action {
-	box-shadow:
-		0 0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent),
-		0 5px 14px color-mix(in srgb, var(--color-accent) 24%, transparent);
-}
-
-.outcome-primary-action:hover:not(:disabled) {
-	box-shadow:
-		0 0 0 2px color-mix(in srgb, var(--color-accent) 48%, transparent),
-		0 7px 18px color-mix(in srgb, var(--color-accent) 30%, transparent);
+	box-shadow: none;
 }
 
 .workspace-topbar-actions [data-compact-label] {
@@ -2966,15 +2826,15 @@ body.is-resizing-x [data-slot="inspector-container"] {
 }
 
 .workspace-topbar-actions .topbar-control--feature {
-	border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-border-topbar));
-	background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-topbar-raised));
-	color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-topbar));
+	border-color: transparent;
+	background: var(--bg-inset);
+	color: var(--text-primary);
 }
 
 .workspace-topbar-actions .topbar-control--feature:hover:not(:disabled) {
-	border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border-topbar-strong));
-	background: color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-topbar-raised));
-	color: var(--color-text-topbar);
+	border-color: transparent;
+	background: var(--bg-pressed);
+	color: var(--text-primary);
 }
 
 .session-pinned-actions-reserve {
@@ -3317,42 +3177,48 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	height: var(--size-window-titlebar);
 	flex-shrink: 0;
 	align-items: center;
-	gap: 8px;
-	padding: 0 10px;
-	/* Matches the shell chrome (bg-sidebar) and the Window Controls Overlay
-	   color pushed in WindowTitlebar/main.ts, so the native min/max/close
+	gap: var(--space-2);
+	padding: 0 var(--space-2_5);
+	/* Waldo canvas with a hairline foot. Matches the Window Controls Overlay
+	   colour pushed in WindowTitlebar/main.ts, so the native min/max/close
 	   strip blends into the bar instead of reading as a separate box. */
-	background: var(--color-bg-sidebar);
+	background: var(--bg-canvas);
+	border-bottom: var(--stroke-hairline) solid var(--border-hairline);
 	-webkit-app-region: drag;
 	user-select: none;
 }
 
+/* 28px round quiet icon buttons (Waldo IconButton, quiet). */
 .window-titlebar__toggle {
 	display: grid;
 	place-items: center;
 	width: 28px;
 	height: 28px;
-	border-radius: 6px;
-	color: var(--fg-muted);
+	border-radius: var(--radius-full);
+	color: var(--text-secondary);
 	-webkit-app-region: no-drag;
 	transition:
-		background-color 0.12s ease,
-		color 0.12s ease;
+		background-color var(--duration-instant) var(--ease-standard),
+		color var(--duration-instant) var(--ease-standard);
 }
 
 .window-titlebar__toggle:hover {
-	background: color-mix(in srgb, var(--fg) 8%, transparent);
-	color: var(--fg);
+	background: var(--bg-hover);
+	color: var(--text-primary);
+}
+
+.window-titlebar__toggle:active {
+	background: var(--bg-pressed);
 }
 
 .window-titlebar__toggle:disabled {
 	cursor: not-allowed;
-	opacity: 0.45;
+	color: var(--text-disabled);
 }
 
 .window-titlebar__toggle:disabled:hover {
 	background: transparent;
-	color: var(--fg-muted);
+	color: var(--text-disabled);
 }
 
 .window-titlebar__toggle-icon {
@@ -3363,26 +3229,26 @@ body.is-resizing-x [data-slot="inspector-container"] {
 .window-titlebar__menus {
 	display: flex;
 	align-items: center;
-	gap: 1px;
+	gap: 2px;
 	-webkit-app-region: no-drag;
 }
 
 .window-titlebar__menu-btn {
 	height: 24px;
-	padding: 0 8px;
-	border-radius: 6px;
-	font-size: 12.5px;
+	padding: 0 var(--space-2_5);
+	border-radius: var(--radius-full);
+	font-size: 13px;
 	line-height: 1;
-	color: var(--fg-muted);
+	color: var(--text-secondary);
 	transition:
-		background-color 0.12s ease,
-		color 0.12s ease;
+		background-color var(--duration-instant) var(--ease-standard),
+		color var(--duration-instant) var(--ease-standard);
 }
 
 .window-titlebar__menu-btn:hover,
 .window-titlebar__menu-btn[data-active] {
-	background: color-mix(in srgb, var(--fg) 8%, transparent);
-	color: var(--fg);
+	background: var(--bg-hover);
+	color: var(--text-primary);
 }
 
 .window-titlebar__menu {
@@ -3447,7 +3313,7 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	min-height: 0;
 	flex-direction: column;
 	overflow: hidden;
-	background: var(--bg);
+	background: var(--bg-canvas);
 }
 
 .session-inspector__tabs {
@@ -3545,16 +3411,16 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	top: 0;
 	bottom: 0;
 	left: 50%;
-	width: 1px;
+	width: var(--stroke-hairline);
 	transform: translateX(-50%);
-	background: var(--border-1);
-	transition: background 0.12s ease;
+	background: var(--border-hairline);
+	transition: background var(--duration-fast) var(--ease-standard);
 }
 
 .session-inspector__resize-handle:hover::after,
 .session-inspector__resize-handle:focus-visible::after,
 .session-inspector__resize-handle[data-separator="active"]::after {
-	background: var(--border);
+	background: var(--border-strong);
 }
 
 .reviewer-terminal-header {
@@ -3632,8 +3498,8 @@ body.is-resizing-x [data-slot="inspector-container"] {
  * (gap width + x-transform). Dragging updates --ao-inspector-w directly. */
 
 .session-inspector__topbar {
-	background: var(--bg);
-	color: var(--fg);
+	background: var(--bg-canvas);
+	color: var(--text-primary);
 	user-select: none;
 }
 
@@ -4304,20 +4170,10 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	min-height: 320px;
 	flex-direction: column;
 	overflow: hidden;
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	background:
-		linear-gradient(180deg, color-mix(in srgb, var(--color-bg-secondary) 92%, transparent), transparent 118px),
-		linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 42%),
-		var(--bg);
-	box-shadow:
-		0 0 0 1px color-mix(in srgb, var(--color-border) 42%, transparent),
-		0 20px 48px color-mix(in srgb, black 18%, transparent),
-		0 8px 18px color-mix(in srgb, black 10%, transparent);
-	transition:
-		border-color var(--duration-normal) ease,
-		box-shadow var(--duration-normal) ease,
-		background var(--duration-normal) ease;
+	/* Waldo: a quiet surface with a hairline; no gradients, glows or shadow. */
+	border: var(--stroke-hairline) solid var(--border-hairline);
+	border-radius: var(--radius-lg);
+	background: var(--bg-canvas);
 }
 
 /* Maximized browser overlay: a fixed layer over the app workspace (portaled to
@@ -4334,7 +4190,7 @@ body.is-resizing-x [data-slot="inspector-container"] {
 	position: fixed;
 	inset: env(titlebar-area-height, 0px) 0 0;
 	z-index: 40;
-	background: color-mix(in srgb, var(--bg) 94%, black);
+	background: var(--bg-canvas);
 	/* The macOS shell has a separate traffic-light drag strip. Keep the
 	   maximized browser surface interactive even if those regions overlap while
 	   the window is transitioning between layouts. */
@@ -4386,14 +4242,8 @@ html[data-native-browser-composition="true"][data-ao-platform="win32"] .files-po
 	/* No right padding: the new-tab button's own column is flush against this
 	   edge so it lines up with the docked rail directly below it. */
 	padding: 3px 0 3px 4px;
-	border-bottom: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
-	background:
-		linear-gradient(180deg, color-mix(in srgb, var(--surface) 98%, white 2%), var(--surface)),
-		var(--surface);
-	box-shadow:
-		inset 0 1px 0 color-mix(in srgb, white 7%, transparent),
-		0 1px 0 color-mix(in srgb, black 22%, transparent);
-	backdrop-filter: blur(10px);
+	border-bottom: var(--stroke-hairline) solid var(--border-hairline);
+	background: var(--bg-canvas);
 }
 
 .browser-panel__url,
@@ -4405,36 +4255,25 @@ html[data-native-browser-composition="true"][data-ao-platform="win32"] .files-po
 	flex: 1;
 }
 
+/* Nav controls are quiet round icon buttons: hover fills, nothing lifts. */
 .browser-panel__toolbar button {
-	border-radius: 7px;
+	border-radius: var(--radius-full);
 	transition:
-		background var(--duration-fast) ease,
-		color var(--duration-fast) ease,
-		transform var(--duration-fast) ease,
-		box-shadow var(--duration-fast) ease;
-}
-
-.browser-panel__toolbar button:not(:disabled):hover {
-	transform: translateY(-1px);
-	box-shadow: 0 5px 12px color-mix(in srgb, black 12%, transparent);
-}
-
-.browser-panel__toolbar button:not(:disabled):active {
-	transform: translateY(0);
-	box-shadow: none;
+		background var(--duration-fast) var(--ease-standard),
+		color var(--duration-fast) var(--ease-standard);
 }
 
 .browser-panel__annotate-btn[aria-pressed="true"] {
-	background: var(--accent-weak);
-	color: var(--fg);
+	background: var(--bg-selected);
+	color: var(--text-primary);
 }
 
 .browser-panel__annotation-status {
 	max-width: 96px;
 	overflow: hidden;
-	color: var(--fg-muted);
+	color: var(--text-secondary);
 	font-size: 11px;
-	font-weight: 650;
+	font-weight: 500;
 	line-height: 1;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -4445,39 +4284,36 @@ html[data-native-browser-composition="true"][data-ao-platform="win32"] .files-po
 
 .browser-panel__annotation-status--error {
 	max-width: 160px;
-	color: var(--red);
+	color: var(--critical);
 }
 
 .browser-panel__url-icon {
 	position: absolute;
-	left: 10px;
+	left: 11px;
 	top: 50%;
 	z-index: 1;
-	width: 15px;
-	height: 15px;
+	width: 14px;
+	height: 14px;
 	transform: translateY(-50%);
-	color: var(--fg-passive);
+	color: var(--text-tertiary);
 	pointer-events: none;
 }
 
+/* The address field is an inset pill (Waldo TextField, compact). */
 .browser-panel__url-input {
 	height: 29px;
-	padding-left: 29px;
-	border-color: color-mix(in srgb, var(--color-border) 72%, transparent);
-	border-radius: 7px;
-	background:
-		linear-gradient(180deg, color-mix(in srgb, var(--bg) 90%, white 2%), var(--bg));
-	box-shadow:
-		inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
-		0 1px 8px color-mix(in srgb, black 9%, transparent);
-	font-family: var(--font-mono);
+	padding-left: 30px;
+	border-color: transparent;
+	border-radius: var(--radius-full);
+	background: var(--bg-inset);
+	box-shadow: none;
+	color: var(--text-primary);
+	font-family: var(--font-text);
 	font-size: 12px;
 }
 
 .browser-panel__url-input:focus {
-	box-shadow:
-		0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent),
-		inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+	box-shadow: none;
 }
 
 .browser-panel__content {
@@ -4485,7 +4321,7 @@ html[data-native-browser-composition="true"][data-ao-platform="win32"] .files-po
 	flex: 1;
 	min-height: 0;
 	overflow: hidden;
-	background: var(--bg);
+	background: var(--bg-canvas);
 }
 
 .browser-panel__viewport {
@@ -4495,14 +4331,9 @@ html[data-native-browser-composition="true"][data-ao-platform="win32"] .files-po
 	margin: 8px;
 	overflow: hidden;
 	border: 0;
-	border-radius: 8px;
-	background:
-		radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 34%),
-		var(--bg);
-	box-shadow:
-		inset 0 0 0 1px color-mix(in srgb, var(--color-border) 28%, transparent),
-		inset 0 1px 0 color-mix(in srgb, white 3%, transparent),
-		0 12px 26px color-mix(in srgb, black 14%, transparent);
+	border-radius: var(--radius-md);
+	background: var(--bg-surface);
+	box-shadow: inset 0 0 0 var(--stroke-hairline) var(--border-hairline);
 }
 
 .browser-popout-overlay .browser-panel__viewport {
@@ -4526,9 +4357,9 @@ html[data-native-browser-composition="true"][data-ao-platform="win32"] .files-po
 	place-items: center;
 	padding: 20px;
 	text-align: center;
-	font-family: var(--font-mono);
-	font-size: 12px;
-	color: var(--fg-passive);
+	font-family: var(--font-text);
+	font-size: 13px;
+	color: var(--text-secondary);
 	pointer-events: none;
 }
 
@@ -4538,12 +4369,12 @@ html[data-native-browser-composition="true"][data-ao-platform="win32"] .files-po
 	right: 10px;
 	bottom: 10px;
 	margin: 0;
-	padding: 8px 10px;
-	border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
-	border-radius: 7px;
-	background: color-mix(in srgb, var(--red) 8%, var(--bg));
-	color: var(--red);
-	font-size: 12px;
+	padding: 8px 12px;
+	border: 0;
+	border-radius: var(--radius-md);
+	background: var(--critical-bg);
+	color: var(--critical);
+	font-size: 13px;
 }
 
 /* Native composition keeps the browser page in an Electron
@@ -4653,16 +4484,14 @@ html[data-native-browser-composition="true"] .browser-popout-overlay {
 @keyframes notification-row-in {
 	from {
 		opacity: 0;
-		transform: translateY(-6px);
 	}
 	to {
 		opacity: 1;
-		transform: translateY(0);
 	}
 }
 
 .notification-row-enter {
-	animation: notification-row-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+	animation: notification-row-in var(--duration-base) var(--ease-enter) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4688,13 +4517,61 @@ html[data-native-browser-composition="true"] .browser-popout-overlay {
 	padding-block: var(--space-2);
 }
 
+/* Mission canvas on Waldo ink: edges at the strong-border weight, a quiet dot
+   grid, and the fit/zoom toolbar as quiet icon buttons on a hairline pill. */
+.react-flow.mission-canvas-flow {
+	--xy-edge-stroke: var(--border-strong);
+	--xy-edge-stroke-width: 1;
+	--xy-background-pattern-color: var(--border-hairline);
+	--xy-controls-box-shadow: none;
+	--xy-controls-button-background-color: transparent;
+	--xy-controls-button-background-color-hover: var(--bg-hover);
+	--xy-controls-button-color: var(--text-secondary);
+	--xy-controls-button-color-hover: var(--text-primary);
+	--xy-controls-button-border-color: transparent;
+}
+.mission-canvas-flow .react-flow__controls.mission-canvas-controls {
+	gap: var(--space-0_5, 2px);
+	padding: var(--space-0_5, 2px);
+	border: var(--stroke-hairline) solid var(--border-hairline);
+	border-radius: 9999px;
+	background: var(--bg-surface);
+}
+.mission-canvas-flow .mission-canvas-controls .react-flow__controls-button {
+	width: 28px;
+	height: 28px;
+	padding: 7px;
+	border: 0;
+	border-radius: 9999px;
+	transition: background-color var(--duration-fast, 150ms) ease;
+}
+.mission-canvas-flow .mission-canvas-controls .react-flow__controls-button:focus-visible {
+	outline: 2px solid var(--border-focus);
+	outline-offset: 2px;
+}
+
 /* Mission canvas lineage highlighting: the selected node's dependency
-   lineage (both directions) keeps full weight; every other edge steps back.
-   Class-driven, instant - no animation, so reduced motion needs nothing. */
+   lineage (both directions) keeps full weight in ink; every other edge steps
+   back. The path into a running unit is the live accent, the path into a
+   unit that needs the owner is Spot. Class-driven, instant - no animation, so
+   reduced motion needs nothing. */
 .react-flow__edge.mission-edge-related .react-flow__edge-path {
-	stroke: var(--color-status-working);
-	stroke-width: 2;
+	stroke: var(--text-primary);
+	stroke-width: 1.5;
+}
+.react-flow__edge.mission-edge-running .react-flow__edge-path {
+	stroke: var(--wd-accent);
+	stroke-width: 1.5;
+}
+.react-flow__edge.mission-edge-needs-you .react-flow__edge-path {
+	stroke: var(--spot);
+	stroke-width: 1.5;
 }
 .react-flow__edge.mission-edge-dimmed {
 	opacity: 0.3;
+}
+@media (prefers-reduced-motion: reduce) {
+	.mission-canvas-flow .mission-canvas-controls .react-flow__controls-button {
+		transition: none;
+	}
 }

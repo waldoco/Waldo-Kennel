@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	AlertTriangle,
 	Archive,
+	ArrowRight,
 	Brain,
 	ChevronRight,
 	CircleAlert,
@@ -21,7 +22,6 @@ import {
 	KeyRound,
 	Keyboard,
 	ListChecks,
-	Loader2,
 	Pencil,
 	Plug,
 	Shuffle,
@@ -146,6 +146,27 @@ function formatTime(iso: string): string {
 	return Number.isNaN(parsed.getTime()) ? "" : timeFormatter.format(parsed);
 }
 
+function sentenceCase(text: string): string {
+	return text ? text.charAt(0).toUpperCase() + text.slice(1).toLowerCase() : text;
+}
+
+/**
+ * Live execution, said in a word. Kennel's running state is the system accent as a
+ * still dot beside "Running" — never a spinner, so a row that stays running for an
+ * hour does not spin for an hour.
+ */
+export function RunningMark({ label }: { label?: string }) {
+	return (
+		<span
+			aria-label={label}
+			className="flex shrink-0 items-center gap-1.5 self-center text-[11px] text-wd-secondary"
+		>
+			<span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-wd-accent" />
+			Running
+		</span>
+	);
+}
+
 /* -------------------------------------------------------------------------- */
 /* messages                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -221,10 +242,10 @@ export function HumanMessage({
 			) : (
 				<div
 					className={cn(
-						"cursor-chat-human-message w-fit max-w-[min(78%,560px)] rounded-[10px] border px-3 py-2.5 text-sm leading-[1.55]",
+						"cursor-chat-human-message w-fit max-w-[min(80%,560px)] rounded-lg rounded-br-xs px-4 py-3 text-sm leading-[1.55]",
 						queued
-							? "border-dashed border-border-strong bg-transparent text-muted-foreground"
-							: "border-border bg-raised text-foreground",
+							? "border border-dashed border-wd-strong bg-transparent text-wd-secondary"
+							: "bg-wd-inset text-wd-primary",
 					)}
 				>
 					{body ? <p className="whitespace-pre-wrap text-pretty">{body}</p> : null}
@@ -233,11 +254,11 @@ export function HumanMessage({
 							{attachments.map((path) => {
 								const name = attachmentName(path);
 								return IMAGE_ATTACHMENT_PATH.test(path) ? (
-									<li key={path} className="max-w-full overflow-hidden rounded-md border border-border bg-background">
+									<li key={path} className="max-w-full overflow-hidden rounded-sm bg-wd-surface">
 										<img src={attachmentURL(apiBaseUrl, sessionId, path)} alt={name} loading="lazy" className="block h-auto max-h-80 max-w-full object-contain" />
 									</li>
 								) : (
-									<li key={path} title={path} className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5 text-xs text-muted-foreground">
+									<li key={path} title={path} className="flex max-w-full items-center gap-1.5 rounded-full bg-wd-surface px-2.5 py-1 text-xs text-wd-secondary">
 										<FileIcon aria-hidden="true" className="size-3.5 shrink-0" />
 										<span className="truncate">{name}</span>
 									</li>
@@ -249,7 +270,7 @@ export function HumanMessage({
 			)}
 			{editing ? null : (
 				<div className="flex h-[18px] items-center gap-0.5">
-					<div className="flex items-center opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/message:opacity-100">
+					<div className="flex items-center opacity-0 transition-opacity duration-fast focus-within:opacity-100 group-hover/message:opacity-100">
 						<CopyButton text={message.text} label="Copy user message" compact className="-mr-1" />
 						{onEdit && onEditStart && message.turnId ? (
 							<button
@@ -257,7 +278,7 @@ export function HumanMessage({
 								onClick={onEditStart}
 								aria-label="Edit user message"
 								title="Edit user message"
-								className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground"
+								className="flex items-center gap-1 rounded-xs px-1.5 py-0.5 text-[11px] text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary"
 							>
 								<Pencil aria-hidden="true" className="size-3" />
 							</button>
@@ -274,13 +295,13 @@ export function HumanMessage({
 				</div>
 			)}
 			{dispatchBlockedState ? (
-				<div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+				<div className="flex items-center gap-2 text-[11px] text-wd-secondary">
 					{/* A turn claim's quiescence is always "not_applicable" (service.go's
 					    claimGovernedTurn) -- only steer/answer/interrupt claims vary it. */}
 					<span>{governedBlockCopy("turn", dispatchBlockedState, "not_applicable")}</span>
 				</div>
 			) : queued ? (
-				<div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+				<div className="flex items-center gap-2 text-[11px] text-wd-secondary">
 					<span>Queued · sends when the agent finishes</span>
 				</div>
 			) : null}
@@ -303,18 +324,18 @@ export function OriginMessage({ message }: { message: ConversationMessage }) {
 		: message.text;
 
 	return (
-		<div className="cursor-chat-origin-message rounded-md border border-border border-l-2 border-l-logo-accent/60 px-3.5 py-2.5">
-			<div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-				<CircleAlert aria-hidden="true" className="size-3.5 shrink-0 text-logo-accent" />
+		<div className="cursor-chat-origin-message rounded-lg hairline border-wd-hairline bg-wd-surface px-4 py-3">
+			<div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-wd-secondary">
+				<CircleAlert aria-hidden="true" className="size-3.5 shrink-0 text-wd-secondary" />
 				<span className="truncate">{message.senderLabel ?? message.origin}</span>
-				<span className="ml-auto shrink-0 font-normal tabular-nums">
+				<span className="wd-data-s ml-auto shrink-0 font-normal text-wd-tertiary">
 					{formatTime(message.createdAt)}
 				</span>
 			</div>
 			{longReport && expanded ? (
 				<ChatMarkdown text={message.text} muted />
 			) : (
-				<p className={cn("text-sm leading-relaxed text-muted-foreground", longReport && "line-clamp-3")}>
+				<p className={cn("text-sm leading-relaxed text-wd-secondary", longReport && "line-clamp-3")}>
 					{preview}
 				</p>
 			)}
@@ -323,7 +344,7 @@ export function OriginMessage({ message }: { message: ConversationMessage }) {
 					type="button"
 					onClick={() => setExpanded((current) => !current)}
 					aria-expanded={expanded}
-					className="mt-2 flex items-center gap-1 text-[11px] font-medium text-logo-accent transition-colors hover:text-markdown-link-hover"
+					className="mt-2 flex items-center gap-1 rounded-xs text-xs font-medium text-wd-secondary transition-colors duration-fast hover:text-wd-primary"
 				>
 					<ChevronRight
 						aria-hidden="true"
@@ -352,25 +373,25 @@ export function AssistantMessage({
 	const visiblyStreaming = message.streaming && showStreamingIndicator;
 	const hasText = message.text.trim().length > 0;
 	return (
-		<div className={cn("group/message relative", visiblyStreaming && hasText && "chat-assistant-streaming")}>
+		<div
+			className={cn(
+				"chat-assistant-message group/message relative",
+				visiblyStreaming && hasText && "chat-assistant-streaming",
+			)}
+		>
 			<ChatMarkdown text={message.text} streaming={message.streaming} />
 			{visiblyStreaming ? (
 				hasText ? (
 					<span aria-label="still writing" className="sr-only" />
 				) : (
-					<span
-						role="status"
-						aria-label="still writing"
-						className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
-					>
-						<Loader2 aria-hidden="true" className="size-3 animate-spin" />
-						Writing…
+					<span role="status" aria-label="still writing" className="text-[13px] text-wd-secondary">
+						Writing a reply…
 					</span>
 				)
 			) : showCopy ? (
 				// One action for the completed answer, not one after every prose fragment
 				// the provider emitted while working.
-				<div className="flex h-[18px] items-center opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/message:opacity-100">
+				<div className="flex h-[18px] items-center opacity-0 transition-opacity duration-fast focus-within:opacity-100 group-hover/message:opacity-100">
 					{/* The stored markdown, not a re-serialization of what was rendered:
 					    pasting it into an editor has to give back what the agent wrote. */}
 					<CopyButton
@@ -402,7 +423,11 @@ function DeliveryNote({ state }: { state: DeliveryState }) {
 		<span
 			className={cn(
 				"text-[11px] leading-none",
-				state === "uncertain" || state === "failed" ? "text-warning" : "text-muted-foreground",
+				state === "failed"
+					? "text-critical"
+					: state === "uncertain"
+						? "text-caution"
+						: "text-wd-secondary",
 			)}
 		>
 			{copy[state]}
@@ -462,7 +487,7 @@ function GenericActivityRow({ activity }: { activity: ConversationActivity }) {
 		<div
 			className={cn(
 				"min-w-0 max-w-full",
-				compactCommand ? "flex flex-col" : "group/activity border-t border-border first:border-t-0",
+				compactCommand ? "flex flex-col" : "group/activity hairline-t border-wd-hairline first:border-t-0",
 			)}
 		>
 			<button
@@ -474,7 +499,7 @@ function GenericActivityRow({ activity }: { activity: ConversationActivity }) {
 					compactCommand
 						? ACTIVITY_SUMMARY_BUTTON_CLASS
 						: "flex min-h-[35px] w-full min-w-0 items-center gap-[9px] px-[11px] py-2 text-left text-[11px] transition-colors",
-					hasBody && !compactCommand && "hover:bg-interactive-hover",
+					hasBody && !compactCommand && "hover:bg-wd-hover",
 					!hasBody && "cursor-default",
 				)}
 			>
@@ -483,7 +508,7 @@ function GenericActivityRow({ activity }: { activity: ConversationActivity }) {
 						aria-hidden="true"
 						className={cn(
 							"w-[15px] shrink-0 text-center",
-							activity.status === "failed" ? "text-destructive" : "text-muted-foreground/70",
+							activity.status === "failed" ? "text-critical" : "text-wd-tertiary",
 						)}
 						size={13}
 					/>
@@ -491,10 +516,10 @@ function GenericActivityRow({ activity }: { activity: ConversationActivity }) {
 				<strong
 					className={cn(
 						compactCommand
-							? "shrink-0 text-[11.5px] font-normal text-muted-foreground"
+							? "shrink-0 text-[11.5px] font-normal text-wd-secondary"
 							: "min-w-0 truncate font-medium",
 						!compactCommand &&
-							(activity.status === "failed" ? "text-destructive" : "text-foreground"),
+							(activity.status === "failed" ? "text-critical" : "text-wd-primary"),
 					)}
 					title={compactCommand ? undefined : label}
 				>
@@ -502,7 +527,7 @@ function GenericActivityRow({ activity }: { activity: ConversationActivity }) {
 				</strong>
 				{path ? (
 					<span
-						className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-muted-foreground"
+						className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-wd-secondary"
 						title={path}
 					>
 						{path}
@@ -520,7 +545,7 @@ function GenericActivityRow({ activity }: { activity: ConversationActivity }) {
 					<ChevronRight
 						aria-hidden="true"
 						className={cn(
-							"size-3 shrink-0 text-muted-foreground/40 transition-transform group-hover/run:text-muted-foreground",
+							"size-3 shrink-0 text-wd-tertiary transition-transform duration-fast group-hover/run:text-wd-secondary",
 							open && "rotate-90",
 						)}
 					/>
@@ -531,7 +556,7 @@ function GenericActivityRow({ activity }: { activity: ConversationActivity }) {
 				<div className="flex flex-col gap-1.5 px-[11px] pb-2.5">
 					{files.length ? <FileChangeList files={files} /> : null}
 					{detail?.reason || detail?.text ? (
-						<p className="whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
+						<p className="whitespace-pre-wrap text-[11px] leading-relaxed text-wd-secondary">
 							{detail.reason ?? detail.text}
 						</p>
 					) : null}
@@ -565,15 +590,15 @@ function TerminalInput({ text, truncated }: { text: string; truncated?: boolean 
 	const shown = useMemo(() => caretNotation(text), [text]);
 	return (
 		<div className="flex flex-col gap-1">
-			<span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+			<span className="flex items-center gap-1.5 text-[11px] text-wd-tertiary">
 				<Keyboard aria-hidden="true" className="size-3" />
 				Agent typed
 			</span>
-			<pre className="overflow-x-auto rounded-md border border-dashed border-border-strong bg-background px-2.5 py-1.5 font-mono text-[10.5px] leading-relaxed text-accent">
+			<pre className="overflow-x-auto rounded-sm border border-dashed border-wd-strong bg-wd-inset px-3 py-1.5 font-mono text-[10.5px] leading-relaxed text-wd-primary">
 				{shown}
 			</pre>
 			{truncated ? (
-				<p className="text-[10px] text-muted-foreground/70">
+				<p className="text-[11px] text-wd-tertiary">
 					Kennel stopped recording keystrokes at its cap; more were sent.
 				</p>
 			) : null}
@@ -627,17 +652,17 @@ function CommandOutput({ activity }: { activity: ConversationActivity }) {
 			<pre
 				ref={pre}
 				aria-live={streaming ? "polite" : undefined}
-				className="max-h-64 overflow-auto rounded-md border border-border bg-background px-2.5 py-2 font-mono text-[10.5px] leading-relaxed text-muted-foreground"
+				className="max-h-64 overflow-auto rounded-sm bg-wd-inset px-3 py-2 font-mono text-[10.5px] leading-relaxed text-wd-secondary"
 			>
 				{output}
 			</pre>
 			{detail?.outputTruncated ? (
-				<p className="text-[10px] leading-relaxed text-warning">
+				<p className="text-[11px] leading-relaxed text-caution">
 					This command printed more than Kennel stores, so the output above stops early. Open a shell in
 					the worktree to see the rest.
 				</p>
 			) : detail?.outputMayBePartial ? (
-				<p className="text-[10px] leading-relaxed text-muted-foreground/70">
+				<p className="text-[11px] leading-relaxed text-wd-tertiary">
 					{detail.outputSource === "stream"
 						? "Streamed live as the command runs. The provider drops the first chunk, so the beginning may be missing."
 						: "Rolled up by the provider after the command finished, and observed to drop the beginning."}{" "}
@@ -703,32 +728,29 @@ function ActivityState({
 
 	if (status === "running") {
 		return (
-			<Loader2
-				aria-label="running"
-				className="size-3 shrink-0 animate-spin self-center text-muted-foreground/60"
-			/>
+			<RunningMark label="running" />
 		);
 	}
 	if (files.length) {
 		const additions = files.reduce((sum, file) => sum + file.additions, 0);
 		const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
 		return (
-			<span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70">
-				<span className="text-success">+{additions}</span>{" "}
-				<span className="text-destructive">&minus;{deletions}</span>
+			<span className="wd-data-s shrink-0">
+				<span className="text-good">+{additions}</span>{" "}
+				<span className="text-critical">&minus;{deletions}</span>
 			</span>
 		);
 	}
 	if (status === "failed") {
 		return (
-			<span className="shrink-0 font-mono text-[10px] tabular-nums text-destructive">
+			<span className="wd-data-s shrink-0 text-critical">
 				{detail?.exitCode !== undefined ? `exit ${detail.exitCode}` : "failed"}
 			</span>
 		);
 	}
 	if (status === "cancelled") {
 		return (
-			<span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+			<span className="shrink-0 text-[11px] text-wd-tertiary">
 				stopped
 			</span>
 		);
@@ -741,7 +763,7 @@ function ActivityState({
 			<ChevronRight
 				aria-hidden="true"
 				className={cn(
-					"size-3 shrink-0 self-center text-muted-foreground/50 transition-all",
+					"size-3 shrink-0 self-center text-wd-tertiary transition-[opacity,transform] duration-fast",
 					open ? "rotate-90 opacity-100" : "opacity-0 group-hover/activity:opacity-100",
 				)}
 			/>
@@ -780,26 +802,24 @@ function FileChangeRow({ file }: { file: FileChangeFile }) {
 		<>
 			<span
 				aria-label={status.label}
-				className={cn("w-3 shrink-0 text-center font-mono text-[10px] font-semibold", status.tone)}
+				className={cn("w-3 shrink-0 text-center font-mono text-[10px] font-medium", status.tone)}
 				title={status.label}
 			>
 				{status.mark}
 			</span>
-			<span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={file.path}>
+			<span className="min-w-0 flex-1 truncate font-mono text-[11px] text-wd-secondary" title={file.path}>
 				{file.oldPath ? (
 					<>
-						<span className="text-muted-foreground/60">{shortenPaths(file.oldPath)}</span>
-						<span aria-hidden="true" className="px-1 text-muted-foreground/40">
-							&rarr;
-						</span>
+						<span className="text-wd-tertiary">{shortenPaths(file.oldPath)}</span>
+						<ArrowRight aria-hidden="true" className="mx-1 inline size-3 align-[-2px] text-wd-tertiary" />
 					</>
 				) : null}
 				{shortenPaths(file.path)}
 			</span>
-			<span className="shrink-0 font-mono text-[10px] tabular-nums text-success">
+			<span className="wd-data-s shrink-0 text-good">
 				+{file.additions}
 			</span>
-			<span className="shrink-0 font-mono text-[10px] tabular-nums text-destructive">
+			<span className="wd-data-s shrink-0 text-critical">
 				&minus;{file.deletions}
 			</span>
 		</>
@@ -817,13 +837,13 @@ function FileChangeRow({ file }: { file: FileChangeFile }) {
 				type="button"
 				onClick={() => setOpen((prev) => !prev)}
 				aria-expanded={open}
-				className="flex items-center gap-2.5 rounded-sm px-0.5 py-1 text-left transition-colors hover:bg-interactive-hover"
+				className="flex items-center gap-2.5 rounded-xs px-0.5 py-1 text-left transition-colors duration-fast hover:bg-wd-hover"
 			>
 				{line}
 				<ChevronRight
 					aria-hidden="true"
 					className={cn(
-						"size-3 shrink-0 text-muted-foreground/50 transition-transform",
+						"size-3 shrink-0 text-wd-tertiary transition-transform duration-fast",
 						open && "rotate-90",
 					)}
 				/>
@@ -848,14 +868,14 @@ function Patch({ patch, truncated }: { patch: string; truncated?: boolean }) {
 	return (
 		// `chat-code` is what the token colours are scoped to, so a patch without it
 		// tokenizes correctly and renders in one flat colour.
-		<div className="chat-code mb-1 mt-0.5 overflow-hidden rounded-md border border-border bg-background">
+		<div className="chat-code mb-1 mt-0.5 overflow-hidden rounded-sm bg-wd-inset">
 			<pre className="max-h-72 overflow-auto px-2.5 py-2">
-				<code className="font-mono text-[10.5px] leading-[1.55] text-foreground">
+				<code className="font-mono text-[10.5px] leading-[1.55] text-wd-primary">
 					<HighlightedCode code={patch} language="diff" />
 				</code>
 			</pre>
 			{truncated ? (
-				<p className="border-t border-border px-2.5 py-1.5 text-[10px] leading-relaxed text-warning">
+				<p className="hairline-t border-wd-hairline px-3 py-1.5 text-[11px] leading-relaxed text-caution">
 					This patch is longer than Kennel stores, so it stops early. The whole change is in the
 					worktree and in the turn&rsquo;s diff.
 				</p>
@@ -888,23 +908,22 @@ function ReasoningBlock({ activity }: { activity: ConversationActivity }) {
 	const streaming = activity.status === "running";
 
 	return (
-		<div className="flex gap-2.5 border-l-2 border-border-strong py-0.5 pl-3">
-			<Brain aria-hidden="true" className="mt-[3px] size-3.5 shrink-0 text-muted-foreground/70" />
+		<div className="flex gap-2.5 py-0.5">
+			<Brain aria-hidden="true" className="mt-[3px] size-3.5 shrink-0 text-wd-tertiary" />
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
-					<span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+					{/* The label is the working state: "Thinking" while the summary streams,
+					    "Thought" once it has settled. No spinner beside it. */}
+					<span
+						aria-label={streaming ? "still thinking" : undefined}
+						className="text-[11px] text-wd-tertiary"
+					>
 						{streaming ? "Thinking" : "Thought"}
 					</span>
-					{streaming ? (
-						<Loader2
-							aria-label="still thinking"
-							className="size-3 animate-spin text-muted-foreground/50"
-						/>
-					) : null}
 				</div>
 				<ChatMarkdown text={text} streaming={streaming} muted />
 				{activity.detail?.textTruncated ? (
-					<p className="mt-1 text-[10px] text-muted-foreground/70">
+					<p className="mt-1 text-[11px] text-wd-tertiary">
 						This summary is longer than Kennel stores, so it stops early.
 					</p>
 				) : null}
@@ -940,7 +959,7 @@ function McpToolRow({ activity }: { activity: ConversationActivity }) {
 	);
 
 	return (
-		<div className="group/activity border-t border-border first:border-t-0">
+		<div className="group/activity hairline-t border-wd-hairline first:border-t-0">
 			<button
 				type="button"
 				onClick={() => setOpen((prev) => !prev)}
@@ -948,7 +967,7 @@ function McpToolRow({ activity }: { activity: ConversationActivity }) {
 				aria-expanded={hasBody ? open : undefined}
 				className={cn(
 					"flex min-h-[35px] w-full items-center gap-[9px] px-[11px] py-2 text-left text-[11px] transition-colors",
-					hasBody && "hover:bg-interactive-hover",
+					hasBody && "hover:bg-wd-hover",
 					!hasBody && "cursor-default",
 				)}
 			>
@@ -956,45 +975,42 @@ function McpToolRow({ activity }: { activity: ConversationActivity }) {
 					aria-hidden="true"
 					className={cn(
 						"w-[15px] shrink-0 text-center",
-						failed ? "text-destructive" : "text-accent-dim",
+						failed ? "text-critical" : "text-wd-tertiary",
 					)}
 					size={13}
 				/>
 				{/* The server is named first and in its own colour: which server answered is
 				    the part a shell command row could never have said. */}
 				{server ? (
-					<span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
+					<span className="shrink-0 font-mono text-[10.5px] text-wd-secondary">
 						{server}
-						<span aria-hidden="true" className="px-0.5 text-muted-foreground/40">
+						<span aria-hidden="true" className="px-0.5 text-wd-tertiary">
 							/
 						</span>
 					</span>
 				) : null}
 				<strong
 					className={cn(
-						"shrink-0 text-[10.5px] font-medium",
-						failed ? "text-destructive" : "text-foreground",
+						"shrink-0 text-[11px] font-medium",
+						failed ? "text-critical" : "text-wd-primary",
 					)}
 				>
 					{tool}
 				</strong>
-				<span className="min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground/70">
+				<span className="min-w-0 flex-1 truncate text-[11px] text-wd-tertiary">
 					{detail?.progress ? lastLine(detail.progress) : "MCP tool"}
 				</span>
 				{activity.status === "running" ? (
-					<Loader2
-						aria-label="running"
-						className="size-3 shrink-0 animate-spin text-muted-foreground/60"
-					/>
+					<RunningMark label="running" />
 				) : failed ? (
-					<span className="shrink-0 text-[10px] text-destructive">failed</span>
+					<span className="shrink-0 text-[11px] text-critical">failed</span>
 				) : activity.status === "cancelled" ? (
-					<span className="shrink-0 text-[10px] text-muted-foreground/70">stopped</span>
+					<span className="shrink-0 text-[11px] text-wd-tertiary">stopped</span>
 				) : hasBody ? (
 					<ChevronRight
 						aria-hidden="true"
 						className={cn(
-							"size-3 shrink-0 text-muted-foreground/50 transition-all",
+							"size-3 shrink-0 text-wd-tertiary transition-[opacity,transform] duration-fast",
 							open ? "rotate-90 opacity-100" : "opacity-0 group-hover/activity:opacity-100",
 						)}
 					/>
@@ -1004,7 +1020,7 @@ function McpToolRow({ activity }: { activity: ConversationActivity }) {
 			{open && hasBody ? (
 				<div className="flex flex-col gap-2 px-[11px] pb-2.5">
 					{detail?.error ? (
-						<p className="rounded border border-destructive/30 bg-background px-2.5 py-1.5 text-[10.5px] leading-relaxed text-destructive">
+						<p className="rounded-sm bg-critical-bg px-3 py-1.5 text-[11px] leading-relaxed text-critical">
 							{detail.error}
 						</p>
 					) : null}
@@ -1016,10 +1032,10 @@ function McpToolRow({ activity }: { activity: ConversationActivity }) {
 					) : null}
 					{detail?.progress ? (
 						<div className="flex flex-col gap-1">
-							<span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+							<span className="text-[11px] text-wd-tertiary">
 								Progress
 							</span>
-							<pre className="max-h-40 overflow-auto rounded-md border border-border bg-background px-2.5 py-1.5 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
+							<pre className="max-h-40 overflow-auto rounded-sm bg-wd-inset px-3 py-1.5 font-mono text-[10.5px] leading-relaxed text-wd-secondary">
 								{detail.progress}
 							</pre>
 						</div>
@@ -1043,16 +1059,16 @@ function JsonPayload({ label, value }: { label: string; value: unknown }) {
 
 	return (
 		<div className="flex flex-col gap-1">
-			<span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+			<span className="text-[11px] text-wd-tertiary">
 				{label}
 			</span>
 			{capped ? (
-				<p className="rounded-md border border-border bg-background px-2.5 py-1.5 text-[10.5px] leading-relaxed text-muted-foreground">
+				<p className="rounded-sm bg-wd-inset px-3 py-1.5 text-[11px] leading-relaxed text-wd-secondary">
 					{capped}
 				</p>
 			) : (
-				<pre className="chat-code max-h-56 overflow-auto rounded-md border border-border bg-background px-2.5 py-1.5">
-					<code className="font-mono text-[10.5px] leading-[1.55] text-foreground">
+				<pre className="chat-code max-h-56 overflow-auto rounded-sm bg-wd-inset px-3 py-1.5">
+					<code className="font-mono text-[10.5px] leading-[1.55] text-wd-primary">
 						<HighlightedCode code={text} language="json" />
 					</code>
 				</pre>
@@ -1096,10 +1112,10 @@ function lastLine(text: string): string {
 /* -------------------------------------------------------------------------- */
 
 const RISK_TONE: Record<string, string> = {
-	low: "text-muted-foreground",
-	medium: "text-warning",
-	high: "text-destructive",
-	critical: "text-destructive",
+	low: "text-wd-secondary",
+	medium: "text-caution",
+	high: "text-critical",
+	critical: "text-critical",
 };
 
 /**
@@ -1122,7 +1138,7 @@ function AutoReviewRow({ activity }: { activity: ConversationActivity }) {
 	);
 
 	return (
-		<div className="group/activity border-t border-border first:border-t-0">
+		<div className="group/activity hairline-t border-wd-hairline first:border-t-0">
 			<button
 				type="button"
 				onClick={() => setOpen((prev) => !prev)}
@@ -1130,7 +1146,7 @@ function AutoReviewRow({ activity }: { activity: ConversationActivity }) {
 				aria-expanded={hasBody ? open : undefined}
 				className={cn(
 					"flex min-h-[35px] w-full items-center gap-[9px] px-[11px] py-2 text-left text-[11px] transition-colors",
-					hasBody && "hover:bg-interactive-hover",
+					hasBody && "hover:bg-wd-hover",
 					!hasBody && "cursor-default",
 				)}
 			>
@@ -1138,15 +1154,15 @@ function AutoReviewRow({ activity }: { activity: ConversationActivity }) {
 					aria-hidden="true"
 					className={cn(
 						"w-[15px] shrink-0 text-center",
-						denied ? "text-destructive" : "text-muted-foreground/70",
+						denied ? "text-critical" : "text-wd-tertiary",
 					)}
 					size={13}
 				/>
-				<strong className="shrink-0 font-medium text-foreground">
+				<strong className="shrink-0 font-medium text-wd-primary">
 					{denied ? "Auto-declined" : "Auto-approved"}
 				</strong>
 				<span
-					className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-muted-foreground"
+					className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-wd-secondary"
 					title={activity.summary}
 				>
 					{shortenPaths(activity.summary)}
@@ -1154,19 +1170,19 @@ function AutoReviewRow({ activity }: { activity: ConversationActivity }) {
 				{detail?.riskLevel ? (
 					<span
 						className={cn(
-							"shrink-0 text-[10px] uppercase tracking-[0.06em]",
-							RISK_TONE[detail.riskLevel.toLowerCase()] ?? "text-muted-foreground",
+							"shrink-0 text-[11px]",
+							RISK_TONE[detail.riskLevel.toLowerCase()] ?? "text-wd-secondary",
 						)}
 						title={`Risk assessed as ${detail.riskLevel}`}
 					>
-						{detail.riskLevel}
+						{sentenceCase(detail.riskLevel)} risk
 					</span>
 				) : null}
 				{hasBody ? (
 					<ChevronRight
 						aria-hidden="true"
 						className={cn(
-							"size-3 shrink-0 text-muted-foreground/50 transition-all",
+							"size-3 shrink-0 text-wd-tertiary transition-[opacity,transform] duration-fast",
 							open ? "rotate-90 opacity-100" : "opacity-0 group-hover/activity:opacity-100",
 						)}
 					/>
@@ -1177,49 +1193,49 @@ function AutoReviewRow({ activity }: { activity: ConversationActivity }) {
 				<div className="flex flex-col gap-2 px-[11px] pb-2.5">
 					{/* Said in full rather than implied by the label: "auto-approved" alone
 					    leaves it ambiguous whether the user set something up that did this. */}
-					<p className="text-[11px] leading-relaxed text-muted-foreground">
+					<p className="text-[11px] leading-relaxed text-wd-secondary">
 						{denied
 							? "The agent asked to do this and the provider declined on your behalf. You were not asked."
 							: "The agent asked to do this and the provider allowed it on your behalf. You were not asked."}
 					</p>
 					{detail?.rationale ? (
-						<p className="rounded border border-border bg-background px-2.5 py-1.5 text-[11px] leading-relaxed text-foreground">
+						<p className="rounded-sm bg-wd-inset px-3 py-1.5 text-[11px] leading-relaxed text-wd-primary">
 							{detail.rationale}
 						</p>
 					) : null}
-					<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[10.5px] leading-relaxed">
+					<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px] leading-relaxed">
 						{detail?.command ? (
 							<>
-								<dt className="text-muted-foreground/70">command</dt>
-								<dd className="min-w-0 break-all text-foreground">{detail.command}</dd>
+								<dt className="text-wd-tertiary">command</dt>
+								<dd className="min-w-0 break-all font-mono text-[10.5px] text-wd-primary">{detail.command}</dd>
 							</>
 						) : null}
 						{detail?.cwd ? (
 							<>
-								<dt className="text-muted-foreground/70">cwd</dt>
-								<dd className="min-w-0 break-all text-muted-foreground">
+								<dt className="text-wd-tertiary">cwd</dt>
+								<dd className="min-w-0 break-all font-mono text-[10.5px] text-wd-secondary">
 									{shortenPaths(detail.cwd)}
 								</dd>
 							</>
 						) : null}
 						{detail?.host ? (
 							<>
-								<dt className="text-muted-foreground/70">host</dt>
-								<dd className="min-w-0 break-all text-muted-foreground">{detail.host}</dd>
+								<dt className="text-wd-tertiary">host</dt>
+								<dd className="min-w-0 break-all font-mono text-[10.5px] text-wd-secondary">{detail.host}</dd>
 							</>
 						) : null}
 						{paths.length ? (
 							<>
-								<dt className="text-muted-foreground/70">files</dt>
-								<dd className="min-w-0 break-all text-muted-foreground">
+								<dt className="text-wd-tertiary">files</dt>
+								<dd className="min-w-0 break-all font-mono text-[10.5px] text-wd-secondary">
 									{paths.map((path) => shortenPaths(path)).join(", ")}
 								</dd>
 							</>
 						) : null}
 						{detail?.decisionSource ? (
 							<>
-								<dt className="text-muted-foreground/70">decided by</dt>
-								<dd className="text-muted-foreground">
+								<dt className="text-wd-tertiary">decided by</dt>
+								<dd className="text-wd-secondary">
 									{/* A model making the call is a materially different thing to be
 									    told than a policy rule matching, so the provider's own word
 									    for it is carried rather than flattened to "automatically". */}
@@ -1251,21 +1267,21 @@ function AutoReviewRow({ activity }: { activity: ConversationActivity }) {
 function RerouteRow({ activity }: { activity: ConversationActivity }) {
 	const detail = activity.detail;
 	return (
-		<div className="flex items-start gap-2.5 rounded-md border border-border bg-surface/60 px-3 py-2">
-			<Shuffle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+		<div className="flex items-start gap-2.5 rounded-md bg-wd-inset px-3 py-2.5">
+			<Shuffle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-wd-secondary" />
 			<div className="flex min-w-0 flex-col gap-0.5">
-				<span className="text-[11px] text-foreground">
+				<span className="text-[11px] text-wd-primary">
 					Answered by{" "}
 					<strong className="font-medium">{detail?.toModel ?? "another model"}</strong>
 					{detail?.fromModel ? (
 						<>
 							{" "}
-							instead of <span className="text-muted-foreground">{detail.fromModel}</span>
+							instead of <span className="text-wd-secondary">{detail.fromModel}</span>
 						</>
 					) : null}
 				</span>
 				{detail?.reason ? (
-					<span className="text-[10.5px] leading-snug text-muted-foreground">{detail.reason}</span>
+					<span className="text-[11px] leading-snug text-wd-secondary">{detail.reason}</span>
 				) : null}
 			</div>
 		</div>
@@ -1288,14 +1304,14 @@ function RerouteRow({ activity }: { activity: ConversationActivity }) {
 function ErrorActivityRow({ activity }: { activity: ConversationActivity }) {
 	const { headline, detail } = providerErrorCopy(activity);
 	return (
-		<div className="flex min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-md border border-destructive/40 bg-surface px-3 py-2">
-			<AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+		<div className="flex min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-md bg-critical-bg px-3 py-2.5">
+			<AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-critical" />
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<strong className="wrap-anywhere text-[11px] font-medium leading-snug text-destructive">
+				<strong className="wrap-anywhere text-[11px] font-medium leading-snug text-wd-primary">
 					{headline}
 				</strong>
 				{detail ? (
-					<p className="wrap-anywhere text-[10.5px] leading-snug text-muted-foreground">{detail}</p>
+					<p className="wrap-anywhere text-[11px] leading-snug text-wd-secondary">{detail}</p>
 				) : null}
 			</div>
 		</div>
@@ -1390,14 +1406,14 @@ function parseJsonObjectSuffix(raw: string): Record<string, unknown> | undefined
  */
 function ReauthRow({ activity }: { activity: ConversationActivity }) {
 	return (
-		<div className="flex items-start gap-2.5 rounded-md border border-destructive/40 bg-surface px-3 py-2">
-			<KeyRound aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+		<div className="flex items-start gap-2.5 rounded-md bg-critical-bg px-3 py-2.5">
+			<KeyRound aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-critical" />
 			<div className="flex min-w-0 flex-col gap-0.5">
-				<strong className="text-[11px] font-medium text-destructive">
+				<strong className="text-[11px] font-medium text-wd-primary">
 					The provider asked you to sign in again
 				</strong>
 				{activity.detail?.reason ? (
-					<span className="text-[10.5px] leading-snug text-muted-foreground">
+					<span className="text-[11px] leading-snug text-wd-secondary">
 						{activity.detail.reason}
 					</span>
 				) : null}
@@ -1419,7 +1435,7 @@ export function SteerMessage({ activity }: { activity: ConversationActivity }) {
 	const text = activity.detail?.text ?? activity.summary;
 	return (
 		<div className="flex flex-col items-end gap-1">
-			<div className="w-fit max-w-[min(78%,560px)] whitespace-pre-wrap rounded-[10px] border border-accent-dim bg-raised px-3 py-2.5 text-sm leading-[1.55] text-foreground">
+			<div className="w-fit max-w-[min(80%,560px)] whitespace-pre-wrap rounded-lg rounded-br-xs bg-wd-inset px-4 py-3 text-sm leading-[1.55] text-wd-primary">
 				{text ? <p>{text}</p> : null}
 				<ConversationContentItems
 					content={activity.detail?.content ?? []}
@@ -1429,7 +1445,7 @@ export function SteerMessage({ activity }: { activity: ConversationActivity }) {
 					className={cn(text && "mt-2")}
 				/>
 			</div>
-			<span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+			<span className="flex items-center gap-1 text-[11px] text-wd-secondary">
 				<CornerDownRight aria-hidden="true" className="size-3" />
 				Steered into the running turn
 			</span>
@@ -1465,41 +1481,43 @@ export function ApprovalCard({
 	return (
 		<div
 			className={cn(
-				"rounded-lg border bg-surface",
-				resolved ? "border-border" : "border-warning/40 ring-1 ring-warning/10",
+				"rounded-lg hairline bg-wd-surface",
+				resolved ? "border-wd-hairline" : "border-wd-strong",
 			)}
 		>
-			<div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
-				<ShieldQuestion
-					aria-hidden="true"
-					className={cn("size-4 shrink-0", resolved ? "text-muted-foreground" : "text-warning")}
-				/>
-				<strong className="text-xs font-semibold text-foreground">
+			<div className="flex items-center gap-2 hairline-b border-wd-hairline px-4 py-3">
+				{/* Waiting on the person is the one state that earns Spot: a dot beside
+				    the words, never a tinted card. */}
+				{resolved ? null : (
+					<span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-spot" />
+				)}
+				<ShieldQuestion aria-hidden="true" className="size-4 shrink-0 text-wd-secondary" />
+				<strong className="text-xs font-medium text-wd-primary">
 					{resolved ? "Approval resolved" : "Approval required"}
 				</strong>
-				<span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
+				<span className="wd-data-s ml-auto shrink-0 text-wd-tertiary">
 					req {activity.requestId}
 				</span>
 			</div>
 
-			<div className="flex flex-col gap-2.5 px-3.5 py-3">
+			<div className="flex flex-col gap-3 px-4 py-3">
 				{detail?.reason ? (
-					<p className="text-sm leading-relaxed text-muted-foreground">{detail.reason}</p>
+					<p className="text-sm leading-relaxed text-wd-secondary">{detail.reason}</p>
 				) : null}
 
-				<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded bg-background px-2.5 py-2 font-mono text-[11px] leading-relaxed">
-					<dt className="text-muted-foreground">command</dt>
-					<dd className="min-w-0 break-all text-foreground">{detail?.command ?? activity.summary}</dd>
+				<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-sm bg-wd-inset px-3 py-2 font-mono text-[11px] leading-relaxed">
+					<dt className="text-wd-tertiary">command</dt>
+					<dd className="min-w-0 break-all text-wd-primary">{detail?.command ?? activity.summary}</dd>
 					{detail?.cwd ? (
 						<>
-							<dt className="text-muted-foreground">cwd</dt>
-							<dd className="min-w-0 break-all text-muted-foreground">{detail.cwd}</dd>
+							<dt className="text-wd-tertiary">cwd</dt>
+							<dd className="min-w-0 break-all text-wd-secondary">{detail.cwd}</dd>
 						</>
 					) : null}
 				</dl>
 
 				{resolved ? (
-					<p className="text-[11px] text-muted-foreground">
+					<p className="text-[11px] text-wd-secondary">
 						Already answered. This card is kept for the record.
 					</p>
 				) : (
@@ -1517,7 +1535,7 @@ export function ApprovalCard({
 							</Button>
 						))}
 						{decisions.length === 0 ? (
-							<p className="text-[11px] text-warning">
+							<p className="text-[11px] text-caution">
 								The agent offered no decisions Kennel can present. Open diagnostics.
 							</p>
 						) : null}
@@ -1551,25 +1569,25 @@ export function CompactionMarker({ activity }: { activity: ConversationActivity 
 
 	return (
 		<div className="flex items-center gap-2 py-1" data-compaction="true">
-			<span aria-hidden="true" className="h-px flex-1 bg-border" />
-			<Archive aria-hidden="true" className="size-3 shrink-0 text-muted-foreground/70" />
-			<span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+			<span aria-hidden="true" className="h-px flex-1 bg-wd-hairline" />
+			<Archive aria-hidden="true" className="size-3 shrink-0 text-wd-tertiary" />
+			<span className="shrink-0 text-[11px] text-wd-tertiary">
 				History compacted
 			</span>
 			{reclaimed ? (
-				<span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70">
+				<span className="wd-data-s shrink-0 text-wd-tertiary">
 					&minus;{formatTokens(reclaimed)}
 				</span>
 			) : null}
 			{after && window ? (
 				<span
-					className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70"
+					className="wd-data-s shrink-0 text-wd-tertiary"
 					title={`${after.toLocaleString()} of ${window.toLocaleString()} context tokens in use`}
 				>
 					{Math.round((after / window) * 100)}% full
 				</span>
 			) : null}
-			<span aria-hidden="true" className="h-px flex-1 bg-border" />
+			<span aria-hidden="true" className="h-px flex-1 bg-wd-hairline" />
 		</div>
 	);
 }
@@ -1580,10 +1598,10 @@ export function CompactionMarker({ activity }: { activity: ConversationActivity 
 
 /** Single letter per change kind, which is how a diff list is normally read. */
 const diffStatusMark: Record<DiffStatus, { mark: string; tone: string; label: string }> = {
-	added: { mark: "A", tone: "text-success", label: "added" },
-	modified: { mark: "M", tone: "text-accent", label: "modified" },
-	deleted: { mark: "D", tone: "text-destructive", label: "deleted" },
-	renamed: { mark: "R", tone: "text-muted-foreground", label: "renamed" },
+	added: { mark: "A", tone: "text-good", label: "added" },
+	modified: { mark: "M", tone: "text-wd-secondary", label: "modified" },
+	deleted: { mark: "D", tone: "text-critical", label: "deleted" },
+	renamed: { mark: "R", tone: "text-wd-tertiary", label: "renamed" },
 };
 
 /**
@@ -1606,81 +1624,81 @@ export function TurnChangedFiles({ diff, live }: { diff: TurnDiff; live?: boolea
 	const deletions = diff.files.reduce((sum, file) => sum + file.deletions, 0);
 
 	return (
-		<div className="rounded-lg border border-border bg-surface">
+		<div className="overflow-hidden rounded-lg hairline border-wd-hairline bg-wd-surface">
 			<button
 				type="button"
 				onClick={() => setOpen((prev) => !prev)}
 				aria-expanded={open}
-				className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left transition-colors hover:bg-interactive-hover"
+				className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors duration-fast hover:bg-wd-hover"
 			>
-				<FileDiff aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-				<strong className="shrink-0 text-xs font-semibold text-foreground">
+				<FileDiff aria-hidden="true" className="size-4 shrink-0 text-wd-secondary" />
+				<strong className="shrink-0 text-xs font-medium text-wd-primary">
 					{diff.files.length === 1 ? "1 file changed" : `${diff.files.length} files changed`}
 				</strong>
 				{live ? (
-					<Loader2
-						aria-label="still changing"
-						className="size-3 shrink-0 animate-spin text-muted-foreground/60"
-					/>
+					<span aria-label="still changing" className="shrink-0 text-[11px] text-wd-secondary">
+						Still changing
+					</span>
 				) : null}
 				<span className="flex-1" />
-				<span className="shrink-0 font-mono text-[10.5px] tabular-nums">
-					<span className="text-success">+{additions}</span>{" "}
-					<span className="text-destructive">&minus;{deletions}</span>
+				<span className="wd-data-s shrink-0">
+					<span className="text-good">+{additions}</span>{" "}
+					<span className="text-critical">&minus;{deletions}</span>
 				</span>
 				<ChevronRight
 					aria-hidden="true"
 					className={cn(
-						"size-3.5 shrink-0 text-muted-foreground/50 transition-transform",
+						"size-3.5 shrink-0 text-wd-tertiary transition-transform duration-fast",
 						open && "rotate-90",
 					)}
 				/>
 			</button>
 
 			{open ? (
-				<ul className="flex flex-col border-t border-border">
+				<ul className="flex flex-col hairline-t border-wd-hairline py-1">
 					{diff.files.map((file) => {
 						const status = diffStatusMark[file.status] ?? diffStatusMark.modified;
 						return (
 							<li
 								key={`${file.status}-${file.oldPath ?? ""}-${file.path}`}
-								className="flex items-center gap-2.5 px-3.5 py-1.5 text-[11px]"
+								className="flex items-center gap-2.5 px-4 py-1.5 text-[11px]"
 							>
 								<span
 									aria-label={status.label}
-									className={cn("w-3 shrink-0 text-center font-mono font-semibold", status.tone)}
+									className={cn("w-3 shrink-0 text-center font-mono font-medium", status.tone)}
 									title={status.label}
 								>
 									{status.mark}
 								</span>
-								<span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={file.path}>
+								<span className="min-w-0 flex-1 truncate font-mono text-wd-secondary" title={file.path}>
 									{/* A rename shows both ends. Only the new path would read as an addition
 									    and lose the fact that something moved. */}
 									{file.oldPath ? (
 										<>
-											<span className="text-muted-foreground/60">
+											<span className="text-wd-tertiary">
 												{shortenPaths(file.oldPath)}
 											</span>
-											<span aria-hidden="true" className="px-1 text-muted-foreground/40">
-												&rarr;
-											</span>
+											<ArrowRight
+												aria-hidden="true"
+												className="mx-1 inline size-3 align-[-2px] text-wd-tertiary"
+											/>
 											{shortenPaths(file.path)}
 										</>
 									) : (
 										shortenPaths(file.path)
 									)}
 								</span>
-								<span className="shrink-0 font-mono tabular-nums text-success">
+								<span className="wd-data-s shrink-0 text-good">
 									+{file.additions}
 								</span>
-								<span className="shrink-0 font-mono tabular-nums text-destructive">
+								<span className="wd-data-s shrink-0 text-critical">
 									&minus;{file.deletions}
 								</span>
 							</li>
 						);
 					})}
 					{diff.truncated ? (
-						<li className="px-3.5 py-2 text-[10px] leading-relaxed text-warning">
+						<li className="px-4 py-2 text-[11px] leading-relaxed text-caution">
 							This turn changed more files than Kennel lists here. Use the Diff tab for the whole change.
 						</li>
 					) : null}
@@ -1722,14 +1740,14 @@ export function TurnOutcome({
 	onRollback?: () => void;
 }) {
 	const copy = {
-		completed: { label: "Done", tone: "text-muted-foreground/70" },
-		interrupted: { label: "Stopped", tone: "text-muted-foreground/70" },
-		failed: { label: "Failed", tone: "text-destructive" },
+		completed: { label: "Done", tone: "text-wd-tertiary" },
+		interrupted: { label: "Stopped", tone: "text-wd-tertiary" },
+		failed: { label: "Failed", tone: "text-critical" },
 	}[state];
 
 	return (
 		<div className="group/turn flex items-center gap-2 pt-1">
-			<span aria-hidden="true" className="h-px flex-1 bg-border" />
+			<span aria-hidden="true" className="h-px flex-1 bg-wd-hairline" />
 			{onRollback ? (
 				// Revealed on hover or keyboard focus. Undo belongs on the turn it undoes,
 				// but a permanent button on every turn would compete with the conversation
@@ -1737,21 +1755,21 @@ export function TurnOutcome({
 				<button
 					type="button"
 					onClick={onRollback}
-					className="shrink-0 rounded px-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/turn:opacity-100"
+					className="shrink-0 rounded-full px-2 py-0.5 text-[11px] text-wd-tertiary opacity-0 transition-[opacity,color,background-color] duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:opacity-100 group-hover/turn:opacity-100"
 				>
 					Roll back to here
 				</button>
 			) : null}
-			<span className={cn("shrink-0 text-[10px] uppercase tracking-[0.08em]", copy.tone)}>
+			<span className={cn("shrink-0 text-[11px]", copy.tone)}>
 				{copy.label}
 			</span>
 			{durationMs !== undefined && durationMs > 0 ? (
-				<span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70">
+				<span className="wd-data-s shrink-0 text-wd-tertiary">
 					{formatDuration(durationMs)}
 				</span>
 			) : null}
 			{error ? (
-				<span className="shrink-0 text-[10px] text-destructive" title={error}>
+				<span className="shrink-0 text-[11px] text-critical" title={error}>
 					{error.slice(0, 60)}
 				</span>
 			) : null}

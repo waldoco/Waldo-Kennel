@@ -7,7 +7,7 @@ import { WaldoRailProvider } from "../waldo/WaldoRailContext";
 import { HomeShell } from "./HomeShell";
 
 describe("HomeShell", () => {
-  it("opens Today as a morning brief beside a persistent Catch Up workspace", () => {
+  it("opens Today as a morning brief with the one decision under Needs you", () => {
     render(<HomeShell fixture={homeFixture("today")} />);
 
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
@@ -17,7 +17,8 @@ describe("HomeShell", () => {
     expect(
       screen.getByRole("heading", { name: "Morning brief" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Catch Up" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Needs you" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Catch up" })).toBeInTheDocument();
     expect(screen.getByText("Preview context — not live data")).toBeInTheDocument();
     expect(
       screen.getByText("Prepare the revised deck for Ashish; do not send it."),
@@ -26,14 +27,14 @@ describe("HomeShell", () => {
       screen.getByText("Meeting audio unavailable from 3:10–3:24 PM"),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByRole("textbox", { name: "Quick Capture" }),
+      screen.getAllByRole("textbox", { name: "Quick capture" }),
     ).toHaveLength(1);
     expect(
       screen.queryByRole("link", { name: /Work \(recommended\)/i }),
     ).not.toBeInTheDocument();
   });
 
-  it("temporarily gives Waldo the Today context region and restores Catch Up", async () => {
+  it("temporarily gives Waldo the Today inspector and restores the glance", async () => {
     const user = userEvent.setup();
     render(
       <WaldoRailProvider>
@@ -42,16 +43,19 @@ describe("HomeShell", () => {
       </WaldoRailProvider>,
     );
 
-    expect(screen.getByRole("heading", { name: "Catch Up" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Today at a glance" })).toBeInTheDocument();
     const launcher = screen.getByRole("button", { name: "Open Waldo" });
     await user.click(launcher);
 
     expect(screen.getByRole("region", { name: "Waldo" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Catch Up" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("textbox", { name: "Quick Capture" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("complementary", { name: "Today at a glance" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Needs you" })).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox", { name: "Quick capture" })).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: "Close Waldo" }));
-    expect(screen.getByRole("heading", { name: "Catch Up" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Today at a glance" })).toBeInTheDocument();
     await waitFor(() => expect(launcher).toHaveFocus());
   });
 
@@ -71,18 +75,43 @@ describe("HomeShell", () => {
 
     expect(screen.getByRole("region", { name: "Waldo" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Insights" })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Quick Capture" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Quick capture" })).not.toBeInTheDocument();
   });
 
   it("keeps inferred work visibly separate from proposed Waldo suggestions", () => {
     render(<HomeShell fixture={homeFixture("today")} />);
 
     const todo = screen.getByRole("list", { name: "To do" });
-    const suggestions = screen.getByRole("list", { name: "Waldo suggests" });
+    const suggestions = screen.getByRole("group", { name: "Waldo suggests" });
 
     expect(within(todo).getByText("Prepare the revised deck")).toBeInTheDocument();
     expect(within(suggestions).getByText("Draft a reply to Ashish")).toBeInTheDocument();
     expect(screen.getByText("Proposed, not added")).toBeInTheDocument();
+  });
+
+  it("shows what Waldo is carrying and one exact way back in", () => {
+    render(<HomeShell fixture={homeFixture("today")} />);
+
+    expect(screen.getByRole("heading", { name: "Waldo is carrying" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Vendor response" })).toHaveAttribute(
+      "href",
+      "#/home/open-loops",
+    );
+    expect(screen.queryByRole("link", { name: "Deck follow-up" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open the loop" })).toHaveAttribute(
+      "href",
+      "#/home/open-loops",
+    );
+  });
+
+  it("keeps the Brief's proposal local to the preview", async () => {
+    const user = userEvent.setup();
+    render(<HomeShell fixture={homeFixture("today")} />);
+
+    await user.click(screen.getByRole("button", { name: "Add to today" }));
+    expect(
+      within(screen.getByRole("group", { name: "Waldo suggests" })).getByRole("status"),
+    ).toHaveTextContent("Added in this preview. Nothing was saved.");
   });
 
   it("recalibrates Today around the next commitment in the afternoon", () => {
@@ -106,7 +135,7 @@ describe("HomeShell", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Pricing workshop")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Note what changed…")).toBeInTheDocument();
-    expect(screen.getAllByRole("textbox", { name: "Quick Capture" })).toHaveLength(1);
+    expect(screen.getAllByRole("textbox", { name: "Quick capture" })).toHaveLength(1);
   });
 
   it("shows an honest replan when a prior assumption changed", () => {
@@ -149,7 +178,7 @@ describe("HomeShell", () => {
     expect(
       screen.queryByRole("button", { name: "Review the deck follow-up" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Start Closure" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Start the daily close" })).toHaveAttribute(
       "href",
       "#/home/daily-close",
     );
@@ -208,7 +237,7 @@ describe("HomeShell", () => {
     ).toHaveTextContent(expected);
   });
 
-  it("moves focus into the persistent Catch Up workspace from the meaningful item", async () => {
+  it("moves focus to the Needs you decision from the meaningful item", async () => {
     const user = userEvent.setup();
     render(<HomeShell fixture={homeFixture("today")} />);
 
@@ -216,7 +245,7 @@ describe("HomeShell", () => {
       screen.getByRole("button", { name: "Review the deck follow-up" }),
     );
 
-    expect(screen.getByRole("heading", { name: "Catch Up" })).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "Needs you" })).toHaveFocus();
     expect(
       screen.getByText("I'll send Ashish the revised deck tomorrow."),
     ).toBeInTheDocument();
@@ -246,18 +275,18 @@ describe("HomeShell", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps an unsaved Quick Capture draft while reviewing Catch Up", async () => {
+  it("keeps an unsaved Quick capture draft while reviewing the decision", async () => {
     const user = userEvent.setup();
     render(<HomeShell fixture={homeFixture("today")} />);
 
     await user.type(
-      screen.getByRole("textbox", { name: "Quick Capture" }),
+      screen.getByRole("textbox", { name: "Quick capture" }),
       "Call Mum after dinner",
     );
     await user.click(
       screen.getByRole("button", { name: "Review the deck follow-up" }),
     );
-    expect(screen.getByRole("textbox", { name: "Quick Capture" })).toHaveValue(
+    expect(screen.getByRole("textbox", { name: "Quick capture" })).toHaveValue(
       "Call Mum after dinner",
     );
   });
@@ -284,12 +313,12 @@ describe("HomeShell", () => {
   });
 
   it.each([
-    ["open_loops", "Open Loops"],
-    ["memory", "Memory Review"],
-    ["daily_close", "Daily Close"],
+    ["open_loops", "Open loops"],
+    ["memory", "Memory review"],
+    ["daily_close", "Daily close"],
     ["history", "Insights"],
   ] as const)(
-    "renders the %s destination without repeating Quick Capture",
+    "renders the %s destination without repeating Quick capture",
     (destination, heading) => {
       render(
         <HomeShell
@@ -300,7 +329,7 @@ describe("HomeShell", () => {
 
       expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
       expect(
-        screen.queryByRole("textbox", { name: "Quick Capture" }),
+        screen.queryByRole("textbox", { name: "Quick capture" }),
       ).not.toBeInTheDocument();
     },
   );

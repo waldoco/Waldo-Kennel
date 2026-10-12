@@ -1,11 +1,12 @@
 /*
  * Syntax colours for chat code blocks.
  *
- * Built on the terminal ANSI tokens rather than on product roles, for the reason
- * tokens.css gives for keeping that palette separate: a code block is closer to
- * a terminal than to app chrome, and mapping `keyword` onto `--color-accent`
- * would tie the meaning of a Go keyword to the colour of a primary button. Those
- * tokens already have a light variant, so the theme switch needs nothing here.
+ * Waldo's coat carries code too: structure is told apart by tone and weight on
+ * the neutral text ramp (primary, secondary, tertiary) rather than by a rainbow.
+ * The only hues are the state colours a diff already means: an added line is
+ * good, a removed one is critical, and each keeps its +/− marker so colour is
+ * never the only signal. A hued syntax palette would need its own code tokens in
+ * waldo.css; the terminal ANSI ramp stays with the terminal, not with prose.
  *
  * Highlighting is class-based on purpose. Colours resolve at paint time from CSS
  * variables, so flipping the theme re-paints; it does not re-tokenize.
@@ -29,47 +30,39 @@
 
 .chat-code .hljs-comment,
 .chat-code .hljs-quote {
-	color: var(--color-text-passive);
-	font-style: italic;
+	color: var(--text-tertiary);
 }
 
+/* Keywords and names carry the structure, so they keep full ink and weight. */
 .chat-code .hljs-keyword,
 .chat-code .hljs-literal,
 .chat-code .hljs-doctag,
 .chat-code .hljs-section,
 .chat-code .hljs-name,
 .chat-code .hljs-tag,
-.chat-code .hljs-selector-tag {
-	color: var(--color-term-magenta);
-}
-
-.chat-code .hljs-string,
-.chat-code .hljs-regexp,
-.chat-code .hljs-char.escape_,
-.chat-code .hljs-addition,
-.chat-code .hljs-template-tag {
-	color: var(--color-term-green);
-}
-
-.chat-code .hljs-number,
-.chat-code .hljs-symbol,
-.chat-code .hljs-bullet,
-.chat-code .hljs-link {
-	color: var(--color-term-yellow);
-}
-
+.chat-code .hljs-selector-tag,
 .chat-code .hljs-title,
 .chat-code .hljs-title.function_,
-.chat-code .hljs-function .hljs-title {
-	color: var(--color-term-blue);
-}
-
+.chat-code .hljs-function .hljs-title,
 .chat-code .hljs-type,
 .chat-code .hljs-title.class_,
 .chat-code .hljs-class .hljs-title,
-.chat-code .hljs-built_in,
+.chat-code .hljs-built_in {
+	color: var(--text-primary);
+	font-weight: var(--font-weight-medium);
+}
+
+/* Values step back a tone: what is written matters less than where it goes. */
+.chat-code .hljs-string,
+.chat-code .hljs-regexp,
+.chat-code .hljs-char.escape_,
+.chat-code .hljs-template-tag,
+.chat-code .hljs-number,
+.chat-code .hljs-symbol,
+.chat-code .hljs-bullet,
+.chat-code .hljs-link,
 .chat-code .hljs-formula {
-	color: var(--color-term-cyan);
+	color: var(--text-secondary);
 }
 
 .chat-code .hljs-attr,
@@ -81,26 +74,33 @@
 .chat-code .hljs-selector-class,
 .chat-code .hljs-selector-id,
 .chat-code .hljs-selector-pseudo {
-	color: var(--color-term-red);
+	color: var(--text-primary);
+}
+
+/* A diff is state: added and removed lines say so in Waldo's state colours. */
+.chat-code .hljs-addition {
+	color: var(--good);
 }
 
 .chat-code .hljs-deletion {
-	color: var(--color-term-red);
+	color: var(--critical);
 }
 
-/* Shell prompts, pragmas, shebangs: present but not worth a colour of their own. */
+/* Shell prompts, pragmas, shebangs: present but not worth a tone of their own. */
 .chat-code .hljs-meta,
 .chat-code .hljs-meta .hljs-keyword,
 .chat-code .hljs-punctuation,
 .chat-code .hljs-operator,
 .chat-code .hljs-params {
-	color: var(--color-text-muted);
+	color: var(--text-secondary);
+	font-weight: inherit;
 }
 
+/* Nothing is italic in Waldo; emphasis inside code keeps the medium weight only. */
 .chat-code .hljs-emphasis {
-	font-style: italic;
+	font-style: normal;
 }
 
 .chat-code .hljs-strong {
-	font-weight: var(--font-weight-semibold);
+	font-weight: var(--font-weight-medium);
 }

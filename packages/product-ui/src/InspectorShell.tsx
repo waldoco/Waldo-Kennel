@@ -41,17 +41,17 @@ export function InspectorShell({
 	const open = collapsible ? Boolean(activityOpen) : true;
 
 	return (
-		<section className={cn("flex flex-col gap-3 rounded-md hairline border-border bg-card p-3", className)} data-testid="inspector-shell">
-			<h3 className="text-xs font-semibold text-foreground">{title}</h3>
+		<section className={cn("flex flex-col gap-4 rounded-lg hairline border-wd-hairline bg-wd-surface p-4", className)} data-testid="inspector-shell">
+			<h3 className="text-sm font-medium text-wd-primary">{title}</h3>
 
 			<div data-testid="inspector-shell-summary">{summary}</div>
 
 			{activity !== undefined ? (
-				<div className="flex flex-col gap-1.5 border-t border-border/70 pt-2.5">
+				<div className="flex flex-col gap-2 hairline-t border-wd-hairline pt-3">
 					{collapsible ? (
 						<button
 							aria-expanded={open}
-							className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground"
+							className="flex items-center gap-1.5 rounded-xs text-sm font-medium text-wd-secondary transition-colors duration-fast hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 							onClick={() => onActivityOpenChange!(!open)}
 							type="button"
 						>
@@ -59,14 +59,14 @@ export function InspectorShell({
 							{activityLabel ?? "Activity"}
 						</button>
 					) : activityLabel ? (
-						<span className="text-2xs font-medium uppercase tracking-wide text-passive">{activityLabel}</span>
+						<span className="text-sm font-medium text-wd-secondary">{activityLabel}</span>
 					) : null}
 					{open ? <div data-testid="inspector-shell-activity">{activity}</div> : null}
 				</div>
 			) : null}
 
 			{footer ? (
-				<div className="flex items-center justify-end gap-2 border-t border-border/70 pt-2.5" data-testid="inspector-shell-footer">
+				<div className="flex items-center justify-end gap-2 hairline-t border-wd-hairline pt-3" data-testid="inspector-shell-footer">
 					{footer}
 				</div>
 			) : null}

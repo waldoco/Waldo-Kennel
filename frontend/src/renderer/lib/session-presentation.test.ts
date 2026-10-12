@@ -38,10 +38,11 @@ const openPr: WorkspaceSession["prs"][number] = {
 
 describe("session presentation", () => {
 	it.each([
-		["active", "Working", true, "bg-status-working animate-status-pulse"],
+		// Live work is a still dot and its word: Waldo states never pulse.
+		["active", "Working", true, "bg-status-working"],
 		["idle", "Idle", false, "bg-status-idle"],
-		["waiting_input", "Input Needed", false, "bg-status-needs-you"],
-		["blocked", "Awaiting Decision", false, "bg-status-needs-you"],
+		["waiting_input", "Input needed", false, "bg-status-needs-you"],
+		["blocked", "Awaiting decision", false, "bg-status-needs-you"],
 		["exited", "Exited", false, "bg-status-exited"],
 		["unknown", "Unknown", false, "bg-status-unknown"],
 	] as const)("maps %s agent activity to %s", (state, label, breathe, indicatorClassName) => {
@@ -90,15 +91,15 @@ describe("session presentation", () => {
 	it.each([
 		["approved", "merge", "Ready"],
 		["mergeable", "merge", "Ready"],
-		["needs_input", "action", "Needs Choice"],
-		["exited", "action", "Needs Choice"],
-		["no_signal", "action", "Needs Choice"],
-		["ci_failed", "action", "Needs Choice"],
-		["changes_requested", "action", "Needs Choice"],
-		["unknown", "action", "Needs Choice"],
-		["review_pending", "pending", "Needs Input"],
-		["pr_open", "pending", "Needs Input"],
-		["draft", "pending", "Needs Input"],
+		["needs_input", "action", "Needs choice"],
+		["exited", "action", "Needs choice"],
+		["no_signal", "action", "Needs choice"],
+		["ci_failed", "action", "Needs choice"],
+		["changes_requested", "action", "Needs choice"],
+		["unknown", "action", "Needs choice"],
+		["review_pending", "pending", "Needs input"],
+		["pr_open", "pending", "Needs input"],
+		["draft", "pending", "Needs input"],
 		["working", "working", "Running"],
 		["idle", "working", "Running"],
 		["merged", "merge", "Ready"],
@@ -112,7 +113,8 @@ describe("session presentation", () => {
 		const active = getAgentActivityView({ state: "active", lastActivityAt: "" });
 		const idle = getAgentActivityView({ state: "idle", lastActivityAt: "" });
 
-		expect(active.indicatorClassName).toBe("bg-status-working animate-status-pulse");
+		// Live work is a still dot - Waldo states never pulse.
+		expect(active.indicatorClassName).toBe("bg-status-working");
 		expect(idle.indicatorClassName).toBe("bg-status-idle");
 	});
 
@@ -156,9 +158,9 @@ describe("session presentation", () => {
 	});
 
 	it.each([
-		["no_signal", "No Signal", "var(--color-status-unknown)"],
-		["ci_failed", "CI Failed", "var(--color-status-exited)"],
-		["changes_requested", "Changes Requested", "var(--color-status-needs-you)"],
+		["no_signal", "No signal", "var(--color-status-unknown)"],
+		["ci_failed", "CI failed", "var(--color-status-exited)"],
+		["changes_requested", "Changes requested", "var(--color-status-needs-you)"],
 	] as const)("centralizes the %s timeline pill", (status, label, tone) => {
 		expect(getSessionTimelinePillView(status)).toMatchObject({ label, tone, breathe: false });
 	});

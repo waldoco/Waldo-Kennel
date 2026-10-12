@@ -140,7 +140,7 @@ it("shows a paused attempt as paused, not as working", () => {
 	);
 	const paused = screen.getAllByTestId("mission-graph-node").find((node) => node.getAttribute("data-state") === "paused");
 	expect(paused).toBeDefined();
-	expect(within(paused as HTMLElement).getByText("paused")).toBeInTheDocument();
+	expect(within(paused as HTMLElement).getByText("Paused")).toBeInTheDocument();
 	expect(screen.getByTestId("mission-graph-no-runnable")).toHaveTextContent(/Resume or cancel it/);
 });
 
@@ -199,7 +199,7 @@ it("labels each node with its state and blocker for assistive technology", () =>
 	);
 	expect(
 		screen.getByRole("button", {
-			name: /Persist the parsed rows — waiting\. Waiting for proof from: Write the parser/,
+			name: /Persist the parsed rows — Waiting\. Waiting for proof from: Write the parser/,
 		}),
 	).toBeInTheDocument();
 });

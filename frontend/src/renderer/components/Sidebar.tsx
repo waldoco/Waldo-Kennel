@@ -104,22 +104,21 @@ const isWindows = isWindowsPlatform();
 const noDragStyle = isMac ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 
 // Shared styling for the per-project hover action buttons (orchestrator, kebab):
-// a 20px square icon button that tints on hover, matching the old
-// SidebarMenuAction footprint.
+// a 20px round quiet icon button, matching the old SidebarMenuAction footprint.
 const HOVER_ACTION_CLASS =
-	"grid size-5 shrink-0 place-items-center rounded-md text-passive transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=open]:text-foreground [&_svg]:size-icon-lg";
+	"grid size-5 shrink-0 place-items-center rounded-full text-wd-tertiary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary disabled:pointer-events-none disabled:text-wd-disabled data-[state=open]:bg-wd-hover data-[state=open]:text-wd-primary [&_svg]:size-icon-lg";
 
-// Shared nav-row chrome: 8px row radius, 14px secondary type, and a selected row
-// that takes the card plate and its hairline — the same plane a session card sits
-// on, so "this is the thing I am looking at" reads the same in both places.
+// Shared nav-row chrome (Waldo rail): pill rows on the canvas, 14px secondary
+// type, hover = bg-hover, and the selected row takes bg-selected with ink text.
 const NAV_ROW_CLASS =
-	"h-8 gap-2.5 rounded-md px-1.75 text-sm font-normal text-muted-foreground transition-[background-color,color] hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground data-[active=true]:hairline data-[active=true]:border-border data-[active=true]:bg-card data-[active=true]:font-normal data-[active=true]:text-foreground";
+	"h-8 gap-2.5 rounded-full px-3 text-sm font-normal text-wd-secondary transition-[background-color,color] duration-fast hover:bg-wd-hover hover:text-wd-primary active:bg-wd-pressed active:text-wd-primary data-[active=true]:bg-wd-selected data-[active=true]:font-medium data-[active=true]:text-wd-primary";
 
 // Search + Pinned/Projects section chrome: same type, icon, and row size.
+// Group labels are sentence-case .wd-label in text-tertiary — no caps, no tracking.
 const SECTION_ROW_CLASS =
-	"flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-1.75 text-sm font-normal text-muted-foreground [&_svg]:size-icon-md [&_svg]:shrink-0";
+	"wd-label flex h-8 w-full min-w-0 items-center gap-2 rounded-full px-3 text-wd-tertiary [&_svg]:size-icon-md [&_svg]:shrink-0";
 // Hover fill only for collapsible section headers (Pinned). Projects is a static label.
-const SECTION_ROW_INTERACTIVE_CLASS = "transition-colors hover:bg-muted hover:text-foreground";
+const SECTION_ROW_INTERACTIVE_CLASS = "transition-colors duration-fast hover:bg-wd-hover hover:text-wd-secondary";
 
 // Mirrors the daemon's display-name cap (maxDisplayNameLen) and the spawn
 // `--name` flag, so inline edits never round-trip a value the API would reject.
@@ -347,11 +346,11 @@ export function Sidebar({
 							<button
 								aria-label={t(usesWorkLaunchMode ? "shell.brandHome" : "shell.orchestratorBoard")}
 								className={cn(
-									"grid h-5.5 w-5.5 shrink-0 place-items-center",
-									"group-data-[collapsible=icon]:size-control-board group-data-[collapsible=icon]:rounded-lg",
+									"grid h-5.5 w-5.5 shrink-0 place-items-center rounded-full",
+									"group-data-[collapsible=icon]:size-control-board",
 									selection.isWork
-										? "group-data-[collapsible=icon]:bg-interactive-active"
-										: "group-data-[collapsible=icon]:hover:bg-interactive-hover",
+										? "group-data-[collapsible=icon]:bg-wd-selected"
+										: "group-data-[collapsible=icon]:hover:bg-wd-hover",
 								)}
 								onClick={selection.goWork}
 								type="button"
@@ -373,7 +372,7 @@ export function Sidebar({
 					{isWindows ? (
 						<span
 							aria-label={t(usesWorkLaunchMode ? "shell.brandHome" : "shell.orchestratorBoard")}
-							className="sidebar-expanded-chrome min-w-0 flex-1 truncate text-sm font-bold leading-tight tracking-tight-lg text-foreground group-data-[collapsible=icon]:hidden"
+							className="wd-display-4 sidebar-expanded-chrome min-w-0 flex-1 truncate text-wd-primary group-data-[collapsible=icon]:hidden"
 							onClick={selection.goWork}
 							onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
 								if (event.key !== "Enter" && event.key !== " ") return;
@@ -386,12 +385,12 @@ export function Sidebar({
 							Kennel
 						</span>
 					) : (
-						<span className="sidebar-expanded-chrome min-w-0 flex-1 truncate text-sm font-bold leading-tight tracking-tight-lg text-foreground group-data-[collapsible=icon]:hidden">
+						<span className="wd-display-4 sidebar-expanded-chrome min-w-0 flex-1 truncate text-wd-primary group-data-[collapsible=icon]:hidden">
 							Kennel
 						</span>
 					)}
 					{isNightly && (
-						<span className="sidebar-expanded-chrome shrink-0 rounded-full bg-purple-subtle px-1.5 py-0.5 text-micro font-semibold leading-none text-purple-accent group-data-[collapsible=icon]:hidden">
+						<span className="sidebar-expanded-chrome shrink-0 rounded-xs bg-wd-inset px-1.5 py-0.5 text-xs font-medium leading-none text-wd-secondary group-data-[collapsible=icon]:hidden">
 							{t("shell.nightly")}
 						</span>
 					)}
@@ -505,8 +504,8 @@ export function Sidebar({
 					<SidebarGroupContent>
 						{workspaceError ? (
 							<div className="sidebar-expanded-chrome px-2.5 py-3 group-data-[collapsible=icon]:hidden">
-								<p className="text-sm text-foreground">{t("shell.couldNotLoadProjects")}</p>
-								<p className="mt-1 text-caption text-passive">{workspaceError}</p>
+								<p className="text-sm text-wd-primary">{t("shell.couldNotLoadProjects")}</p>
+								<p className="mt-1 text-caption text-wd-tertiary">{workspaceError}</p>
 							</div>
 						) : workspaces.length === 0 ? null : (
 							<SidebarMenu
@@ -542,7 +541,7 @@ export function Sidebar({
 			    mac inset, so the footer collapses to the 1px surface border. */}
 			<SidebarFooter
 				className={cn(
-					"relative mt-auto gap-0 overflow-hidden border-t border-border-strong px-2 !py-2 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:min-h-16 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:border-t-0 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:!pb-0 group-data-[collapsible=icon]:!pt-1.5",
+					"relative mt-auto gap-0 overflow-hidden border-t border-wd-hairline px-2 !py-2 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:min-h-16 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:border-t-0 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:!pb-0 group-data-[collapsible=icon]:!pt-1.5",
 					isMac
 						? "mb-[calc(var(--size-center-panel-inset-mac)+1px)] in-[.native-fullscreen]:mb-px"
 						: "mb-[calc(var(--size-center-panel-bottom-inset)+1px)]",
@@ -572,7 +571,7 @@ export function Sidebar({
 						type="button"
 					>
 						<Settings aria-hidden="true" />
-						<span className="tracking-tight">{t("shell.settings")}</span>
+						<span>{t("shell.settings")}</span>
 					</button>
 				</div>
 				<div
@@ -585,7 +584,7 @@ export function Sidebar({
 						<TooltipTrigger asChild>
 							<button
 								aria-label={t("shell.settings")}
-								className="grid size-control-board place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground [&_svg]:size-icon-base"
+								className="grid size-control-board place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary [&_svg]:size-icon-base"
 								onClick={() => selection.goGlobalSettings()}
 								tabIndex={isCollapsed ? 0 : -1}
 								type="button"
@@ -809,7 +808,7 @@ function ProjectItem({
 			figmaBoard
 				? "figma-board-sidebar__project-row"
 				: "gap-2 pr-sidebar-project-actions [&_svg]:size-icon-md",
-			"group-data-[collapsible=icon]:size-control-board! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-lg group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:font-semibold",
+			"group-data-[collapsible=icon]:size-control-board! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:font-medium",
 		)}
 	>
 		{/* Expanded sidebar: visual folder/chevron icon (decorative — toggle button is a sibling).
@@ -824,7 +823,7 @@ function ProjectItem({
 		) : (
 		<span
 			aria-hidden="true"
-			className="relative inline-flex size-icon-md shrink-0 translate-y-px items-center justify-center text-muted-foreground group-data-[collapsible=icon]:hidden"
+			className="relative inline-flex size-icon-md shrink-0 translate-y-px items-center justify-center text-wd-secondary group-data-[collapsible=icon]:hidden"
 			data-project-folder-visual=""
 		>
 			{rowHovered ? (
@@ -846,7 +845,7 @@ function ProjectItem({
 		{/* Collapsed icon rail: folder icon */}
 		<span
 			aria-hidden="true"
-			className="hidden group-data-[collapsible=icon]:inline-flex size-8 items-center justify-center text-muted-foreground"
+			className="hidden group-data-[collapsible=icon]:inline-flex size-8 items-center justify-center text-wd-secondary"
 		>
 			{expanded ? (
 				<FolderOpen className="size-5" strokeWidth={1.75} />
@@ -874,7 +873,7 @@ function ProjectItem({
 		aria-label={t(usesWorkLaunchMode ? "shell.toggleProjectOutcomes" : "shell.toggleProject", { name: workspace.name })}
 		aria-expanded={expanded}
 		className={cn(
-			"absolute inset-y-0 z-10 group-data-[collapsible=icon]:hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm",
+			"absolute inset-y-0 z-10 rounded-full group-data-[collapsible=icon]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
 			figmaBoard ? "right-0 w-6" : "left-0 w-9",
 		)}
 		data-project-folder=""
@@ -942,7 +941,7 @@ function ProjectItem({
 								? t("shell.openProjectOrchestrator", { name: workspace.name })
 								: t("shell.spawnProjectOrchestrator", { name: workspace.name })
 						}
-						className={cn(HOVER_ACTION_CLASS, orchestratorActive && "text-foreground")}
+						className={cn(HOVER_ACTION_CLASS, orchestratorActive && "text-wd-primary")}
 						disabled={isSpawning || isProjectRestarting}
 						onClick={() => void openOrchestrator()}
 						type="button"
@@ -978,7 +977,7 @@ function ProjectItem({
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
-						className="text-destructive focus:text-destructive [&_svg]:text-destructive"
+						className="text-critical focus:text-critical [&_svg]:text-critical"
 						disabled={isRemoving}
 						onSelect={() => void removeProject()}
 					>
@@ -991,11 +990,11 @@ function ProjectItem({
 		)}
 		</div>{/* end outer relative */}
 		{isRemoving ? (
-			<div className="sidebar-expanded-chrome px-5 py-1 text-2xs text-muted-foreground" role="status">
+			<div className="sidebar-expanded-chrome px-5 py-1 text-xs text-wd-secondary" role="status">
 				{t("shell.removingNamed", { name: workspace.name })}
 			</div>
 		) : removeError ? (
-			<div className="sidebar-expanded-chrome px-5 py-1 text-2xs text-destructive" role="alert">
+			<div className="sidebar-expanded-chrome px-5 py-1 text-xs text-critical" role="alert">
 				{removeError}
 			</div>
 		) : null}
@@ -1025,12 +1024,12 @@ function ProjectItem({
 							)}
 						>
 							{projectOutcomesQuery.failure ? (
-								<li className="px-1.75 py-1 text-2xs text-muted-foreground" role="alert">
+								<li className="px-3 py-1 text-xs text-wd-secondary" role="alert">
 									{t("outcome.dashboard.loadFailed")}
 								</li>
 							) : null}
 							{outcomes.length > 0 ? (
-								<li className="px-1.75 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+								<li className="px-3 pb-0.5 pt-2 text-xs font-medium text-wd-tertiary">
 									{t("outcome.dashboard.heading")}
 								</li>
 							) : null}
@@ -1081,16 +1080,10 @@ function ProjectItem({
 		<ConfirmDialog
 			open={confirmOpen}
 			onOpenChange={setConfirmOpen}
-			title={t("shell.removeProjectTitle")}
-			description={
-				<>
-					<p className="text-sm font-medium text-foreground">
-						{t("shell.removeProjectLead", { name: workspace.name })}
-					</p>
-					<p className="mt-1 text-xs text-muted-foreground">{t("shell.removeProjectBody")}</p>
-				</>
-			}
-			confirmLabel={t("shell.remove")}
+			title={t("shell.removeProjectQuestion", { name: workspace.name })}
+			description={<p>{t("shell.removeProjectBody")}</p>}
+			confirmLabel={t("shell.removeProjectTitle")}
+			cancelLabel={t("shell.keepProject")}
 			destructive
 			onConfirm={handleConfirmRemove}
 		/>
@@ -1108,7 +1101,7 @@ function ProjectItem({
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<ContextMenuItem
-				className="text-destructive focus:text-destructive [&_svg]:text-destructive"
+				className="text-critical focus:text-critical [&_svg]:text-critical"
 				disabled={isRemoving}
 				onSelect={() => void removeProject()}
 			>
@@ -1148,15 +1141,15 @@ function OutcomeRow({
 		>
 			<div
 				className={cn(
-					"group/outcome-row flex h-7 w-full items-center rounded-md text-muted-foreground transition-[background-color,color]",
-					"hover:bg-muted hover:text-foreground focus-within:bg-muted",
-					active && "bg-muted text-foreground",
+					"group/outcome-row flex h-7 w-full items-center rounded-full text-wd-secondary transition-[background-color,color] duration-fast",
+					"hover:bg-wd-hover hover:text-wd-primary focus-within:bg-wd-hover",
+					active && "bg-wd-selected text-wd-primary",
 				)}
 			>
 				<button
 					aria-current={active ? "page" : undefined}
 					aria-label={t("outcome.dashboard.continueAria", { title: outcome.title })}
-					className="flex h-7 min-w-0 flex-1 items-center gap-1.25 rounded-md px-1.75 text-left text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+					className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-full px-3 text-left text-sm outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 					onClick={onOpen}
 					title={`${t(presentation.stageKey)} · ${t(presentation.stateKey)}`}
 					type="button"
@@ -1168,8 +1161,8 @@ function OutcomeRow({
 					<button
 						aria-label={t("outcome.dashboard.missionControlAria", { title: outcome.title })}
 						className={cn(
-							"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-md text-passive opacity-0",
-							"transition-[width,margin,background-color,color,opacity] hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50 [&_svg]:size-3!",
+							"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-full text-wd-tertiary opacity-0",
+							"transition-[width,margin,background-color,color,opacity] duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--border-focus) [&_svg]:size-3!",
 							"group-hover/outcome-row:w-5 group-hover/outcome-row:opacity-100",
 							"group-focus-within/outcome-row:w-5 group-focus-within/outcome-row:opacity-100",
 						)}
@@ -1245,12 +1238,12 @@ function SessionRow({
 	if (isEditing) {
 		return (
 			<SidebarMenuSubItem className={cn(figmaBoard ? "figma-board-sidebar__session-item" : indented && "pl-4.5")}>
-				<div className="relative flex h-7 w-full items-center gap-1.25 rounded-md px-1.75 py-0">
+				<div className="relative flex h-7 w-full items-center gap-1.5 rounded-full px-3 py-0">
 					{figmaBoard ? null : <SessionStatusDot session={session} />}
 					<input
 						aria-label={t("shell.renameSession", { title: session.title })}
 						autoFocus
-						className="min-w-0 flex-1 rounded-xs border border-accent bg-transparent px-1 py-px text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-accent"
+						className="min-w-0 flex-1 rounded-xs bg-wd-inset px-1.5 py-px text-sm text-wd-primary outline-2 outline-offset-1 outline-(--border-focus)"
 						maxLength={MAX_DISPLAY_NAME_LEN}
 						onBlur={() => void commit()}
 						onChange={(e) => setDraft(e.target.value)}
@@ -1276,9 +1269,9 @@ function SessionRow({
 		<SidebarMenuSubItem className={cn(figmaBoard ? "figma-board-sidebar__session-item" : indented && "pl-4.5")}>
 			<div
 				className={cn(
-					"group/session-row flex h-7 w-full items-center rounded-md transition-[background-color,color]",
-					"hover:bg-muted hover:text-foreground focus-within:bg-muted",
-					active && "bg-muted text-foreground",
+					"group/session-row flex h-7 w-full items-center rounded-full transition-[background-color,color] duration-fast",
+					"hover:bg-wd-hover hover:text-wd-primary focus-within:bg-wd-hover",
+					active && "bg-wd-selected text-wd-primary",
 				)}
 				data-session-row=""
 			>
@@ -1288,7 +1281,7 @@ function SessionRow({
 						aria-current={active ? "page" : undefined}
 						aria-describedby={!figmaBoard && switchLabel ? switchStatusId : undefined}
 						aria-label={t("shell.openSession", { title: session.title })}
-						className="flex h-7 min-w-0 flex-1 items-center gap-1.25 rounded-md px-1.75 py-0 text-left text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+						className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-full px-3 py-0 text-left text-sm outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)"
 						onClick={onOpen}
 						type="button"
 					>
@@ -1297,13 +1290,13 @@ function SessionRow({
 							<span
 								className={cn(
 									"min-w-0 flex-1 truncate transition-colors",
-									active ? "text-foreground" : "text-muted-foreground group-hover/session-row:text-foreground",
+									active ? "text-wd-primary" : "text-wd-secondary group-hover/session-row:text-wd-primary",
 								)}
 							>
 								{session.title}
 							</span>
 							{!figmaBoard && switchLabel ? (
-								<span id={switchStatusId} className="max-w-28 shrink-0 truncate text-2xs text-muted-foreground">
+								<span id={switchStatusId} className="max-w-28 shrink-0 truncate text-xs text-wd-tertiary">
 									{switchLabel}
 								</span>
 							) : null}
@@ -1314,11 +1307,11 @@ function SessionRow({
 				<button
 					aria-label={session.isPinned ? t("shell.unpinSession") : t("shell.pinSession")}
 					className={cn(
-						"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-md text-passive opacity-0",
-						"transition-[width,margin,background-color,color,opacity] hover:bg-interactive-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50 [&_svg]:size-3!",
+						"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-full text-wd-tertiary opacity-0",
+						"transition-[width,margin,background-color,color,opacity] duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--border-focus) [&_svg]:size-3!",
 						"group-hover/session-row:w-5 group-hover/session-row:opacity-100",
 						"group-focus-within/session-row:w-5 group-focus-within/session-row:opacity-100",
-						session.isPinned && "text-foreground",
+						session.isPinned && "text-wd-primary",
 					)}
 					onClick={(e) => {
 						e.stopPropagation();
@@ -1331,8 +1324,8 @@ function SessionRow({
 				<button
 					aria-label={t("shell.renameSession", { title: session.title })}
 					className={cn(
-						"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-md text-passive opacity-0",
-						"transition-[width,margin,background-color,color,opacity] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50 [&_svg]:size-3!",
+						"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-full text-wd-tertiary opacity-0",
+						"transition-[width,margin,background-color,color,opacity] duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--border-focus) [&_svg]:size-3!",
 						"group-hover/session-row:mr-0.5 group-hover/session-row:w-5 group-hover/session-row:opacity-100",
 						"group-focus-within/session-row:mr-0.5 group-focus-within/session-row:w-5 group-focus-within/session-row:opacity-100",
 					)}
@@ -1347,8 +1340,8 @@ function SessionRow({
 				<button
 					aria-label={t("shell.killSession")}
 					className={cn(
-						"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-md text-passive opacity-0",
-						"transition-[width,margin,background-color,color,opacity] hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50 [&_svg]:size-3!",
+						"grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-full text-wd-tertiary opacity-0",
+						"transition-[width,margin,background-color,color,opacity] duration-fast hover:bg-critical-bg hover:text-critical focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--border-focus) [&_svg]:size-3!",
 						"group-hover/session-row:mr-1 group-hover/session-row:w-5 group-hover/session-row:opacity-100",
 						"group-focus-within/session-row:mr-1 group-focus-within/session-row:w-5 group-focus-within/session-row:opacity-100",
 					)}
@@ -1389,7 +1382,7 @@ function CloudAccountRow({ tabIndex }: { tabIndex: number }) {
 						type="button"
 					>
 						<User aria-hidden="true" />
-						<span className="tracking-tight">{t("shell.signIn")}</span>
+						<span>{t("shell.signIn")}</span>
 					</button>
 				</TooltipTrigger>
 				<TooltipContent side="right" hidden={tabIndex !== -1}>
@@ -1412,14 +1405,14 @@ function CloudAccountRow({ tabIndex }: { tabIndex: number }) {
 					type="button"
 				>
 					<User aria-hidden="true" />
-					<span className="min-w-0 flex-1 truncate tracking-tight">
+					<span className="min-w-0 flex-1 truncate">
 						{session?.user.email ?? "Waldo Cloud"}
 					</span>
 				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent side="top" align="start" className="min-w-44">
 				<DropdownMenuItem
-					className="text-destructive focus:text-destructive [&_svg]:text-destructive"
+					className="text-critical focus:text-critical [&_svg]:text-critical"
 					onSelect={() => void signOut()}
 				>
 					<LogOut aria-hidden="true" />
@@ -1442,7 +1435,7 @@ function CloudAccountRailButton({ tabIndex }: { tabIndex: number }) {
 				<TooltipTrigger asChild>
 					<button
 						aria-label={t("shell.signInToAOCloud")}
-						className="grid size-control-board place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground [&_svg]:size-icon-base"
+						className="grid size-control-board place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary [&_svg]:size-icon-base"
 						onClick={() => signIn()}
 						tabIndex={tabIndex}
 						type="button"
@@ -1460,7 +1453,7 @@ function CloudAccountRailButton({ tabIndex }: { tabIndex: number }) {
 			<TooltipTrigger asChild>
 				<button
 					aria-label={t("shell.signedInAs", { email: session?.user.email ?? "Waldo Cloud" })}
-					className="grid size-control-board place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground [&_svg]:size-icon-base"
+					className="grid size-control-board place-items-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary [&_svg]:size-icon-base"
 					onClick={() => void signOut()}
 					tabIndex={tabIndex}
 					type="button"
@@ -1492,10 +1485,10 @@ function RestartToUpdateRow({ status, tabIndex }: { status: UpdateStatus; tabInd
 					: t("shell.restartInstallUpdate")
 			}
 			className={cn(
-				"flex w-full items-center gap-2.5 rounded-lg p-2.5 text-left text-control font-medium transition-colors",
+				"flex w-full items-center gap-2.5 rounded-md p-2.5 text-left text-control font-medium transition-colors duration-fast",
 				escalated
-					? "border border-working/35 bg-working/12 text-working hover:bg-working/18 [&_svg]:text-working"
-					: "text-passive hover:bg-interactive-hover hover:text-foreground [&_svg]:text-passive",
+					? "bg-caution-bg text-wd-primary hover:bg-wd-hover [&_svg]:text-caution"
+					: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary [&_svg]:text-wd-secondary",
 			)}
 			onClick={() => void aoBridge.updates.install()}
 			tabIndex={tabIndex}
@@ -1503,16 +1496,16 @@ function RestartToUpdateRow({ status, tabIndex }: { status: UpdateStatus; tabInd
 		>
 			<RefreshCw aria-hidden="true" className="size-icon-lg shrink-0" />
 			<span className="min-w-0 flex-1">
-				<span className="block truncate tracking-tight">{t("shell.restartToUpdate")}</span>
+				<span className="block truncate">{t("shell.restartToUpdate")}</span>
 				{status.version && (
-					<span className={cn("block truncate text-caption font-normal", escalated ? "text-working" : "text-passive")}>
+					<span className={cn("block truncate text-caption font-normal", escalated ? "text-caution" : "text-wd-tertiary")}>
 						{t("shell.versionReady", { version: status.version })}
 					</span>
 				)}
 			</span>
 			<span
 				aria-hidden="true"
-				className={cn("h-1.5 w-1.5 shrink-0 rounded-full", escalated ? "bg-working" : "bg-passive")}
+				className={cn("h-1.5 w-1.5 shrink-0 rounded-full", escalated ? "bg-caution" : "bg-wd-tertiary")}
 			/>
 		</button>
 	);
@@ -1534,10 +1527,10 @@ function RestartToUpdateRailButton({ status, tabIndex }: { status: UpdateStatus;
 							: t("shell.restartInstallUpdate")
 					}
 					className={cn(
-						"grid size-9 place-items-center rounded-lg transition-colors [&_svg]:size-4",
+						"grid size-9 place-items-center rounded-full transition-colors duration-fast [&_svg]:size-4",
 						escalated
-							? "bg-working/12 text-working hover:bg-working/18"
-							: "text-passive hover:bg-interactive-hover hover:text-foreground",
+							? "bg-caution-bg text-caution hover:bg-wd-hover"
+							: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 					)}
 					onClick={() => void aoBridge.updates.install()}
 					tabIndex={tabIndex}
@@ -1580,7 +1573,7 @@ function SectionDisclosure({
 			{collapsible ? (
 				<ChevronRight
 					aria-hidden="true"
-					className={cn("size-3.5! shrink-0 transition-transform duration-150", open && "rotate-90")}
+					className={cn("size-3.5! shrink-0 transition-transform duration-fast", open && "rotate-90")}
 					strokeWidth={2}
 				/>
 			) : null}
@@ -1651,16 +1644,16 @@ function SidebarSearchButton({ onOpen }: { onOpen: () => void }) {
 				tooltip={isCollapsed ? t("shell.search") : undefined}
 				className={cn(
 					// Filled search trigger (Cursor-style): icon + label.
-					"h-8 gap-2 rounded-md hairline border-border bg-card px-1.75 text-sm font-normal text-muted-foreground",
-					"transition-[background-color,color] duration-150 ease-out hover:bg-interactive-hover! hover:text-foreground active:bg-interactive-hover! [&_svg]:size-icon-sm!",
-					"group-data-[collapsible=icon]:size-control-form! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-lg group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:hover:bg-interactive-hover!",
+					"h-8 gap-2 rounded-full bg-wd-inset px-3 text-sm font-normal text-wd-tertiary",
+					"transition-[background-color,color] duration-fast hover:bg-wd-hover! hover:text-wd-secondary active:bg-wd-pressed! [&_svg]:size-icon-sm!",
+					"group-data-[collapsible=icon]:size-control-form! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:hover:bg-wd-hover!",
 				)}
 			>
 				<Search strokeWidth={1.75} aria-hidden="true" />
 				<span className="sidebar-expanded-chrome min-w-0 flex-1 truncate text-left leading-none group-data-[collapsible=icon]:hidden">
 					{t("shell.search")}
 				</span>
-				<kbd className="sidebar-expanded-chrome ml-auto shrink-0 rounded-sm hairline border-border-strong bg-popover px-1.5 py-0.5 text-caption leading-none text-muted-foreground group-data-[collapsible=icon]:hidden">
+				<kbd className="sidebar-expanded-chrome ml-auto shrink-0 rounded-xs bg-wd-raised px-1.5 py-0.5 text-caption leading-none text-wd-tertiary group-data-[collapsible=icon]:hidden">
 					{commandPaletteShortcutLabel}
 				</kbd>
 			</SidebarMenuButton>
@@ -1691,7 +1684,7 @@ function CreateProjectButton({
 						<button
 							aria-label={t("shell.newProject")}
 							className={cn(
-								"grid size-icon-xl shrink-0 place-items-center rounded-sm text-passive transition-colors hover:bg-interactive-hover hover:text-foreground",
+								"grid size-icon-xl shrink-0 place-items-center rounded-full text-wd-tertiary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary",
 							)}
 							disabled={disabled}
 							onClick={choosePath}
@@ -1716,7 +1709,7 @@ function CreateProjectListItem() {
 				<TooltipTrigger asChild>
 					<button
 						aria-label={t("shell.newProject")}
-						className="grid h-control-board w-full place-items-center rounded-lg text-passive transition-colors hover:bg-interactive-hover hover:text-muted-foreground"
+						className="grid h-control-board w-full place-items-center rounded-full text-wd-tertiary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-secondary"
 						onClick={() => requestCreateProject()}
 						type="button"
 					>

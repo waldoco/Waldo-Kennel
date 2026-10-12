@@ -186,7 +186,7 @@ function SessionInspectorRail({
 			/>
 			<motion.div
 				aria-hidden={hidden}
-				className="absolute inset-y-0 right-0 z-chrome flex h-full max-w-[50%] flex-col overflow-hidden border-l border-border-strong bg-background"
+				className="absolute inset-y-0 right-0 z-chrome flex h-full max-w-[50%] flex-col overflow-hidden border-l-[length:var(--stroke-hairline)] border-wd-hairline bg-wd-canvas"
 				data-panel=""
 				data-settled={settledClosed ? "true" : "false"}
 				data-slot="inspector-container"
@@ -792,14 +792,14 @@ export function SessionView({ sessionId }: SessionViewProps) {
 	}, [hasInspector]);
 	if (!session && !workspaceQuery.isLoading) {
 		return (
-			<div className="grid h-full place-items-center p-6 text-center font-mono text-xs text-passive">
+			<div className="wd-body-s grid h-full place-items-center p-6 text-center text-wd-secondary">
 				{t("session.notFound")}
 			</div>
 		);
 	}
 
 	return (
-		<div className="relative flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="session-detail">
+		<div className="relative flex h-full min-h-0 flex-col bg-wd-canvas text-wd-primary" data-testid="session-detail">
 			<div
 				className="session-split relative flex min-h-0 flex-1 overflow-hidden"
 				data-testid="panel-group"

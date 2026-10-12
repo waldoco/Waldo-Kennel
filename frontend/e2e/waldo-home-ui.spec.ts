@@ -6,19 +6,20 @@ test.use({
   viewport: { width: 1512, height: 982 },
 });
 
-test("Home gives Waldo the context region and restores Catch Up exactly", async ({ page }) => {
+test("Home gives Waldo the inspector and restores the Today glance exactly", async ({ page }) => {
   await page.goto("/#/home?homePhase=morning&homeContext=catch_up");
 
   const launcher = page.getByRole("button", { name: "Open Waldo" });
-  await expect(page.getByRole("heading", { name: "Catch Up" })).toBeVisible();
+  const glance = page.getByRole("complementary", { name: "Today at a glance" });
+  await expect(glance).toBeVisible();
   await launcher.click();
 
   await expect(page.getByRole("region", { name: "Waldo" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Catch Up" })).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Quick Capture" })).toHaveCount(1);
+  await expect(glance).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Quick capture" })).toHaveCount(1);
 
   await page.getByRole("button", { name: "Close Waldo" }).click();
-  await expect(page.getByRole("heading", { name: "Catch Up" })).toBeVisible();
+  await expect(glance).toBeVisible();
   await expect(launcher).toBeFocused();
 });
 
@@ -51,7 +52,7 @@ test("Conversation episodes preserve context and semantic boundaries", async ({ 
     "Candidate",
   );
   await expect(page.getByRole("region", { name: "Proposal preview" })).toContainText(
-    "Approval required",
+    "Needs you",
   );
   await page.getByRole("button", { name: "Review proposed command" }).click();
   await expect(page.getByRole("status", { name: "Proposal preview status" })).toContainText(
@@ -145,15 +146,15 @@ test("Home exposes completed continuity screens without promoting them to primar
 
   const primary = page.getByRole("group", { name: "Primary Home destinations" });
   await expect(primary.getByRole("link", { name: "Today" })).toBeVisible();
-  await expect(primary.getByRole("link", { name: "Open Loops" })).toBeVisible();
+  await expect(primary.getByRole("link", { name: "Open loops" })).toBeVisible();
 
   const continuity = page.getByRole("group", { name: "Review and continuity" });
-  await continuity.getByRole("link", { name: "Daily Close" }).click();
+  await continuity.getByRole("link", { name: "Daily close" }).click();
   await expect(page.getByRole("heading", { name: "Close the day deliberately" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Quick Capture" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Quick capture" })).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Memory Review" }).click();
-  await expect(page.getByRole("heading", { name: "Memory Review" })).toBeVisible();
+  await page.getByRole("link", { name: "Memory review" }).click();
+  await expect(page.getByRole("heading", { name: "Memory review" })).toBeVisible();
   await page.getByRole("link", { name: "Insights" }).click();
   await expect(page.getByRole("heading", { name: "Insights" })).toBeVisible();
 });
@@ -168,7 +169,7 @@ test("Insights keeps interpretation review separate from inspectable Records", a
   await expect(
     page.getByText(/use the open block for the deck revision/i),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Confirm" }).click();
+  await page.getByRole("button", { name: "Confirm insight" }).click();
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
 
   await page.getByRole("tab", { name: "Records" }).click();

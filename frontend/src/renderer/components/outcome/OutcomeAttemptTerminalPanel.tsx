@@ -1,4 +1,4 @@
-import { agentLabel } from "@pin4sf/kennel-product-ui";
+import { StateMark, agentLabel } from "@pin4sf/kennel-product-ui";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -161,7 +161,7 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 	return (
 		<aside
 			aria-label={t("outcome.run.panelHeading")}
-			className="flex w-[26rem] shrink-0 flex-col gap-1.5 rounded-panel hairline border-border bg-shell p-1.25"
+			className="flex w-[26rem] shrink-0 flex-col gap-1.5 rounded-lg hairline border-wd-hairline bg-wd-surface p-1.5"
 			data-testid="outcome-run-attempt-panel"
 		>
 			<div className="flex shrink-0 items-center justify-between gap-2 px-0.75 py-0.75">
@@ -174,10 +174,10 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 						<button
 							aria-selected={binding.sessionId === selectedSessionId}
 							className={cn(
-								"inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors",
+								"inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-colors duration-fast motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus)",
 								binding.sessionId === selectedSessionId
-									? "hairline border-border bg-popover font-medium text-foreground"
-									: "text-passive hover:bg-interactive-hover/60 hover:text-foreground",
+									? "bg-wd-selected font-medium text-wd-primary"
+									: "text-wd-secondary hover:bg-wd-hover hover:text-wd-primary",
 							)}
 							key={binding.sessionId}
 							onClick={() => selectSession(binding.sessionId)}
@@ -189,7 +189,7 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 					))}
 					{resolvedSession && resolvedSession.mode !== "chat" && shellTerminalsForSession.length > 0 ? (
 						<>
-							<span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+							<span aria-hidden="true" className="h-4 w-px shrink-0 bg-wd-hairline" />
 							{shellTerminalsForSession.map((terminal) => (
 								<ShellTerminalTab
 									isActive={selectedTarget.kind === "shell" && selectedTarget.handleId === terminal.handleId}
@@ -207,7 +207,7 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 					{resolvedSession && resolvedSession.mode !== "chat" ? (
 						<button
 							aria-label={t("outcome.run.panelNewTerminal")}
-							className="inline-flex size-control-sm items-center justify-center rounded-md text-passive transition-colors hover:bg-interactive-hover hover:text-foreground"
+							className="inline-flex size-control-sm items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none"
 							onClick={addShellTerminal}
 							title={t("outcome.run.panelNewTerminal")}
 							type="button"
@@ -217,7 +217,7 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 					) : null}
 					<button
 						aria-label={t("common.close")}
-						className="inline-flex size-control-sm items-center justify-center rounded-md text-passive transition-colors hover:bg-interactive-hover hover:text-foreground"
+						className="inline-flex size-control-sm items-center justify-center rounded-full text-wd-secondary transition-colors duration-fast hover:bg-wd-hover hover:text-wd-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-focus) motion-reduce:transition-none"
 						data-testid="outcome-run-attempt-panel-close"
 						onClick={onClose}
 						title={t("common.close")}
@@ -230,7 +230,7 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 
 			{attempt.presentation && ENDED_ATTEMPT_PHASES.has(attempt.presentation.phase) ? <EndedAttemptFacts attempt={attempt} /> : null}
 			{selectedProvenance ? <ProtocolProvenanceFacts provenance={selectedProvenance} /> : null}
-			<div className="min-h-0 flex-1 overflow-hidden rounded-group hairline border-border bg-card">
+			<div className="min-h-0 flex-1 overflow-hidden rounded-md hairline border-wd-hairline bg-card">
 				{resolvedSession?.mode === "chat" ? (
 					<SessionChatSurface
 						daemonReady={daemonReady}
@@ -273,22 +273,23 @@ export function OutcomeAttemptTerminalPanel({ attempt, onClose }: OutcomeAttempt
 function ProtocolProvenanceFacts({ provenance }: { provenance: ProtocolProvenanceRecord }) {
 	const { t } = useTranslation();
 	return (
-		<div className="flex flex-col gap-1 border-b border-border px-3 py-2 text-2xs" data-testid="attempt-protocol-provenance">
-			<h4 className="font-medium uppercase tracking-wide text-passive">{t("outcome.run.protocolTitle")}</h4>
-			<div className="flex flex-wrap items-center gap-1.5">
-				<span>
+		<div className="flex flex-col gap-1 hairline-b border-wd-hairline px-3 py-2 text-xs" data-testid="attempt-protocol-provenance">
+			<h4 className="font-medium text-wd-secondary">{t("outcome.run.protocolTitle")}</h4>
+			<div className="flex flex-wrap items-center gap-1.5 text-wd-primary">
+				<span className="tabular-nums">
 					{provenance.provider}
 					{provenance.installedVersion ? ` ${provenance.installedVersion}` : ""}
 				</span>
 				<Badge variant="neutral">
 					{provenance.matchesGenerated ? t("outcome.run.protocolMatchesPin") : t("outcome.run.protocolDigestDrift")}
 				</Badge>
-				<time className="text-passive" dateTime={provenance.negotiatedAt}>
+				<time className="tabular-nums text-wd-tertiary" dateTime={provenance.negotiatedAt}>
 					{formatTimeCompact(provenance.negotiatedAt)}
 				</time>
 			</div>
 			{provenance.degradedCapabilities && provenance.degradedCapabilities.length > 0 ? (
-				<p className="text-warning">
+				<p className="flex items-center gap-1.5 text-wd-primary">
+					<StateMark className="text-caution" tone="caution" />
 					{t("outcome.run.protocolDegraded", { capabilities: provenance.degradedCapabilities.join(", ") })}
 				</p>
 			) : null}
@@ -300,26 +301,29 @@ function ProtocolProvenanceFacts({ provenance }: { provenance: ProtocolProvenanc
 function EndedAttemptFacts({ attempt }: { attempt: AttemptRecord }) {
 	const { t } = useTranslation();
 	return (
-		<div className="flex flex-col gap-1.5 border-b border-border px-3 py-2 text-2xs" data-testid="attempt-ended-facts">
+		<div className="flex flex-col gap-1.5 hairline-b border-wd-hairline px-3 py-2 text-xs" data-testid="attempt-ended-facts">
 			{attempt.presentation.endedUnclassified ? (
-				<p className="text-warning">{t("outcome.run.panelEndedUnclassified")}</p>
+				<p className="flex items-start gap-1.5 text-wd-primary">
+					<StateMark className="mt-0.5 text-caution" tone="caution" />
+					{t("outcome.run.panelEndedUnclassified")}
+				</p>
 			) : null}
 			{attempt.receipts.length > 0 ? (
 				<div>
-					<h4 className="font-medium uppercase tracking-wide text-passive">{t("outcome.run.panelReceipts")}</h4>
+					<h4 className="font-medium text-wd-secondary">{t("outcome.run.panelReceipts")}</h4>
 					<ul className="mt-0.5 space-y-0.5">
 						{attempt.receipts.map((receipt) => (
 							<li className="flex items-center gap-1.5" key={receipt.id}>
 								<Badge variant={receipt.resolution === "needs_attention" ? "warning" : "neutral"}>
 									{t(`outcome.run.panelReceipt.${receipt.resolution}`)}
 								</Badge>
-								<time dateTime={receipt.createdAt}>{formatTimeCompact(receipt.createdAt)}</time>
+								<time className="tabular-nums text-wd-tertiary" dateTime={receipt.createdAt}>{formatTimeCompact(receipt.createdAt)}</time>
 							</li>
 						))}
 					</ul>
 				</div>
 			) : null}
-			<p className="text-passive">{t("outcome.run.observationCount", { total: attempt.observations.length })}</p>
+			<p className="tabular-nums text-wd-tertiary">{t("outcome.run.observationCount", { total: attempt.observations.length })}</p>
 		</div>
 	);
 }

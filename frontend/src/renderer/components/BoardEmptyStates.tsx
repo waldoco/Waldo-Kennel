@@ -1,4 +1,4 @@
-import { Loader2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useShell } from "../lib/shell-context";
 import { CreateProjectFlow } from "./CreateProjectFlow";
@@ -51,20 +51,24 @@ export function ProjectBoardEmpty({
 	const agentLabel = t("shell.orchestrator");
 	return (
 		<div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6">
-			<div className="flex w-full max-w-preview-content flex-col items-center rounded-xl border border-accent/20 bg-raised/60 px-8 py-10 text-center shadow-sm">
+			{/* EmptyState: one true line, then at most one next step. No card
+			    chrome, glow or spinner - while the orchestrator explores, the
+			    working state is a specific sentence. */}
+			<div className="flex w-full max-w-preview-content flex-col items-start gap-2 py-10">
 				{isExploring ? (
 					<>
-						<Loader2 className="mb-3 size-6 animate-spin text-accent" aria-hidden="true" />
-						<h2 className="text-subtitle font-semibold tracking-tight text-foreground">{t("board.exploring.title")}</h2>
-						<p className="mt-2 max-w-lg text-md-sm leading-relaxed text-muted-foreground">{t("board.exploring.body", { agent: agentLabel })}</p>
+						<h2 className="wd-display-4 text-wd-primary">{t("board.exploring.title")}</h2>
+						<p className="max-w-lg text-sm leading-5 text-wd-secondary" role="status">
+							{t("board.exploring.body", { agent: agentLabel })}
+						</p>
 					</>
 				) : (
 					<>
-						<h2 className="text-subtitle font-semibold tracking-tight text-foreground">{t("board.empty.title")}</h2>
-						<p className="mt-2 max-w-lg text-md-sm leading-relaxed text-muted-foreground">{t("board.empty.body")}</p>
+						<h2 className="wd-display-4 text-wd-primary">{t("board.empty.title")}</h2>
+						<p className="max-w-lg text-sm leading-5 text-wd-secondary">{t("board.empty.body")}</p>
 					</>
 				)}
-				<div className="mt-5 flex items-center gap-2">
+				<div className="mt-3 flex items-center gap-2">
 					<TopbarButton
 						aria-label={t("shell.newTask")}
 						className="outcome-primary-action"
@@ -77,8 +81,8 @@ export function ProjectBoardEmpty({
 					</TopbarButton>
 				</div>
 				{spawnError && (
-					<div className="mt-3 flex flex-col items-center gap-2">
-						<p className="text-caption leading-body text-error" role="status">
+					<div className="mt-3 flex flex-col items-start gap-2">
+						<p className="text-sm leading-5 text-critical" role="status">
 							{spawnError}
 						</p>
 						{onInstallTmux ? (
@@ -87,7 +91,7 @@ export function ProjectBoardEmpty({
 							</TopbarButton>
 						) : null}
 						{tmuxInstallMessage ? (
-							<p className="text-caption leading-body text-muted-foreground" role="status">
+							<p className="text-sm leading-5 text-wd-secondary" role="status">
 								{tmuxInstallMessage}
 							</p>
 						) : null}
