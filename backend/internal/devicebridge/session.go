@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sync"
@@ -433,6 +434,10 @@ func (c *Client) persistResult(ctx context.Context, raw []byte, command, payload
 	if err != nil {
 		return err
 	}
+	payload, err = canonicalResultPayload(payload)
+	if err != nil {
+		return err
+	}
 	frame := map[string]any{"contract_version": ContractVersion, "type": TypeResult, "message_id": id, "payload": payload}
 	for _, field := range []string{"device_id", "owner_id", "command_id", "revision", "idempotency_key"} {
 		frame[field] = command[field]
@@ -596,4 +601,24 @@ func (c *Client) declares(class any) bool {
 		}
 	}
 	return false
+}
+
+// canonicalResultPayload converts an executor's payload to the wire's JSON value
+// model. Executors build results with native Go numbers (an int exit code, or a
+// float64 reloaded from a JSON ledger); the canonical encoder accepts only
+// json.Number integers, so without this a valid result could never be signed.
+// Non-integer numbers and non-JSON values are still refused.
+func canonicalResultPayload(payload map[string]any) (map[string]any, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, ErrInvalidSigningInput
+	}
+	out, err := parseJSONObject(raw)
+	if err != nil {
+		return nil, ErrInvalidSigningInput
+	}
+	if _, err := marshalCanonical(out); err != nil {
+		return nil, ErrInvalidSigningInput
+	}
+	return out, nil
 }
