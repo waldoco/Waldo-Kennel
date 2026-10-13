@@ -1,5 +1,9 @@
 # ADR 0020: native Mac approval for Waldo machine requests
 
+## October 13, 2026: build and merge directed by the owner
+
+Status: Ashish directed this build to proceed to merge on 2026-10-13, explicitly overriding the Shivansh lane gate ("v0.3.0 / use_mac: not accepted, no code. Needs a Waldo-side proposal reviewed before code"). Bilateral acceptance of contract v0.3.0 is still not recorded; this note records the owner's override, not that acceptance. Number renumbered from 0019, which `outcome-loop` already uses for the governed capture source plane.
+
 ## October 9, 2026: use_mac / v0.3.0 build disposition
 
 Status: owner-directed implementation; contract and Waldo-side behavior are pending Shivansh lane acceptance. This amendment supersedes the historical raw-shell prohibition and delegate_to_machine name below for this build.
