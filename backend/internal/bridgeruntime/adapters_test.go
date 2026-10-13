@@ -101,7 +101,7 @@ func TestWiredDisplayReportsDeliveredOnlyAfterShellAcknowledges(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		socket := &commandSocket{commands: [][]byte{raw}}
+		socket := &commandSocket{commands: [][]byte{raw}, results: make(chan struct{}, 1)}
 		relay := NewDisplayRelay()
 		shell := make(chan DisplayRequest, 1)
 		go func() {
