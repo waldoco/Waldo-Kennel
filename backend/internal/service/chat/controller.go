@@ -910,9 +910,28 @@ func (c *Controller) governedBlockedExcept(ctx context.Context, commandID string
 // provider. Two reasons: the agent is a single conversation and a second
 // concurrent turn is not a thing it can run, and a queued row is a promise Kennel can
 // keep across a restart, which a message dropped into a busy provider is not.
+var ErrAutomationBlocked = errors.New("session blocked on a tool permission; owner input required")
+
+type automationInputGuard interface {
+	AutomationInputBlocked(context.Context, string) (bool, error)
+}
+
 func (c *Controller) Send(ctx context.Context, msg ports.ChatUserMessage) (domain.ConversationTurn, error) {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
+	if msg.Origin == domain.MessageOriginAutomation {
+		guard, ok := c.store.(automationInputGuard)
+		if !ok {
+			return domain.ConversationTurn{}, ErrAutomationBlocked
+		}
+		blocked, err := guard.AutomationInputBlocked(ctx, c.conversation.ID)
+		if err != nil {
+			return domain.ConversationTurn{}, err
+		}
+		if blocked {
+			return domain.ConversationTurn{}, ErrAutomationBlocked
+		}
+	}
 	c.mu.Lock()
 	handoff := c.handoff != controllerHandoffNone
 	c.mu.Unlock()
@@ -2653,7 +2672,7 @@ func (c *Controller) afterProject(ctx context.Context, event ports.ChatEvent, pr
 		// The settled turn is committed before another queued turn can dispatch.
 		c.drainLocked(ctx)
 	case ports.ChatEventApprovalRequested:
-		c.reportActivity(ctx, domain.ActivityWaitingInput, "chat.approval.requested", now)
+		c.reportActivity(ctx, domain.ActivityBlocked, "chat.approval.requested", now)
 	case ports.ChatEventInputRequested:
 		c.reportActivity(ctx, domain.ActivityWaitingInput, "chat.input.requested", now)
 	case ports.ChatEventControllerState:

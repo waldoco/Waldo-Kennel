@@ -28,6 +28,8 @@ import {
 	type UpdateCheckOptions,
 } from "./main/auto-updater";
 import { listFeatureBuilds, getActiveFeatureBuild } from "./main/feature-builds";
+import { createMacApprovalRail } from "./main/mac-approval-handler";
+import { createMacOutputHandlers } from "./main/mac-output-handler";
 import { createWaldoBridgeHandlers } from "./main/waldo-bridge-handler";
 import { createNotificationShower, createWaldoBridgeDisplayLoop } from "./main/waldo-bridge-display";
 import { createAttemptReplacementHandler } from "./main/owner-command-handler";
@@ -392,11 +394,13 @@ function readyDaemonConnection(): { port: number; pid?: number } | null {
 	};
 }
 
+let nativeMacApprovals: ReturnType<typeof createMacApprovalRail> | null = null;
 function setDaemonStatus(nextStatus: DaemonStatus): void {
 	if (nextStatus.state !== "ready") disposeBrowserRuntimeLink();
 	daemonStatus = nextStatus;
 	getShellWebContents()?.send("daemon:status", daemonStatus);
 	islandController?.setDaemonStatus(daemonStatus);
+ nativeMacApprovals?.rebind(nextStatus.state === "ready" && Number.isInteger(nextStatus.port) ? Number(nextStatus.port) : null);
 	sessionDeepLinks.readinessChanged();
 	if (nextStatus.state === "ready" && browserViewHost) {
 		establishBrowserRuntimeLink();
@@ -1636,6 +1640,13 @@ const waldoBridgeHandlers = createWaldoBridgeHandlers({
  getShellWebContents,
  getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
  bridgeLocalToken: () => bridgeLocalToken,
+ confirmSessionConsent: async () => {
+  const window=mainWindow; const shell=getShellWebContents();
+  if (!window || window.isDestroyed() || !shell || shell.isDestroyed()) return false;
+  const frame=shell.mainFrame;
+  const result=await dialog.showMessageBox(window,{type:"question",buttons:["Allow status and output tails","Deny"],defaultId:1,cancelId:1,message:"Allow Waldo to observe coding sessions?",detail:"Session status and the latest output tail (at most 6 KB) may leave this Mac. Full output stays here. Starting, messaging or stopping a session requires a separate Mac approval every time."});
+  return result.response===0 && mainWindow===window && !window.isDestroyed() && getShellWebContents()===shell && !shell.isDestroyed() && shell.mainFrame===frame;
+ },
  fetch: globalThis.fetch,
 });
 ipcMain.handle("waldoBridge:status", waldoBridgeHandlers.status);
@@ -1651,6 +1662,21 @@ const waldoBridgeDisplay = createWaldoBridgeDisplayLoop({
 		create: (options) => new ElectronNotification({ ...options, icon: process.platform === "darwin" ? undefined : windowIconPath() }),
 	}),
 });
+const macOutputHandlers = createMacOutputHandlers({ getShellWebContents, getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? {port:Number(daemonStatus.port)} : null, ownerCommandToken, fetch:globalThis.fetch });
+ipcMain.handle("waldoBridge:history", macOutputHandlers.history);
+ipcMain.handle("waldoBridge:output", macOutputHandlers.output);
+ nativeMacApprovals = createMacApprovalRail({
+  getWindow: () => mainWindow, getShellWebContents,
+  getDaemonConnection: () => daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? { port: Number(daemonStatus.port) } : null,
+  ownerCommandToken, fetch: globalThis.fetch,
+  showConfirmation: (window, request) => dialog.showMessageBox(window, {
+   type: request.risks.length ? "warning" : "question", buttons: ["Run once", "Deny"], defaultId: 1, cancelId: 1,
+   message: "Waldo requests a Mac action",
+   detail: `Project folder: ${request.folder}\nSession: ${request.session_id ?? "none"}\nReason: ${request.reason}\nAction: ${request.action ?? "run_command"}\n\n${request.command ?? request.prompt ?? ""}\n\n${request.risks.map(risk => `🔴 ${risk}`).join("\n")}\n\nApprove and start before: ${new Date(request.expires_at * 1000).toLocaleTimeString()}`,
+  }),
+ });
+ nativeMacApprovals.rebind(daemonStatus.state === "ready" && Number.isInteger(daemonStatus.port) ? Number(daemonStatus.port) : null);
+
 
 ipcMain.handle("ownerCommand:approveAttemptReplacement", createAttemptReplacementHandler({
 	getWindow: () => mainWindow,
@@ -2366,6 +2392,7 @@ app.whenReady().then(async () => {
 // The supervisorLink fd is NOT explicitly closed on quit; the OS closes it when
 // the process exits for any reason (Cmd+Q, crash, SIGKILL). Sessions survive.
 app.on("before-quit", (event) => {
+ nativeMacApprovals?.stop();
 	browserQuitRequested = true;
 	void waldoBridgeDisplay.stop();
 	disposeBrowserRuntimeLink();

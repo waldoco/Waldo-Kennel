@@ -33,6 +33,7 @@ type ControlDeps struct {
 	RequestShutdown      func()
 	BridgeHandler        http.Handler
 	BridgeAuthority      *ownercommand.BridgeAuthority
+	MacActions           MacActions
 	OwnerAuthority       *ownercommand.Authority
 	ReplacementDecisions ports.AttemptReplacementDecisionStore
 	PairingCoordinator   *harnesspairing.Coordinator
@@ -82,6 +83,7 @@ func NewRouterWithControl(cfg config.Config, log *slog.Logger, termMgr *terminal
 	mountControl(r, control)
 	mountBridge(r, control.BridgeHandler, control.BridgeAuthority)
 	mountOwnerCommands(r, control.OwnerAuthority, control.ReplacementDecisions, control.PairingCoordinator, control.OwnerProofKernel, control.HarnessAuthority, control.HarnessDiscovery, control.HarnessProtocol)
+	mountMacActions(r, control.OwnerAuthority, control.MacActions)
 	mountTelemetry(r, cfg, deps.Telemetry)
 	mountMobile(r, deps.Mobile)
 	mountMobileDevices(r, &controllers.MobileDevicesController{Registry: deps.DeviceRoster, Presence: deps.DeviceLive})

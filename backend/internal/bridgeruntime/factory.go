@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/bridgeactivation"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/bridgecontract"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/devicebridge"
 	"github.com/Pin4sf/Waldo-Kennel/backend/internal/domain"
 	"log/slog"
@@ -29,6 +30,7 @@ type Dependencies struct {
 	Keys         Keys
 	SessionStore devicebridge.SessionStore
 	Dialer       devicebridge.Dialer
+	Executor     devicebridge.Executor
 	Clock        func() time.Time
 	Sleep        func(context.Context, time.Duration) error
 	Jitter       func() float64
@@ -101,7 +103,7 @@ func validID(s string) bool {
 }
 func validDevice(d domain.DeviceBridgeDevice) bool {
 	c := d.CapabilityClasses
-	return d.Validate() == nil && d.State == domain.DeviceBridgeStatePaired && d.ContractVersion == devicebridge.ContractVersion && validID(d.OwnerID) && validID(string(d.DeviceID)) && (len(c) == 1 && (c[0] == "machine_state_query" || c[0] == "notify_local") || len(c) == 2 && c[0] == "machine_state_query" && c[1] == "notify_local")
+	return d.Validate() == nil && d.State == domain.DeviceBridgeStatePaired && d.ContractVersion == devicebridge.ContractVersion && validID(d.OwnerID) && validID(string(d.DeviceID)) && bridgecontract.ValidCapabilities(c)
 }
 func (f *Factory) New(ctx context.Context, origin string, d domain.DeviceBridgeDevice, state func(devicebridge.ConnectionState)) (bridgeactivation.Session, error) {
 	if f == nil || f.deps.Fence == nil || f.deps.Keys == nil || f.deps.SessionStore == nil || !validDevice(d) {
@@ -124,7 +126,11 @@ func (f *Factory) New(ctx context.Context, origin string, d domain.DeviceBridgeD
 		dialer = devicebridge.WebSocketDialer{}
 	}
 	rejected := &atomic.Bool{}
-	client := &devicebridge.Client{Origin: origin, Scope: devicebridge.Scope{OwnerID: d.OwnerID, DeviceID: string(d.DeviceID)}, Capabilities: append([]string(nil), d.CapabilityClasses...), Key: append(ed25519.PrivateKey(nil), key...), Store: f.deps.SessionStore, Executor: devicebridge.Handlers{Queries: UnknownQueries{}, Display: f.deps.Display}, Dialer: authDialer{dialer, rejected}, State: state, Diagnostic: func(reason string) {
+	executor := f.deps.Executor
+	if executor == nil {
+		executor = devicebridge.Handlers{Queries: UnknownQueries{}, Display: f.deps.Display}
+	}
+	client := &devicebridge.Client{Origin: origin, Scope: devicebridge.Scope{OwnerID: d.OwnerID, DeviceID: string(d.DeviceID)}, Capabilities: append([]string(nil), d.CapabilityClasses...), Key: append(ed25519.PrivateKey(nil), key...), Store: f.deps.SessionStore, Executor: executor, Dialer: authDialer{dialer, rejected}, State: state, Diagnostic: func(reason string) {
 		if f.deps.Logger != nil {
 			switch reason {
 			case devicebridge.ReasonInvalidShape, devicebridge.ReasonUnknownMessage:

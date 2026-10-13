@@ -3,7 +3,7 @@
 package bridgecontract
 
 const (
-	Version                   = "0.2.3"
+	Version                   = "0.3.0"
 	RedeemPath                = "/devices/redeem"
 	ConnectPath               = "/devices/connect"
 	ConnectVersionQueryPrefix = "?contract_version="
@@ -13,6 +13,18 @@ const (
 	TypeResult                = "result"
 	TypeReceipt               = "receipt"
 	TypeHeartbeat             = "heartbeat"
+	TypeSessionEvent          = "session_event"
+	ClassShellExec            = "shell_exec"
+	ClassSessionQuery         = "session_query"
+	ClassSessionControl       = "session_control"
+	ResultCompleted           = "completed"
+	ResultDenied              = "denied"
+	ResultExpired             = "expired"
+	ResultOutcomeUnknown      = "outcome_unknown"
+	ApprovalTTLSeconds        = 900
+	ExecutionDefaultSeconds   = 120
+	ExecutionMaxSeconds       = 600
+	OutputTailBytes           = 6144
 	ClassMachineStateQuery    = "machine_state_query"
 	ClassNotifyLocal          = "notify_local"
 	AckAccepted               = "accepted"
@@ -66,13 +78,21 @@ const (
 	CommandRevision          = 1
 )
 
-// ValidCapabilities admits only the nonempty ordered K0 command subset.
+// ValidCapabilities accepts a nonempty ordered subset; reconnects cannot widen pairing.
 func ValidCapabilities(c []string) bool {
-	if len(c) == 0 || len(c) > 2 {
+	if len(c) == 0 || len(c) > 5 {
 		return false
 	}
-	if c[0] == ClassMachineStateQuery {
-		return len(c) == 1 || c[1] == ClassNotifyLocal
+	all := []string{ClassMachineStateQuery, ClassNotifyLocal, ClassShellExec, ClassSessionQuery, ClassSessionControl}
+	next := 0
+	for _, value := range c {
+		for next < len(all) && all[next] != value {
+			next++
+		}
+		if next == len(all) {
+			return false
+		}
+		next++
 	}
-	return len(c) == 1 && c[0] == ClassNotifyLocal
+	return true
 }

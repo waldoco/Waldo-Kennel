@@ -54,7 +54,7 @@ func Handler(c *Controller, authorize Authorize) http.Handler {
 				http.Error(w, "invalid request", http.StatusBadRequest)
 				return
 			}
-			if err = c.Pair(r.Context(), req.Code, req.Label, req.Capabilities); err != nil {
+			if err = c.Pair(r.Context(), req.Code, req.Label, req.Capabilities, req.SessionConsent); err != nil {
 				status := http.StatusConflict
 				if errors.Is(err, ErrNotReady) {
 					status = http.StatusServiceUnavailable
@@ -73,9 +73,10 @@ func Handler(c *Controller, authorize Authorize) http.Handler {
 }
 
 type pairBody struct {
-	Code         string
-	Label        string
-	Capabilities []string
+	Code           string
+	Label          string
+	Capabilities   []string
+	SessionConsent bool
 }
 
 func decodePair(raw []byte) (pairBody, error) {
@@ -101,6 +102,8 @@ func decodePair(raw []byte) (pairBody, error) {
 			err = d.Decode(&out.Code)
 		case "label":
 			err = d.Decode(&out.Label)
+		case "session_consent":
+			err = d.Decode(&out.SessionConsent)
 		case "capabilities":
 			err = d.Decode(&out.Capabilities)
 		default:
@@ -111,7 +114,7 @@ func decodePair(raw []byte) (pairBody, error) {
 		}
 	}
 	t, err = d.Token()
-	if err != nil || t != json.Delim('}') || len(seen) != 3 {
+	if err != nil || t != json.Delim('}') || (len(seen) != 3 && len(seen) != 4) {
 		return out, ErrInvalid
 	}
 	if _, err = d.Token(); err != io.EOF {

@@ -235,7 +235,7 @@ func TestS4FreshProcessHelper(t *testing.T) {
 			t.Fatal("restart lost acceptance")
 		}
 	}
-	sock := &mockSocket{}
+	sock := &mockSocket{closeAfterWrites: 2}
 	if err := c.RunConnection(context.Background(), sock); !errors.Is(err, io.EOF) {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestS4ConnectionDrainBeforeNewCommand(t *testing.T) {
 	}
 	old, _ := s.Pending(context.Background(), c.Scope)
 	prior, _ := parseJSONObject(old[0].Frame)
-	socket := &mockSocket{reads: [][]byte{s4Command(t, ClassNotifyLocal, 2)}}
+	socket := &mockSocket{reads: [][]byte{s4Command(t, ClassNotifyLocal, 2)}, closeAfterWrites: 4}
 	if err := c.RunConnection(context.Background(), socket); !errors.Is(err, io.EOF) {
 		t.Fatal(err)
 	}

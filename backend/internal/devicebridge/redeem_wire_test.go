@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestRedeemFiveFieldBodyAndStrictParse(t *testing.T) {
+func TestRedeemSixFieldBodyAndStrictParse(t *testing.T) {
 	seed := make([]byte, ed25519.SeedSize)
 	for i := range seed {
 		seed[i] = byte(i)
@@ -17,7 +17,7 @@ func TestRedeemFiveFieldBodyAndStrictParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"code":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8","contract_version":"0.2.3","declared_capabilities":["machine_state_query","notify_local"],"device_pubkey":"A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg","label":"Test Mac"}`
+	want := `{"code":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8","contract_version":"0.3.0","declared_capabilities":["machine_state_query","notify_local"],"device_pubkey":"A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg","label":"Test Mac","session_consent":false}`
 	if string(body) != want {
 		t.Fatalf("body = %s", body)
 	}
@@ -27,7 +27,7 @@ func TestRedeemFiveFieldBodyAndStrictParse(t *testing.T) {
 	}
 	for _, raw := range []string{
 		string(bytes.ReplaceAll(body, []byte(`"label":"Test Mac"`), []byte(`"label":"Test Mac","device_id":"dev_1"`))),
-		string(bytes.ReplaceAll(body, []byte(`"contract_version":"0.2.3"`), []byte(`"contract_version":"0.2.3","contract_version":"0.2.3"`))),
+		string(bytes.ReplaceAll(body, []byte(`"contract_version":"0.3.0"`), []byte(`"contract_version":"0.3.0","contract_version":"0.3.0"`))),
 		string(bytes.ReplaceAll(body, []byte(`"machine_state_query","notify_local"`), []byte(`"notify_local","machine_state_query"`))),
 	} {
 		if _, err := ParseRedeemBody([]byte(raw)); !errors.Is(err, ErrPairingInvalid) {

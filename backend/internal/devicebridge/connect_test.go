@@ -14,11 +14,11 @@ func TestSignedConnectBindsExactQueryAndDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "wss://waldo.example:8443/devices/connect?contract_version=0.2.3&declared_capabilities=machine_state_query,notify_local"
+	want := "wss://waldo.example:8443/devices/connect?contract_version=0.3.0&declared_capabilities=machine_state_query,notify_local"
 	if u != want || headers.Get("X-Waldo-Device-Id") != "dev_1" {
 		t.Fatalf("connect = %s, %v", u, headers)
 	}
-	base, err := HTTPBaseString(time.Unix(1790200800, 0), nonce, "GET", "/devices/connect?contract_version=0.2.3&declared_capabilities=machine_state_query,notify_local", nil)
+	base, err := HTTPBaseString(time.Unix(1790200800, 0), nonce, "GET", "/devices/connect?contract_version=0.3.0&declared_capabilities=machine_state_query,notify_local", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,10 +5,14 @@ import (
 	"encoding/base64"
 )
 
-// RedeemBody constructs the closed v0.2.3 five-field request. Pairing code
+// RedeemBody constructs the closed v0.3.0 six-field request. Pairing code
 // and private key never enter logs or durable bridge payloads.
-func RedeemBody(code string, publicKey ed25519.PublicKey, label string, capabilities []string) ([]byte, error) {
+func RedeemBody(code string, publicKey ed25519.PublicKey, label string, capabilities []string, consent ...bool) ([]byte, error) {
 	if !validPairingCode(code) || len(publicKey) != ed25519.PublicKeySize || !boundedString(label, LabelMaxBytes) || !validCapabilities(capabilities) {
+		return nil, ErrPairingInvalid
+	}
+	sessionConsent := len(consent) == 1 && consent[0]
+	if len(consent) > 1 || (requiresSessionConsent(capabilities) && !sessionConsent) {
 		return nil, ErrPairingInvalid
 	}
 	values := make([]any, len(capabilities))
@@ -17,7 +21,7 @@ func RedeemBody(code string, publicKey ed25519.PublicKey, label string, capabili
 	}
 	body, err := marshalCanonical(map[string]any{
 		"code": code, "device_pubkey": base64.RawURLEncoding.EncodeToString(publicKey),
-		"label": label, "declared_capabilities": values, "contract_version": ContractVersion,
+		"label": label, "declared_capabilities": values, "contract_version": ContractVersion, "session_consent": sessionConsent,
 	})
 	if err != nil || len(body) > RedeemBodyMaxBytes {
 		return nil, ErrPairingInvalid
@@ -32,7 +36,7 @@ func ParseRedeemBody(raw []byte) (ed25519.PublicKey, error) {
 		return nil, ErrPairingInvalid
 	}
 	body, err := parseJSONObject(raw)
-	if err != nil || !exactFields(body, "code", "device_pubkey", "label", "declared_capabilities", "contract_version") || hasNull(body) || body["contract_version"] != ContractVersion {
+	if err != nil || !validRedeemShape(body) || hasNull(body) {
 		return nil, ErrPairingInvalid
 	}
 	code, ok := body["code"].(string)
@@ -58,8 +62,32 @@ func ParseRedeemBody(raw []byte) (ed25519.PublicKey, error) {
 			return nil, ErrPairingInvalid
 		}
 	}
-	if !validCapabilities(capabilities) {
+	if !validCapabilities(capabilities) || (body["contract_version"] == "0.2.3" && !legacyCapabilities(capabilities)) || (requiresSessionConsent(capabilities) && body["session_consent"] != true) {
 		return nil, ErrPairingInvalid
 	}
 	return ed25519.PublicKey(key), nil
+}
+
+func requiresSessionConsent(c []string) bool {
+	for _, v := range c {
+		if v == ClassSessionQuery || v == ClassSessionControl {
+			return true
+		}
+	}
+	return false
+}
+func legacyCapabilities(c []string) bool {
+	for _, v := range c {
+		if v != ClassMachineStateQuery && v != ClassNotifyLocal {
+			return false
+		}
+	}
+	return validCapabilities(c)
+}
+func validRedeemShape(b map[string]any) bool {
+	if b["contract_version"] == "0.2.3" {
+		return exactFields(b, "code", "device_pubkey", "label", "declared_capabilities", "contract_version")
+	}
+	_, ok := b["session_consent"].(bool)
+	return b["contract_version"] == ContractVersion && ok && exactFields(b, "code", "device_pubkey", "label", "declared_capabilities", "contract_version", "session_consent")
 }

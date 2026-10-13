@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"github.com/Pin4sf/Waldo-Kennel/backend/internal/bridgecontract"
 	"strings"
 	"time"
 )
@@ -36,6 +37,10 @@ type DeviceBridgeMessageClass string
 const (
 	DeviceBridgeClassMachineStateQuery DeviceBridgeMessageClass = "machine_state_query"
 	DeviceBridgeClassNotifyLocal       DeviceBridgeMessageClass = "notify_local"
+	DeviceBridgeClassShellExec         DeviceBridgeMessageClass = "shell_exec"
+	DeviceBridgeClassSessionQuery      DeviceBridgeMessageClass = "session_query"
+	DeviceBridgeClassSessionControl    DeviceBridgeMessageClass = "session_control"
+	DeviceBridgeClassSessionEvent      DeviceBridgeMessageClass = "session_event"
 	DeviceBridgeClassAck               DeviceBridgeMessageClass = "ack"
 	DeviceBridgeClassResult            DeviceBridgeMessageClass = "result"
 	DeviceBridgeClassReceipt           DeviceBridgeMessageClass = "receipt"
@@ -43,7 +48,7 @@ const (
 
 func (c DeviceBridgeMessageClass) Valid() bool {
 	switch c {
-	case DeviceBridgeClassMachineStateQuery, DeviceBridgeClassNotifyLocal, DeviceBridgeClassAck, DeviceBridgeClassResult, DeviceBridgeClassReceipt:
+	case DeviceBridgeClassShellExec, DeviceBridgeClassSessionQuery, DeviceBridgeClassSessionControl, DeviceBridgeClassSessionEvent, DeviceBridgeClassMachineStateQuery, DeviceBridgeClassNotifyLocal, DeviceBridgeClassAck, DeviceBridgeClassResult, DeviceBridgeClassReceipt:
 		return true
 	}
 	return false
@@ -53,12 +58,12 @@ func (c DeviceBridgeMessageClass) Valid() bool {
 // journaled command in v0.1. Receipts are protocol traffic handled against the
 // outbox directly; they are not journaled commands.
 func (c DeviceBridgeMessageClass) InboundCommand() bool {
-	return c == DeviceBridgeClassMachineStateQuery || c == DeviceBridgeClassNotifyLocal
+	return c == DeviceBridgeClassMachineStateQuery || c == DeviceBridgeClassNotifyLocal || c == DeviceBridgeClassShellExec || c == DeviceBridgeClassSessionQuery || c == DeviceBridgeClassSessionControl
 }
 
 // OutboxMessage reports whether the class may be spooled outbound in v0.1.
 func (c DeviceBridgeMessageClass) OutboxMessage() bool {
-	return c == DeviceBridgeClassAck || c == DeviceBridgeClassResult
+	return c == DeviceBridgeClassAck || c == DeviceBridgeClassResult || c == DeviceBridgeClassSessionEvent
 }
 
 // DeviceBridgeDevice is the durable record of one paired device. PublicKey is
@@ -83,6 +88,9 @@ type DeviceBridgeDevice struct {
 
 func (d DeviceBridgeDevice) Validate() error {
 	if strings.TrimSpace(string(d.DeviceID)) == "" || strings.TrimSpace(d.OwnerID) == "" || strings.TrimSpace(d.Label) == "" || strings.TrimSpace(d.PublicKey) == "" || strings.TrimSpace(d.KeyCustodyRef) == "" || strings.TrimSpace(d.ContractVersion) == "" || len(d.CapabilityClasses) == 0 || !d.State.Valid() || d.CreatedAt.IsZero() || d.UpdatedAt.Before(d.CreatedAt.UTC()) {
+		return ErrDeviceBridgeInvalid
+	}
+	if !bridgecontract.ValidCapabilities(d.CapabilityClasses) {
 		return ErrDeviceBridgeInvalid
 	}
 	for _, c := range d.CapabilityClasses {

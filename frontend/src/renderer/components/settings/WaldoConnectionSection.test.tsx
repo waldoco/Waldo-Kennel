@@ -101,7 +101,7 @@ describe("production Waldo adapter",()=>{
  it("pair sends exactly {code,label,capabilities:[machine_state_query,notify_local]} and nothing else",async()=>{
   const bridge=fakeLive();bridge.status.mockResolvedValueOnce({ok:true,state:"unpaired",ready:true}).mockResolvedValue({ok:true,state:"online",ready:true});
   view(<WaldoConnectionSection/>);await opened();fireEvent.submit(enter());
-  await waitFor(()=>expect(bridge.pair).toHaveBeenCalledTimes(1));expect(bridge.pair.mock.calls[0]).toStrictEqual([{code,label:"Synthetic Mac",capabilities:["machine_state_query","notify_local"]}]);
+  await waitFor(()=>expect(bridge.pair).toHaveBeenCalledTimes(1));expect(bridge.pair.mock.calls[0]).toStrictEqual([{code,label:"Synthetic Mac",sessionConsent:false,capabilities:["machine_state_query","notify_local","shell_exec"]}]);
   await waitFor(()=>expect(screen.getByText("Paired · Online")).toBeInTheDocument());expect(bridge.status).toHaveBeenCalledTimes(2);expect(screen.queryByTestId("waldo-preview-label")).not.toBeInTheDocument();
  });
  it("refreshes status once after a successful pair and does not assume paired from the pair reply",async()=>{

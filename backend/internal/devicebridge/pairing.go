@@ -69,6 +69,7 @@ func (e *PairingRecoveryError) Unwrap() error { return e.Cause }
 type PairRequest struct {
 	OwnerID, Code, Label string
 	Capabilities         []string
+	SessionConsent       bool
 	Checkpoint           func(context.Context, PairingRecoveryError) error
 }
 
@@ -97,7 +98,7 @@ func (p *PairingCoordinator) Pair(ctx context.Context, req PairRequest) (domain.
 	if p.recovery != nil {
 		return empty, p.recovery
 	}
-	if p == nil || !validIdentifier(req.OwnerID) || !validPairingCode(req.Code) || !boundedString(req.Label, LabelMaxBytes) || !validCapabilities(req.Capabilities) {
+	if p == nil || !validIdentifier(req.OwnerID) || !validPairingCode(req.Code) || !boundedString(req.Label, LabelMaxBytes) || !validCapabilities(req.Capabilities) || (requiresSessionConsent(req.Capabilities) && !req.SessionConsent) {
 		return empty, ErrPairingInvalid
 	}
 	if _, found, err := p.store.GetPairedDeviceBridgeDevice(ctx, req.OwnerID); err != nil {
@@ -125,7 +126,7 @@ func (p *PairingCoordinator) Pair(ctx context.Context, req PairRequest) (domain.
 	}
 	// Keep custody on ambiguous transport/response/persistence failures: redemption
 	// may have committed remotely. No identity is shown as paired without a valid reply.
-	body, err := RedeemBody(req.Code, public, req.Label, req.Capabilities)
+	body, err := RedeemBody(req.Code, public, req.Label, req.Capabilities, req.SessionConsent)
 	if err != nil {
 		_ = p.keys.Clear(ctx, ref)
 		return empty, err

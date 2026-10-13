@@ -41,13 +41,11 @@ func TestS3ContractAppendixA(t *testing.T) {
 			}
 			var base string
 			if parsed["type"] == nil {
-				caps := []string{ClassMachineStateQuery}
-				if len(parsed["declared_capabilities"].([]any)) == 2 {
-					caps = append(caps, ClassNotifyLocal)
-				}
-				actual, err := RedeemBody(parsed["code"].(string), key.Public().(ed25519.PublicKey), parsed["label"].(string), caps)
-				if err != nil || !bytes.Equal(actual, canonical) {
-					t.Error("redeem builder differs from normative bytes")
+				// Historical canonical bytes and signatures remain immutable. The
+				// current builder intentionally emits the new six-field body.
+				pub, parseErr := ParseRedeemBody(canonical)
+				if parseErr != nil || !bytes.Equal(pub, key.Public().(ed25519.PublicKey)) {
+					t.Fatal("legacy redeem parser differs", parseErr)
 				}
 				base, err = HTTPBaseString(now, nonce, "POST", RedeemPath, canonical)
 			} else {
@@ -88,8 +86,8 @@ func TestS3ContractAppendixA(t *testing.T) {
 }
 
 func TestS3VersionAndStrictPairingCode(t *testing.T) {
-	if ContractVersion != "0.2.3" {
-		t.Errorf("version = %s, want 0.2.3", ContractVersion)
+	if ContractVersion != "0.3.0" {
+		t.Errorf("version = %s, want 0.3.0", ContractVersion)
 	}
 	code := "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 	if !validPairingCode(code) {

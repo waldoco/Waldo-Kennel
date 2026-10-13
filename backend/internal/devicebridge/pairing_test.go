@@ -79,8 +79,8 @@ func TestPairingRejectedOrInvalidResponseNeverPaired(t *testing.T) {
 	}{
 		{"rejection", 401, `{"error":"invalid_request"}`, ErrPairingRejected},
 		{"version", 200, `{"device_id":"backend_dev","owner_id":"owner-1","accepted_contract_version":"0.1"}`, ErrPairingVersion},
-		{"duplicate", 200, `{"device_id":"backend_dev","device_id":"other","owner_id":"owner-1","accepted_contract_version":"0.2.3"}`, ErrPairingResponse},
-		{"owner", 200, `{"device_id":"backend_dev","owner_id":"other","accepted_contract_version":"0.2.3"}`, ErrPairingResponse},
+		{"duplicate", 200, `{"device_id":"backend_dev","device_id":"other","owner_id":"owner-1","accepted_contract_version":"0.3.0"}`, ErrPairingResponse},
+		{"owner", 200, `{"device_id":"backend_dev","owner_id":"other","accepted_contract_version":"0.3.0"}`, ErrPairingResponse},
 		{"unknown-delivery", 500, `{}`, ErrPairingUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

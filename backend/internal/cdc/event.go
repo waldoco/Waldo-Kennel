@@ -20,6 +20,7 @@ type EventType string
 
 // Event types, one per row-change the DB triggers emit into change_log.
 const (
+	EventMacApprovalChanged             EventType = "mac_approval_changed"
 	EventSessionCreated                 EventType = "session_created"
 	EventSessionUpdated                 EventType = "session_updated"
 	EventPRCreated                      EventType = "pr_created"
@@ -72,7 +73,8 @@ const (
 )
 
 var eventTypes = map[EventType]struct{}{
-	EventSessionCreated: {}, EventSessionUpdated: {}, EventPRCreated: {}, EventPRUpdated: {}, EventPRCheckRecorded: {}, EventPRSessionChanged: {}, EventPRReviewThreadAdded: {}, EventPRReviewThreadResolved: {},
+	EventMacApprovalChanged: {},
+	EventSessionCreated:     {}, EventSessionUpdated: {}, EventPRCreated: {}, EventPRUpdated: {}, EventPRCheckRecorded: {}, EventPRSessionChanged: {}, EventPRReviewThreadAdded: {}, EventPRReviewThreadResolved: {},
 	EventOutcomeCreated: {}, EventOutcomeUpdated: {}, EventOutcomeContractRevised: {}, EventOutcomePlanProposed: {}, EventOutcomePlanApproved: {}, EventOutcomeAttemptStarted: {}, EventOutcomeAttemptUpdated: {}, EventOutcomeAttemptBound: {}, EventOutcomeAttemptObserved: {}, EventOutcomeAttemptRecovered: {}, EventOutcomeEvidenceRecorded: {}, EventOutcomeVerificationRecorded: {}, EventOutcomeAcceptanceDecided: {}, EventOutcomeCorrectionRecorded: {}, EventOutcomeRunIntentChanged: {}, EventOutcomeAttemptRetained: {}, EventOutcomeDeliveryChanged: {},
 	EventIntakeCaptured: {}, EventIntakeUpdated: {}, EventIntakeProposalRevised: {}, EventIntakeConfirmed: {}, EventResponsibilityLinkCreated: {}, EventResponsibilityLinkEnded: {},
 	EventWaldoConversationCreated: {}, EventWaldoEpisodeOpened: {}, EventWaldoEpisodeSealed: {}, EventWaldoTurnAppended: {}, EventWaldoContextAttached: {}, EventWaldoContextDetached: {}, EventWaldoContinuationPrepared: {}, EventWaldoContinuationProgressed: {}, EventWaldoContinuationRecorded: {},

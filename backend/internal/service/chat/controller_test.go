@@ -4924,3 +4924,20 @@ func TestGovernedTypedInputConcurrentAnswersHaveOneEffect(t *testing.T) {
 		t.Fatalf("dispatches=%d errors=%d", calls, errorCount)
 	}
 }
+
+func TestAutomationRefusesPendingToolPermission(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.svc.Send(ctx, testSession, ports.ChatUserMessage{Text: "go", ClientMessageID: "bridge-initial"}); err != nil {
+		t.Fatal(err)
+	}
+	h.conv.emit(ports.ChatEvent{Kind: ports.ChatEventApprovalRequested, ProviderTurnID: "provider-turn-1", ProviderItemID: "bridge-permission", RequestID: "bridge-permission", Summary: "allow a tool?", Decisions: []ports.ChatDecisionOption{{ID: "accept"}, {ID: "cancel"}}})
+	before := h.awaitSnapshot(t, func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
+	if _, err := h.svc.Send(ctx, testSession, ports.ChatUserMessage{Text: "yes", ClientMessageID: "bridge-message", Origin: domain.MessageOriginAutomation}); !errors.Is(err, chatsvc.ErrAutomationBlocked) {
+		t.Fatal(err)
+	}
+	after := h.awaitSnapshot(t, func(s store.ConversationSnapshot) bool { return len(s.Activities) == 1 })
+	if len(before.Messages) != len(after.Messages) {
+		t.Fatal("blocked automation queued text")
+	}
+}

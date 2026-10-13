@@ -50,14 +50,15 @@ func validHTTPShape(method, path string, body []byte) bool {
 	if method != http.MethodGet || len(body) != 0 || !strings.HasPrefix(path, ConnectPath+ConnectVersionQueryPrefix+ContractVersion+ConnectCapabilitiesQuery) {
 		return false
 	}
+	// Any canonical declaration of the contract's capabilities signs: the path must
+	// round-trip exactly, so order, duplicates, unknown classes and extra query
+	// parameters are refused. Hard-coding the K0 sets kept v0.3.0 devices offline.
 	declaration := strings.TrimPrefix(path, ConnectPath+ConnectVersionQueryPrefix+ContractVersion+ConnectCapabilitiesQuery)
-	for _, capabilities := range [][]string{{ClassMachineStateQuery}, {ClassNotifyLocal}, {ClassMachineStateQuery, ClassNotifyLocal}} {
-		target, _ := ConnectRequestTarget(capabilities)
-		if target == path && declaration != "" {
-			return true
-		}
+	if declaration == "" {
+		return false
 	}
-	return false
+	target, err := ConnectRequestTarget(strings.Split(declaration, ","))
+	return err == nil && target == path
 }
 
 // SignHTTPHeaders returns the v0.2 authentication headers for a request whose

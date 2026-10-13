@@ -161,12 +161,14 @@ func (e mockExecutor) work(ctx context.Context, s Scope, event string) (map[stri
 }
 
 type mockSocket struct {
-	mu       sync.Mutex
-	frames   [][]byte
-	reads    [][]byte
-	writes   chan []byte
-	readHook func()
-	failure  error
+	mu               sync.Mutex
+	frames           [][]byte
+	reads            [][]byte
+	writes           chan []byte
+	readHook         func()
+	failure          error
+	blockRead        bool
+	closeAfterWrites int
 }
 
 func (s *mockSocket) Read(ctx context.Context) ([]byte, error) {
@@ -176,6 +178,36 @@ func (s *mockSocket) Read(ctx context.Context) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.reads) == 0 {
+		if s.closeAfterWrites > 0 {
+			s.mu.Unlock()
+			deadline := time.NewTimer(time.Second)
+			defer deadline.Stop()
+			for {
+				s.mu.Lock()
+				n := len(s.frames)
+				s.mu.Unlock()
+				if n >= s.closeAfterWrites {
+					break
+				}
+				select {
+				case <-ctx.Done():
+					s.mu.Lock()
+					return nil, ctx.Err()
+				case <-deadline.C:
+					s.mu.Lock()
+					return nil, errors.New("async test result not drained")
+				case <-time.After(time.Millisecond):
+				}
+			}
+			s.mu.Lock()
+		}
+
+		if s.blockRead {
+			s.mu.Unlock()
+			<-ctx.Done()
+			s.mu.Lock()
+			return nil, ctx.Err()
+		}
 		return nil, io.EOF
 	}
 	raw := s.reads[0]
@@ -218,13 +250,20 @@ func TestReconnectDrainThenReconcileBeforeNewWork(t *testing.T) {
 	original := signedResult(t, c)
 	store.pending = []PendingResult{{1, original}}
 	store.accepted = [][]byte{[]byte(strings.NewReplacer("cmd_1", "cmd_2", "idem_1", "idem_2", "01ARZ3NDEKTSV4RRFFQ69G5FAV", "01ARZ3NDEKTSV4RRFFQ69G5FB0").Replace(commandFixture))}
-	socket := &mockSocket{readHook: func() {
-		store.mu.Lock()
-		defer store.mu.Unlock()
-		if !reflect.DeepEqual(store.events, []string{"depth", "pending", "reconcile-list", "reconcile", "commit", "pending"}) {
-			t.Errorf("read before reconciliation: %v", store.events)
+	socket := &mockSocket{writes: make(chan []byte, 10)}
+	socket.readHook = func() {
+		// Recovery now runs off-loop. Keep the socket alive until the queued
+		// reconciliation result has been drained, then simulate a disconnect.
+		for i := 0; i < 3; i++ {
+			select {
+			case <-socket.writes:
+			case <-time.After(time.Second):
+				t.Error("missing startup result")
+				return
+			}
 		}
-	}}
+	}
+
 	if err := c.RunConnection(context.Background(), socket); !errors.Is(err, io.EOF) {
 		t.Fatal(err)
 	}
@@ -254,7 +293,7 @@ func TestHeartbeatWhileExecutorBlocked(t *testing.T) {
 			c.Executor = mockExecutor{store: store, entered: entered, block: true}
 			ticks := make(chan time.Time)
 			c.heartbeatTicks = ticks
-			socket := &mockSocket{writes: make(chan []byte, 10)}
+			socket := &mockSocket{writes: make(chan []byte, 10), blockRead: true}
 			if recovering {
 				store.accepted = [][]byte{[]byte(commandFixture)}
 			} else {
@@ -290,7 +329,7 @@ func TestHeartbeatWhileExecutorBlocked(t *testing.T) {
 }
 func TestAttributableRejectionAndTerminalFrames(t *testing.T) {
 	for _, tc := range []struct{ name, raw, reason string }{
-		{"version", strings.Replace(commandFixture, "0.2.3", "0.1", 1), ReasonVersionMismatch},
+		{"version", strings.Replace(commandFixture, "0.3.0", "0.1", 1), ReasonVersionMismatch},
 		{"payload", strings.Replace(commandFixture, "session_status", "unknown_kind", 1), ReasonInvalidShape},
 		{"payload-null", strings.Replace(commandFixture, `{"query_id":"query_1","query_kind":"session_status"}`, `null`, 1), ReasonInvalidShape},
 		{"expired", strings.Replace(commandFixture, "1790700000", "1790699998", 1), ReasonExpired},

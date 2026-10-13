@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { SettingsSection } from "./SettingsSection";
 import { statusToState, pairResultToState, validWaldoCode, validWaldoLabel, type WaldoConnectionState } from "../../lib/waldo-connection";
 
@@ -28,23 +29,23 @@ export function WaldoConnectionSection({ open = true, titleHidden = false }: { o
   }
   return () => { generation.current++; };
  }, [open]);
- const pair = async (input: {code:string;label:string}): Promise<WaldoConnectionState> => {
+ const pair = async (input: {code:string;label:string;sessionConsent?:boolean}): Promise<WaldoConnectionState> => {
   const ticket = generation.current;
   const bridge = window.kennel?.waldoBridge;
   if (!open || !bridge) return {kind:"unavailable"};
-  const result = await bridge.pair({...input, capabilities:["machine_state_query","notify_local"]});
+  const result = await bridge.pair({...input, capabilities:input.sessionConsent ? ["machine_state_query","notify_local","shell_exec","session_query","session_control"] : ["machine_state_query","notify_local","shell_exec"]});
   if (ticket !== generation.current) return {kind:"unavailable"};
   if (!result.ok) return pairResultToState(result);
   return statusToState(await bridge.status());
  };
- return <WaldoConnectionView state={state} action={pair} open={open} titleHidden={titleHidden} />;
+ return <><WaldoConnectionView state={state} action={pair} open={open} titleHidden={titleHidden} />{open && <MacOutputHistory />}</>;
 }
 
 // Pure presentation boundary for local development fixtures, not an API client.
 export function WaldoConnectionView({ state, action, previewAction, open = true, titleHidden = false }: {
  state: WaldoConnectionState;
- action?: (input: { code: string; label: string }) => Promise<WaldoConnectionState>;
- previewAction?: (input: { code: string; label: string }) => Promise<WaldoConnectionState>;
+ action?: (input: { code: string; label: string; sessionConsent?: boolean }) => Promise<WaldoConnectionState>;
+ previewAction?: (input: { code: string; label: string; sessionConsent?: boolean }) => Promise<WaldoConnectionState>;
  open?: boolean;
  titleHidden?: boolean;
 }) {
@@ -52,6 +53,7 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
  const id = useId();
  const [code, setCode] = useState("");
  const [label, setLabel] = useState("");
+ const [sessionConsent, setSessionConsent] = useState(false);
  const [pending, setPending] = useState(false);
  const [outcome, setOutcome] = useState<WaldoConnectionState | null>(null);
  const [invalid, setInvalid] = useState(false);
@@ -75,7 +77,7 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
   busy.current = true; setPending(true); setInvalid(false);
   const ticket = generation.current;
   try {
-   const next = await perform({ code, label });
+   const next = await perform({ code, label, sessionConsent });
    if (ticket === generation.current) setOutcome(next);
   } catch {
    // Never expose an exception that might contain a code or remote response.
@@ -122,8 +124,15 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
      <li className="settings-row-bar justify-start"><span className="settings-row-icon grid size-7 shrink-0 place-items-center rounded-sm bg-wd-inset text-wd-secondary" aria-hidden="true"><Bell className="size-4" /></span><span className="wd-body text-wd-primary">{t("settings.waldo.notifications")}</span></li>
     </ul>
     <p className="wd-caption px-4 text-wd-tertiary">{t("settings.waldo.approvals")}</p>
+    <p className="wd-caption px-4 text-wd-tertiary">{t("settings.waldo.commands")}</p>
    </div>
    <form onSubmit={submit} className="flex flex-col gap-5" autoComplete="off">
+    <div className="settings-grouped-rows">
+     <div className="settings-row-bar">
+      <label htmlFor={`${id}-session-consent`} className="wd-body text-wd-primary">{t("settings.waldo.sessionConsent")}</label>
+      <Switch id={`${id}-session-consent`} checked={sessionConsent} disabled={!canEnter} onCheckedChange={setSessionConsent} />
+     </div>
+    </div>
     <div className="flex flex-col gap-2">
      <label htmlFor={`${id}-code`} className="wd-label text-wd-secondary">{t("settings.waldo.code")}</label>
      <Input id={`${id}-code`} type="password" value={code} onChange={e => setCode(e.target.value)} disabled={!canEnter} autoComplete="off" spellCheck={false} autoCapitalize="none" aria-describedby={`${id}-code-help`} aria-invalid={invalid && !validWaldoCode(code)} className={fieldClass} data-ph-no-capture />
@@ -140,4 +149,32 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
    </form>
   </div>
  </SettingsSection>;
+}
+
+function MacOutputHistory() {
+ const {t} = useTranslation();
+ const [rows,setRows] = useState<import("../../../main/mac-output-handler").MacActionSummary[]>([]);
+ const [output,setOutput] = useState<string | null>(null);
+ const [error,setError] = useState(false);
+ const [busy,setBusy] = useState(false);
+ const bridge = window.kennel?.waldoBridge;
+ if (!bridge?.history || !bridge?.output) return null;
+ const refresh = async () => {
+  setBusy(true); setError(false); setOutput(null);
+  try { const result=await bridge.history(); if(result.ok) setRows(result.requests); else setError(true); }
+  catch { setError(true); } finally { setBusy(false); }
+ };
+ const show = async (row: typeof rows[number]) => {
+  setBusy(true); setError(false);
+  try { const result=await bridge.output({deviceId:row.device_id,id:row.id}); if(result.ok) setOutput(result.output); else setError(true); }
+  catch { setError(true); } finally { setBusy(false); }
+ };
+ return <section className="px-3 text-sm" aria-label={t("settings.waldo.outputTitle")}>
+  <p className="font-medium">{t("settings.waldo.outputTitle")}</p>
+  <p className="text-muted-foreground">{t("settings.waldo.outputHelp")}</p>
+  <Button type="button" disabled={busy} onClick={()=>void refresh()}>{t("settings.waldo.refreshOutput")}</Button>
+  <ul>{rows.map(row=><li key={`${row.device_id}:${row.id}`}><Button type="button" disabled={busy} onClick={()=>void show(row)}>{row.command ?? row.action ?? t("settings.waldo.macAction")} — {row.project}</Button></li>)}</ul>
+  {error && <p role="alert">{t("settings.waldo.outputUnavailable")}</p>}
+  {output !== null && <pre className="max-h-96 overflow-auto whitespace-pre-wrap" data-ph-no-capture>{output || t("settings.waldo.noOutput")}</pre>}
+ </section>;
 }

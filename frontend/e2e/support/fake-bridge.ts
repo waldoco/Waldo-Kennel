@@ -677,6 +677,8 @@ export async function installFakeWaldoBridge(page: Page, outcome: "online" | "re
   const calls: Array<{method:string;input?:unknown}> = [];
   let paired = false;
   const bridge: NonNullable<AoBridge["waldoBridge"]> = {
+   history: async () => ({ok:true,requests:[]}),
+   output: async () => ({ok:false}),
    status: async () => {
     calls.push({method:"status"});
     return {ok:true,ready:true,state:paired ? "online":"unpaired",...(paired ? {label:"Synthetic Mac",deviceId:"synthetic-device"}:{})};
