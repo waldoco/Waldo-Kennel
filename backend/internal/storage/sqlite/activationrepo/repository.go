@@ -133,6 +133,50 @@ func (r *Repository) Load(ctx context.Context, owner string) (out bridgeactivati
 	})
 	return
 }
+
+// BoundOwner returns the Waldo owner this Mac is bound to, or "" before its first
+// owner-scoped pairing.
+func (r *Repository) BoundOwner(ctx context.Context) (owner string, err error) {
+	err = r.readOnly(ctx, func(c *sql.Conn) error {
+		e := c.QueryRowContext(ctx, `SELECT owner_id FROM device_bridge_owner_binding WHERE singleton=1`).Scan(&owner)
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
+		}
+		return e
+	})
+	return
+}
+
+// BindOwner records owner as this Mac's Waldo owner. Rebinding is refused while the
+// currently bound owner has a pending, blocked or paired activation, decided in the
+// same transaction so a live or recoverable identity is never orphaned.
+func (r *Repository) BindOwner(ctx context.Context, owner string) error {
+	if owner == "" {
+		return domain.ErrDeviceBridgeInvalid
+	}
+	return r.immediate(ctx, func(c *sql.Conn) error {
+		var current string
+		e := c.QueryRowContext(ctx, `SELECT owner_id FROM device_bridge_owner_binding WHERE singleton=1`).Scan(&current)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return e
+		}
+		if current == owner {
+			return nil
+		}
+		if current != "" {
+			v, e := read(ctx, c, current)
+			if e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
+			if e == nil && v.phase != "revoked" {
+				return ErrReservationActive
+			}
+		}
+		_, e = c.ExecContext(ctx, `INSERT INTO device_bridge_owner_binding(singleton,owner_id,bound_at) VALUES(1,?,?) ON CONFLICT(singleton) DO UPDATE SET owner_id=excluded.owner_id,bound_at=excluded.bound_at`, owner, time.Now().UTC())
+		return e
+	})
+}
+
 func (r *Repository) Reserve(ctx context.Context, owner string) (out bridgeactivation.Record, err error) {
 	var token [32]byte
 	if _, err = rand.Read(token[:]); err != nil {

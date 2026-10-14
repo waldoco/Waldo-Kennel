@@ -141,3 +141,26 @@ describe("production Waldo adapter",()=>{
  it("makes one status call through StrictMode effect replay",async()=>{
   const bridge=fakeLive();view(<StrictMode><WaldoConnectionSection/></StrictMode>);await opened();expect(bridge.status).toHaveBeenCalledTimes(1);
  });
+
+describe("one-click pairing", () => {
+ it("opens Waldo from Settings, reports a browser that did not open, and accepts the pasted owner-scoped code", async () => {
+  const openPairing = vi.fn(async () => false);
+  const action = vi.fn(async () => ({kind:"unpaired"}) as WaldoConnectionState);
+  view(<WaldoConnectionView state={{kind:"unpaired"}} action={action} openPairing={openPairing} defaultLabel="Synthetic Mac" />);
+  expect(screen.getByLabelText("Device label")).toHaveValue("Synthetic Mac");
+  fireEvent.click(screen.getByRole("button", {name:"Get a code from Waldo"}));
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Your browser didn’t open."));
+  expect(openPairing).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText("Waldo-issued code"),{target:{value:`  wp1.owner-1.${code}\n`}});
+  fireEvent.submit(screen.getByRole("button",{name:"Connect"}).closest("form")!);
+  await waitFor(() => expect(action).toHaveBeenCalledWith({code:`wp1.owner-1.${code}`,label:"Synthetic Mac",sessionConsent:false}));
+ });
+ it("keeps a typed label and offers no Waldo button once paired", () => {
+  const { rerender } = view(<WaldoConnectionView state={{kind:"unpaired"}} action={vi.fn()} openPairing={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("Device label"),{target:{value:"Typed"}});
+  rerender(<I18nextProvider i18n={createAppI18n()}><WaldoConnectionView state={{kind:"unpaired"}} action={vi.fn()} openPairing={vi.fn()} defaultLabel="Synthetic Mac" /></I18nextProvider>);
+  expect(screen.getByLabelText("Device label")).toHaveValue("Typed");
+  rerender(<I18nextProvider i18n={createAppI18n()}><WaldoConnectionView state={{kind:"paired",transport:"online"}} action={vi.fn()} openPairing={vi.fn()} /></I18nextProvider>);
+  expect(screen.getByRole("button", {name:"Get a code from Waldo"})).toBeDisabled();
+ });
+});

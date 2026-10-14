@@ -18,6 +18,8 @@ describe("Waldo IPC result mapping", () => {
 describe("Waldo boundary validation (synthetic inputs)", () => {
  it("accepts canonical unpadded 32-byte codes and rejects pad-bit aliases", () => {
   expect(validWaldoCode("A".repeat(43))).toBe(true);
+  expect(validWaldoCode(`wp1.e2e00000-0000-4000-8000-000000000001.${"A".repeat(43)}`)).toBe(true);
+  for (const bad of [`wp1..${"A".repeat(43)}`, `wp1.a/b.${"A".repeat(43)}`, `wp2.owner.${"A".repeat(43)}`, `wp1.owner.${"A".repeat(42)}B`, `wp1.${"o".repeat(129)}.${"A".repeat(43)}`]) expect(validWaldoCode(bad)).toBe(false);
   expect(validWaldoCode("_".repeat(42) + "8")).toBe(true);
   for (const value of ["A".repeat(42), "A".repeat(44), "A".repeat(42)+"B", "A".repeat(42)+"=", "A".repeat(42)+"/", "A".repeat(42)+"+", " A".repeat(22), "Ａ".repeat(43), "A".repeat(43)+"\n"]) expect(validWaldoCode(value)).toBe(false);
  });

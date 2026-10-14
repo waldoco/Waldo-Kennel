@@ -1,4 +1,4 @@
-import { Activity, Bell, Circle, CircleCheck, CircleX, Clock } from "lucide-react";
+import { Activity, Bell, Circle, CircleCheck, CircleX, Clock, ExternalLink } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
@@ -10,6 +10,7 @@ import { statusToState, pairResultToState, validWaldoCode, validWaldoLabel, type
 // The optional preload is the only production boundary. Never retain a token.
 export function WaldoConnectionSection({ open = true, titleHidden = false }: { open?: boolean; titleHidden?: boolean }) {
  const [state, setState] = useState<WaldoConnectionState>({kind:"unavailable"});
+ const [defaultLabel, setDefaultLabel] = useState("");
  const generation = useRef(0);
  const opening = useRef<Promise<WaldoConnectionState> | null>(null);
  useEffect(() => {
@@ -26,6 +27,7 @@ export function WaldoConnectionSection({ open = true, titleHidden = false }: { o
    void opening.current.then(next => {
     if (ticket === generation.current) setState(next);
    });
+   void bridge.defaultLabel?.().then(name => { if (ticket === generation.current && typeof name === "string") setDefaultLabel(name); }, () => {});
   }
   return () => { generation.current++; };
  }, [open]);
@@ -38,14 +40,22 @@ export function WaldoConnectionSection({ open = true, titleHidden = false }: { o
   if (!result.ok) return pairResultToState(result);
   return statusToState(await bridge.status());
  };
- return <><WaldoConnectionView state={state} action={pair} open={open} titleHidden={titleHidden} />{open && <MacOutputHistory />}</>;
+ const openPairing = async (): Promise<boolean> => {
+  const bridge = window.kennel?.waldoBridge;
+  if (!open || !bridge?.openPairing) return false;
+  try { return (await bridge.openPairing()).ok; } catch { return false; }
+ };
+ return <><WaldoConnectionView state={state} action={pair} openPairing={window.kennel?.waldoBridge?.openPairing ? openPairing : undefined} defaultLabel={defaultLabel} open={open} titleHidden={titleHidden} />{open && <MacOutputHistory />}</>;
 }
 
 // Pure presentation boundary for local development fixtures, not an API client.
-export function WaldoConnectionView({ state, action, previewAction, open = true, titleHidden = false }: {
+export function WaldoConnectionView({ state, action, previewAction, openPairing, defaultLabel = "", open = true, titleHidden = false }: {
  state: WaldoConnectionState;
  action?: (input: { code: string; label: string; sessionConsent?: boolean }) => Promise<WaldoConnectionState>;
  previewAction?: (input: { code: string; label: string; sessionConsent?: boolean }) => Promise<WaldoConnectionState>;
+ // Opens the Waldo pairing page in the browser; resolves false when it could not.
+ openPairing?: () => Promise<boolean>;
+ defaultLabel?: string;
  open?: boolean;
  titleHidden?: boolean;
 }) {
@@ -57,15 +67,23 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
  const [pending, setPending] = useState(false);
  const [outcome, setOutcome] = useState<WaldoConnectionState | null>(null);
  const [invalid, setInvalid] = useState(false);
+ const [openFailed, setOpenFailed] = useState(false);
  const busy = useRef(false);
  const generation = useRef(0);
  useEffect(() => {
   setOutcome(null); setInvalid(false);
  }, [state]);
  useEffect(() => {
-  if (!open) { setCode(""); setLabel(""); setOutcome(null); setPending(false); busy.current = false; generation.current++; }
+  if (!open) { setCode(""); setLabel(""); setOutcome(null); setPending(false); setOpenFailed(false); busy.current = false; generation.current++; }
   return () => { generation.current++; };
  }, [open]);
+ // Offer this Mac's name as the label without overwriting anything typed.
+ useEffect(() => { if (open && defaultLabel) setLabel(current => current || defaultLabel); }, [open, defaultLabel]);
+ const requestCode = async () => {
+  if (!openPairing) return;
+  setOpenFailed(false);
+  if (!await openPairing()) setOpenFailed(true);
+ };
  const current = pending ? { kind: "pairing" as const } : outcome ?? state;
  const perform = action ?? previewAction;
  const canEnter = !!perform && current.kind === "unpaired" && open;
@@ -127,6 +145,11 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
     <p className="wd-caption px-4 text-wd-tertiary">{t("settings.waldo.commands")}</p>
    </div>
    <form onSubmit={submit} className="flex flex-col gap-5" autoComplete="off">
+    {openPairing && <div className="flex flex-col gap-2">
+     <Button type="button" variant="secondary" className="self-start" disabled={!canEnter} onClick={() => void requestCode()}><ExternalLink className="size-4" aria-hidden="true" />{t("settings.waldo.openPairing")}</Button>
+     <p className="wd-body-s text-wd-tertiary">{t("settings.waldo.openPairingHelp")}</p>
+     {openFailed && <p role="alert" className="wd-body-s text-critical">{t("settings.waldo.openPairingFailed")}</p>}
+    </div>}
     <div className="settings-grouped-rows">
      <div className="settings-row-bar">
       <label htmlFor={`${id}-session-consent`} className="wd-body text-wd-primary">{t("settings.waldo.sessionConsent")}</label>
@@ -135,7 +158,7 @@ export function WaldoConnectionView({ state, action, previewAction, open = true,
     </div>
     <div className="flex flex-col gap-2">
      <label htmlFor={`${id}-code`} className="wd-label text-wd-secondary">{t("settings.waldo.code")}</label>
-     <Input id={`${id}-code`} type="password" value={code} onChange={e => setCode(e.target.value)} disabled={!canEnter} autoComplete="off" spellCheck={false} autoCapitalize="none" aria-describedby={`${id}-code-help`} aria-invalid={invalid && !validWaldoCode(code)} className={fieldClass} data-ph-no-capture />
+     <Input id={`${id}-code`} type="password" value={code} onChange={e => setCode(e.target.value.trim())} disabled={!canEnter} autoComplete="off" spellCheck={false} autoCapitalize="none" aria-describedby={`${id}-code-help`} aria-invalid={invalid && !validWaldoCode(code)} className={fieldClass} data-ph-no-capture />
      <p id={`${id}-code-help`} className="wd-body-s text-wd-tertiary">{t("settings.waldo.codeHelp")}</p>
      {invalid && !validWaldoCode(code) && <p role="alert" className="wd-body-s text-critical">{t("settings.waldo.invalidCode")}</p>}
     </div>
