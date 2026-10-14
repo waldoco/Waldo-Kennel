@@ -63,11 +63,22 @@ func TestLocalConfigOwnerIDMatchesDeviceBridgeRule(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, owner := range []string{"", "owner", "A_9-x", "a.b", "a/b", " a", "é", strings.Repeat("a", devicebridge.IdentifierMaxBytes), strings.Repeat("a", devicebridge.IdentifierMaxBytes+1)} {
+	// "" is not an identifier; it selects owner binding (TestLocalConfigWithoutOwnerBindsAtPairing).
+	for _, owner := range []string{"owner", "A_9-x", "a.b", "a/b", " a", "é", strings.Repeat("a", devicebridge.IdentifierMaxBytes), strings.Repeat("a", devicebridge.IdentifierMaxBytes+1)} {
 		_, cfgErr := LoadLocalConfig(localEnv("1", "https://example.test", owner))
 		_, pairErr := p.Pair(context.Background(), devicebridge.PairRequest{OwnerID: owner, Code: code(), Label: "Mac", Capabilities: []string{"notify_local"}})
 		if (cfgErr == nil) != errors.Is(pairErr, identifierValid) {
 			t.Fatalf("identifier disagreement %q", owner)
 		}
+	}
+}
+
+func TestLocalConfigWithoutOwnerBindsAtPairing(t *testing.T) {
+	cfg, e := LoadLocalConfig(localEnv("1", "https://example.test", ""))
+	if e != nil || !cfg.Enabled || cfg.Origin != "https://example.test" || cfg.OwnerID != "" {
+		t.Fatalf("owner-less config = %+v, %v", cfg, e)
+	}
+	if _, e := LoadLocalConfig(localEnv("1", "", "")); e == nil {
+		t.Fatal("accepted a missing origin")
 	}
 }

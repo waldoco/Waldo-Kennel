@@ -141,3 +141,55 @@ describe("production Waldo adapter",()=>{
  it("makes one status call through StrictMode effect replay",async()=>{
   const bridge=fakeLive();view(<StrictMode><WaldoConnectionSection/></StrictMode>);await opened();expect(bridge.status).toHaveBeenCalledTimes(1);
  });
+
+describe("one-click pairing", () => {
+ it("keeps Pairing… until the new session is online instead of showing a stale Offline", async () => {
+  vi.useFakeTimers({shouldAdvanceTime:true});
+  try {
+   const bridge = fakeLive();
+   view(<WaldoConnectionSection />); await opened();
+   bridge.status.mockResolvedValueOnce({ok:true,state:"offline",ready:true,deviceId:"synthetic-device"}).mockResolvedValueOnce({ok:true,state:"offline",ready:true,deviceId:"synthetic-device"}).mockResolvedValue({ok:true,state:"online",ready:true,deviceId:"synthetic-device"});
+   fireEvent.submit(enter());
+   await waitFor(() => expect(bridge.pair).toHaveBeenCalledTimes(1));
+   expect(screen.getByText("Pairing…")).toBeInTheDocument();
+   expect(screen.queryByText("Paired · Offline")).not.toBeInTheDocument();
+   await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+   await waitFor(() => expect(screen.getByText("Paired · Online")).toBeInTheDocument());
+   const calls = bridge.status.mock.calls.length;
+   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+   expect(bridge.status.mock.calls.length).toBe(calls); // settling stops once online
+  } finally { vi.useRealTimers(); }
+ });
+ it("reports Offline honestly if the session does not come up while settling", async () => {
+  vi.useFakeTimers({shouldAdvanceTime:true});
+  try {
+   const bridge = fakeLive();
+   view(<WaldoConnectionSection />); await opened();
+   bridge.status.mockResolvedValue({ok:true,state:"offline",ready:true});
+   fireEvent.submit(enter());
+   await act(async () => { await vi.advanceTimersByTimeAsync(16000); });
+   await waitFor(() => expect(screen.getByText("Paired · Offline")).toBeInTheDocument());
+   expect(bridge.status.mock.calls.length).toBeLessThanOrEqual(1 + 1 + 15);
+  } finally { vi.useRealTimers(); }
+ });
+ it("opens Waldo from Settings, reports a browser that did not open, and accepts the pasted owner-scoped code", async () => {
+  const openPairing = vi.fn(async () => false);
+  const action = vi.fn(async () => ({kind:"unpaired"}) as WaldoConnectionState);
+  view(<WaldoConnectionView state={{kind:"unpaired"}} action={action} openPairing={openPairing} defaultLabel="Synthetic Mac" />);
+  expect(screen.getByLabelText("Device label")).toHaveValue("Synthetic Mac");
+  fireEvent.click(screen.getByRole("button", {name:"Get a code from Waldo"}));
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Your browser didn’t open."));
+  expect(openPairing).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText("Waldo-issued code"),{target:{value:`  wp1.owner-1.${code}\n`}});
+  fireEvent.submit(screen.getByRole("button",{name:"Connect"}).closest("form")!);
+  await waitFor(() => expect(action).toHaveBeenCalledWith({code:`wp1.owner-1.${code}`,label:"Synthetic Mac",sessionConsent:false}));
+ });
+ it("keeps a typed label and offers no Waldo button once paired", () => {
+  const { rerender } = view(<WaldoConnectionView state={{kind:"unpaired"}} action={vi.fn()} openPairing={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("Device label"),{target:{value:"Typed"}});
+  rerender(<I18nextProvider i18n={createAppI18n()}><WaldoConnectionView state={{kind:"unpaired"}} action={vi.fn()} openPairing={vi.fn()} defaultLabel="Synthetic Mac" /></I18nextProvider>);
+  expect(screen.getByLabelText("Device label")).toHaveValue("Typed");
+  rerender(<I18nextProvider i18n={createAppI18n()}><WaldoConnectionView state={{kind:"paired",transport:"online"}} action={vi.fn()} openPairing={vi.fn()} /></I18nextProvider>);
+  expect(screen.getByRole("button", {name:"Get a code from Waldo"})).toBeDisabled();
+ });
+});

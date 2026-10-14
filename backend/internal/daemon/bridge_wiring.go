@@ -172,7 +172,15 @@ func wireBridgeWithFactory(dataDir string, getenv func(string) string, authority
 		var n int
 		return repoDB.QueryRowContext(ctx, "SELECT count(*) FROM device_bridge_activations").Scan(&n)
 	}})
-	c, e := bridgeactivation.New(cfg.OwnerID, cfg.Origin, activationrepo.New(repoDB), pairer, factory)
+	// Without a configured owner the bridge learns it from the owner-scoped pairing
+	// code the Waldo console shows, and keeps it in the activation store.
+	repo := activationrepo.New(repoDB)
+	var c *bridgeactivation.Controller
+	if cfg.OwnerID == "" {
+		c, e = bridgeactivation.NewBound(cfg.Origin, repo, repo, pairer, factory)
+	} else {
+		c, e = bridgeactivation.New(cfg.OwnerID, cfg.Origin, repo, pairer, factory)
+	}
 	if e != nil {
 		return fail()
 	}

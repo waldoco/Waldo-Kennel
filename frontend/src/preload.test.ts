@@ -193,7 +193,7 @@ describe("preload owner-command bridge", () => {
 describe("preload Waldo bridge", () => {
  it("exposes pairing and read-only output channels without credentials", async () => {
   const surface = exposedBridge().waldoBridge!;
-  expect(Object.keys(surface).sort()).toStrictEqual(["history", "output", "pair", "status"]);
+  expect(Object.keys(surface).sort()).toStrictEqual(["defaultLabel", "history", "openPairing", "output", "pair", "status"]);
   await surface.status();
   expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:status");
   electronMocks.invoke.mockClear();
@@ -202,6 +202,9 @@ describe("preload Waldo bridge", () => {
   expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:pair", input);
   electronMocks.invoke.mockClear(); await surface.history(); expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:history");
   electronMocks.invoke.mockClear(); await surface.output({deviceId:"dev",id:"cmd"}); expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:output",{deviceId:"dev",id:"cmd"});
+  // The renderer cannot choose where the pairing page opens.
+  electronMocks.invoke.mockClear(); await (surface.openPairing as (...args: unknown[]) => Promise<unknown>)("https://evil.test"); expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:openPairing");
+  electronMocks.invoke.mockClear(); await surface.defaultLabel(); expect(electronMocks.invoke).toHaveBeenCalledExactlyOnceWith("waldoBridge:defaultLabel");
   expect(JSON.stringify(exposedBridge())).not.toMatch(/bridgeLocalToken|ownerCommandToken/);
  });
 });

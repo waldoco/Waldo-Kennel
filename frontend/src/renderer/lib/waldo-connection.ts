@@ -6,10 +6,13 @@ export type WaldoConnectionState =
  | { kind: "paired"; transport: "offline" | "online"; deviceId?: string; label?: string }
  | { kind: "error"; reason: "failed" | "unavailable" };
 
-export function validWaldoCode(code: string): boolean {
+export function validWaldoCode(value: string): boolean {
+ // Waldo shows wp1.<owner id>.<code>; a bare code is accepted for a configured owner.
+ const scoped = /^(?:wp1\.[A-Za-z0-9_-]{1,128}\.)?([A-Za-z0-9_-]{43})$/.exec(value);
+ if (!scoped) return false;
+ const code = scoped[1]!;
  // 32 bytes encode as 43 characters; only 4 of the final character's 6 bits
  // carry data. Round-trip equality rejects nonzero final padding bits.
- if (!/^[A-Za-z0-9_-]{43}$/.test(code)) return false;
  try {
   const bytes = atob(code.replace(/-/g, "+").replace(/_/g, "/") + "=");
   return bytes.length === 32 && btoa(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") === code;

@@ -3,17 +3,21 @@ import type { IpcMainInvokeEvent, WebContents } from "electron";
 export type WaldoBridgeStatusResult = { ok: true; state: string; ready: boolean; deviceId?: string; label?: string } | { ok: false; reason: "unavailable" | "failed" };
 export type WaldoBridgePairResult = { ok: true } | { ok: false; reason: "recovery_required" | "unavailable" | "failed" };
 export type WaldoBridgePairInput = { code: string; label: string; capabilities: string[]; sessionConsent?: boolean };
+export type WaldoBridgeOpenResult = { ok: true } | { ok: false; reason: "unavailable" | "failed" };
 type Event = Pick<IpcMainInvokeEvent, "sender" | "senderFrame">;
-export type WaldoBridgeDeps = { getShellWebContents: () => WebContents | null; getDaemonConnection: () => { port: number } | null; bridgeLocalToken: () => string; fetch: typeof globalThis.fetch; confirmSessionConsent?: () => Promise<boolean> };
+export type WaldoBridgeDeps = { getShellWebContents: () => WebContents | null; getDaemonConnection: () => { port: number } | null; bridgeLocalToken: () => string; fetch: typeof globalThis.fetch; confirmSessionConsent?: () => Promise<boolean>; pairingUrl?: () => string | null; openExternal?: (url: string) => Promise<void>; computerName?: () => Promise<string> };
+// The Waldo console shows wp1.<owner id>.<43-char code>; the daemon redeems only the code.
+const PAIRING_CODE = /^(?:wp1\.[A-Za-z0-9_-]{1,128}\.)?([A-Za-z0-9_-]{43})$/;
 function ownedShell(deps: WaldoBridgeDeps, event: Event): boolean { const shell = deps.getShellWebContents(); return !!shell && !shell.isDestroyed() && event.sender === shell && event.senderFrame === shell.mainFrame; }
 function validLabel(value: unknown): value is string { if (typeof value !== "string" || Buffer.byteLength(value, "utf8") < 1 || Buffer.byteLength(value, "utf8") > 120) return false; for (let i = 0; i < value.length; i++) { const c = value.charCodeAt(i); if (c >= 0xd800 && c <= 0xdbff) { const next = value.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; } else if (c >= 0xdc00 && c <= 0xdfff) return false; } return true; }
 function pairInput(value: unknown): value is WaldoBridgePairInput {
  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
  const v = value as Record<string, unknown>;
  const fields = Object.keys(v).sort().join(",");
- if ((fields !== "capabilities,code,label" && fields !== "capabilities,code,label,sessionConsent") || (v.sessionConsent !== undefined && typeof v.sessionConsent !== "boolean") || typeof v.code !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(v.code)) return false;
- const raw = Buffer.from(v.code, "base64url");
- if (raw.length !== 32 || raw.toString("base64url") !== v.code || !validLabel(v.label) || !Array.isArray(v.capabilities) || v.capabilities.length < 1 || v.capabilities.length > 5) return false;
+ if ((fields !== "capabilities,code,label" && fields !== "capabilities,code,label,sessionConsent") || (v.sessionConsent !== undefined && typeof v.sessionConsent !== "boolean") || typeof v.code !== "string" || !PAIRING_CODE.test(v.code)) return false;
+ const code = PAIRING_CODE.exec(v.code)![1]!;
+ const raw = Buffer.from(code, "base64url");
+ if (raw.length !== 32 || raw.toString("base64url") !== code || !validLabel(v.label) || !Array.isArray(v.capabilities) || v.capabilities.length < 1 || v.capabilities.length > 5) return false;
  const all = ["machine_state_query", "notify_local", "shell_exec", "session_query", "session_control"];
  let previous = -1;
  for (const capability of v.capabilities) { const index = all.indexOf(capability); if (index <= previous) return false; previous = index; }
@@ -42,6 +46,16 @@ export function createWaldoBridgeHandlers(deps: WaldoBridgeDeps) {
     const response = await deps.fetch(`http://127.0.0.1:${daemon.port}/internal/bridge/pair`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `KennelBridge ${token}` }, body: JSON.stringify({ code: input.code, label: input.label, capabilities: [...input.capabilities], session_consent: input.sessionConsent === true }) });
     if (response.status === 204) return { ok: true }; return { ok: false, reason: response.status === 409 ? "recovery_required" : response.status === 404 || response.status === 503 ? "unavailable" : "failed" };
    } catch { return { ok: false, reason: "unavailable" }; }
+  },
+  // Opens only the configured Waldo origin's pairing page; the renderer supplies no URL.
+  openPairing: async (event: Event): Promise<WaldoBridgeOpenResult> => {
+   if (!ownedShell(deps, event)) return { ok: false, reason: "failed" };
+   const url = deps.pairingUrl?.(); if (!url || !deps.openExternal) return { ok: false, reason: "unavailable" };
+   try { await deps.openExternal(url); return { ok: true }; } catch { return { ok: false, reason: "failed" }; }
+  },
+  defaultLabel: async (event: Event): Promise<string> => {
+   if (!ownedShell(deps, event) || !deps.computerName) return "";
+   try { const name = (await deps.computerName()).trim(); return validLabel(name) ? name : ""; } catch { return ""; }
   },
  };
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/url"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -62,6 +63,19 @@ type Repository interface {
 	Revoke(context.Context, string, domain.DeviceBridgeDeviceID) error
 }
 
+// OwnerBinding persists which Waldo owner this Mac pairs with when no owner is
+// configured at boot. It is learned from the owner-scoped pairing code. BindOwner
+// must refuse a different owner while the bound owner has a pending, blocked or
+// paired activation, atomically with that check.
+type OwnerBinding interface {
+	BoundOwner(context.Context) (string, error)
+	BindOwner(context.Context, string) error
+}
+
+// PairingCodePrefix marks the owner-scoped code the Waldo console shows:
+// wp1.<owner id>.<43-char pairing code>. Only the 43-char code is ever redeemed.
+const PairingCodePrefix = "wp1"
+
 type Pairer interface {
 	Pair(context.Context, devicebridge.PairRequest) (domain.DeviceBridgeDevice, error)
 }
@@ -98,6 +112,8 @@ type Status struct {
 
 type Controller struct {
 	owner, origin string
+	binding       OwnerBinding
+	pairMu        sync.Mutex
 	repo          Repository
 	pairer        Pairer
 	factory       Factory
@@ -121,15 +137,58 @@ func New(owner, origin string, repo Repository, pairer Pairer, factory Factory) 
 	return &Controller{owner: owner, origin: origin, repo: repo, pairer: pairer, factory: factory, phase: Offline}, nil
 }
 
+// NewBound learns its owner from the first owner-scoped pairing code and keeps it
+// in binding, so a fresh install needs no boot-time owner configuration.
+func NewBound(origin string, binding OwnerBinding, repo Repository, pairer Pairer, factory Factory) (*Controller, error) {
+	if binding == nil {
+		return nil, ErrInvalid
+	}
+	c, err := New("unbound", origin, repo, pairer, factory)
+	if err != nil {
+		return nil, err
+	}
+	c.owner, c.binding = "", binding
+	return c, nil
+}
+
+// currentOwner is the boot-configured owner, else the bound one ("" before pairing).
+func (c *Controller) currentOwner(ctx context.Context) (string, error) {
+	if c.binding == nil {
+		return c.owner, nil
+	}
+	return c.binding.BoundOwner(ctx)
+}
+
+// splitPairingCode separates an owner-scoped code into its owner and the 43-char
+// pairing code. A bare code returns no owner.
+func splitPairingCode(code string) (owner, raw string, ok bool) {
+	rest, scoped := strings.CutPrefix(code, PairingCodePrefix+".")
+	if !scoped {
+		return "", code, true
+	}
+	owner, raw, found := strings.Cut(rest, ".")
+	if !found || !validOwnerID(owner) {
+		return "", "", false
+	}
+	return owner, raw, true
+}
+
 func (c *Controller) Status(ctx context.Context) (Status, error) {
-	r, err := c.repo.Load(ctx, c.owner)
+	owner, err := c.currentOwner(ctx)
 	if err != nil {
 		return Status{}, err
 	}
-	if r.OwnerID != "" && r.OwnerID != c.owner {
+	ready := c.factory != nil && c.factory.Ready(ctx) == nil
+	if owner == "" {
+		return Status{Ready: ready, Phase: Unpaired}, nil
+	}
+	r, err := c.repo.Load(ctx, owner)
+	if err != nil {
+		return Status{}, err
+	}
+	if r.OwnerID != "" && r.OwnerID != owner {
 		return Status{}, ErrInvalid
 	}
-	ready := c.factory != nil && c.factory.Ready(ctx) == nil
 	if r.Attempt != "" {
 		return Status{Ready: ready, Phase: Recovery}, nil
 	}
@@ -153,8 +212,18 @@ func (c *Controller) Pair(ctx context.Context, code, label string, capabilities 
 		return ErrInvalid
 	}
 	// Reject invalid inputs before reserving; secrets never enter Repository.
+	codeOwner, code, ok := splitPairingCode(code)
+	if !ok {
+		return ErrInvalid
+	}
 	decoded, e := base64.RawURLEncoding.DecodeString(code)
 	if e != nil || len(decoded) != 32 || base64.RawURLEncoding.EncodeToString(decoded) != code || !utf8.ValidString(label) || len(label) < 1 || len(label) > 120 || !validCapabilities(capabilities) {
+		return ErrInvalid
+	}
+	// A configured owner accepts only its own scoped code; a bound controller
+	// needs the scoped code to learn whom it pairs with.
+	owner := c.owner
+	if (c.binding == nil && codeOwner != "" && codeOwner != c.owner) || (c.binding != nil && codeOwner == "") {
 		return ErrInvalid
 	}
 	if c.factory == nil || c.factory.Ready(ctx) != nil {
@@ -165,35 +234,50 @@ func (c *Controller) Pair(ctx context.Context, code, label string, capabilities 
 	if !ok {
 		return ErrNotReady
 	}
-	r, err := c.repo.Reserve(ctx, c.owner)
+	c.pairMu.Lock()
+	defer c.pairMu.Unlock()
+	if c.binding != nil {
+		c.mu.Lock()
+		running := c.cancel != nil
+		c.mu.Unlock()
+		if running {
+			return ErrInvalid
+		}
+		// Bind before reserving so a crash after Reserve still finds this owner.
+		if err := c.binding.BindOwner(ctx, codeOwner); err != nil {
+			return ErrInvalid
+		}
+		owner = codeOwner
+	}
+	r, err := c.repo.Reserve(ctx, owner)
 	if err != nil {
 		return err
 	}
-	if r.OwnerID != c.owner || r.Attempt == "" {
+	if r.OwnerID != owner || r.Attempt == "" {
 		return ErrInvalid
 	}
-	d, err := c.pairer.Pair(ctx, devicebridge.PairRequest{OwnerID: c.owner, Code: code, Label: label, SessionConsent: sessionConsent, Capabilities: append([]string(nil), capabilities...), Checkpoint: func(_ context.Context, observed devicebridge.PairingRecoveryError) error {
+	d, err := c.pairer.Pair(ctx, devicebridge.PairRequest{OwnerID: owner, Code: code, Label: label, SessionConsent: sessionConsent, Capabilities: append([]string(nil), capabilities...), Checkpoint: func(_ context.Context, observed devicebridge.PairingRecoveryError) error {
 		safe := devicebridge.PairingRecoveryError{OwnerID: observed.OwnerID, KeyCustodyRef: observed.KeyCustodyRef, PublicKey: observed.PublicKey}
-		return cp.Checkpoint(context.WithoutCancel(ctx), c.owner, r.Attempt, safe)
+		return cp.Checkpoint(context.WithoutCancel(ctx), owner, r.Attempt, safe)
 	}})
 	if err != nil {
 		var checkpoint *devicebridge.PairingRecoveryError
 		var observed *devicebridge.PairingRecoveryError
-		if errors.As(err, &observed) && observed.OwnerID == c.owner {
+		if errors.As(err, &observed) && observed.OwnerID == owner {
 			// Copy only safe checkpoint fields, not the original error/Cause chain.
 			checkpoint = &devicebridge.PairingRecoveryError{OwnerID: observed.OwnerID, DeviceID: observed.DeviceID, KeyCustodyRef: observed.KeyCustodyRef, PublicKey: observed.PublicKey}
 		}
-		if blockErr := c.repo.Block(context.WithoutCancel(ctx), c.owner, r.Attempt, checkpoint); blockErr != nil {
+		if blockErr := c.repo.Block(context.WithoutCancel(ctx), owner, r.Attempt, checkpoint); blockErr != nil {
 			return ErrBlocked
 		}
 		return ErrBlocked
 	}
-	if !sameCapabilities(d.CapabilityClasses, capabilities) || d.OwnerID != c.owner || d.State != domain.DeviceBridgeStatePaired || d.ContractVersion != devicebridge.ContractVersion || !validCapabilities(d.CapabilityClasses) || d.Validate() != nil {
-		_ = c.repo.Block(context.WithoutCancel(ctx), c.owner, r.Attempt, nil)
+	if !sameCapabilities(d.CapabilityClasses, capabilities) || d.OwnerID != owner || d.State != domain.DeviceBridgeStatePaired || d.ContractVersion != devicebridge.ContractVersion || !validCapabilities(d.CapabilityClasses) || d.Validate() != nil {
+		_ = c.repo.Block(context.WithoutCancel(ctx), owner, r.Attempt, nil)
 		return ErrBlocked
 	}
-	if err = c.repo.Complete(context.WithoutCancel(ctx), c.owner, r.Attempt, d); err != nil {
-		_ = c.repo.Block(context.WithoutCancel(ctx), c.owner, r.Attempt, &devicebridge.PairingRecoveryError{OwnerID: c.owner, DeviceID: string(d.DeviceID), KeyCustodyRef: d.KeyCustodyRef, PublicKey: d.PublicKey})
+	if err = c.repo.Complete(context.WithoutCancel(ctx), owner, r.Attempt, d); err != nil {
+		_ = c.repo.Block(context.WithoutCancel(ctx), owner, r.Attempt, &devicebridge.PairingRecoveryError{OwnerID: owner, DeviceID: string(d.DeviceID), KeyCustodyRef: d.KeyCustodyRef, PublicKey: d.PublicKey})
 		return ErrBlocked
 	}
 	return nil
@@ -207,14 +291,21 @@ func (c *Controller) Start(ctx context.Context) error {
 	if c.cancel != nil {
 		return ErrBlocked
 	}
-	r, err := c.repo.Load(ctx, c.owner)
+	owner, err := c.currentOwner(ctx)
+	if err != nil {
+		return err
+	}
+	if owner == "" {
+		return ErrNotReady
+	}
+	r, err := c.repo.Load(ctx, owner)
 	if err != nil {
 		return err
 	}
 	if r.Attempt != "" {
 		return ErrBlocked
 	}
-	if r.OwnerID != c.owner || r.Device.OwnerID != c.owner || r.Device.State != domain.DeviceBridgeStatePaired || r.Device.ContractVersion != devicebridge.ContractVersion || !validCapabilities(r.Device.CapabilityClasses) || r.Device.Validate() != nil {
+	if r.OwnerID != owner || r.Device.OwnerID != owner || r.Device.State != domain.DeviceBridgeStatePaired || r.Device.ContractVersion != devicebridge.ContractVersion || !validCapabilities(r.Device.CapabilityClasses) || r.Device.Validate() != nil {
 		return ErrNotReady
 	}
 	c.stateMu.Lock()
@@ -240,7 +331,7 @@ func (c *Controller) Start(ctx context.Context) error {
 			c.stateMu.Unlock()
 			// Immediate local latch is not durable proof. Return a persistence failure
 			// through Stop and require repair before reuse; never silently retry it.
-			err := c.repo.Revoke(context.WithoutCancel(runctx), c.owner, r.Device.DeviceID)
+			err := c.repo.Revoke(context.WithoutCancel(runctx), owner, r.Device.DeviceID)
 			var retireErr error
 			if retirer, ok := c.factory.(KeyRetirer); ok && err == nil {
 				if e := retirer.RetireKey(context.WithoutCancel(runctx), r.Device); e != nil {

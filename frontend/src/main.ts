@@ -48,7 +48,7 @@ import {
 	installedBundlePath,
 } from "./main/relocation";
 import { coerceUiSettings, readUiSettings, writeUiSettings, type UiSettings } from "./main/ui-settings";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -93,6 +93,7 @@ import {
 	showCloudSignInFailure,
 } from "./main/cloud-auth";
 import { DEFAULT_POSTHOG_HOST, DEFAULT_POSTHOG_PROJECT_KEY } from "./shared/posthog-config";
+import { waldoBridgeConfig, waldoBridgeDaemonEnv, waldoPairingUrl } from "./shared/waldo-config";
 import { buildTelemetryBootstrap } from "./shared/telemetry";
 import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view-host";
 import { createWindowComposition, type WindowComposition } from "./main/window-composition";
@@ -664,6 +665,22 @@ let cachedShellEnv: Record<string, string> | null = null;
 // Memoize the in-flight resolution so concurrent/repeat awaits are cheap.
 let shellEnvPromise: Promise<void> | null = null;
 
+// Connect to Waldo: on by default on macOS with the built-in Waldo origin. Read once,
+// from this process's own environment only (never the probed login shell).
+const waldoBridge = waldoBridgeConfig(process.env, process.platform);
+
+// This Mac's user-visible name, offered as the default device label.
+function computerName(): Promise<string> {
+	const fallback = os.hostname().replace(/\.local$/, "");
+	if (process.platform !== "darwin") return Promise.resolve(fallback);
+	return new Promise((resolve) => {
+		execFile("/usr/sbin/scutil", ["--get", "ComputerName"], { timeout: 2000 }, (error, stdout) => {
+			const name = String(stdout ?? "").trim();
+			resolve(!error && name ? name : fallback);
+		});
+	});
+}
+
 // Telemetry defaults stamped on the daemon env on every platform; explicit env
 // always wins.
 //
@@ -797,7 +814,7 @@ function daemonEnv(forceKeep = keepDaemonAlive(process.env)): NodeJS.ProcessEnv 
 	}
 	// Windows keeps the old behavior exactly: no shell probe, no unix PATH floor.
 	if (process.platform === "win32") {
-		return { ...process.env, ...devExtras, ...telemetryOverrides(), ...ownerTag };
+		return { ...process.env, ...devExtras, ...telemetryOverrides(), ...waldoBridgeDaemonEnv(waldoBridge), ...ownerTag };
 	}
 	// Bridge boot configuration is trusted only from this main process, never
  // from a separately probed login-shell environment.
@@ -805,7 +822,7 @@ function daemonEnv(forceKeep = keepDaemonAlive(process.env)): NodeJS.ProcessEnv 
  for (const key of ["KENNEL_WALDO_BRIDGE_ENABLED", "KENNEL_WALDO_ORIGIN", "KENNEL_WALDO_OWNER_ID"]) {
   if (shellEnv) delete shellEnv[key];
  }
- return buildDaemonEnv(process.env, shellEnv, { ...devExtras, ...telemetryOverrides(), ...ownerTag });
+ return buildDaemonEnv(process.env, shellEnv, { ...devExtras, ...telemetryOverrides(), ...waldoBridgeDaemonEnv(waldoBridge), ...ownerTag });
 }
 
 function pathKey(value: string): string {
@@ -1648,9 +1665,14 @@ const waldoBridgeHandlers = createWaldoBridgeHandlers({
   return result.response===0 && mainWindow===window && !window.isDestroyed() && getShellWebContents()===shell && !shell.isDestroyed() && shell.mainFrame===frame;
  },
  fetch: globalThis.fetch,
+ pairingUrl: () => waldoPairingUrl(waldoBridge),
+ openExternal: (url) => shell.openExternal(url),
+ computerName,
 });
 ipcMain.handle("waldoBridge:status", waldoBridgeHandlers.status);
 ipcMain.handle("waldoBridge:pair", waldoBridgeHandlers.pair);
+ipcMain.handle("waldoBridge:openPairing", waldoBridgeHandlers.openPairing);
+ipcMain.handle("waldoBridge:defaultLabel", waldoBridgeHandlers.defaultLabel);
 // notify_local text reaches the OS only through this loop; it acknowledges
 // shown=true to the daemon solely on the native notification's "show" event.
 const waldoBridgeDisplay = createWaldoBridgeDisplayLoop({
@@ -2368,7 +2390,7 @@ app.whenReady().then(async () => {
 	await createWindow();
 	void startDaemon();
 	// Bridge configuration is trusted only from this process's own environment.
-	if (process.env.KENNEL_WALDO_BRIDGE_ENABLED === "1") waldoBridgeDisplay.start();
+	if (waldoBridge.enabled) waldoBridgeDisplay.start();
 	initAutoUpdates();
 
 	// Windows/Linux: on first launch, the deep-link URL may arrive as a

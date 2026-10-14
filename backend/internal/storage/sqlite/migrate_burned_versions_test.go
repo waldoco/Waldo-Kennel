@@ -170,6 +170,7 @@ var shippedMigrations = map[int64]string{
 	164: "0164_device_bridge_scope.sql",
 	165: "0165_device_bridge_activations.sql",
 	166: "0166_mac_actions.sql",
+	167: "0167_device_bridge_owner_binding.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they
