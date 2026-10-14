@@ -143,6 +143,35 @@ describe("production Waldo adapter",()=>{
  });
 
 describe("one-click pairing", () => {
+ it("keeps Pairing… until the new session is online instead of showing a stale Offline", async () => {
+  vi.useFakeTimers({shouldAdvanceTime:true});
+  try {
+   const bridge = fakeLive();
+   view(<WaldoConnectionSection />); await opened();
+   bridge.status.mockResolvedValueOnce({ok:true,state:"offline",ready:true,deviceId:"synthetic-device"}).mockResolvedValueOnce({ok:true,state:"offline",ready:true,deviceId:"synthetic-device"}).mockResolvedValue({ok:true,state:"online",ready:true,deviceId:"synthetic-device"});
+   fireEvent.submit(enter());
+   await waitFor(() => expect(bridge.pair).toHaveBeenCalledTimes(1));
+   expect(screen.getByText("Pairing…")).toBeInTheDocument();
+   expect(screen.queryByText("Paired · Offline")).not.toBeInTheDocument();
+   await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+   await waitFor(() => expect(screen.getByText("Paired · Online")).toBeInTheDocument());
+   const calls = bridge.status.mock.calls.length;
+   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+   expect(bridge.status.mock.calls.length).toBe(calls); // settling stops once online
+  } finally { vi.useRealTimers(); }
+ });
+ it("reports Offline honestly if the session does not come up while settling", async () => {
+  vi.useFakeTimers({shouldAdvanceTime:true});
+  try {
+   const bridge = fakeLive();
+   view(<WaldoConnectionSection />); await opened();
+   bridge.status.mockResolvedValue({ok:true,state:"offline",ready:true});
+   fireEvent.submit(enter());
+   await act(async () => { await vi.advanceTimersByTimeAsync(16000); });
+   await waitFor(() => expect(screen.getByText("Paired · Offline")).toBeInTheDocument());
+   expect(bridge.status.mock.calls.length).toBeLessThanOrEqual(1 + 1 + 15);
+  } finally { vi.useRealTimers(); }
+ });
  it("opens Waldo from Settings, reports a browser that did not open, and accepts the pasted owner-scoped code", async () => {
   const openPairing = vi.fn(async () => false);
   const action = vi.fn(async () => ({kind:"unpaired"}) as WaldoConnectionState);

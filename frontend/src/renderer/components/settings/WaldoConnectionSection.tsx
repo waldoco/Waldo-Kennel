@@ -7,6 +7,9 @@ import { Switch } from "../ui/switch";
 import { SettingsSection } from "./SettingsSection";
 import { statusToState, pairResultToState, validWaldoCode, validWaldoLabel, type WaldoConnectionState } from "../../lib/waldo-connection";
 
+const PAIR_SETTLE_ATTEMPTS = 15;
+const PAIR_SETTLE_INTERVAL_MS = 1000;
+
 // The optional preload is the only production boundary. Never retain a token.
 export function WaldoConnectionSection({ open = true, titleHidden = false }: { open?: boolean; titleHidden?: boolean }) {
  const [state, setState] = useState<WaldoConnectionState>({kind:"unavailable"});
@@ -38,7 +41,15 @@ export function WaldoConnectionSection({ open = true, titleHidden = false }: { o
   const result = await bridge.pair({...input, capabilities:input.sessionConsent ? ["machine_state_query","notify_local","shell_exec","session_query","session_control"] : ["machine_state_query","notify_local","shell_exec"]});
   if (ticket !== generation.current) return {kind:"unavailable"};
   if (!result.ok) return pairResultToState(result);
-  return statusToState(await bridge.status());
+  // The session connects just after pairing completes. Keep "Pairing…" while it settles
+  // (bounded, only after a successful pair) so the first answer is not a stale Offline.
+  let next = statusToState(await bridge.status());
+  for (let attempt = 0; attempt < PAIR_SETTLE_ATTEMPTS && next.kind === "paired" && next.transport === "offline" && ticket === generation.current; attempt++) {
+   await new Promise(resolve => setTimeout(resolve, PAIR_SETTLE_INTERVAL_MS));
+   if (ticket !== generation.current) break;
+   try { next = statusToState(await bridge.status()); } catch { break; }
+  }
+  return ticket === generation.current ? next : {kind:"unavailable"};
  };
  const openPairing = async (): Promise<boolean> => {
   const bridge = window.kennel?.waldoBridge;
