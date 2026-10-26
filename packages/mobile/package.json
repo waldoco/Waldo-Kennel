@@ -47,6 +47,6 @@
 		"@types/react": "~19.1.10",
 		"patch-package": "^8.0.1",
 		"typescript": "~5.9.2",
-		"vitest": "^4.1.10"
+		"vitest": "^4.1.12"
 	}
 }
